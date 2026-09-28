@@ -34,6 +34,9 @@ if [[ -f "$TAU_SSHD_CONF" ]]; then
   had_previous=1
 fi
 sudo install -m 644 -o root -g wheel "$rendered" "$TAU_SSHD_CONF"
+# Remote Login hiç açılmamış bir Mac'te host key yoktur ve sshd -t "no hostkeys available" der.
+# macOS bunları ilk bağlantıda üretir; testten önce eksik olanları biz üretiyoruz (var olanlara dokunmaz).
+sudo ssh-keygen -A
 if sudo /usr/sbin/sshd -t; then
   ok "sshd -t geçti (şifre kapalı, sadece $TAU_REMOTE_USER, sadece tailnet + localhost)"
 else

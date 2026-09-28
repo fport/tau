@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/tau-hero.svg" width="100%" alt="tau: iç içe neon üçgenler, dikey ışık çizgileri ve parlayan bir portalın önünde τ silüeti">
+<img src="docs/brand/tau-hero.svg" width="100%" alt="tau: dikey ışık çizgileri ve iç içe neon üçgenlerin ortasında, halka içinde neon τ logosu">
 
 # tau
 
@@ -19,7 +19,7 @@
 [![Tailscale](https://img.shields.io/badge/a%C4%9F-Tailscale-242424?logo=tailscale&logoColor=white)](https://tailscale.com/)
 [![Tauri v2](https://img.shields.io/badge/tray-Tauri_v2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
 
-[Mimari](docs/ARCHITECTURE.md) · [Yol haritası](roadmap/README.md) · [Sözlük](CONTEXT.md) · [Uzaktan erişim](infra/remote/README.md) · [Ajan talimatları](CLAUDE.md)
+[Mimari](docs/ARCHITECTURE.md) · [Yol haritası](roadmap/README.md) · [Sözlük](CONTEXT.md) · [Marka](docs/brand/README.md) · [Uzaktan erişim](infra/remote/README.md) · [Ajan talimatları](CLAUDE.md)
 
 </div>
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/tau-mark.svg" width="88" height="88" alt="tau logosu">
+<img src="docs/assets/tau-hero.svg" width="100%" alt="tau: iç içe neon üçgenler, dikey ışık çizgileri ve parlayan bir portalın önünde τ silüeti">
 
 # tau
 

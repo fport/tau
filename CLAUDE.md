@@ -53,6 +53,7 @@ This repo is the center. Everything is built so it can be published or split out
 - **Reflexes** (routines, safety stops) must work without an LLM and without the cloud.
 - **Models:** code asks for a role (`brain`/`fast`/`local`), never a hardcoded model id. Never add `litellm` as a Python dependency — the proxy runs as a digest-pinned container (PyPI compromise, March 2026).
 - **Secrets:** never commit them. Local `.env` (gitignored), `wrangler secret` for Cloudflare.
+- **Privacy:** the repo may go public, so nothing personal goes into tracked files: no hostnames, tailnet names, IP addresses, emails, account ids or key fingerprints. Use example values (`my-mac.tailXXXXXX.ts.net`, `100.x.y.z`, `SHA256:...`). Real values the user shares go into the gitignored `.env`, with the name and an example value in `.env.example`.
 - **State:** the hub reaches D1/R2/Vectorize only through the `tau-cloud` Worker API. Raw telemetry never goes into D1.
 - **Remote access:** changing `infra/remote/sshd/tau.conf` must keep password auth off and `AllowUsers` restricted to tailnet + localhost; re-run `infra/remote/doctor.sh`.
 

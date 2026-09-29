@@ -13,7 +13,7 @@ Ambient mode is off by default. The user switches it on or off, or picks a profi
 ## Acceptance criteria
 
 - [ ] Ambient off → events cause no LLM calls (verified via spend)
-- [ ] `/ambient seyahat` switches the profile and TauBar reflects it
+- [ ] `/ambient travel` switches the profile and TauBar reflects it
 - [ ] Triage uses the `fast` role with its own budget key; exhausting it turns ambient off with a notification
 - [ ] Profiles are settings; editing them needs no code change
 - [ ] The startup status report and routines keep working regardless of ambient state
@@ -21,7 +21,9 @@ Ambient mode is off by default. The user switches it on or off, or picks a profi
 ## Blocked by
 
 - [011 · Hard budgets per role with graceful degradation](../L2-models/011-hard-budgets.md)
-- [019 · Settings as data with live reload and `/ayar`](../L3-cloud/019-settings-as-data.md)
+- [019 · Settings as data with live reload and `/settings`](../L3-cloud/019-settings-as-data.md)
 - [025 · TauBar status panel: hub, nodes, spend, approvals](025-taubar-status-panel.md)
 
 ## Comments
+
+- 2026-09-29: profile names are `home` / `travel` / `sport` (renamed by 062; the old `ev`/`seyahat`/`spor` values are not accepted).

@@ -9,5 +9,6 @@
 | 010 | [LiteLLM proxy with `brain` and `fast` roles](010-litellm-proxy-roles.md) | AFK | 003, 004 |
 | 011 | [Hard budgets per role with graceful degradation](011-hard-budgets.md) | AFK | 005, 010 |
 | 012 | [`local` role via Ollama with automatic fallback](012-local-role-ollama.md) | AFK | 010 |
+| 067 | [Opt-in model failover through Strands `ModelRouter`](067-model-router-failover.md) | AFK | 010, 011 |
 
 Live status: `python3 roadmap/board.py`

@@ -19,6 +19,6 @@ The user queues a long-running task ("bu gece şunu araştır"); tau works on it
 ## Blocked by
 
 - [011 · Hard budgets per role with graceful degradation](../L2-models/011-hard-budgets.md)
-- [019 · Settings as data with live reload and `/ayar`](../L3-cloud/019-settings-as-data.md)
+- [019 · Settings as data with live reload and `/settings`](../L3-cloud/019-settings-as-data.md)
 
 ## Comments

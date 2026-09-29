@@ -35,7 +35,7 @@ Walked through by hand with the user instead of running the scripts, one step at
 - `sshd -t` first failed with `no hostkeys available`. Remote Login had never been on, so there were no host keys. `sudo ssh-keygen -A` fixed it. `setup-sudo.sh` had the same gap (it runs `sshd -t` before turning Remote Login on); it now runs `ssh-keygen -A` first.
 - `systemsetup -setremotelogin on` needs Full Disk Access; Remote Login was turned on in System Settings instead.
 - Remote Management and Remote Application Scripting were also on and listening on every interface; both turned off, only port 22 is left. `doctor.sh` did not notice them → #051.
-- `doctor.sh` exits 0 with "uzaktan erişim hazır".
+- `doctor.sh` exits 0 with "remote access ready".
 - Phone test: Termius host with Mosh + `tau-attach` startup snippet; `claude` started over 5G, phone locked 2+ min, same screen came back. Closing the connection and reconnecting also lands in the running session.
 - Claude Code did not ask to log in over SSH, so the `claude setup-token` flow was not needed.
 - Verify the Mac's host key on a new client against `ssh-keygen -l -f /etc/ssh/ssh_host_ed25519_key.pub`.

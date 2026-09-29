@@ -1,6 +1,6 @@
 # 058 · Load hub-hosted services from entry points in `tau hub run`
 
-Status: needs-triage
+Status: in-progress
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-core
@@ -27,3 +27,4 @@ None - should land before #014 starts.
 ## Comments
 
 - 2026-09-29: proposed by the agent that closed #009 (it suggested L3 · Cloud; filed under L1 because the code lives in `tau_core.hub` and it unblocks several L3/L4 issues).
+- 2026-09-29: absorbed by 065 (component builder), closed when 065 closes. Group name decided: `tau.hub_services` (`tau.channels` stays reserved for hub-hosted channels); recorded in ADR 0005 by 065.

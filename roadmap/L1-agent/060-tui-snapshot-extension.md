@@ -1,6 +1,6 @@
 # 060 · Pin or fix the snapshot file extension for tau-tui snapshots
 
-Status: needs-triage
+Status: in-progress
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-tui
@@ -25,3 +25,4 @@ None - can start immediately.
 ## Comments
 
 - 2026-09-29: proposed by the agent that closed #008.
+- 2026-09-29: absorbed by 063 (premium TUI), closed when 063 closes. Decision: keep `.raw`, pin the extension (no glob), note the choice and the re-generation command in the tau-tui README.

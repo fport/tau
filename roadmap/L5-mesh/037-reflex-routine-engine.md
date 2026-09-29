@@ -12,7 +12,7 @@ The user registers routines: an event pattern → an action with parameters, wit
 
 ## Acceptance criteria
 
-- [ ] A routine `desk.presence=present → notify "hoş geldin"` fires on the event
+- [ ] A routine `desk.presence=present → notify "welcome"` fires on the event
 - [ ] Registering a tier-2 routine requires exactly one approval; later firings do not
 - [ ] Cooldown and time-window conditions work
 - [ ] The engine keeps working with no internet (no LLM, no cloud)

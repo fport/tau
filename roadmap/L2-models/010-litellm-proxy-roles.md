@@ -29,3 +29,5 @@ LiteLLM Proxy runs on the hub with docker compose (image pinned by digest, Postg
 LiteLLM 1.82.7 and 1.82.8 on PyPI were compromised in March 2026 — this is why the proxy runs isolated in a pinned container.
 
 ## Comments
+
+- 2026-09-29: the proxy must be reached with `strands.models.openai.OpenAIModel(client_args={"base_url": ...})` (plus the per-role virtual key as `api_key`), never with `strands.models.litellm.LiteLLMModel`: that class imports the `litellm` package, which is exactly the dependency the container isolates us from. The `strands-agents[openai]` extra is the only addition allowed.

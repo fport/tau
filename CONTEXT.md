@@ -41,6 +41,9 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 
 - **Event** — something that happened, published on Zenoh as `tau/<area>/<name>` (e.g. `tau/desk/presence`). Summaries of events are stored in D1.
 - **Agent event** — a record of what the agent did in a session (tool call, approval, turn limit, error, notice); distinct from a mesh **Event** on Zenoh.
+- **Turn event** — what a channel receives while one user turn streams: `TextDelta`, `ReasoningDelta`, `ToolUseStarted`, `ToolProgress`, `ToolFinished`, `Throttled`, `Notice`, `TurnEnd`. Rendered by the terminal and the TUI; not stored (agent events are).
+- **Stop reason** — why a turn ended, carried by `TurnEnd`: `end_turn`, `limit_turns`, `limit_total_tokens`, `max_tokens`, `cancelled`, `interrupt`, `error`, `busy`.
+- **Repair turn** — when the history ends on an unfinished turn (a failed, cancelled or limited turn, or a crash-restored session), the next turn sends an assistant notice before the user's prompt so the history keeps alternating. Only the SDK appends to history; tau never does by hand.
 - **Telemetry** — high-frequency raw data (sensor streams, joint states). Never stored in D1; batched to R2.
 - **Routine** — a user-registered rule: event pattern → action, with optional conditions (time window, cooldown). Registering a tier-2 routine needs one approval; its firings do not.
 - **Reflex engine** — runs routines locally without an LLM or the cloud.

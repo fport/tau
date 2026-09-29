@@ -13,7 +13,7 @@ Two channels run in the terminal today. `tau chat` is a line-based REPL: one pro
 | Leave | `/quit`, Ctrl-D | `/quit`, Ctrl+Q |
 | Needs a TTY | no | yes |
 
-Both read the same config and stop with exit code 2 before anything opens when credentials are missing, the config is broken or a `--resume ID` is unknown.
+Both read the same config and stop with exit code 2 before anything opens when the config is broken or a `--resume ID` is unknown. Missing credentials stop `tau chat` the same way; `tau tui` opens on its settings screen instead, and with no config at all it opens a setup screen ([First run](first-run.md#in-the-interface-tau-tui)).
 
 ## `tau chat`
 
@@ -58,7 +58,7 @@ A tier-2 call blocks the turn and asks on stdin:
 
 ## Slash commands
 
-A line that starts with `/` is a command. The channel handles it; the model never sees it. The twelve canonical names are English; Turkish aliases (`/devam`, `/çık`, `/özet`, …) keep working but are never shown.
+A line that starts with `/` is a command. The channel handles it; the model never sees it. The thirteen canonical names are English; Turkish aliases (`/devam`, `/çık`, `/özet`, `/ayarlar`, …) keep working but are never shown.
 
 | Command | What it does |
 |---|---|
@@ -73,6 +73,7 @@ A line that starts with `/` is a command. The channel handles it; the model neve
 | `/status` | profile, session, model, context, tools, UI language, versions, hub |
 | `/model [role]` | list the roles of `tau.toml`, or switch this session to one; `/resume` remembers it |
 | `/lang en`, `/lang tr` | switch the UI language for this run |
+| `/settings [key value]` | show the settings (roles, credential status, language, profile, context, files); in the terminal `/settings language tr`, `/settings profile NAME`, `/settings model ROLE PROVIDER MODEL_ID`, `/settings set NAME` (hidden prompt) and `/settings clear NAME` change one; in the TUI it opens the settings screen |
 | `/quit` | leave; `/exit` is an alias |
 
 ```text
@@ -146,13 +147,14 @@ The TUI picks a layout from the terminal size. Width bands: **phone** below 60 c
 | ctrl+o / F6 | expand or collapse the cards of the last turn: arguments as JSON and the full result |
 | PageUp / PageDown, F7 / F8 | scroll the transcript; PageUp at the top of a folded history loads 20 older turns |
 | F9 | back to the bottom |
+| F10 | settings screen (`/settings`); inside it `ctrl+s` or F2 saves, Esc closes |
 | ↑ / ↓ | recall sent prompts; navigate the menu while it is open |
 | `?` or F1 | help (only in an empty composer) |
 | ctrl+q | quit (ctrl+c copies a selection; without one it only says how to quit) |
 
-Typing `/` into an empty composer opens a fuzzy menu of the twelve commands: `↑↓` pick, Tab completes, Enter runs, Esc closes. A command typed in full runs as typed even if the menu has not caught up with a burst of keys, so `/session` never runs `/sessions`.
+Typing `/` into an empty composer opens a fuzzy menu of the thirteen commands: `↑↓` pick, Tab completes, Enter runs, Esc closes. A command typed in full runs as typed even if the menu has not caught up with a burst of keys, so `/session` never runs `/sessions`.
 
-While tau answers, the composer keeps your text and a toast says so. `/new`, `/resume`, `/compact`, `/clear` and `/model <role>` wait for the current turn; `/status` and `/model` without an argument answer any time.
+While tau answers, the composer keeps your text and a toast says so. `/new`, `/resume`, `/compact`, `/clear`, `/model <role>` and `/settings` wait for the current turn; `/status` and `/model` without an argument answer any time.
 
 ### Approvals in the TUI
 
@@ -181,7 +183,7 @@ tau --lang tr chat
 tau --lang tr tui
 ```
 
-`--lang` sets the chrome for one run; it is exported as `TAU_LANG`, so the TUI, the terminal and their approval prompts agree. `/lang en` or `/lang tr` switches it inside a session. The persona keeps answering in whatever language you write.
+`--lang` sets the chrome for one run; it is exported as `TAU_LANG`, so the TUI, the terminal and their approval prompts agree. `/lang en` or `/lang tr` switches it inside a session; `/settings language tr` (or the **Interface** section of the TUI's settings screen) writes it to `tau.toml` for good. The persona keeps answering in whatever language you write.
 
 ## Where things end up
 

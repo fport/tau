@@ -1,8 +1,74 @@
 # First run
 
-This page follows `tau init`, `tau doctor` and the first `tau chat` in detail: what the wizard asks, where credentials go, how to try tau without any account, and what every line of the doctor means.
+There are two ways to set tau up. The quick one is inside the interface: `tau tui` on a machine with no configuration opens a setup screen, and `/settings` (or F10) edits everything afterwards. The other is the files: `tau init` writes them, you edit `tau.toml` and `.env` by hand, `tau doctor` checks them. Both end in the same two files, so you can mix them freely. This page shows the interface first, then the files, then `tau doctor` line by line and the first conversation.
 
-## The init wizard
+## In the interface: `tau tui`
+
+```sh
+tau tui
+```
+
+With no `tau.toml` anywhere (`TAU_HOME`, the current directory, `~/.tau`) the setup screen opens instead of the chat:
+
+```text
+ ╭──────────────────────────────────────────────────────────────╮
+ │ ◆ Welcome to tau · first run                                 │
+ │                                                              │
+ │ Nothing is configured yet. Pick a home directory, the model  │
+ │ provider and the UI language; tau writes tau.toml and the    │
+ │ persona files there.                                         │
+ │                                                              │
+ │ home directory  ~/.tau                                       │
+ │ provider        anthropic · credentials found             ▼  │
+ │ UI language     en                                        ▼  │
+ │                           Create                             │
+ │ tab fields · enter / ctrl+s / F2 create · esc quit           │
+ ╰──────────────────────────────────────────────────────────────╯
+```
+
+- **home directory** is where `tau.toml`, `.env` and `persona/` go; `~/.tau` unless `TAU_HOME` or `tau --home` says otherwise. A directory that already holds a `tau.toml` is used as it is.
+- **provider** is detected from the environment and `<home>/.env` the way `tau init` does it: `bedrock` when AWS credentials are present, else `anthropic`, else `fake` (no key needed, scripted replies). Change it if you like.
+- **UI language** relabels the screen as you switch it.
+
+**Create** runs the same code as `tau init`, then the chat opens on the new home. Esc leaves without writing anything (exit code 2, the same as a missing config).
+
+When the config exists but the role's provider has no credentials, `tau tui` still opens: the settings screen appears on its **Credentials** section with the missing variables marked `◆ needed`, the composer says *Add credentials in /settings*, and the chat starts as soon as a save gives the provider its key. A role that runs on its fallback provider is announced with one notice line (`brain: using the fallback provider anthropic (bedrock has no credentials). Add them in /settings.`).
+
+`/settings` (Turkish alias `/ayarlar`) or F10 opens the same editor at any time:
+
+```text
+ τ tau  home · 20260929-120000-abcd                                  brain · en
+ ╭────────────────────────────────────────────────────────────────────────────╮
+ │ ◆ Settings                                                                 │
+ │                                                                            │
+ │ Model roles        brain                                                   │
+ │ Credentials        provider     anthropic                              ▼   │
+ │ Interface          model id     claude-sonnet-5                            │
+ │ Agent              max tokens   4096                                       │
+ │ Doctor             fallback     (none)                                 ▼   │
+ │ Files              fallback id                                             │
+ │                    ✓ credentials ok                                        │
+ │                                                                            │
+ │                    fast                                                    │
+ │                    …                                                       │
+ │ ↑↓ section · tab fields · ctrl+s / F2 save · esc close                     │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+```
+
+| Section | What you edit |
+|---|---|
+| Model roles | Per role: provider (every installed provider; planned ones are marked), model id, max tokens, an optional fallback provider and model id, and the credential status of the role (`credentials ok`, `missing AWS_REGION, AWS_PROFILE`, `missing … · fallback anthropic in use`, `no credentials needed`). |
+| Credentials | Every variable the configured providers need, then every other provider's, then every name in `.env.example` and `.env`. Each row says `set · sk-…abcd` or `not set`; a hidden input takes a new value and **clear** removes one. Values are never shown again after you type them. |
+| Interface | UI language (`en`/`tr`, applied on save) and the profile (`TAU_PROFILE` in `.env`). |
+| Agent | `context`, `window_size`, `max_turns`, `max_total_tokens` with the same rules as the file. |
+| Doctor | The `tau doctor` checks with `✓`, `◆`, `✗` and `▸` glyphs. |
+| Files | The paths of `tau.toml`, `.env`, `.env.example`, `persona/persona.md` and `persona/user.md` with a mark for the ones that exist; the persona files are edited in your editor and re-read before the next turn. |
+
+`ctrl+s` (F2 over mosh, where `ctrl+s` may be swallowed by flow control) validates and saves: a value the config would refuse is reported in the status line and nothing is written; a valid save writes `tau.toml` with its comments intact and `.env` with mode `0600`, then rebuilds the agent on the same session when a role, an agent option, a credential or the profile changed (`Settings saved; model reloaded.`). Esc closes without saving. Nothing here ever prints, logs or stores a credential value in clear.
+
+## In the files: `tau init`
+
+Everything the interface does can be done in the terminal, and `tau chat` has a smaller `/settings` too (see [Talk to tau](talk.md)). `tau init` writes the files:
 
 ```sh
 tau init
@@ -82,17 +148,19 @@ Pick one provider and uncomment its lines in `.env`:
     # AWS_BEARER_TOKEN_BEDROCK=...
     ```
 
-Then let the wizard rewrite the roles for that provider, or edit `tau.toml` by hand:
+Then let the wizard rewrite the roles for that provider, open the **Model roles** section of `/settings` in the TUI, or edit `tau.toml` by hand:
 
 ```sh
 tau init --force          # picks bedrock > anthropic > fake from what .env now holds
 tau doctor
 ```
 
+Inside a session, `/settings set ANTHROPIC_API_KEY` (terminal) asks for the value without echoing it and writes it to `.env`; the TUI's **Credentials** section does the same with a hidden input.
+
 !!! note "The fallback rule"
     The shipped `tau.toml` maps `brain` and `fast` to Bedrock with an Anthropic **fallback**. The fallback is used only when the primary provider has no credentials. So a `.env` that holds only `ANTHROPIC_API_KEY` works with the shipped file as is; `tau doctor` says which provider each role will actually use.
 
-If a role has no usable credentials, `tau chat` and `tau tui` stop before starting, with exit code 2 and a message naming the missing variables:
+If a role has no usable credentials, `tau chat` stops before starting, with exit code 2 and a message naming the missing variables; `tau tui` opens on the settings screen instead (see above):
 
 ```text
 Missing model credentials for role 'brain' (bedrock). Add these variables to .env: AWS_REGION, AWS_PROFILE

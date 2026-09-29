@@ -3,7 +3,32 @@
 Two files configure tau. `tau.toml` is static data: which model serves which role, how long a turn may run, where sessions go. `.env` holds credentials and the few environment variables that pick the roots. This page walks through both; the [tau.toml reference](../reference/tau-toml.md) and the [environment reference](../reference/environment.md) list every key.
 
 !!! note "Config versus Settings"
-    tau uses the word **config** for these two files, read once at start-up. **Settings** are runtime values that will change while tau runs (active profile, ambient mode, retention). Settings live in a file under `TAU_DATA_DIR` and are hot-reloaded; they are planned in roadmap issue 019 and are not part of this page.
+    tau uses the word **config** for these two files, read once at start-up; the TUI's `/settings` screen and the terminal's `/settings` command edit them in place. **Settings** are runtime values that will change while tau runs (ambient mode, retention, notification preferences). Those live in a file under `TAU_DATA_DIR` and are hot-reloaded; they are planned in roadmap issue 019 and are not part of this page.
+
+## Edit from the interface
+
+You do not have to open the files. In `tau tui`, `/settings` (alias `/ayarlar`) or F10 opens an editor with six sections: **Model roles**, **Credentials**, **Interface**, **Agent**, **Doctor** and **Files**. `↑↓` picks a section, Tab moves through its fields, `ctrl+s` or F2 saves, Esc closes. A save is validated first (a bad value stays in the dialog with the reason in the status line), keeps the comments in `tau.toml`, keeps `.env` at mode `0600`, and rebuilds the agent on the same session when something that affects the model changed. [First run](first-run.md#in-the-interface-tau-tui) shows the screen.
+
+`tau chat` has the terminal form:
+
+```text
+you> /settings
+Settings · ~/.tau
+Model roles:
+  brain  bedrock · global.anthropic.claude-sonnet-5 · fallback anthropic · missing AWS_REGION, AWS_PROFILE · fallback anthropic in use
+  fast   bedrock · global.anthropic.claude-haiku-4-5 · fallback anthropic · missing AWS_REGION, AWS_PROFILE · fallback anthropic in use
+  local  ollama · qwen3:8b · provider not available: Provider 'ollama' is not supported yet (issue 012).
+UI language: en · profile: home
+Context: sliding, window 60 · max_turns 12 · max_total_tokens none
+Files:
+  tau.toml            ~/.tau/tau.toml · present
+  …
+Change: /settings language en|tr · /settings profile NAME · /settings model ROLE PROVIDER MODEL_ID · /settings set NAME · /settings clear NAME. …
+```
+
+`/settings language tr`, `/settings profile travel` and `/settings model brain anthropic claude-sonnet-5` write the value and reload; `/settings set ANTHROPIC_API_KEY` asks for the value with a hidden prompt (nothing is echoed) and `/settings clear NAME` removes it. The Python API behind both channels is `tau_core.settings` (see the tau-core README).
+
+The rest of this page is the files themselves.
 
 ## Roles, not model ids
 
@@ -159,4 +184,4 @@ tau doctor        # config, roles, credentials, persona, components
 tau components    # what is discovered, enabled and in use
 ```
 
-Neither starts a model. Inside a running session, `/status` shows the resolved model per role, the context mode and window, and the tool counts.
+Neither starts a model. Inside a running session, `/status` shows the resolved model per role, the context mode and window, and the tool counts; `/settings` shows the files' values and lets you change them, and the TUI's **Doctor** section runs the same checks as `tau doctor`.

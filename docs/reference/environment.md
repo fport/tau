@@ -35,7 +35,7 @@ Which ones you need depends on the providers in `tau.toml`. Each provider accept
 | `ANTHROPIC_API_KEY` | The Anthropic key, `sk-ant-…`. |
 | `ANTHROPIC_WORKSPACE_ID` | `wrksp_…`; sent as the `anthropic-workspace-id` header. Without it a non-scoped key gets a 400 from the API. |
 
-A missing credential stops `tau chat` and `tau tui` with exit 2 and a message naming the variables; `tau doctor` reports it without starting anything.
+A missing credential stops `tau chat` with exit 2 and a message naming the variables; `tau tui` opens its settings screen on the Credentials section instead; `tau doctor` reports it without starting anything. `/settings set NAME` (terminal, hidden prompt) and the TUI's Credentials section write a value to `.env` (mode `0600`) and export it to the running process.
 
 ## Telegram
 

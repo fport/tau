@@ -92,7 +92,7 @@ tau ready. Profile: home, session: 20260929-173826-f949. Commands: /help, /tools
 you>
 ```
 
-Type a message and Enter. `/help` lists the commands, `/quit` leaves. On the `fake` provider tau answers `Okay.` to everything; that is the scripted model, not a bug. Add credentials and re-run `tau init --force` (or edit `tau.toml`) for real answers.
+Type a message and Enter. `/help` lists the commands, `/quit` leaves. On the `fake` provider tau answers `Okay.` to everything; that is the scripted model, not a bug. For real answers add credentials: `/settings` in the TUI (or `/settings set ANTHROPIC_API_KEY` here) writes them to `.env` and switches the role, or put them in `.env` yourself and re-run `tau init --force`.
 
 The full-screen interface is one more command:
 

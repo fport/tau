@@ -11,7 +11,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Capability** — a tool a node exposes over MCP, namespaced by node (`mac.screenshot`, `arm.play`).
 - **Mesh** — Zenoh network of the hub and nodes. **Control plane** = MCP (calling capabilities). **Data plane** = Zenoh (events, telemetry, liveliness).
 - **Relay** — *retired by ADR 0006*: no server sits between an external channel and the hub; Telegram is polled directly.
-- **Config** — static bootstrap configuration from `tau.toml` and `.env` (roles, ports, paths). Distinct from **Settings**, which are runtime data on the hub.
+- **Config** — static bootstrap configuration from `tau.toml` and `.env` (roles, ports, paths, credentials). Read once at start-up; editable in place from a channel through `tau_core.settings` (the TUI's settings screen, `/settings` in the terminal), never synced anywhere. Distinct from **Settings**, which are runtime data on the hub.
 - **Web UI** — the hub's browser interface (first: the TUI served through `textual-serve`), reached only through the **Tunnel** or the tailnet.
 - **Tunnel** — the outbound Cloudflare Tunnel from the hub that makes `tau.<domain>` reachable without an inbound port; **Access** is the Cloudflare identity policy in front of it. *Avoid: reverse proxy, port forward.*
 - **Backup** — the client-side encrypted copy of `TAU_DATA_DIR` in a private R2 bucket; the key never leaves the hub and the owner's password manager.
@@ -22,7 +22,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Channel** — a way to converse with tau: Telegram, TUI, TauBar, voice ("Hey tau"), MCP server.
 - **Session** — one recorded conversation: messages, tool calls, approvals. Resumed with `/resume`. Kept forever.
 - **Persona** — tau's character, from `persona/persona.md` (Jarvis-style, Turkish by default, mirrors the user's language) and `persona/user.md` (facts about the user). Combined with the **dynamic context** (time, profile, live nodes, budget) into the system prompt each turn. Everything the model reads around it (headings, labels, gate texts) is English.
-- **Slash command** — a `/name [argument]` line typed into a channel and handled by the channel, never sent to the model: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/compact`, `/clear`, `/status`, `/model`, `/lang`, `/quit`. Canonical names are English; Turkish aliases are accepted but never shown. Spec in `tau_core.commands`.
+- **Slash command** — a `/name [argument]` line typed into a channel and handled by the channel, never sent to the model: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/compact`, `/clear`, `/status`, `/model`, `/lang`, `/settings`, `/quit`. Canonical names are English; Turkish aliases are accepted but never shown. Spec in `tau_core.commands`.
 - **Compaction** — `/compact`: summarizing the current session with the agent's own model and continuing in a *new* session whose history starts with that summary (the **seed**). The old session is kept untouched and the two point at each other in their metadata (`compacted_from`, `compacted_to`). Never a rewrite of an existing session. *Avoid: truncate, prune.*
 - **UI language** — the language of the UI chrome (slash-command hints, labels, pane titles, key hints, notices, approval dialog, CLI help): `en` (default) or `tr`, set by `[ui] language` in `tau.toml`, `TAU_LANG`, `tau --lang` or `/lang` for one run. Looked up through `tau_core.i18n` (`t(key, language)`). Distinct from the persona's language. *Avoid: locale.*
 - **Status report** — the message the hub sends to Telegram when it starts or restarts.
@@ -53,7 +53,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Reflex engine** — runs routines locally without an LLM or the cloud.
 - **Ambient mode** — tau thinking proactively about events. Off by default; the user turns it on per **profile**.
 - **Profile** — a named bundle of settings (`home`, `travel`, `sport`; `home` is the default): which events to watch, where to notify, the ambient budget.
-- **Settings** — runtime configuration stored as data on the hub (a file under `TAU_DATA_DIR`) and hot-reloaded (`/settings`); never synced to a third party.
+- **Settings** — runtime configuration stored as data on the hub (a file under `TAU_DATA_DIR`) and hot-reloaded; never synced to a third party. Planned in issue 019. Until then `/settings` (and the TUI's **settings screen**, F10) edits the bootstrap **Config** (`tau.toml`, `.env`): model roles, credentials, UI language, profile, agent options. The **setup screen** is what `tau tui` shows when there is no `tau.toml` yet; it runs the same code as `tau init`.
 
 ## Knowledge
 

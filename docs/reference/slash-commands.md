@@ -1,6 +1,6 @@
 # Slash commands
 
-A line that starts with `/` is a slash command. The channel handles it and the model never sees it. The specification (names, aliases, arguments, help keys) is `tau_core.commands`; `tau chat` and `tau tui` implement the same twelve commands with the same wording, so the two never drift.
+A line that starts with `/` is a slash command. The channel handles it and the model never sees it. The specification (names, aliases, arguments, help keys) is `tau_core.commands`; `tau chat` and `tau tui` implement the same thirteen commands with the same wording, so the two never drift (the Telegram channel offers the subset that makes sense in a chat).
 
 - Canonical names are English and are the only ones shown in hints and menus.
 - Turkish aliases are accepted forever and never shown.
@@ -23,6 +23,7 @@ A line that starts with `/` is a slash command. The channel handles it and the m
 | `/status` | `/durum` | – | profile, session, model, context, tools, UI language, versions, hub |
 | `/model` | `/rol` | `[role]` | list the roles of `tau.toml` with the current one marked, or switch this session to a role |
 | `/lang` | `/dil` | `en` or `tr` | switch the UI language for this run |
+| `/settings` | `/ayarlar`, `/ayar` | `[key value]` | show the bootstrap config (roles, credential status, language, profile, context, files) or change one value; the TUI opens its settings screen |
 | `/quit` | `/çık`, `/cik`, `/exit` | – | leave |
 
 `/exit` is an alias of `/quit`; hints always show `/quit`.
@@ -35,18 +36,19 @@ Examples are in the `en` chrome; `tr` has the same lines translated.
 
 ```text
 Commands:
-  /help             list the commands
-  /tools            registered tools with their tier and description
-  /sessions         list the 10 most recent earlier sessions
-  /resume [n|id]    resume the most recent earlier session, the n-th of the last listing, or an id
-  /new              start a fresh session
-  /session          current session id, title, message count and store
-  /compact [focus]  summarize this session into a new one and continue there (the old one is kept)
-  /clear            clear the screen; the session continues
-  /status           profile, session, model, context, tools, language, versions and hub
-  /model [role]     show the model roles, or switch this session to one
-  /lang en|tr       switch the UI language for this run
-  /quit             leave
+  /help                  list the commands
+  /tools                 registered tools with their tier and description
+  /sessions              list the 10 most recent earlier sessions
+  /resume [n|id]         resume the most recent earlier session, the n-th of the last listing, or an id
+  /new                   start a fresh session
+  /session               current session id, title, message count and store
+  /compact [focus]       summarize this session into a new one and continue there (the old one is kept)
+  /clear                 clear the screen; the session continues
+  /status                profile, session, model, context, tools, language, versions and hub
+  /model [role]          show the model roles, or switch this session to one
+  /lang en|tr            switch the UI language for this run
+  /settings [key value]  show the settings, or change one (language, profile, model, set NAME)
+  /quit                  leave
 ```
 
 ### `/tools`
@@ -125,11 +127,49 @@ Roles in tau.toml:
 
 `UI language: tr.` / `Arayüz dili: tr.` Without an argument: `Usage: /lang en|tr (current: en).` The persona's reply language is unaffected.
 
+### `/settings [key value]`
+
+Without an argument, the bootstrap config as the files hold it:
+
+```text
+Settings · ~/.tau
+Model roles:
+  brain  bedrock · global.anthropic.claude-sonnet-5 · fallback anthropic · missing AWS_REGION, AWS_PROFILE · fallback anthropic in use
+  fast   bedrock · global.anthropic.claude-haiku-4-5 · fallback anthropic · missing AWS_REGION, AWS_PROFILE · fallback anthropic in use
+  local  ollama · qwen3:8b · provider not available: Provider 'ollama' is not supported yet (issue 012).
+UI language: en · profile: home
+Context: sliding, window 60 · max_turns 12 · max_total_tokens none
+Files:
+  tau.toml            ~/.tau/tau.toml · present
+  .env                ~/.tau/.env · present
+  .env.example        ~/.tau/.env.example · present
+  persona/persona.md  ~/.tau/persona/persona.md · present
+  persona/user.md     ~/.tau/persona/user.md · present
+Change: /settings language en|tr · /settings profile NAME · /settings model ROLE PROVIDER MODEL_ID · /settings set NAME · /settings clear NAME. The TUI (`tau tui`) has an editor: /settings or F10. `tau init --force` rewrites tau.toml from the template.
+```
+
+The credential status per role reads `credentials ok`, `no credentials needed`, `missing X, Y`, `missing X, Y · fallback anthropic in use` or `provider not available: …`; no value is ever printed.
+
+In the terminal the setters write the files through `tau_core.settings` (comments in `tau.toml` survive, `.env` stays at mode `0600`) and reload:
+
+| Form | Effect |
+|---|---|
+| `/settings language en\|tr` | `[ui] language` in `tau.toml`; the chrome switches at once (`Settings saved.` then `UI language: tr.`) |
+| `/settings profile NAME` | `TAU_PROFILE` in `.env`; the agent is rebuilt on the same session (`Settings saved; model reloaded.`) |
+| `/settings model ROLE PROVIDER MODEL_ID` | provider and model id of a role (its `max_tokens` and `fallback` are kept); rebuilds |
+| `/settings set NAME` | asks `Value for NAME (not echoed): ` with a hidden prompt, writes `NAME` to `.env`, exports it to the running process and rebuilds (`NAME set in .env.`); an empty value changes nothing |
+| `/settings clear NAME` | removes `NAME` from `.env` and the process (`NAME removed from .env.` / `NAME is not in .env.`) |
+
+A value the config refuses is answered with `Not saved: <reason>` and nothing is written (`tau.toml` is checked before the write); a file that saved but whose agent cannot be rebuilt says `Settings saved, but the agent could not be rebuilt: <reason>` and the current agent goes on. Anything else prints the usage line.
+
+In the TUI `/settings [section]` opens the settings screen (F10 does the same), on the named section when one is given (`roles`, `credentials`, `interface`, `agent`, `doctor`, `files`). The screen is described in [First run](../getting-started/first-run.md#in-the-interface-tau-tui). It is refused while a turn is busy.
+
 ## Terminal versus TUI
 
 | | `tau chat` | `tau tui` |
 |---|---|---|
-| While a turn runs | commands cannot be typed; the REPL does one thing at a time | `/new`, `/resume`, `/compact`, `/clear`, `/model <role>` wait for the turn (a toast says so); `/status` and `/model` answer any time |
+| While a turn runs | commands cannot be typed; the REPL does one thing at a time | `/new`, `/resume`, `/compact`, `/clear`, `/model <role>`, `/settings` wait for the turn (a toast says so); `/status` and `/model` answer any time |
+| `/settings` | prints the report; the setters write the files | opens the settings screen (also F10) |
 | Menu | none; `/help` lists | typing `/` in an empty composer opens a fuzzy menu (`↑↓` pick, Tab complete, Enter run, Esc close) |
 | Session picker | `/sessions` + `/resume n` | the same, plus ctrl+r / F2 and the sidebar at ≥ 140 columns |
 | `/clear` | clears the screen | clears the transcript |

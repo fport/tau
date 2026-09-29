@@ -191,3 +191,48 @@ def test_config(tmp_path: Path, **overrides: Any) -> Config:
 
 # Not a test, despite the name; keep pytest from collecting it when imported into a test module.
 test_config.__test__ = False  # type: ignore[attr-defined]
+
+
+# Approval and event helpers (issue 006). Appended here so the section above stays untouched.
+
+import asyncio  # noqa: E402
+
+from tau_core.events import AgentEvent, EventBus  # noqa: E402
+
+__all__ += ["UnansweredApprover", "record_events"]
+
+
+class UnansweredApprover:
+    """Never answers, like a user who walked away. For approval-timeout tests.
+
+    ``decide`` waits until it is cancelled (by the gate's ``timeout_seconds`` or the
+    approver's own), records every request and counts the cancellations. It never approves.
+    """
+
+    name = "unanswered"
+
+    def __init__(self, *, timeout_seconds: float | None = None):
+        self.timeout_seconds = timeout_seconds
+        self.requests: list[ApprovalRequest] = []
+        self.cancelled = 0
+
+    async def decide(self, request: ApprovalRequest) -> Decision:
+        self.requests.append(request)
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            raise
+        return Decision.REJECTED  # pragma: no cover  (the wait above never ends on its own)
+
+
+def record_events(bus: EventBus, *kinds: str) -> list[AgentEvent]:
+    """Subscribe to ``bus``; the returned list fills with its events (only ``kinds`` if given)."""
+    seen: list[AgentEvent] = []
+
+    def sink(event: AgentEvent) -> None:
+        if not kinds or event.kind in kinds:
+            seen.append(event)
+
+    bus.subscribe(sink)
+    return seen

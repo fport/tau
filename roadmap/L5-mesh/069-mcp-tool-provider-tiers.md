@@ -27,3 +27,4 @@ Design: each node ships a tier manifest (tool name → tier and effect; served n
 ## Comments
 
 - 2026-09-29: filed as a follow-up of the Strands-correctness pass (064); per-node tier manifest, fail closed.
+- 2026-09-29: from the 064 review round: `tier_of` reads `ToolSpec.annotations["tau"]` first, and a spec is plain data, so a remote tool could self-declare tier 0. The hub must strip `annotations["tau"]` from every `ToolProvider` spec and assign tiers only from the validated manifest/config before the tool reaches the `ToolCatalog` (documented in `tiers.py` and ADR 0001).

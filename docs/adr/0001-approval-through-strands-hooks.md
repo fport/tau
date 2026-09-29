@@ -107,9 +107,44 @@ outlive the process.
   registers both callbacks with `order=HookOrder.SDK_LAST`, so the `tool_use` the gate sees is
   the one Strands runs, whatever hooks a plugin or `build_agent(hooks=...)` adds. A hook that
   mutates `tool_use["input"]` at any lower order is observed by the approval request; a test
-  pins this.
+  pins this. The guarantee is exactly: *no `BeforeToolCallEvent` callback runs after the
+  gate*. Strands' `HookRegistry` accepts any float order, so `build_agent` checks the
+  registry after building the `Agent` (`hooks_behind_gate`) and raises `ConfigError` when a
+  component registered above `HookOrder.SDK_LAST` (or at it, after the gate) - an extra
+  component that outranks the gate fails closed at build time. A hook added to the SDK agent
+  after build cannot be refused; for that case the gate's `AfterToolCallEvent` callback
+  compares what ran with what it decided (a refused call that ran, an approved call whose
+  arguments changed) and records the call as `error` with an `error` event
+  (`where: tier_gate`). The call itself cannot be undone by then, which is why the build-time
+  check is the real guarantee.
 - Plugin-provided tools that are not in the `ToolCatalog` stay refused (fail closed); a
   component that wants its tools to run registers them through `tau.tools`.
+  `build_agent(hooks=..., plugins=...)` passes extra components through to the `Agent`.
+- Tier and effect live in the tool spec (`ToolSpec["annotations"]["tau"]`), set by `tau_tool`
+  through the SDK's validated `tool_spec` setter; `tier_of`/`effect_of` read the annotation
+  first and the older instance attributes second, so a `@tau_tool` method keeps its tier when
+  Strands builds a new tool object for the bound method. The annotation is trusted only for
+  tools registered in-process (`tau.tools` entry points, `@tau_tool`), where tau wrote it. A
+  spec that arrives from outside the process (an MCP `ToolProvider`, issues 033/069) is plain
+  data and must not declare its own tier: the hub strips `annotations["tau"]` and assigns
+  tiers from its own manifest/config before such a tool reaches the `ToolCatalog`.
+- Physical tools never run concurrently: when any registered tool is tier 2, `build_agent`
+  uses the SDK's `SequentialToolExecutor` instead of the default concurrent one.
+- A Strands interrupt raised by any hook (`event.interrupt(...)`) is refused inside the same
+  turn: `TauAgent.stream` resumes with `{"tau": "rejected"}` for every pending interrupt,
+  shows `notice.interrupt_refused` and emits an `error` event, and repeats this for every
+  interrupt of the turn (a hook that interrupts on each of several tool calls) up to
+  `[agent] max_turns` refusals. The budget is shared: Strands `Limits` are per invocation and
+  a resume is a new invocation, so each continuation gets the turns and tokens the turn has
+  left. When the refusals do not clear it (a hook that re-interrupts under a new name, or no
+  budget left) tau leaves the interrupt state itself (`_InterruptState.deactivate()`, the only
+  SDK way out short of answering) and ends the turn with `interrupt` (or the limit reason);
+  the history then ends on the assistant `toolUse` message and the next turn repairs it. A
+  session restored in interrupt state (the process died between the SDK persisting the
+  interrupt stop and tau refusing it) is cleared the same way at the start of its first turn,
+  with the notice and an `error` event, instead of failing every prompt with the SDK's
+  "must resume from interrupt" error. So the agent (and the persisted session) never stays
+  in interrupt state. Interrupt-based approvals are issue 068.
 - The last consequence above is outdated: tool calls are still observed authoritatively
   through `AfterToolCallEvent` and UIs read `tool_call` agent events, but the claim that the
   Strands stream has no tool-result event is dropped (`tool_stream_event` is mapped to a

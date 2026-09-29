@@ -73,7 +73,14 @@ sessions in D1 behind the tau-cloud Worker.
   and is plain English; the notice the channel prints is in the UI language.
 - **The store keeps everything, the model sees a window.** `[agent] context = "sliding" |
   "summarize"` (default `sliding`, `window_size = 60`) picks Strands'
-  `SlidingWindowConversationManager` or `SummarizingConversationManager`. The session store
-  still records every message; only the messages sent to the model are windowed. The SDK's
-  `context_manager="auto"`/`"agentic"` modes are not used because they register untiered SDK
-  tools that the tier gate would refuse.
+  `SlidingWindowConversationManager(window_size=N)` or
+  `SummarizingConversationManager(preserve_recent_messages=N)`. The session store still
+  records every message; only the messages sent to the model are windowed (the manager's
+  `removed_message_count` is persisted with the session, so a resumed agent restores the same
+  window). The SDK's `context_manager="auto"`/`"agentic"` modes are not used because they
+  register untiered SDK tools that the tier gate would refuse.
+- **No hand-written messages.** The store only ever receives messages the SDK appended. A turn
+  that ends on a user message (model error, loop guard, token budget, cancel around tools, a
+  crash before the reply was stored) is repaired on the next turn by sending
+  `[assistant notice, user prompt]` as the prompt, so both records carry tracking ids and reach
+  the store through `MessageAddedEvent` like any other message.

@@ -2,7 +2,7 @@
 
 The reply streams under ``tau>``; tool calls show as indented lines; tier-2 calls ask on stdin
 through :class:`TerminalApprover`. Slash commands go through :data:`SLASH_COMMANDS`, one
-function each. ``/devam``, ``/yeni`` and ``/oturum`` are placeholders until issue 007.
+function each; ``/devam``, ``/yeni`` and ``/oturum`` work on the session store.
 """
 
 from __future__ import annotations
@@ -36,7 +36,6 @@ from tau_core.tiers import Tier, tier_of
 
 PROMPT = "sen> "
 REPLY_PREFIX = "tau> "
-NOT_YET_SESSIONS = "Henüz yok (issue 007)."
 TIER_LABELS = {
     Tier.READ: "okuma",
     Tier.DIGITAL_WRITE: "dijital yazma, günlüğe yazılır",

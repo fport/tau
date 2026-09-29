@@ -21,6 +21,7 @@ from click.testing import CliRunner
 from tau_core import Config
 from tau_core.cli import cli
 from tau_core.hub import UNCLEAN_EXIT, ControlApi, FakeLaunchctl, Hub, HubFiles
+from tau_core.testing import test_config
 
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # never via a proxy
 
@@ -79,6 +80,79 @@ def test_a_failing_stop_does_not_skip_the_others(config: Config) -> None:
     assert hub.run() == 0
     assert log == ["start a", "start b", "stop b", "stop a"]
     assert HubFiles(config.hub_dir).read_state().stopped_at is not None
+
+
+def test_find_service_sees_only_started_services(config: Config) -> None:
+    seen: dict[str, Any] = {}
+
+    class Failing:
+        name = "failing"
+
+        async def start(self, hub: Hub) -> None:
+            raise RuntimeError("no network today")
+
+        async def stop(self) -> None:
+            raise AssertionError("never started, never stopped")
+
+    class Later:
+        name = "later"
+
+        async def start(self, hub: Hub) -> None:
+            seen["failing"] = hub.find_service("failing")
+            seen["earlier"] = hub.find_service("earlier")
+            seen["self"] = hub.find_service("later")  # not started yet: its own start is running
+            seen["stopper"] = hub.find_service("stopper")  # starts after this one
+
+        async def stop(self) -> None:
+            pass
+
+    log: list[str] = []
+    earlier = Recorder("earlier", log)
+    hub = Hub(config, services=[earlier])
+    hub.add_service(Failing(), optional=True)
+    hub.add_service(Later())
+    hub.add_service(Stopper())
+    assert hub.find_service("earlier") is None  # nothing has started before run()
+    assert hub.run() == 0
+    assert seen == {"failing": None, "earlier": earlier, "self": None, "stopper": None}
+    assert hub.find_service("earlier") is None  # and nothing is running after it
+
+
+def test_a_service_cannot_replace_health_or_status(tmp_path: Path, caplog) -> None:
+    import logging
+
+    class Spoof:
+        name = "spoof"
+
+        async def start(self, hub: Hub) -> None:
+            api = hub.find_service("control-api")
+            assert isinstance(api, ControlApi)
+            api.add_route("GET", "/health", lambda r: (200, {"ok": True, "pid": 1, "x": True}))
+
+        async def stop(self) -> None:
+            raise AssertionError("never started, never stopped")
+
+    from tau_core.hub.cli import assemble_hub
+
+    hub, api = assemble_hub(test_config(tmp_path), port=0)
+    hub.add_service(Spoof(), optional=True)
+    result: list[int] = []
+    with caplog.at_level(logging.WARNING):
+        thread = threading.Thread(target=lambda: result.append(hub.run()))
+        thread.start()
+        try:
+            deadline = time.monotonic() + 10
+            while (api.port == 0 or hub.state is None) and time.monotonic() < deadline:
+                time.sleep(0.02)
+            code, payload = get_json(f"{api.url}/health")
+            assert code == 200 and payload["pid"] == os.getpid() and "x" not in payload
+            assert hub.find_service("spoof") is None
+        finally:
+            hub.request_stop()
+            thread.join(timeout=10)
+    assert result == [0]
+    assert "hub service spoof failed to start; running without it" in caplog.text
+    assert "GET /health is already registered" in caplog.text
 
 
 def test_request_stop_before_run(config: Config) -> None:
@@ -234,3 +308,138 @@ def test_kill_9_then_restart_reports_the_crash(config: Config, spawn: Any, tmp_p
     assert second.returncode == 0
     reports = HubFiles(config.hub_dir).read_crash_reports()
     assert [r.pid for r in reports] == [first.pid]
+
+
+# -- tau.hub_services components (issues 058 / 065) --------------------------------------------
+
+
+def run_assembled(config: Config, check) -> int:
+    """Run ``assemble_hub(config, port=0)`` in a thread, call ``check(hub, api)``, stop it."""
+    from tau_core.hub.cli import assemble_hub
+
+    hub, api = assemble_hub(config, port=0)
+    result: list[int] = []
+    thread = threading.Thread(target=lambda: result.append(hub.run()))
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10
+        while (api.port == 0 or hub.state is None) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        check(hub, api)
+    finally:
+        hub.request_stop()
+        thread.join(timeout=10)
+    return result[0]
+
+
+def test_discovered_service_adds_status_keys_and_routes(tmp_path: Path) -> None:
+    config = test_config(tmp_path, component_tables={"example": {"greeting": "hi"}})
+    seen: dict[str, Any] = {}
+
+    def check(hub: Hub, api: ControlApi) -> None:
+        names = [s.name for s in hub.services]
+        assert names == ["control-api", "example"]  # the control API first
+        seen["service"] = hub.find_service("example")
+        code, status = get_json(f"{api.url}/status")
+        assert code == 200 and status["example"] == {"profile": "home"}
+        code, payload = get_json(f"{api.url}/example")
+        assert code == 200
+        assert payload == {"example": True, "component": {"greeting": "hi"}}
+
+    assert run_assembled(config, check) == 0
+    assert seen["service"].started and seen["service"].stopped
+
+
+def test_disabled_service_is_not_started(tmp_path: Path) -> None:
+    from tau_core.config import ComponentsConfig
+
+    config = test_config(tmp_path, components=ComponentsConfig(hub_services=("other",)))
+
+    def check(hub: Hub, api: ControlApi) -> None:
+        assert [s.name for s in hub.services] == ["control-api"]
+        assert get_json(f"{api.url}/example")[0] == 404
+
+    assert run_assembled(config, check) == 0
+
+
+def test_failing_service_is_skipped_and_the_hub_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+    from importlib import metadata
+
+    from tau_core import registry
+
+    real = registry._entry_points
+    failing = metadata.EntryPoint("failing", "tau_core.hub.daemon:Hub", "tau.hub_services")
+    # Hub(config) builds fine but is not a HubService (no ``name``), so it is skipped at
+    # build time; Boom below fails at start time.
+    monkeypatch.setattr(
+        registry,
+        "_entry_points",
+        lambda g: [*([failing] if g == "tau.hub_services" else []), *real(g)],
+    )
+    registry.reset()
+
+    class Boom:
+        name = "boom"
+
+        async def start(self, hub: Hub) -> None:
+            raise RuntimeError("no network today")
+
+        async def stop(self) -> None:
+            raise AssertionError("never started, never stopped")
+
+    config = test_config(tmp_path)
+    boom = Boom()
+
+    def check(hub: Hub, api: ControlApi) -> None:
+        assert get_json(f"{api.url}/health")[0] == 200
+        assert get_json(f"{api.url}/status")[1]["example"] == {"profile": "home"}
+
+    from tau_core.hub.cli import assemble_hub
+
+    with caplog.at_level(logging.WARNING):
+        hub, api = assemble_hub(config, port=0)
+        hub.add_service(boom, optional=True)
+        result: list[int] = []
+        thread = threading.Thread(target=lambda: result.append(hub.run()))
+        thread.start()
+        try:
+            deadline = time.monotonic() + 10
+            while (api.port == 0 or hub.state is None) and time.monotonic() < deadline:
+                time.sleep(0.02)
+            check(hub, api)
+        finally:
+            hub.request_stop()
+            thread.join(timeout=10)
+    assert result == [0]
+    assert "hub service boom failed to start; running without it" in caplog.text
+    assert "failing" in caplog.text and "expected a HubService" in caplog.text
+
+
+def test_required_service_failure_still_crashes(config: Config) -> None:
+    class Boom:
+        name = "boom"
+
+        async def start(self, hub: Hub) -> None:
+            raise RuntimeError("bind failed")
+
+        async def stop(self) -> None:
+            pass
+
+    hub = Hub(config, services=[Boom()])
+    assert hub.run() == 1
+    assert hub.crash_reason == "RuntimeError: bind failed"
+
+
+def test_real_hub_run_starts_the_example_service(config: Config, spawn: Any) -> None:
+    port = free_port()
+    proc = spawn(port)
+    code, status = get_json(f"http://127.0.0.1:{port}/status")
+    assert code == 200 and status["example"] == {"profile": "home"}
+    code, payload = get_json(f"http://127.0.0.1:{port}/example")
+    assert code == 200 and payload["example"] is True
+    proc.send_signal(signal.SIGTERM)
+    out, _ = proc.communicate(timeout=30)
+    assert proc.returncode == 0, out

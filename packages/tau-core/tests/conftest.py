@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
 import pytest
-from tau_core import Config
+from tau_core import Config, registry
 from tau_core.persona import TIMEZONE
 from tau_core.testing import test_config
 
@@ -21,6 +22,14 @@ CREDENTIAL_VARS = (
     "ANTHROPIC_API_KEY",
 )
 TAU_VARS = ("TAU_HOME", "TAU_DATA_DIR", "TAU_PROFILE", "TAU_ROLE", "TAU_HUB_PORT")
+
+
+@pytest.fixture(autouse=True)
+def fresh_registry() -> Iterator[None]:
+    """No cached component lookup or in-process registration leaks between tests."""
+    registry.reset()
+    yield
+    registry.reset()
 
 
 @pytest.fixture

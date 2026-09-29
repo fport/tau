@@ -52,6 +52,7 @@ from strands.types.exceptions import (
 )
 from strands.types.tools import AgentTool
 
+from tau_core import registry
 from tau_core.approval import Approver, AutoRejectApprover, Exemption, TierGate, TierHook
 from tau_core.config import AgentConfig, Config, ConfigError
 from tau_core.events import AgentEvent, EventBus
@@ -565,6 +566,18 @@ def hooks_behind_gate(agent: Agent, tier_hook: TierHook) -> list[str]:
     return [getattr(cb, "__qualname__", None) or repr(cb) for cb in after]
 
 
+def discovered_tools(config: Config) -> list[AgentTool]:
+    """Every ``tau.tools`` tool minus ``[components] tools.disabled`` (by name or ``dist:``)."""
+    kept: list[AgentTool] = []
+    for tool in discover_tools():
+        distribution = getattr(tool, "tau_distribution", None)
+        if config.components.tool_disabled(tool.tool_name, distribution):
+            logger.info("tool %s from %s is disabled in [components]", tool.tool_name, distribution)
+            continue
+        kept.append(tool)
+    return kept
+
+
 def conversation_manager_for(agent_cfg: AgentConfig) -> ConversationManager:
     """The Strands conversation manager ``[agent] context`` asks for.
 
@@ -590,7 +603,7 @@ def build_agent(
     session_store: SessionStore | None = None,
     events: EventBus | None = None,
     persona: PersonaLoader | None = None,
-    context_sources: Iterable[ContextSource] = (),
+    context_sources: Iterable[ContextSource] | None = None,
     channel: str = "terminal",
     clock: Callable[[], datetime] | None = None,
     exemptions: Iterable[Exemption] = (),
@@ -598,6 +611,11 @@ def build_agent(
     plugins: Iterable[Any] = (),
 ) -> TauAgent:
     """Assemble a tau agent. Raises ``ConfigError``/``MissingCredentials`` before any model call.
+
+    Components come from the registries unless the caller passes its own: ``tools=None`` means
+    every ``tau.tools`` entry point minus ``[components] tools.disabled`` (an explicit ``tools``
+    list bypasses the switch), ``context_sources=None`` means the enabled ``tau.context``
+    components (``[components] context``; an explicit list, even empty, replaces them).
 
     ``hooks`` and ``plugins`` are passed to the Strands ``Agent`` as extra components. The tier
     gate keeps the last word: ``TierHook`` runs at ``HookOrder.SDK_LAST``, no component may
@@ -614,7 +632,7 @@ def build_agent(
     if tools is not None:
         catalog.extend(tools)  # an untiered tool passed explicitly is a programming error
     else:
-        for tool in discover_tools():
+        for tool in discovered_tools(config):
             try:
                 catalog.add(tool)
             except UntieredToolError as exc:
@@ -626,6 +644,8 @@ def build_agent(
     session_id = session_id or new_session_id(clock)
     approver = approver or AutoRejectApprover()
     persona = persona or PersonaLoader(config.persona_dir)
+    if context_sources is None:
+        context_sources = list(registry.context_sources(config).values())
     context_factory = default_context_factory(config, clock=clock, sources=context_sources)
     system_prompt = persona.build_system_content(context_factory())  # fails early without persona
 

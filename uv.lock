@@ -9,6 +9,8 @@ resolution-markers = [
 [manifest]
 members = [
     "tau-core",
+    "tau-example-provider",
+    "tau-example-service",
     "tau-example-tool",
     "tau-tui",
     "tau-workspace",
@@ -1261,7 +1263,7 @@ wheels = [
 
 [[package]]
 name = "tau-core"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/tau-core" }
 dependencies = [
     { name = "click" },
@@ -1279,6 +1281,28 @@ requires-dist = [
 ]
 
 [[package]]
+name = "tau-example-provider"
+version = "0.0.1"
+source = { editable = "packages/tau-core/tests/fixtures/tau-example-provider" }
+dependencies = [
+    { name = "tau-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tau-core" }]
+
+[[package]]
+name = "tau-example-service"
+version = "0.0.1"
+source = { editable = "packages/tau-core/tests/fixtures/tau-example-service" }
+dependencies = [
+    { name = "tau-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tau-core" }]
+
+[[package]]
 name = "tau-example-tool"
 version = "0.0.1"
 source = { editable = "packages/tau-core/tests/fixtures/tau-example-tool" }
@@ -1291,7 +1315,7 @@ requires-dist = [{ name = "tau-core" }]
 
 [[package]]
 name = "tau-tui"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/tau-tui" }
 dependencies = [
     { name = "click" },
@@ -1305,7 +1329,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.1" },
     { name = "rich", specifier = ">=13" },
     { name = "tau-core", editable = "packages/tau-core" },
-    { name = "textual", specifier = ">=8" },
+    { name = "textual", specifier = ">=8.2,<9" },
 ]
 
 [[package]]
@@ -1323,6 +1347,8 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-textual-snapshot" },
     { name = "ruff" },
+    { name = "tau-example-provider" },
+    { name = "tau-example-service" },
     { name = "tau-example-tool" },
 ]
 
@@ -1338,6 +1364,8 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-textual-snapshot" },
     { name = "ruff" },
+    { name = "tau-example-provider", editable = "packages/tau-core/tests/fixtures/tau-example-provider" },
+    { name = "tau-example-service", editable = "packages/tau-core/tests/fixtures/tau-example-service" },
     { name = "tau-example-tool", editable = "packages/tau-core/tests/fixtures/tau-example-tool" },
 ]
 

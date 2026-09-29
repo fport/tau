@@ -8,6 +8,7 @@ without one, ``install``/``uninstall`` use the real ``/bin/launchctl`` on macOS 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import signal
 import sys
@@ -17,6 +18,7 @@ from typing import Any
 
 import click
 
+from tau_core import registry
 from tau_core.cli import help_option
 from tau_core.config import Config, ConfigError
 from tau_core.hub.control import HOST, ControlApi
@@ -34,6 +36,8 @@ from tau_core.hub.lock import AlreadyRunning, HubLock
 from tau_core.hub.state import HubFiles, parse_timestamp, timestamp, utc_now
 from tau_core.hub.units import LABEL, PLIST_NAME, ServicePaths, render_systemd_unit
 from tau_core.logs import configure_logging
+
+logger = logging.getLogger(__name__)
 
 NOT_RUNNING = "tau hub is not running."
 NO_LAUNCHD = "launchd exists only on macOS. For systemd on Linux: tau hub systemd-unit"
@@ -99,6 +103,21 @@ class _Banner:
         pass
 
 
+def assemble_hub(config: Config, *, port: int | None = None) -> tuple[Hub, ControlApi]:
+    """The hub ``tau hub run`` starts: the control API first, then every enabled
+    ``tau.hub_services`` component (``[components] hub.services``), each optional, so one that
+    fails to load or start is logged and skipped while the hub runs on. Services stop in
+    reverse order. ``port`` overrides ``[hub].control_port`` (``0`` = ephemeral, for tests).
+    """
+    daemon = Hub(config)
+    api = ControlApi(config.hub.control_port if port is None else port, daemon.status)
+    daemon.add_service(api)
+    for name, service in registry.hub_services(config).items():
+        logger.info("hub service %s loaded from tau.hub_services", name)
+        daemon.add_service(service, optional=True)
+    return daemon, api
+
+
 @hub.command(
     name="run",
     help="Run the hub in the foreground (launchd and systemd run this too).",
@@ -109,9 +128,7 @@ class _Banner:
 def run_command(ctx: click.Context) -> None:
     config = _load_config(ctx)
     configure_logging(config.logs_dir, verbose=bool(_obj(ctx).get("verbose")))
-    daemon = Hub(config)
-    api = ControlApi(config.hub.control_port, daemon.status)
-    daemon.add_service(api)
+    daemon, api = assemble_hub(config)
     daemon.add_service(_Banner(api))
     try:
         code = daemon.run()

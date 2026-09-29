@@ -1,0 +1,59 @@
+# tau.toml — static configuration read by tau_core.config.Config.
+# Role → provider + model id. Model ids are data; code never hardcodes them.
+# Bedrock ids use the Converse API form Strands uses (cross-region "global." prefix).
+# Verify the exact ids in the Bedrock console while doing issue 003.
+# Secrets never go here: credentials come from .env (see .env.example).
+
+[models.roles.brain]
+provider = "bedrock"                      # bedrock | anthropic | fake (ollama: issue 012)
+model_id = "global.anthropic.claude-sonnet-5"
+max_tokens = 4096
+
+[models.roles.brain.fallback]             # used only when the primary has no credentials
+provider = "anthropic"
+model_id = "claude-sonnet-5"
+
+[models.roles.fast]
+provider = "bedrock"
+model_id = "global.anthropic.claude-haiku-4-5"
+max_tokens = 1024
+
+[models.roles.local]
+provider = "ollama"                       # arrives in issue 012; resolving it now raises a clear error
+model_id = "qwen3:8b"
+
+# Optional per-role prompt caching (Bedrock and Anthropic; the fake provider ignores it):
+# [models.roles.brain.cache]
+# strategy = "auto"                       # auto | anthropic; Strands CacheConfig(strategy=...)
+# ttl = "1h"                              # optional cache TTL ("5m", "1h"); system_prompt_ttl / tools_ttl take a bool or a TTL
+
+[agent]
+max_turns = 12                            # per-turn loop guard, Strands Limits(turns=...)
+context = "sliding"                       # sliding | summarize: what the model sees of a long session (the store keeps everything)
+window_size = 60                          # sliding: messages kept; summarize: recent messages never summarized
+# max_total_tokens = 200000               # optional per-turn token budget, Strands Limits(total_tokens=...)
+
+[sessions]
+backend = "file"                          # memory | file (under TAU_DATA_DIR/sessions) | cloud (issue 018, via the tau-cloud Worker API)
+
+[hub]
+control_port = 7877
+heartbeat_seconds = 5
+
+[ui]
+language = "en"                           # en | tr: chrome of the terminal and the TUI (commands, notices, approval prompt).
+                                          # TAU_LANG or `tau --lang` override it; /lang switches it for one run.
+
+# Components (see `tau components`): switch discovered parts on or off without uninstalling.
+# Unknown keys in these tables are an error (a typo must not leave a tool switched on);
+# a name nothing installed provides is a `tau doctor` warning.
+# [components]
+# context = []                            # enabled tau.context sources; empty = every discovered one
+# [components.tools]
+# disabled = ["demo_physical_action", "dist:tau-example-tool"]   # tool names or dist:<distribution>
+# [components.hub]
+# services = []                           # enabled tau.hub_services; empty = every discovered one
+#
+# Free tables for a component's own settings, read with Config.component("name"):
+# [component.telegram]
+# chat_id_env = "TELEGRAM_CHAT_ID"

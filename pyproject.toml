@@ -9,15 +9,30 @@ dependencies = ["tau-core", "tau-tui"]
 package = false
 
 [tool.uv.workspace]
-members = ["packages/*", "packages/tau-core/tests/fixtures/tau-example-tool"]
+members = [
+    "packages/*",
+    "packages/tau-core/tests/fixtures/tau-example-tool",
+    "packages/tau-core/tests/fixtures/tau-example-provider",
+    "packages/tau-core/tests/fixtures/tau-example-service",
+]
 
 [tool.uv.sources]
 tau-core = { workspace = true }
 tau-tui = { workspace = true }
 tau-example-tool = { workspace = true }
+tau-example-provider = { workspace = true }
+tau-example-service = { workspace = true }
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "pytest-textual-snapshot", "ruff", "tau-example-tool"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-textual-snapshot",
+    "ruff",
+    "tau-example-tool",
+    "tau-example-provider",
+    "tau-example-service",
+]
 
 [tool.ruff]
 line-length = 100

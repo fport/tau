@@ -157,8 +157,8 @@ class ControlApi:
             ("GET", "/health"): self._health,
             ("GET", "/status"): self._status,
         }
-        if routes:
-            self.routes.update(routes)
+        for (method, path), handler in (routes or {}).items():
+            self.add_route(method, path, handler)
         self._server: _Server | None = None
         self._thread: threading.Thread | None = None
         self._started = time.monotonic()
@@ -168,7 +168,17 @@ class ControlApi:
         return f"http://{HOST}:{self.port}"
 
     def add_route(self, method: str, path: str, handler: Handler) -> None:
-        self.routes[(method.upper(), path)] = handler
+        """Register ``handler`` for ``method path``. Routes are additive only: a ``(method,
+        path)`` that exists raises ``ValueError``, so a ``tau.hub_services`` component can
+        neither replace ``GET /health`` / ``GET /status`` (which ``tau hub status``, ``tau
+        doctor`` and TauBar trust) nor another component's route."""
+        key = (method.upper(), path)
+        if key in self.routes:
+            raise ValueError(
+                f"control api route {key[0]} {path} is already registered; routes cannot be "
+                "replaced"
+            )
+        self.routes[key] = handler
 
     # -- HubService -----------------------------------------------------------------------
 

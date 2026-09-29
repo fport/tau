@@ -1,8 +1,10 @@
 """Model roles → Strands model instances.
 
 Code asks for a role (``brain``, ``fast``, ``local``); ``tau.toml`` says which provider and model
-id serve it. No model id ever appears in code. A new provider is one factory in
-:data:`PROVIDERS` plus, when it needs credentials, one row in :data:`_DEFAULT_ENV`.
+id serve it. No model id ever appears in code. :data:`PROVIDERS` is the built-in seed; other
+distributions add providers through the ``tau.providers`` entry point group and code adds them
+with :func:`tau_core.registry.register_provider` (see :mod:`tau_core.registry`). A provider that
+needs credentials declares them in :data:`_DEFAULT_ENV` (built-in) or through ``required_env``.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from typing import Any
 
 from strands.models.model import Model
 
+from tau_core import registry
 from tau_core.config import Config, ConfigError, RoleConfig
 
 logger = logging.getLogger(__name__)
@@ -66,7 +69,10 @@ def required_env(role_cfg: RoleConfig) -> list[list[str]]:
     provider = role_cfg.provider
     if provider == "anthropic" and role_cfg.params.get("api_key_env"):
         return [[str(role_cfg.params["api_key_env"])]]
-    alternatives = [list(alt) for alt in _DEFAULT_ENV.get(provider, [])]
+    if provider in _DEFAULT_ENV:
+        alternatives = [list(alt) for alt in _DEFAULT_ENV[provider]]
+    else:
+        alternatives = registry.provider_required_env(provider)
     if provider == "bedrock" and role_cfg.region:
         alternatives = [[v for v in alt if v != "AWS_REGION"] for alt in alternatives]
     return alternatives
@@ -116,18 +122,30 @@ def resolve_model(role: str, config: Config, *, env: Mapping[str, str] | None = 
 
 def _check_supported(role_cfg: RoleConfig) -> None:
     provider = role_cfg.provider
-    if provider in PROVIDERS:
+    if registry.provider_factory(provider) is not None:
         return
     if provider in PLANNED_PROVIDERS:
         raise ConfigError(
             f"Provider '{provider}' is not supported yet (issue {PLANNED_PROVIDERS[provider]})."
         )
+    broken = registry.load_error(registry.PROVIDERS_GROUP, provider)
+    if broken is not None:
+        raise ConfigError(provider_load_failure(provider, broken))
     raise ConfigError(f"Unknown model provider: '{provider}'.")
+
+
+def provider_load_failure(provider: str, broken: registry.Loaded) -> str:
+    """The one sentence ``resolve_model`` and ``tau doctor`` use for a ``tau.providers`` entry
+    point that is declared but does not load (``tau components`` shows the same error)."""
+    origin = f" from {broken.distribution}" if broken.distribution != "?" else ""
+    return f"Model provider '{provider}'{origin} failed to load: {broken.error}"
 
 
 def _build(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
     _check_supported(role_cfg)
-    return PROVIDERS[role_cfg.provider](role_cfg, env)
+    factory = registry.provider_factory(role_cfg.provider)
+    assert factory is not None  # _check_supported raised otherwise
+    return factory(role_cfg, env)
 
 
 def _provider_params(role_cfg: RoleConfig) -> dict[str, Any]:
@@ -230,3 +248,5 @@ PROVIDERS: dict[str, Callable[[RoleConfig, Mapping[str, str]], Model]] = {
     "anthropic": _anthropic,
     "fake": _fake,
 }
+"""The built-in seed. Do not add to it at runtime: use ``tau_core.registry.register_provider``
+or a ``tau.providers`` entry point, which the merged lookup and ``tau components`` both see."""

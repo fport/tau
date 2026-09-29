@@ -7,7 +7,9 @@ It is built on [Strands Agents](https://strandsagents.com/) and is published on 
 
 ```sh
 pip install tau-core        # or, inside the tau repo: uv sync --all-packages --group dev
-tau --help                  # chat, hub, version, plus any plugin commands (tui, ...)
+tau --help                  # chat, hub, components, doctor, init, version, plus plugin commands (tui, ...)
+tau init                    # create ~/.tau/tau.toml and the persona files from the templates
+tau doctor                  # check config, credentials, sessions, persona, .env, the hub
 tau chat                    # talk to tau in the terminal
 tau --lang tr chat          # same, with Turkish UI chrome
 ```
@@ -30,9 +32,10 @@ asks for a role (`brain`, `fast`, `local`). Credentials and roots come from the 
 `TAU_HOME/.env` (never overriding variables that are already set): `TAU_HOME` (config root,
 default: the current directory if it has a `tau.toml`, else `~/.tau`), `TAU_DATA_DIR` (mutable
 state, default `~/.local/share/tau`), `TAU_PROFILE` (`home` | `travel` | `sport`, default
-`home`), `TAU_ROLE` (`hub`|`node`), `TAU_HUB_PORT`, `TAU_LANG` (see below). Providers today:
-`bedrock`, `anthropic` (with an optional per-role `fallback`) and `fake`; a missing credential
-stops `tau chat` with a message naming the variables.
+`home`), `TAU_ROLE` (`hub`|`node`), `TAU_HUB_PORT`, `TAU_LANG` (see below). Built-in providers:
+`bedrock`, `anthropic` (with an optional per-role `fallback`) and `fake`; a `tau.providers`
+component adds more (see [Components](#components)). A missing credential stops `tau chat` with
+a message naming the variables; `tau doctor` reports it without starting anything.
 
 ```toml
 [models.roles.brain]
@@ -144,7 +147,9 @@ stable part; `build_system_prompt` returns the same text as one string for tests
 Later layers fill the dynamic block through context sources: zero-argument callables that
 return partial overrides (`nodes`, `budget`), merged in order. They run before every model
 call, so they must return a cached value quickly. Unknown keys are ignored, `None` means
-unknown, and a source that raises is skipped and logged once.
+unknown, and a source that raises is skipped and logged once. Without an explicit
+`context_sources` list, `build_agent` uses the enabled `tau.context` components (see
+[Components](#components)); an explicit list, even an empty one, replaces them.
 
 ```python
 agent = build_agent(
@@ -351,8 +356,9 @@ In `tau chat`:
 Resuming rebuilds the agent on the stored session (`build_agent(session_id=...,
 session_store=...)`), so Strands restores `agent.messages`; the model sees the last
 `[agent] window_size` messages (or a summary plus the recent ones), the store keeps them all.
-A new backend implements the nine `SessionRepository` methods plus the five extras and
-registers a factory in `tau_core.sessions.SESSION_BACKENDS`.
+A new backend implements the nine `SessionRepository` methods plus the five extras and arrives
+as a `tau.sessions` entry point or through `register_session_backend(name, factory)` (see
+[Components](#components)); `SESSION_BACKENDS` is the built-in seed.
 
 ## Hub
 
@@ -378,26 +384,143 @@ overrides) and speaks JSON: `GET /health` → `{"ok": true, "pid", "uptime_s"}`,
 `approvals_pending`, `nodes`. Requests with a non-loopback `Host` header get 403.
 
 Extending the hub: a `HubService` has a `name`, `async start(hub)` and `async stop()`; services
-passed to `Hub(config, services=...)` start in order after the crash check and stop in reverse.
-`ControlApi.add_route(method, path, handler)` adds routes (handlers run in the server thread; reach
-the event loop with `asyncio.run_coroutine_threadsafe(..., hub.loop)`) and
-`hub.add_status_source(fn)` adds keys to `/status`. launchd is driven through the `Launchctl`
+start in order after the crash check and stop in reverse. `tau hub run` starts the control API
+first and then every enabled `tau.hub_services` component (see [Components](#components)): the
+entry point is a `factory(config) -> HubService`, the service is *optional* (one that fails to
+build or to start is logged and skipped, the hub runs on), and inside `start(hub)` it can call
+`hub.add_status_source(fn)` to add keys to `/status` and
+`hub.find_service("control-api").add_route(method, path, handler)` to add routes (handlers run
+in the server thread; reach the event loop with `asyncio.run_coroutine_threadsafe(..., hub.loop)`).
+Routes are additive only: `add_route` raises `ValueError` for a `(method, path)` that exists, so
+no service can replace `GET /health`, `GET /status` or another service's route (the service
+then fails to start and is skipped). `find_service` returns only services that have *started*:
+`None` for one that failed to start, has not started yet or after the hub stopped, so a service
+never wires into a half-initialised component. A service's own settings live in
+`[component.<name>]` and are read with `config.component(name)`.
+
+```python
+class TelegramRelay:  # in another distribution
+    name = "telegram"
+
+    def __init__(self, config):
+        self.settings = config.component("telegram")
+
+    async def start(self, hub):
+        hub.add_status_source(lambda: {"telegram": {"connected": True}})
+        api = hub.find_service("control-api")
+        api.add_route("POST", "/telegram/send", self.send)
+
+    async def stop(self): ...
+
+
+def make_relay(config):  # [project.entry-points."tau.hub_services"] telegram = "pkg:make_relay"
+    return TelegramRelay(config)
+```
+
+launchd is driven through the `Launchctl`
 protocol; tests pass `FakeLaunchctl` to the CLI as `obj={"launchctl": fake}`. The launchd plist
 and systemd unit are package templates; `infra/services/` in the tau repo has rendered examples
 and the install notes.
 
-## Plugins
+## Components
 
-Other distributions extend tau through entry points: `tau.tools` (tools, tier required) and
-`tau.commands` (click commands mounted under `tau`); `tau.channels` is reserved for L3.
+Every pluggable part of tau is a *component*: it reaches tau through a built-in seed
+(`PROVIDERS`, `SESSION_BACKENDS`), an entry point in a `tau.*` group declared by any installed
+distribution, or an in-process registration (`register_provider`, `register_session_backend`),
+and `tau.toml` decides which discovered components are on (ADR 0005). `tau_core.registry` loads
+them all with one rule: an entry point that fails to load, or loads the wrong kind of object,
+is logged with its distribution name and skipped; it never breaks the CLI.
+
+| group | entry point value | picked by |
+|---|---|---|
+| `tau.tools` | an `AgentTool` with a tier, a list of them, or a zero-argument factory | `build_agent` (all, minus `tools.disabled`) |
+| `tau.commands` | a `click.Command`, mounted as `tau <name>` | the `tau` command |
+| `tau.providers` | `factory(RoleConfig, env) -> Model`; optional `required_env = [["VAR", ...], ...]` on the factory (credential alternatives) | a role's `provider` in `tau.toml` |
+| `tau.sessions` | `factory(Config) -> SessionStore` | `[sessions].backend` |
+| `tau.context` | `factory(Config) -> ContextSource` (a callable returning `{"nodes": ..., "budget": ...}`) | `build_agent` when no `context_sources` are passed |
+| `tau.hub_services` | `factory(Config) -> HubService` | `tau hub run`, after the control API |
+
+`tau.channels` stays reserved for hub-hosted channels. A plugin package declares what it ships:
 
 ```toml
 [project.entry-points."tau.tools"]
-mine = "my_package:TOOLS"          # an AgentTool, a list of them, or a zero-argument factory
+mine = "my_package:TOOLS"              # tools carry a tier (tau_tool); untiered ones are skipped
 
 [project.entry-points."tau.commands"]
-mine = "my_package.cli:command"    # a click.Command, available as `tau mine`
+mine = "my_package.cli:command"        # `tau mine`
+
+[project.entry-points."tau.providers"]
+ollama = "my_package.models:make_model"   # make_model(role_cfg, env) -> Model; make_model.required_env = []
+
+[project.entry-points."tau.sessions"]
+cloud = "my_package.sessions:make_store"  # make_store(config) -> SessionStore
+
+[project.entry-points."tau.context"]
+nodes = "my_package.mesh:make_source"     # make_source(config) -> callable returning {"nodes": [...]}
+
+[project.entry-points."tau.hub_services"]
+telegram = "my_package.relay:make_relay"  # make_relay(config) -> HubService
 ```
+
+A seed name wins over an entry point with the same name (an installed package cannot replace
+`bedrock` silently); `register_provider` / `register_session_backend` replace anything, since
+they are explicit code. `Config.load` validates provider and backend *names* without loading a
+single entry point, so `tau version` never imports a provider SDK.
+
+Switch discovered components on or off in `tau.toml` without uninstalling them:
+
+```toml
+[components]
+context = []                 # enabled tau.context sources; empty = every discovered one
+[components.tools]
+disabled = ["demo_physical_action", "dist:tau-example-tool"]   # tool names or dist:<distribution>
+[components.hub]
+services = []                # enabled tau.hub_services; empty = every discovered one
+
+[component.telegram]         # a component's own settings: config.component("telegram")
+chat_id_env = "TELEGRAM_CHAT_ID"
+```
+
+`tools.disabled` can only remove tools; it never adds one, gives one a tier or changes a tier,
+and an explicit `build_agent(tools=[...])` bypasses it. Any other top-level table in `tau.toml`
+is logged once and ignored, never a failure. Nothing in `[components]` can replace the tier
+gate, the approver or the catalog: a tool that reaches the Strands agent behind the catalog's
+back (through a `Plugin`, for instance) is refused as unknown.
+
+Three commands show, check and set up an installation (English, `--json` where useful):
+
+```sh
+tau components          # every component in every group: distribution, version, enabled/disabled, load error
+tau doctor              # config, per-role provider + credentials (no client built), session store, persona
+                        # files, .env names vs .env.example, component load errors, [components] names that
+                        # no installed component provides, control API reachable; exit 1 when a check fails
+                        # ("warn" for a planned provider such as ollama and for the unknown names)
+tau init                # tau.toml from the shipped template (provider: bedrock > anthropic > fake, by the
+                        # credentials present in the environment or <home>/.env), persona/persona.md,
+                        # user.example.md, user.md (from the example unless it exists) and .env.example;
+                        # asks the UI language unless --language or --yes
+tau init --home ~/.tau --provider anthropic --language tr --profile home --yes   # non-interactive
+```
+
+`tau init` never overwrites an existing `tau.toml` or `persona.md` without `--force` and never
+overwrites `user.md` or `.env.example` (the latter is the list of names `tau doctor` checks
+`.env` against; add your own names there); `--profile` appends `TAU_PROFILE` to `<home>/.env`
+when it is not set there. The shipped templates equal the repository's `tau.toml`,
+`persona/persona.md` and `persona/user.example.md` (a test keeps them identical); the
+`.env.example` template is the repository's file without its L0 remote-access section. A
+`tau.providers` entry point that is declared but does not load is reported as `Model provider
+'x' from <distribution> failed to load: ...` by `tau doctor`, `tau chat` and `tau components`
+alike; only a name no distribution declares is an `Unknown model provider`.
+
+## Logging
+
+`configure_logging(logs_dir, verbose=False)` sends `WARNING`s (or `INFO` with `verbose`) to
+stderr as one-line messages and, when `logs_dir` is given, `INFO` and up with tracebacks to
+`<logs_dir>/tau.log` (`tau chat` and `tau hub run` use `config.logs_dir`); it returns the log
+file path. `reset_logging()` removes those handlers again. Both are part of the public API so a
+channel in another package (the TUI, Telegram) writes to the same file; a full-screen UI that
+owns the terminal passes `console=False` to keep stderr silent while the file log still
+receives every record.
 
 ## Development
 

@@ -43,3 +43,17 @@ heartbeat_seconds = 5
 [ui]
 language = "en"                           # en | tr: chrome of the terminal and the TUI (commands, notices, approval prompt).
                                           # TAU_LANG or `tau --lang` override it; /lang switches it for one run.
+
+# Components (see `tau components`): switch discovered parts on or off without uninstalling.
+# Unknown keys in these tables are an error (a typo must not leave a tool switched on);
+# a name nothing installed provides is a `tau doctor` warning.
+# [components]
+# context = []                            # enabled tau.context sources; empty = every discovered one
+# [components.tools]
+# disabled = ["demo_physical_action", "dist:tau-example-tool"]   # tool names or dist:<distribution>
+# [components.hub]
+# services = []                           # enabled tau.hub_services; empty = every discovered one
+#
+# Free tables for a component's own settings, read with Config.component("name"):
+# [component.telegram]
+# chat_id_env = "TELEGRAM_CHAT_ID"

@@ -117,6 +117,19 @@ def test_shutdown_closes_the_port() -> None:
         OPENER.open(f"{url}/health", timeout=2)
 
 
+def test_routes_are_additive_only(api: ControlApi) -> None:
+    spoof = lambda request: (200, {"ok": True, "pid": 1, "spoofed": True})  # noqa: E731
+    for method, path in (("GET", "/health"), ("get", "/status"), ("POST", "/echo")):
+        with pytest.raises(ValueError, match="already registered"):
+            api.add_route(method, path, spoof)
+    assert api.routes[("GET", "/health")] == api._health
+    assert api.routes[("GET", "/status")] == api._status
+    assert api.routes[("POST", "/echo")] is echo
+    assert call(f"{api.url}/health")[2]["pid"] == os.getpid()
+    with pytest.raises(ValueError, match="GET /health"):
+        ControlApi(0, dict, routes={("GET", "/health"): spoof})
+
+
 def test_handle_without_http() -> None:
     server = ControlApi(0, lambda: {"x": 1})
     assert server.handle(ControlRequest("GET", "/status")) == (200, {"x": 1})

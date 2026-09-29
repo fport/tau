@@ -105,7 +105,7 @@ Model: brain → anthropic (fallback; bedrock has no credentials) · claude-sonn
 Context: sliding, window 60 · 2 messages in memory
 Tools: 2 registered · 1 need approval (tier 2)
 UI language: en
-Versions: tau-core 0.2.0 · tau-tui 0.2.0
+Versions: tau-core 0.3.0 · tau-tui 0.3.0
 Hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
 ```
 

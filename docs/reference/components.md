@@ -56,24 +56,24 @@ In a repository checkout with the `dev` group installed, the listing also shows 
 ```text
 tau.tools
   example_echo          tau-example-tool 0.0.1  enabled  tier 0
-  current_time          tau-core 0.2.0          enabled  tier 0
-  demo_physical_action  tau-core 0.2.0          enabled  tier 2
+  current_time          tau-core 0.3.0          enabled  tier 0
+  demo_physical_action  tau-core 0.3.0          enabled  tier 2
 tau.commands
-  tui         tau-tui 0.2.0   enabled  tau tui
-  chat        tau-core 0.2.0  enabled  tau chat
-  components  tau-core 0.2.0  enabled  tau components
-  doctor      tau-core 0.2.0  enabled  tau doctor
-  hub         tau-core 0.2.0  enabled  tau hub
-  init        tau-core 0.2.0  enabled  tau init
+  tui         tau-tui 0.3.0   enabled  tau tui
+  chat        tau-core 0.3.0  enabled  tau chat
+  components  tau-core 0.3.0  enabled  tau components
+  doctor      tau-core 0.3.0  enabled  tau doctor
+  hub         tau-core 0.3.0  enabled  tau hub
+  init        tau-core 0.3.0  enabled  tau init
 tau.providers
-  bedrock    tau-core 0.2.0              enabled  in use: brain, fast (built-in)
-  anthropic  tau-core 0.2.0              enabled  in use: brain, fast (built-in)
-  fake       tau-core 0.2.0              enabled  available (built-in)
+  bedrock    tau-core 0.3.0              enabled  in use: brain, fast (built-in)
+  anthropic  tau-core 0.3.0              enabled  in use: brain, fast (built-in)
+  fake       tau-core 0.3.0              enabled  available (built-in)
   fake2      tau-example-provider 0.0.1  enabled  available
   ollama     - -                         disabled not available until issue 012; used by local (planned)
 tau.sessions
-  memory   tau-core 0.2.0              enabled  available (built-in)
-  file     tau-core 0.2.0              enabled  in use (built-in)
+  memory   tau-core 0.3.0              enabled  available (built-in)
+  file     tau-core 0.3.0              enabled  in use (built-in)
   example  tau-example-provider 0.0.1  enabled  available
 tau.context
   example  tau-example-service 0.0.1  enabled

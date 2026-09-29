@@ -286,6 +286,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Add credentials in /settings",
         "tr": "/settings ile kimlik bilgisi ekleyin",
     },
+    "settings.no_provider": {
+        "en": "Choose an available provider in /settings",
+        "tr": "/settings ile kullanılabilir bir sağlayıcı seçin",
+    },
     # -- approval prompt (terminal and TUI share the labels) ------------------------------------
     "approval.title": {
         "en": "Approval needed (tier {tier})",

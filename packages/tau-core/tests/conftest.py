@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +23,17 @@ CREDENTIAL_VARS = (
     "ANTHROPIC_API_KEY",
 )
 TAU_VARS = ("TAU_HOME", "TAU_DATA_DIR", "TAU_PROFILE", "TAU_ROLE", "TAU_HUB_PORT")
+
+
+@pytest.fixture(autouse=True)
+def restore_environ() -> Iterator[None]:
+    """A test that exports a value into the process (``set_credential(..., export=True)``,
+    ``/settings profile``) never leaks it into the next test: ``os.environ`` is put back as it
+    was, including keys that did not exist before (which ``monkeypatch.delenv`` does not track)."""
+    saved = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
 
 
 @pytest.fixture(autouse=True)

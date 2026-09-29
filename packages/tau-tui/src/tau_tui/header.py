@@ -94,6 +94,11 @@ class HeaderBar(HorizontalGroup):
         self.session_id = session_id
         self.refresh_text()
 
+    def set_profile(self, profile: str) -> None:
+        """A settings save changed ``TAU_PROFILE`` (or ``--profile`` kept its override)."""
+        self.profile = profile
+        self.refresh_text()
+
     def set_events_view(self, active: bool) -> None:
         self.events_view = active
         self.refresh_text()

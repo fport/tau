@@ -57,8 +57,8 @@ When the config exists but the role's provider has no credentials, `tau tui` sti
 
 | Section | What you edit |
 |---|---|
-| Model roles | Per role: provider (every installed provider; planned ones are marked), model id, max tokens, an optional fallback provider and model id, and the credential status of the role (`credentials ok`, `missing AWS_REGION, AWS_PROFILE`, `missing … · fallback anthropic in use`, `no credentials needed`). |
-| Credentials | Every variable the configured providers need, then every other provider's, then every name in `.env.example` and `.env`. Each row says `set · sk-…abcd` or `not set`; a hidden input takes a new value and **clear** removes one. Values are never shown again after you type them. |
+| Model roles | Per role: provider (every installed provider; a planned one such as `ollama` is listed in a note and cannot be chosen), model id, max tokens, an optional fallback provider and model id, and the credential status of the role (`credentials ok`, `missing AWS_REGION, AWS_PROFILE`, `missing … · fallback anthropic in use`, `no credentials needed`). |
+| Credentials | Every variable the configured providers need, then every other provider's, then every name in `.env.example` and `.env`. Each row says `set · sk-…abcd` or `not set`, and `(from the environment; .env does not override it)` when your shell sets the variable. Keys, tokens, secrets and passwords take a hidden input; plain settings such as `AWS_REGION` or `TAU_PROFILE` a visible one. **clear** removes a value. Values are never shown again after you type them. |
 | Interface | UI language (`en`/`tr`, applied on save) and the profile (`TAU_PROFILE` in `.env`). |
 | Agent | `context`, `window_size`, `max_turns`, `max_total_tokens` with the same rules as the file. |
 | Doctor | The `tau doctor` checks with `✓`, `◆`, `✗` and `▸` glyphs. |

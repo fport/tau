@@ -27,6 +27,7 @@ from tau_core import (
     EventBus,
     MissingCredentials,
     Notice,
+    ProviderNotSupported,
     ReasoningDelta,
     SessionStore,
     TauAgent,
@@ -197,14 +198,16 @@ class TauApp(App[None]):
         role: str = DEFAULT_ROLE,
         session_id: str | None = None,
         missing_credentials: MissingCredentials | None = None,
+        unsupported_provider: ProviderNotSupported | None = None,
         show_paths: bool = True,
         version: str | None = None,
     ) -> None:
-        """``agent=None`` is the no-credentials start (``missing_credentials`` says what is
-        missing): the app opens on ``config`` with the settings screen on the Credentials
-        section, the composer takes only ``/settings``, ``/help``, ``/lang`` and ``/quit``, and
-        the first agent is built for ``session_id`` (``--resume``) on ``role`` once a save gives
-        the provider its credentials."""
+        """``agent=None`` is the agentless start: ``missing_credentials`` says which variables
+        the role lacks (the settings screen opens on the Credentials section with them marked)
+        or ``unsupported_provider`` names a planned provider the stored config put on the role
+        (the screen opens on Model roles). Either way the app opens on ``config``, the composer
+        takes only ``/settings``, ``/help``, ``/lang`` and ``/quit``, and the first agent is
+        built for ``session_id`` (``--resume``) on ``role`` once a save removes the blocker."""
         super().__init__()
         if agent is None and config is None:
             raise ValueError("TauApp needs an agent or a config")
@@ -213,6 +216,7 @@ class TauApp(App[None]):
         self._default_role = role
         self._session_id = session_id
         self.missing_credentials = missing_credentials
+        self.unsupported_provider = unsupported_provider
         self.show_paths = show_paths
         self.version = version or core_version
         """What the welcome card shows as the tau version (tests pin it so the snapshots do
@@ -311,10 +315,18 @@ class TauApp(App[None]):
         approval = sum(1 for tool in tools if catalog.tier(tool.tool_name) == 2)
         return len(tools), approval
 
+    @property
+    def blocker_key(self) -> str:
+        """The message key that says what the agentless start waits for: credentials, or
+        (when only a planned provider is in the way) an available provider."""
+        if self.missing_credentials is None and self.unsupported_provider is not None:
+            return "settings.no_provider"
+        return "settings.no_credentials"
+
     def _require_agent(self) -> TauAgent | None:
-        """The agent, or ``None`` after telling the user that credentials come first."""
+        """The agent, or ``None`` after telling the user what has to be set first."""
         if self.agent is None:
-            self.notify(t("settings.no_credentials", self.language), severity="warning")
+            self.notify(t(self.blocker_key, self.language), severity="warning")
         return self.agent
 
     def welcome_facts(self) -> WelcomeFacts:
@@ -380,9 +392,10 @@ class TauApp(App[None]):
         else:
             await transcript.show_welcome(self.welcome_facts())
             self.header.glyph.state = "attention"
-            if self.missing_credentials is not None:
-                await transcript.add_notice(str(self.missing_credentials))
-            await transcript.add_notice(t("settings.no_credentials", self.language))
+            blocker = self.missing_credentials or self.unsupported_provider
+            if blocker is not None:
+                await transcript.add_notice(str(blocker))
+            await transcript.add_notice(t(self.blocker_key, self.language))
         if self.notice:
             await transcript.add_notice(self.notice)
         self.refresh_chrome()
@@ -505,6 +518,7 @@ class TauApp(App[None]):
         elif self.busy:
             composer.state = "busy"
         elif self.agent is None:
+            composer.set_disabled_key(self.blocker_key)
             composer.state = "disabled"
         else:
             composer.state = "idle"
@@ -745,15 +759,16 @@ class TauApp(App[None]):
             new.carry_over(old)
             old.close()
         self._config = new.config
+        self.header.set_profile(new.config.profile)
         self.header.set_role(new.role, describe_model(new).provider)
 
     # -- settings ----------------------------------------------------------------------------
 
     def open_settings(self, section: str | None = None, missing: list[str] | None = None) -> None:
         """``/settings [section]`` / F10: the settings screen on ``section`` (default: Model
-        roles, or Credentials with the missing names highlighted while there is no agent).
-        Refused while a turn is busy; a second call while it is open does nothing. A save is
-        applied by :meth:`apply_settings` after the screen closes."""
+        roles; Credentials with the missing names highlighted while credentials block the
+        start). Refused while a turn is busy; a second call while it is open does nothing. A
+        save is applied by :meth:`apply_settings` after the screen closes."""
         if self.busy:
             self.notify(t("tui.busy_settings", self.language), severity="warning")
             return
@@ -762,6 +777,8 @@ class TauApp(App[None]):
         if self.agent is None and self.missing_credentials is not None:
             section = section or "credentials"
             missing = missing or list(self.missing_credentials.variables)
+        elif self.agent is None and self.unsupported_provider is not None:
+            section = section or "roles"
         try:
             screen = SettingsScreen(
                 self.config,
@@ -808,6 +825,7 @@ class TauApp(App[None]):
             return
         self._adopt(new)
         self.missing_credentials = None
+        self.unsupported_provider = None
         if first:
             self.header.set_session(new.session_id)
             with self.batch_update():
@@ -1127,10 +1145,13 @@ def build_app(
     test-local tools). ``role=None`` means ``brain``, or the role a resumed ``session_id``
     remembers from ``/model``; an explicit ``role`` pins it for the app's lifetime.
 
-    When the first agent cannot be built for lack of credentials the app still opens, without
-    an agent, on the settings screen's Credentials section (see :class:`TauApp`); every other
-    failure propagates. ``show_paths=False`` keeps real paths out of the settings screen and
-    ``version`` pins what the welcome card shows (snapshots).
+    When the first agent cannot be built for lack of credentials, or because the stored config
+    puts the role on a planned provider (``ollama`` until issue 012), the app still opens,
+    without an agent, on the settings screen's Credentials or Model roles section (see
+    :class:`TauApp`), so the user can always recover in the UI; every other failure
+    propagates. ``profile`` (``tau tui --profile``) overrides ``TAU_PROFILE`` for the app's
+    lifetime, rebuilds after a settings save included. ``show_paths=False`` keeps real paths
+    out of the settings screen and ``version`` pins what the welcome card shows (snapshots).
     """
     config = config or Config.load()
     if profile:
@@ -1166,11 +1187,15 @@ def build_app(
         )
 
     missing: MissingCredentials | None = None
+    unsupported: ProviderNotSupported | None = None
     try:
         agent: TauAgent | None = agent_factory(session_id)
     except MissingCredentials as exc:
         logger.warning("opening without an agent: %s", exc)
         agent, missing = None, exc
+    except ProviderNotSupported as exc:
+        logger.warning("opening without an agent: %s", exc)
+        agent, unsupported = None, exc
     return TauApp(
         agent,
         config=current["config"],
@@ -1188,6 +1213,7 @@ def build_app(
         role=default_role,
         session_id=session_id,
         missing_credentials=missing,
+        unsupported_provider=unsupported,
         show_paths=show_paths,
         version=version,
     )

@@ -50,9 +50,11 @@ __all__ = [
     "configured_providers",
     "credential_names_for",
     "credential_present",
+    "credential_source",
     "credential_status",
     "default_home",
     "describe_home",
+    "is_secret_name",
     "known_env_names",
     "known_providers",
     "load_document",
@@ -66,6 +68,7 @@ __all__ = [
     "set_role",
     "set_ui_language",
     "status_text",
+    "tilde_path",
     "validate",
 ]
 
@@ -76,7 +79,12 @@ AGENT_KEYS = ("context", "window_size", "max_turns", "max_total_tokens")
 DOTENV_FILE = ".env"
 DOTENV_EXAMPLE = ".env.example"
 PRIVATE_MODE = 0o600
+PRIVATE_DIR_MODE = 0o700
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "_FP")
+"""A variable whose name carries one of these is a secret (``ANTHROPIC_API_KEY``,
+``AWS_BEARER_TOKEN_BEDROCK``, ``AWS_SECRET_ACCESS_KEY``, ``TAU_HOST_FP``); the rest
+(``AWS_REGION``, ``TAU_PROFILE``, ``TELEGRAM_ALLOWED_CHAT_IDS``) are plain settings."""
 
 
 class _Keep:
@@ -137,6 +145,16 @@ def describe_home(home: Path | str) -> HomeFiles:
     )
 
 
+def tilde_path(path: Path | str) -> str:
+    """``~/.tau/tau.toml`` for a path under the user's home, else the path as it is: what the
+    ``/settings`` report and the Files section print (the same rule as ``/session``)."""
+    path = Path(path)
+    try:
+        return f"~/{path.relative_to(Path.home())}"
+    except ValueError:
+        return str(path)
+
+
 # -- tau.toml ------------------------------------------------------------------------------------
 
 
@@ -180,6 +198,36 @@ def _name(raw: Any, where: str, key: str) -> str:
     return raw.strip()
 
 
+def _refuse_planned(provider: str, where: str) -> None:
+    """A save never *introduces* a planned provider: the next start would stop with
+    ``Provider '…' is not supported yet`` and a channel without an editor could not recover.
+    A role that already names one (the shipped ``local`` role) is left as it is."""
+    providers = dict(known_providers())
+    if providers.get(provider):
+        available = ", ".join(name for name, planned in providers.items() if not planned)
+        raise ConfigError(
+            f"tau.toml: {where} provider '{provider}' is not supported yet "
+            f"(issue {PLANNED_PROVIDERS[provider]}); available: {available}."
+        )
+
+
+def _planned_uses(doc: TOMLDocument) -> set[tuple[str, str, str]]:
+    """``{(role, "provider" | "fallback", name)}`` for every planned provider the document
+    names, so :func:`check_document` can tell a new use from one that was already there."""
+    uses: set[tuple[str, str, str]] = set()
+    planned = {name for name, is_planned in known_providers() if is_planned}
+    if not planned or not roles_in(doc):
+        return uses
+    for role, table in doc["models"]["roles"].items():
+        if not isinstance(table, Table):
+            continue
+        for slot, cfg in (("provider", table), ("fallback", table.get("fallback"))):
+            provider = cfg.get("provider") if isinstance(cfg, Table) else None
+            if isinstance(provider, str) and provider in planned:
+                uses.add((role, slot, provider))
+    return uses
+
+
 def set_role(
     doc: TOMLDocument,
     role: str,
@@ -192,14 +240,19 @@ def set_role(
     """Write ``[models.roles.<role>]``: ``provider`` and ``model_id`` always, ``max_tokens`` and
     ``fallback`` (``(provider, model_id)``) when given; ``None`` removes the key or the table,
     :data:`KEEP` (the default) leaves it as it is. Other keys (``region``, ``params``,
-    ``cache``) are untouched. Validation mirrors ``Config``; nothing is written to disk."""
+    ``cache``) are untouched. Validation mirrors ``Config``, and a planned provider (``ollama``
+    until issue 012) is refused unless the role, or its fallback, already names it; nothing
+    is written to disk."""
     where = f"[models.roles.{role}]"
     if not _ENV_NAME.match(role):
         raise ConfigError(f"tau.toml: invalid role name {role!r}.")
     models = _table(doc, "models", "[models]")
     roles = _table(models, "roles", "[models.roles]")
     table = _table(roles, role, where)
-    table["provider"] = _name(provider, where, "provider")
+    provider = _name(provider, where, "provider")
+    if provider != table.get("provider"):
+        _refuse_planned(provider, where)
+    table["provider"] = provider
     table["model_id"] = _name(model_id, where, "model_id")
     if max_tokens is None:
         table.pop("max_tokens", None)
@@ -211,12 +264,15 @@ def set_role(
         fb_provider, fb_model = fallback
         sub_where = f"[models.roles.{role}.fallback]"
         existing = table.get("fallback")
+        fb_provider = _name(fb_provider, sub_where, "provider")
+        if not isinstance(existing, Table) or fb_provider != existing.get("provider"):
+            _refuse_planned(fb_provider, sub_where)
         if isinstance(existing, Table):
-            existing["provider"] = _name(fb_provider, sub_where, "provider")
+            existing["provider"] = fb_provider
             existing["model_id"] = _name(fb_model, sub_where, "model_id")
         else:
             new = tomlkit.table()
-            new["provider"] = _name(fb_provider, sub_where, "provider")
+            new["provider"] = fb_provider
             new["model_id"] = _name(fb_model, sub_where, "model_id")
             new.add(tomlkit.nl())
             table["fallback"] = new
@@ -268,21 +324,36 @@ def _atomic_write(path: Path, text: str, *, mode: int | None) -> None:
         raise
 
 
-def check_document(doc: TOMLDocument) -> Config:
+def check_document(doc: TOMLDocument, *, previous: TOMLDocument | None = None) -> Config:
     """Load the document through ``Config`` without touching the real files (a temp directory
     holds the rendered text, no ``.env``, an empty environment): a ``ConfigError`` here is
-    the one the user would get at the next start."""
+    the one the user would get at the next start.
+
+    ``Config`` accepts a planned provider by name (``ollama`` until issue 012) although a
+    role on it cannot start, so this check refuses one too — every use when ``previous`` is
+    ``None``, only the uses ``previous`` (the document as it is on disk) did not already
+    have otherwise, so the shipped ``local`` role never blocks an unrelated save."""
     with tempfile.TemporaryDirectory(prefix="tau-settings-") as tmp:
         Path(tmp, CONFIG_FILE).write_text(tomlkit.dumps(doc), encoding="utf-8")
-        return Config.load(tmp, env={})
+        config = Config.load(tmp, env={})
+    known = _planned_uses(previous) if previous is not None else set()
+    for role, slot, provider in sorted(_planned_uses(doc) - known):
+        suffix = "" if slot == "provider" else ".fallback"
+        _refuse_planned(provider, f"[models.roles.{role}{suffix}]")
+    return config
 
 
 def save_document(home: Path | str, doc: TOMLDocument, *, check: bool = True) -> Path:
     """Write the document back to ``<home>/tau.toml`` atomically (temp file + rename), after
-    :func:`check_document` unless ``check=False``: a document ``Config`` refuses is never
-    written. The file keeps its mode; a new one gets the process default."""
+    :func:`check_document` against the file as it is unless ``check=False``: a document
+    ``Config`` refuses, or one that newly names a planned provider, is never written. The
+    file keeps its mode; a new one gets the process default."""
     if check:
-        check_document(doc)
+        try:
+            previous: TOMLDocument | None = load_document(home)
+        except ConfigError:
+            previous = None
+        check_document(doc, previous=previous)
     path = Path(home).expanduser().resolve() / CONFIG_FILE
     try:
         mode = stat.S_IMODE(path.stat().st_mode)
@@ -323,15 +394,22 @@ def _make_private(path: Path) -> None:
 
 def set_credential(home: Path | str, name: str, value: str, *, export: bool = False) -> Path:
     """Set ``NAME=value`` in ``<home>/.env`` (created private, mode ``0600``, when missing;
-    kept private afterwards). ``value`` must be non-empty. With ``export`` the running process
-    sees the new value too (``os.environ``), so a rebuilt agent picks it up; the value is
-    never logged."""
+    kept private afterwards; a home directory this creates is mode ``0700``). Surrounding
+    whitespace is stripped (a pasted key often carries a newline) and the value must not be
+    empty after that. With ``export`` the running process sees the new value too
+    (``os.environ``), so a rebuilt agent picks it up; the value is never logged."""
     _check_name(name)
-    if not isinstance(value, str) or not value.strip():
+    value = value.strip() if isinstance(value, str) else ""
+    if not value:
         raise ValueError(f"{name}: the value must not be empty")
     path = _dotenv_path(home)
     if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.parent.is_dir():
+            path.parent.mkdir(parents=True, mode=PRIVATE_DIR_MODE)
+            try:
+                os.chmod(path.parent, PRIVATE_DIR_MODE)  # the umask may have widened it
+            except OSError:  # pragma: no cover - a filesystem without modes
+                logger.warning("could not set the mode of %s", path.parent)
         path.touch(mode=PRIVATE_MODE)
         _make_private(path)
     set_key(path, name, value, quote_mode="auto")
@@ -506,13 +584,41 @@ def masked_credential(
     return mask(value) if value else None
 
 
+def credential_source(
+    home: Path | str, name: str, env: Mapping[str, str] | None = None
+) -> str | None:
+    """Where the value ``Config.load`` uses for ``name`` comes from: ``"environment"`` when
+    ``env`` (default: the process environment) sets it and ``<home>/.env`` does not hold the
+    same value — ``.env`` never overrides a variable that is already set, so an edit there
+    would not take effect at the next start —, ``"dotenv"`` when the file supplies it (or
+    both agree), ``None`` when it is set nowhere. No value is returned."""
+    base = os.environ if env is None else env
+    from_env = base.get(name)
+    path = _dotenv_path(home)
+    from_file = dotenv_values(path).get(name) if path.is_file() else None
+    if from_env:
+        return "dotenv" if from_file == from_env else "environment"
+    return "dotenv" if from_file else None
+
+
+def is_secret_name(name: str) -> bool:
+    """Should an editor hide what is typed for ``name``? True for keys, tokens, secrets,
+    passwords and fingerprints (see :data:`_SECRET_MARKERS`); ``AWS_REGION``, ``AWS_PROFILE``
+    and the ``TAU_*`` settings are plain."""
+    upper = name.upper()
+    return any(marker in upper for marker in _SECRET_MARKERS)
+
+
 def mask(value: str) -> str:
-    """``sk-…abcd``: the first three and the last four characters of a long value; a short one
-    is only dots, so nothing recoverable is ever shown."""
+    """What the UI shows for a stored credential: ``sk-…abcd`` (the first three and the last
+    four characters) from 20 characters on, ``ab…yz`` (two and two) for 12 to 19, only
+    ``…`` and the last two below 12, so nothing recoverable is ever shown."""
     if not value:
         return ""
     if len(value) < 12:
-        return "••••"
+        return f"…{value[-2:]}"
+    if len(value) < 20:
+        return f"{value[:2]}…{value[-2:]}"
     return f"{value[:3]}…{value[-4:]}"
 
 
@@ -546,10 +652,11 @@ def report_lines(
 ) -> list[str]:
     """The ``/settings`` listing: roles with provider, model id and credential status, the UI
     language and profile, the context settings, the files and how to change things. No
-    credential value appears; ``show_paths=False`` writes ``<home>`` instead of real paths."""
+    credential value appears; paths are printed ``~``-relative (:func:`tilde_path`) and
+    ``show_paths=False`` writes ``<home>`` instead."""
     home = config.home
     files = describe_home(home)
-    where = str(home) if show_paths else "<home>"
+    where = tilde_path(home) if show_paths else "<home>"
     lines = [t("settings.header", language, home=where), t("settings.roles_header", language)]
     width = max((len(name) for name in config.roles), default=0)
     for name, role in config.roles.items():
@@ -577,7 +684,7 @@ def report_lines(
     lines.append(t("settings.files_header", language))
     for label, path, exists in files.rows():
         state = t("settings.file_present" if exists else "settings.file_missing", language)
-        shown = str(path) if show_paths else f"<home>/{label}"
+        shown = tilde_path(path) if show_paths else f"<home>/{label}"
         lines.append(f"  {label:<18}  {shown} · {state}")
     lines.append(t("settings.hint", language))
     return lines

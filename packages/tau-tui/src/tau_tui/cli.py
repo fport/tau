@@ -95,7 +95,9 @@ def tui(ctx: click.Context, profile: str | None, resume: str | None) -> None:
     try:
         store = open_session_store(config)
         session_id, notice = resolve_resume(store, resume, language=config.ui.language)
-        app = build_app(config, session_store=store, session_id=session_id, notice=notice)
+        app = build_app(
+            config, profile=profile, session_store=store, session_id=session_id, notice=notice
+        )
     except (ConfigError, SessionNotFound) as exc:
         click.echo(str(exc), err=True)
         ctx.exit(2)

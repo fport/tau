@@ -45,6 +45,12 @@ provider = "fake"
 model_id = "fake-brain"
 """
 
+OLLAMA_TOML = """\
+[models.roles.brain]
+provider = "ollama"
+model_id = "qwen3:8b"
+"""
+
 
 def make_home(tmp_path: Path, toml: str) -> Path:
     home = tmp_path / "home"
@@ -153,6 +159,23 @@ def test_missing_credentials_open_the_app_without_an_agent(tmp_path: Path, monke
     assert app.config is config
 
 
+def test_planned_provider_in_the_stored_config_opens_the_app(tmp_path: Path, monkeypatch) -> None:
+    """A ``tau.toml`` that puts ``brain`` on ``ollama`` (planned, issue 012) used to end in
+    exit 2 with no way back; now the app opens without an agent on the Model roles section
+    (the UI itself is stubbed here; ``test_settings.py`` drives the real screen)."""
+    from tau_tui.app import TauApp
+
+    opened: list[TauApp] = []
+    monkeypatch.setattr(TauApp, "run", lambda self: opened.append(self))
+    result = run([], make_home(tmp_path, OLLAMA_TOML), tmp_path)
+    assert result.exit_code == 0, result.output
+    assert "not supported yet" not in result.output and result.output.strip() == "Goodbye."
+    (app,) = opened
+    assert app.agent is None and app.missing_credentials is None
+    assert app.unsupported_provider is not None and app.unsupported_provider.provider == "ollama"
+    assert app.blocker_key == "settings.no_provider"
+
+
 def test_agentless_app_is_closed_cleanly(tmp_path: Path, monkeypatch) -> None:
     class Agentless:
         agent = None
@@ -213,6 +236,7 @@ def test_command_runs_the_ui_with_lang_profile_and_resume(tmp_path: Path, monkey
     assert app.ran and app.closed
     config = app.kwargs["config"]
     assert config.ui.language == "tr" and config.profile == "travel"
+    assert app.kwargs["profile"] == "travel"  # kept across the rebuilds of a settings save
     assert app.kwargs["session_store"] is not None  # the store the config asks for
     assert app.kwargs["session_id"] is None  # --resume with an empty store: nothing to resume
     assert app.kwargs["notice"] == t("session.none_earlier", "tr")  # in the UI language

@@ -66,7 +66,12 @@ def provider_labels(
 
 
 class SetupScreen(ModalScreen[SetupResult | None]):
-    """Home directory, provider and UI language; Enter, ``ctrl+s``, F2 or **Create** creates."""
+    """Home directory, provider and UI language; Enter, ``ctrl+s``, F2 or **Create** creates.
+
+    ``default_home`` (a path or the text the CLI shows, ``~/.tau``) fills the home field and
+    is where the provider detection reads ``.env``; ``show_paths=False`` puts the canonical
+    ``~/.tau`` in the field instead, so a snapshot never carries a machine path.
+    """
 
     DEFAULT_CSS = """
     SetupScreen { align: center middle; }
@@ -97,14 +102,16 @@ class SetupScreen(ModalScreen[SetupResult | None]):
     def __init__(
         self,
         *,
-        default_home: str,
+        default_home: str | Path,
         env: Mapping[str, str] | None = None,
         language: str = DEFAULT_LANGUAGE,
+        show_paths: bool = True,
     ) -> None:
         super().__init__()
         self.default_home = default_home
         self.env: Mapping[str, str] = os.environ if env is None else env
         self.language = language if language in LANGUAGES else DEFAULT_LANGUAGE
+        self.show_paths = show_paths
         self._creating = False
 
     def _t(self, key: str, **kwargs: object) -> str:
@@ -116,6 +123,7 @@ class SetupScreen(ModalScreen[SetupResult | None]):
     def compose(self) -> ComposeResult:
         home = Path(self.default_home).expanduser()
         detected = pick_provider(env_with_dotenv(home, self.env))
+        shown = str(self.default_home) if self.show_paths else DEFAULT_HOME
         with Vertical(id="dialog"):
             yield Static(
                 Text(f"{glyph('attention')} {self._t('tui.setup.title')}"), id="title", markup=False
@@ -123,7 +131,7 @@ class SetupScreen(ModalScreen[SetupResult | None]):
             yield Static(Text(self._t("tui.setup.intro")), id="intro", markup=False)
             with Horizontal(classes="row"):
                 yield Static(Text(self._t("tui.setup.home")), classes="label", markup=False)
-                yield Input(self.default_home, compact=True, id="home")
+                yield Input(shown, compact=True, id="home")
             with Horizontal(classes="row"):
                 yield Static(Text(self._t("tui.setup.provider")), classes="label", markup=False)
                 yield Select(
@@ -245,14 +253,16 @@ class SetupApp(App[SetupResult | None]):
     def __init__(
         self,
         *,
-        default_home: str | None = None,
+        default_home: str | Path | None = None,
         env: Mapping[str, str] | None = None,
         language: str = DEFAULT_LANGUAGE,
+        show_paths: bool = True,
     ) -> None:
         super().__init__()
-        self.default_home = DEFAULT_HOME if default_home is None else default_home
+        self.default_home: str | Path = DEFAULT_HOME if default_home is None else default_home
         self.env = env
         self.language = language
+        self.show_paths = show_paths
         self.register_theme(TAU_THEME)
         self.register_theme(TAU_ANSI_THEME)
         self.theme = TAU_THEME.name
@@ -264,7 +274,12 @@ class SetupApp(App[SetupResult | None]):
         if self.ansi_color:
             self.theme = TAU_ANSI_THEME.name
         self.push_screen(
-            SetupScreen(default_home=self.default_home, env=self.env, language=self.language),
+            SetupScreen(
+                default_home=self.default_home,
+                env=self.env,
+                language=self.language,
+                show_paths=self.show_paths,
+            ),
             callback=self._done,
         )
 
@@ -278,7 +293,10 @@ class _Backdrop(Screen[None]):
 
 
 def run_setup(
-    *, default_home: str | None = None, env: Mapping[str, str] | None = None, language: str = "en"
+    *,
+    default_home: str | Path | None = None,
+    env: Mapping[str, str] | None = None,
+    language: str = "en",
 ) -> SetupResult | None:
     """Run the setup app in the terminal; ``None`` when the user quit without creating."""
     return SetupApp(default_home=default_home, env=env, language=language).run()

@@ -9,6 +9,8 @@ Two files configure tau. `tau.toml` is static data: which model serves which rol
 
 You do not have to open the files. In `tau tui`, `/settings` (alias `/ayarlar`) or F10 opens an editor with six sections: **Model roles**, **Credentials**, **Interface**, **Agent**, **Doctor** and **Files**. `↑↓` picks a section, Tab moves through its fields, `ctrl+s` or F2 saves, Esc closes. A save is validated first (a bad value stays in the dialog with the reason in the status line), keeps the comments in `tau.toml`, keeps `.env` at mode `0600`, and rebuilds the agent on the same session when something that affects the model changed. [First run](first-run.md#in-the-interface-tau-tui) shows the screen.
 
+The provider select offers only providers that are built. A planned one (`ollama`, issue 012) is listed in a note and cannot be chosen, because a role on it cannot start; a role that already names it (the shipped `local`) is left as it is, and should a stored `tau.toml` ever put `brain` on it, `tau tui` still opens, without an agent, on the Model roles section so you can pick another provider. A credential row also says when its value comes from your shell environment: `.env` never overrides a variable that is already set, so a value you save there would not be used at the next start until you unset the shell's.
+
 `tau chat` has the terminal form:
 
 ```text

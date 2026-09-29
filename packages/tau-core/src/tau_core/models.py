@@ -45,6 +45,20 @@ _DEFAULT_ENV: dict[str, list[list[str]]] = {
 }
 
 
+class ProviderNotSupported(ConfigError):
+    """A role names a provider that is planned but not built yet (:data:`PLANNED_PROVIDERS`).
+
+    ``str(exc)`` is the sentence the user sees; ``issue`` is the roadmap issue that adds the
+    provider. A channel that can edit the config catches this at start-up and opens its
+    settings on the Model roles section instead of exiting.
+    """
+
+    def __init__(self, provider: str, issue: str) -> None:
+        self.provider = provider
+        self.issue = issue
+        super().__init__(f"Provider '{provider}' is not supported yet (issue {issue}).")
+
+
 class MissingCredentials(Exception):
     """The provider behind a role has no usable credentials; ``str(exc)`` names the variables."""
 
@@ -138,9 +152,7 @@ def _check_supported(role_cfg: RoleConfig) -> None:
     if registry.provider_factory(provider) is not None:
         return
     if provider in PLANNED_PROVIDERS:
-        raise ConfigError(
-            f"Provider '{provider}' is not supported yet (issue {PLANNED_PROVIDERS[provider]})."
-        )
+        raise ProviderNotSupported(provider, PLANNED_PROVIDERS[provider])
     broken = registry.load_error(registry.PROVIDERS_GROUP, provider)
     if broken is not None:
         raise ConfigError(provider_load_failure(provider, broken))

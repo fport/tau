@@ -27,7 +27,7 @@ Every tool declares a tier: 0 read, 1 digital write, 2 physical action or self-w
 
 ### 2026-09-29 · done (agent)
 
-Hardened the tier gate built in 004 and covered it with tests. `uv run ruff check . && uv run ruff format --check . && uv run pytest -q` is green offline (185 passed, 1 strict xfail, see below).
+Hardened the tier gate built in 004 and covered it with tests. `uv run ruff check . && uv run ruff format --check . && uv run pytest -q` is green offline.
 
 - `TierGate(timeout_seconds=...)` waits with `asyncio.wait_for`; on expiry the question is cancelled and the decision is `timeout` (refused with the usual refusal text). Without a gate timeout the approver's optional `timeout_seconds` attribute applies, so a channel sets its own wait without `build_agent` changes. `TerminalApprover` has none (a blocked `input()` cannot be cancelled). Default: no timeout.
 - Fail closed everywhere: unknown tools, tools whose tier became invalid, approvers that raise, are not awaitable or answer anything but a `Decision` value, timeouts, and an exception inside the gate (`TierHook` then cancels the call). A raising exemption counts as "not exempt".
@@ -41,7 +41,7 @@ Hardened the tier gate built in 004 and covered it with tests. `uv run ruff chec
 
 Criteria notes: the `tau chat` prompt itself is exercised end to end by `test_cli.py` (004); this issue tests `TerminalApprover` directly.
 
-Found outside this issue's files (not changed here): after the loop guard trips, `TauAgent.stream` leaves the history ending with a user `toolResult` message, so the next prompt sends two user messages in a row, which the Bedrock Converse API rejects (and the session keeps that shape). The one-line fix is `await self._close_dangling_turn(turn_limit_text(max_turns))` in the `limit_turns` branch of `agent.py`; `test_loop_guard.py::test_history_stays_alternating_after_the_guard` is a strict xfail that turns red once it is fixed, so remove its marker then. Also, `Config.load` accepts `max_turns = true` (a bool is an int).
+Found outside this issue's files and fixed at merge time (`fix(core): keep the history alternating after the loop guard trips`): after the loop guard tripped, `TauAgent.stream` left the history ending with a user `toolResult` message, so the next prompt sent two user messages in a row, which the Bedrock Converse API rejects. `agent.py` now closes the turn with the notice as an assistant message; `test_loop_guard.py::test_history_stays_alternating_after_the_guard` is a regular passing test (the strict xfail marker is gone). `Config.load` now also rejects `max_turns = true`.
 
 Deviations from the brief (all additive): the approver `timeout_seconds` fallback, `TierGate.add_exemption()`/`effective_timeout()`, `TerminalApprover.timeout_seconds = None`, exemptions must return `True`, and the two testing helpers. Commit trailers use the attribution line this session's environment specifies.
 

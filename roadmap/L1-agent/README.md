@@ -20,5 +20,6 @@
 | 058 | [Load hub-hosted services from entry points in `tau hub run`](058-hub-services-from-entry-points.md) | AFK | – |
 | 059 | [Export a logging helper from tau-core's public API](059-logging-helper-public-api.md) | AFK | – |
 | 060 | [Pin or fix the snapshot file extension for tau-tui snapshots](060-tui-snapshot-extension.md) | AFK | – |
+| 061 | [Verify `tau tui` from the phone over mosh (Termius)](061-verify-tui-on-phone.md) | HITL | – |
 
 Live status: `python3 roadmap/board.py`

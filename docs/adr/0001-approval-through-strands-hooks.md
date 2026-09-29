@@ -31,7 +31,7 @@ with a response.
   `ScriptedApprover([Decision.APPROVED])` and assert the recorded requests.
 - **Fail closed:** a tool name the catalog does not know (hallucinated, or registered with
   Strands behind tau's back) is refused with `'{tool}' aracı kayıtlı değil; çalıştırılmadı.`
-  and an `error` event. A failing approver or exemption also rejects.
+  and an `error` event. A failing approver or exemption also rejects (full list below).
 - Refusals reach the model as the tool result:
   `Kullanıcı bu eylemi onaylamadı: {tool}. Eylemi yapma, kullanıcıya kısaca bildir.`
 - **Exemptions** (`(tool, arguments) -> bool`) let registered routines (037) skip per-call
@@ -39,6 +39,46 @@ with a response.
 - Approval prompts are serialized per gate, so parallel tool calls never ask at the same time.
 - A per-turn loop guard uses Strands `Limits(turns=agent.max_turns)`; hitting it ends the turn
   with a Turkish notice and a `turn_limit` event.
+
+## Refinements (issue 006)
+
+- **Timeouts.** `TierGate(timeout_seconds=...)` wraps `approver.decide()` in
+  `asyncio.wait_for`; when it runs out the question is cancelled and the decision is
+  `Decision.TIMEOUT`, which refuses the call with the same refusal text (the approval event and
+  the `tool_call` event say `timeout`). When the gate has no timeout, the approver's optional
+  `timeout_seconds` attribute applies, so a channel states its natural wait (minutes for a
+  Telegram button) without `build_agent` knowing about it; the gate's value wins when both are
+  set. The default is no timeout: silence never approves, a timeout only ends the wait.
+  `TerminalApprover` has none because `input()` blocks a worker thread that cannot be cancelled
+  and would swallow the next line the user types.
+- **Everything that fails closed:** an unknown tool; a registered tool whose tier became invalid;
+  an approver that raises, is not awaitable or answers anything but a `Decision` value; a
+  timeout; an exception inside the gate itself (`TierHook` then cancels the call with the
+  refusal text). An exemption that raises counts as "not exempt", so the approver is asked.
+- **Exemptions** are consulted only for tier-2 calls to known tools, must return `True` (a
+  merely truthy value does not exempt) and receive a copy of the arguments.
+  `TierGate.add_exemption()` returns an undo function, the hook the routine registry (037)
+  uses at runtime. Exempt calls emit no `approval` event; their `tool_call` event says
+  `approval: "exempt"`.
+- **What is approved is what runs.** Approval requests, exemptions and events get deep copies of
+  the arguments, so nothing that only looks at a call can change the input the tool receives.
+  Strands runs the tool with the `tool_use` left by the last `BeforeToolCallEvent` callback, so
+  `TierHook` must stay the last registered hook that could rewrite it (`build_agent` registers
+  it after the persona hook).
+- **The terminal prompt** shows the tool, the arguments as JSON with sorted keys, and the effect
+  on one line; control, C1 and bidi/format characters coming from the model are escaped so they
+  cannot rewrite or hide the prompt. Only `e`/`evet` (any case, surrounding spaces ignored)
+  approves.
+- **Serialization** is one prompt at a time per gate, with the lock created per event loop so a
+  gate outlives the loop it was first used in.
+- **Logging:** `tool_call` records log tier 0 at `DEBUG`, tiers 1 and 2 at `INFO` (arguments,
+  status, result summary, approval), unknown tools at `WARNING`; approval decisions at `INFO`,
+  timeouts at `WARNING`, approver failures at `ERROR`. The `tau chat` file log keeps `INFO`.
+- **Registration:** `tau_tool` and `tier_of` refuse booleans and values outside 0-2;
+  `ToolCatalog.extend` registers all tools or none.
+- **Loop guard:** `[agent].max_turns` counts model calls per user turn; the tools the last
+  allowed call requested still run, an answer given on the last allowed call is not cut, and
+  the next user turn starts with a fresh budget.
 
 ## Why not Strands interrupts (yet)
 
@@ -51,7 +91,7 @@ outlive the process.
 ## Consequences
 
 - Channels only implement `Approver`; the policy stays in one place.
-- Approval timeouts are the gate's job, not the channel's (issue 006 adds `timeout_seconds`
-  with `asyncio.wait_for` → `Decision.TIMEOUT`).
+- Approval timeouts are enforced by the gate; a channel only states how long it is willing to
+  wait (`timeout_seconds` on its approver) and must keep `decide()` cancellable.
 - Tool calls are observed authoritatively through `AfterToolCallEvent`; the Strands stream has no
   tool-result event, so UIs read `tool_call` agent events instead.

@@ -68,9 +68,19 @@ Conventional Commits in English: `type(scope): summary` — scopes like `remote`
 python3 roadmap/board.py [--next|--human|--check|--layer L1]   # roadmap
 infra/remote/doctor.sh                                         # remote access health
 infra/remote/setup.sh                                          # re-apply remote access (idempotent)
+
+# Python (uv workspace, Python 3.12; never pip-install into the system python)
+uv sync --all-packages --group dev                             # install every package + dev tools
+uv run tau chat                                                # talk to tau in the terminal
+uv run tau tui                                                 # Textual UI (#008)
+uv run tau hub run|status|stop|install|uninstall               # hub daemon (#009)
+uv run pytest -q                                               # all tests, offline (FakeModel)
+uv run ruff check .                                            # lint
+uv run ruff format .                                           # format (CI runs --check)
+uv build --package tau-core                                    # standalone wheel in dist/
 ```
 
-Python and TypeScript commands are added here by the issues that introduce them (#004, #014, #024).
+Config lives in `tau.toml` (roles → provider + model id) and `.env` (credentials; names in `.env.example`). Tests never need credentials: use `tau_core.testing` (`FakeModel`, `ScriptedApprover`, `test_config`). TypeScript commands are added by #014 and #024.
 
 ## Agent skills
 

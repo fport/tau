@@ -1,0 +1,30 @@
+# tau hub as a systemd user unit (the RPi5 hub). Rendered by `tau hub systemd-unit`.
+#
+#   tau hub systemd-unit > ~/.config/systemd/user/tau-hub.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now tau-hub
+#   loginctl enable-linger "$$USER"    # start at boot, without a login session
+#
+# Restart=on-failure: systemd restarts the hub after a crash or kill, but not after a
+# clean stop (`tau hub stop` exits 0).
+
+[Unit]
+Description=tau hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${exec_start}
+WorkingDirectory=${working_directory}
+Environment=${env_home}
+Environment=${env_data_dir}
+Environment=TAU_ROLE=hub
+Environment=${env_path}
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

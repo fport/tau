@@ -198,6 +198,7 @@ class TauApp(App[None]):
         session_id: str | None = None,
         missing_credentials: MissingCredentials | None = None,
         show_paths: bool = True,
+        version: str | None = None,
     ) -> None:
         """``agent=None`` is the no-credentials start (``missing_credentials`` says what is
         missing): the app opens on ``config`` with the settings screen on the Credentials
@@ -213,6 +214,9 @@ class TauApp(App[None]):
         self._session_id = session_id
         self.missing_credentials = missing_credentials
         self.show_paths = show_paths
+        self.version = version or core_version
+        """What the welcome card shows as the tau version (tests pin it so the snapshots do
+        not change with every release)."""
         self.approver = approver
         if approver is not None:
             approver.attach(self)
@@ -316,7 +320,7 @@ class TauApp(App[None]):
     def welcome_facts(self) -> WelcomeFacts:
         total, approval = self._tool_counts()
         return WelcomeFacts(
-            version=core_version,
+            version=self.version,
             profile=self.config.profile,
             session_id=self.session_id,
             role=self.role,
@@ -1112,6 +1116,7 @@ def build_app(
     show_durations: bool = True,
     stream_mode: str = "auto",
     show_paths: bool = True,
+    version: str | None = None,
 ) -> TauApp:
     """Build the agent for the ``tui`` channel with a :class:`TuiApprover` and wrap it.
 
@@ -1124,8 +1129,8 @@ def build_app(
 
     When the first agent cannot be built for lack of credentials the app still opens, without
     an agent, on the settings screen's Credentials section (see :class:`TauApp`); every other
-    failure propagates. ``show_paths=False`` keeps real paths out of the settings screen
-    (snapshots).
+    failure propagates. ``show_paths=False`` keeps real paths out of the settings screen and
+    ``version`` pins what the welcome card shows (snapshots).
     """
     config = config or Config.load()
     if profile:
@@ -1184,4 +1189,5 @@ def build_app(
         session_id=session_id,
         missing_credentials=missing,
         show_paths=show_paths,
+        version=version,
     )

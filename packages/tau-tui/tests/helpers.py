@@ -29,6 +29,9 @@ from textual.pilot import Pilot
 
 SESSION_ID = "20260929-120000-abcd"
 FIXED_NOW = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)
+FIXED_VERSION = "0.0.0"
+"""What the welcome card shows in tests: the source-tree fallback of ``tau_core.__version__``,
+so a release never changes a snapshot."""
 # Split so a repository-wide search for personal paths does not flag this file.
 PATH_FRAGMENTS = ("/" + "Users/", "/" + "home/", "/" + "tmp/")
 
@@ -60,6 +63,7 @@ def make_app(tmp_path: Path, replies: list[Any], tools: list[Any] | None = None,
     kw.setdefault("config", test_config(tmp_path))
     kw.setdefault("session_id", SESSION_ID)
     kw.setdefault("clock", fixed_clock)
+    kw.setdefault("version", FIXED_VERSION)
     return build_app(tools=tools or [], **kw)
 
 

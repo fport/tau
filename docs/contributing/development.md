@@ -82,7 +82,7 @@ Rules that tests enforce (and that you must not weaken):
 
 ### TUI snapshots
 
-The TUI has fourteen SVG snapshots under `packages/tau-tui/tests/__snapshots__/test_snapshots/` as `.raw` files (pytest-textual-snapshot 1.0 with syrupy 6). Every snapshot uses the fixed session id `20260929-120000-abcd` (the setup screen, which has no session, is checked for paths only), a fixed clock, UTC event times, no motion and no durations, and is taken after the streams stopped; the settings snapshot runs with `show_paths=False` so no directory of the test machine appears.
+The TUI has fourteen SVG snapshots under `packages/tau-tui/tests/__snapshots__/test_snapshots/` as `.raw` files (pytest-textual-snapshot 1.0 with syrupy 6). Every snapshot uses the fixed session id `20260929-120000-abcd` (the setup screen, which has no session, is checked for paths only), the pinned version `0.0.0` on the welcome card (`build_app(version=...)`, so a release never changes a snapshot), a fixed clock, UTC event times, no motion and no durations, and is taken after the streams stopped; the settings snapshot runs with `show_paths=False` so no directory of the test machine appears.
 
 ```sh
 uv run pytest packages/tau-tui --snapshot-update    # after an intended visual change

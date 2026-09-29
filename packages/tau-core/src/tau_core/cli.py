@@ -9,13 +9,25 @@ the command, so every subcommand's ``Config.load()`` sees them without extra plu
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from importlib import metadata
 from pathlib import Path
+from typing import Any, TypeVar
 
 import click
 
 from tau_core.logs import configure_logging, reset_logging
 from tau_core.plugins import command_names, load_command
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+HELP_TEXT = "Bu yardımı gösterir ve çıkar."
+
+
+def help_option() -> Callable[[F], F]:
+    """``-h/--help`` with Turkish help text, for tau's own commands."""
+    return click.help_option("-h", "--help", help=HELP_TEXT)
+
 
 HELP = (
     "tau — kişisel akıllı gövde ajanı.\n\n"
@@ -51,7 +63,7 @@ def _export_env(ctx: click.Context, values: dict[str, str]) -> None:
 
 
 @click.group(cls=TauCLI, help=HELP, context_settings={"help_option_names": ["-h", "--help"]})
-@click.help_option("-h", "--help", help="Bu yardımı gösterir ve çıkar.")
+@help_option()
 @click.option("--profile", metavar="AD", help="Etkin profil (varsayılan: TAU_PROFILE, yoksa 'ev').")
 @click.option(
     "--home",
@@ -76,6 +88,7 @@ def cli(ctx: click.Context, profile: str | None, home: Path | None, verbose: boo
 
 
 @cli.command(name="version", help="Kurulu tau paketlerinin sürümlerini gösterir.")
+@help_option()
 def version() -> None:
     names = sorted(
         {

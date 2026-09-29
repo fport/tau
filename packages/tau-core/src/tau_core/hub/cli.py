@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import click
 
+from tau_core.cli import help_option
+
 NOT_YET = "Henüz yok (issue 009)."
 
 
 @click.group(name="hub", help="tau'yu hub rolünde uzun süre çalışan bir servis olarak yönetir.")
+@help_option()
 def hub() -> None:
     pass
 
 
 def _placeholder(name: str, help_text: str) -> click.Command:
     @click.command(name=name, help=help_text)
+    @help_option()
     def command() -> None:
         click.echo(NOT_YET)
 

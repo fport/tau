@@ -220,6 +220,6 @@
     <ellipse cx="941.0" cy="468" rx="2" ry="33" fill="url(#glint)" opacity="0.79"/><rect x="940.2" y="468" width="1.6" height="97" fill="url(#reflect)" opacity="0.59"/>
   </g>
 
-  <text x="640.0" y="534" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" letter-spacing="7" fill="#F6B9A6" opacity="0.75">DÜŞÜNÜR · DOKUNUR · HATIRLAR</text>
+  <text x="640.0" y="534" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" letter-spacing="7" fill="#F6B9A6" opacity="0.75">THINKS · TOUCHES · REMEMBERS</text>
   <rect width="1280" height="560" fill="url(#vignette)"/>
 </svg>

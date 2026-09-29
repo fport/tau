@@ -12,7 +12,7 @@ Phone (Termius) ──▶ Tailscale ──▶ OpenSSH on the hub ──▶ mosh 
 | **OpenSSH** (macOS Remote Login) | Login by key only, only as your user, only from the tailnet. |
 | **mosh** | The connection survives network changes and a locked phone. |
 | **tmux** | The session, and whatever runs in it, keeps running when the connection drops. |
-| **keep-awake agent** | The Mac does not sleep while on AC power (`caffeinate -s`). |
+| **keep-awake agent** | The Mac does not sleep while on AC power (`caffeinate -s`). Once [TauBar](taubar.md) is installed, `setup.sh` removes it and TauBar does the job. |
 
 The scripts live in [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/remote) of the repository. They were written for a MacBook hub; the Linux notes below cover a Raspberry Pi.
 
@@ -163,7 +163,7 @@ Nothing else can approve. The tmux session is the trusted channel here: it runs 
 
 **`mosh-server not found`.** Run `./infra/remote/setup.sh` again. Non-interactive SSH sessions read only `~/.zshenv`, which is where the script puts the `PATH` entry.
 
-**I cannot reach the hub.** Check in order: is Tailscale on on the phone, is the hub asleep, what does `doctor.sh` say. A MacBook sleeps with the lid closed; plug it in and leave the lid open, or use clamshell mode with an external display. The "stay awake even with the lid closed" mode arrives with TauBar (roadmap issue 024).
+**I cannot reach the hub.** Check in order: is Tailscale on on the phone, is the hub asleep, what does `doctor.sh` say. A MacBook sleeps with the lid closed; plug it in and leave the lid open, use clamshell mode with an external display, or pick TauBar's "Keep awake with the lid closed" mode (it needs a one-time sudoers rule, see [TauBar](taubar.md#set-up-the-lid-closed-mode)).
 
 **The TUI is black and white.** Termius over mosh drops 24-bit colour escapes; 256 colours come through. `infra/remote/tmux/tau.tmux.conf` therefore does not force truecolor (`RGB`) for `xterm-256color` clients, so tmux maps the TUI's colours to the 256-colour palette for the phone. If you set such an override in your own `~/.tmux.conf`, remove it, reload with `Ctrl-b r` and reconnect in Termius (tmux decides a client's colours when it attaches). Outside tmux, `TEXTUAL_COLOR_SYSTEM=256 uv run tau tui` does the same for one run.
 

@@ -61,7 +61,9 @@ These are **not read by tau**. They are the personal values of your remote-acces
 | `TAU_PHONE_TAILNET_IP` | `100.x.y.z` |
 | `TAU_PHONE_SSH_KEY_FP` | `SHA256:...` |
 
-The remote-access scripts themselves read `infra/remote/config.env` (defaults) and `config.local.env` (gitignored overrides): `TAU_REMOTE_USER`, `TAU_TMUX_SESSION` (`tau`), `TAU_TAILNET_V4` (`100.64.0.0/10`), `TAU_TAILNET_V6` (`fd7a:115c:a1e0::/48`), `TAU_SSHD_CONF` (`/etc/ssh/sshd_config.d/010-tau.conf`) and `TAU_KEEPAWAKE` (`1`; set `0` and re-run `setup.sh` to drop the keep-awake agent).
+The remote-access scripts themselves read `infra/remote/config.env` (defaults) and `config.local.env` (gitignored overrides): `TAU_REMOTE_USER`, `TAU_TMUX_SESSION` (`tau`), `TAU_TAILNET_V4` (`100.64.0.0/10`), `TAU_TAILNET_V6` (`fd7a:115c:a1e0::/48`), `TAU_SSHD_CONF` (`/etc/ssh/sshd_config.d/010-tau.conf`), `TAU_KEEPAWAKE` (`1`; set `0` and re-run `setup.sh` to drop the keep-awake agent; ignored once TauBar is installed) and `TAU_TAUBAR_APP` (empty: TauBar.app is looked for in `/Applications`, then `~/Applications`).
+
+[TauBar](../guides/taubar.md) reads one variable of its own: `TAUBAR_HOME` puts its settings, state and log in one directory instead of `~/Library/Application Support/com.tau.taubar` and `~/Library/Logs/com.tau.taubar` (tests, a second copy).
 
 ## Tokens for SSH sessions
 

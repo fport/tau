@@ -1,0 +1,180 @@
+# TauBar
+
+tau's macOS menu bar app: Tauri v2 with a Rust core and a small React/TypeScript window. Tray
+only, no Dock icon.
+
+What it does today:
+
+- **Sleep modes:** Normal, Keep awake on AC power (default), Keep awake with the lid closed.
+- **Launch at login:** a checkbox that registers TauBar as a login item.
+- A **window** (Settings…) with the same switches and TauBar's own log.
+
+The status panel, approvals and voice come with later roadmap issues (025, 031).
+
+```text
+τ
+├─ Sleep: kept awake on AC power
+├─   Normal
+├─ ✓ Keep awake on AC power
+├─   Keep awake with the lid closed (needs setup)
+├─ ──────────
+├─   Launch at login
+├─   Settings…                              ⌘,
+├─   Open TauBar Log
+├─ ──────────
+└─   Quit TauBar                            ⌘Q
+```
+
+## Build
+
+Needs macOS 13 or later, Rust (`rustup`), Node 20+ with pnpm, and the Xcode command line tools.
+
+```sh
+cd apps/taubar
+pnpm install
+pnpm tauri build          # → src-tauri/target/release/bundle/macos/TauBar.app
+```
+
+`pnpm tauri dev` runs it with hot reload for development. Launch at login needs the built
+`.app` (see below), so test that part with a build.
+
+### Signing
+
+`src-tauri/tauri.conf.json` sets `bundle.macOS.signingIdentity` to `"-"`: `tauri build` signs
+the app **ad hoc** (`codesign -dv TauBar.app` shows `Signature=adhoc`). That is enough for your
+own Mac: an app you built yourself carries no quarantine flag, so Gatekeeper opens it. A copy
+that arrives from another machine (a download, AirDrop) is quarantined; open it once with
+right-click → Open, or clear the flag with `xattr -dr com.apple.quarantine TauBar.app`.
+
+An ad-hoc signature changes with every build, so macOS sees each build as a new app. After
+replacing TauBar.app with a new build, check that "Launch at login" is still ticked.
+
+For a Developer ID signature and notarization, set `APPLE_SIGNING_IDENTITY` (and `APPLE_ID`,
+`APPLE_PASSWORD`, `APPLE_TEAM_ID` for notarization) before `pnpm tauri build`; see Tauri's
+[macOS code signing](https://v2.tauri.app/distribute/sign/macos/) guide.
+
+## Install
+
+```sh
+cp -R src-tauri/target/release/bundle/macos/TauBar.app /Applications/
+open -a TauBar
+```
+
+The first start opens TauBar's window; after that it lives in the menu bar as **τ**. Then:
+
+1. Pick a sleep mode (Keep awake on AC power is the default).
+2. Tick **Launch at login**.
+3. Run `infra/remote/setup.sh` once: with TauBar.app in `/Applications` it removes the
+   `com.tau.keepawake` agent, whose job TauBar now does. `infra/remote/doctor.sh` accepts
+   either one.
+
+**No τ in the menu bar?** On a MacBook with a notch, macOS hides menu bar icons that do not fit
+next to the notch; new ones go first. Open TauBar again (Spotlight, Finder or
+`open -a TauBar`) and its window appears, with every switch and a Quit button. To bring the icon
+back, make room: quit other menu bar apps, or switch some off under System Settings → Menu Bar →
+Allow in the Menu Bar (and check that TauBar is allowed there).
+
+## Sleep modes
+
+| Mode | What TauBar does | Check |
+|---|---|---|
+| Normal | nothing | no TauBar line in `pmset -g assertions` |
+| Keep awake on AC power | holds an IOKit `PreventSystemSleep` assertion, like `caffeinate -s`; macOS honours it only on AC power, so on battery or with the lid closed the Mac still sleeps | `pmset -g assertions` shows `PreventSystemSleep 1` and `pid …(taubar): … named: "TauBar keeps the Mac awake for tau"` |
+| Keep awake with the lid closed | the assertion plus `sudo -n pmset -a disablesleep 1` through a narrow sudoers rule | `pmset -g` shows `SleepDisabled 1` |
+
+The choice is saved and applied again at the next start. **Quitting restores normal sleep:**
+TauBar releases the assertion and, if it set it, runs `pmset -a disablesleep 0`. The same
+happens on SIGTERM, SIGINT and SIGHUP (logout, `kill <pid>`, Ctrl-C in `pnpm tauri dev`). A
+`kill -9` cannot be caught: macOS drops the assertion with the process, and `disablesleep` stays
+until TauBar's next start resets it (or `sudo pmset -a disablesleep 0`).
+
+### The lid-closed mode
+
+It needs one sudoers rule, and TauBar shows the mode as unavailable ("needs setup") until the
+rule is there. TauBar never runs sudo to find out: it looks for the file
+`/etc/sudoers.d/tau-taubar`, and it only calls `sudo -n` (never a password prompt) after you pick
+the mode. Install the rule from the checkout, in your own terminal:
+
+```sh
+apps/taubar/sudoers/install-sudoers.sh --print   # show the rendered rule and check it with visudo
+apps/taubar/sudoers/install-sudoers.sh           # install it (sudo asks for your password)
+```
+
+The rule allows your user exactly two commands, with fixed arguments:
+
+```text
+<you> ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1
+```
+
+The script renders [`sudoers/tau-taubar.sudoers`](sudoers/tau-taubar.sudoers) for `id -un`,
+checks it with `visudo -c`, installs it as `/etc/sudoers.d/tau-taubar` (`root:wheel`, `0440`),
+checks the whole sudoers configuration again (and removes the file if it does not parse), and
+confirms with `sudo -n -l` that the command is allowed. TauBar notices the rule within five
+seconds.
+
+To remove it (this re-enables sleep first):
+
+```sh
+apps/taubar/sudoers/uninstall-sudoers.sh
+```
+
+A closed MacBook that does not sleep still makes heat. Use this mode on AC power with the Mac in
+the open air, not in a bag.
+
+## Launch at login
+
+The checkbox registers TauBar with `SMAppService.mainApp` (macOS 13+), the same list as System
+Settings → General → Login Items → Open at Login; you can switch it off there too, and TauBar's
+checkbox follows within a few seconds. TauBar does not use a LaunchAgent with `RunAtLoad`: on
+the Mac it was built on, launchd pended every automatic spawn of user agents (roadmap issues
+057 and 052), and `tauri-plugin-autostart` offers only a LaunchAgent or an AppleScript login
+item.
+
+The registration points at the app where it is when you tick the box, so install TauBar.app in
+`/Applications` first.
+
+Verified on macOS 26.3.1: ticking the box registers TauBar (status `Enabled`), unticking removes
+it (`NotRegistered`). Not verified yet: that it actually starts at the next login, because
+nobody logged out while this was built; check it after your next login.
+
+## Files
+
+| Path | What |
+|---|---|
+| `~/Library/Application Support/com.tau.taubar/settings.json` | your choices (sleep mode) |
+| `~/Library/Application Support/com.tau.taubar/state.json` | what TauBar changed and must undo (`lid_engaged`) |
+| `~/Library/Logs/com.tau.taubar/taubar.log` | TauBar's short log (rotated once at 256 KB) |
+
+`TAUBAR_HOME=/some/dir` keeps everything in one directory instead (`settings.json`,
+`state.json`, `logs/taubar.log`): for tests or a second copy.
+
+## Uninstall
+
+1. Untick **Launch at login** (or remove TauBar in System Settings → Login Items).
+2. Quit TauBar: it restores normal sleep.
+3. If you installed the sudoers rule: `apps/taubar/sudoers/uninstall-sudoers.sh`.
+4. Delete `/Applications/TauBar.app` and the files above.
+5. Run `infra/remote/setup.sh` if the Mac should still stay awake on AC power without TauBar:
+   it installs `com.tau.keepawake` again.
+
+## Development
+
+```sh
+pnpm test                          # vitest: the window's display logic
+pnpm build                         # tsc + vite
+(cd src-tauri && cargo test)       # Rust: sleep modes, settings, log, menu labels
+```
+
+| File | Job |
+|---|---|
+| `src-tauri/src/lib.rs` | app setup (tray only), menu actions, window, ticker |
+| `src-tauri/src/core.rs` | state shared by the menu and the window |
+| `src-tauri/src/sleep.rs` | the three modes behind a `Power` trait (a fake in tests) |
+| `src-tauri/src/login.rs` | `SMAppService.mainApp` |
+| `src-tauri/src/tray.rs` | the native menu |
+| `src-tauri/src/settings.rs`, `eventlog.rs`, `signals.rs`, `commands.rs` | settings files, TauBar's log, quit on signals, window commands |
+| `src/App.tsx`, `src/api.ts`, `src/format.ts` | the window |
+| `sudoers/` | the lid-closed rule and its install/uninstall scripts |
+
+The UI is English only for now; tau's other UIs take their strings from the `tau_core.i18n`
+table, which TauBar cannot read yet.

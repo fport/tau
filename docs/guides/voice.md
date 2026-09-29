@@ -44,7 +44,7 @@ The wake phrase must have three or four syllables; picking it and recording samp
 ## Microphone permission
 
 !!! warning "Microphone permission on macOS"
-    macOS grants microphone access per application identity. A Python process started from the terminal inherits the terminal's permission (or asks for it), a launchd agent has none, and a Tauri app has its own. The plan is that **TauBar owns the microphone permission** and runs the voice pipeline as its sidecar, so the permission belongs to a signed app you can see in **System Settings → Privacy & Security → Microphone**. Until TauBar exists (issue 024), push-to-talk in `tau tui` will ask for the permission on behalf of your terminal app. Grant it there, and revoke it there when you do not want it.
+    macOS grants microphone access per application identity. A Python process started from the terminal inherits the terminal's permission (or asks for it), a launchd agent has none, and a Tauri app has its own. The plan is that **TauBar owns the microphone permission** and runs the voice pipeline as its sidecar, so the permission belongs to a signed app you can see in **System Settings → Privacy & Security → Microphone**. Until TauBar runs the voice pipeline (TauBar itself exists since issue 024, without voice), push-to-talk in `tau tui` will ask for the permission on behalf of your terminal app. Grant it there, and revoke it there when you do not want it.
 
     On a Raspberry Pi there is no permission system; the microphone is a device file. Choose a USB microphone with a hardware mute if that matters to you.
 

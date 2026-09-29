@@ -78,6 +78,7 @@ nav:
       - Voice: guides/voice.md
       - Backups (encrypted, R2): guides/backups.md
       - Run tau as a service: guides/hub-service.md
+      - TauBar (macOS menu bar): guides/taubar.md
       - Move the hub to a Raspberry Pi: guides/raspberry-pi.md
   - Reference:
       - CLI: reference/cli.md

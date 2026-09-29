@@ -5,3 +5,18 @@
 *.local.env
 __pycache__/
 *.py[cod]
+
+# Python / uv
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Personal facts about the user stay local (persona/user.example.md is the tracked template)
+persona/user.md
+
+# Tools tau wrote itself, waiting for approval
+tools/_pending/*
+!tools/_pending/.gitkeep

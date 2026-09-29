@@ -1,0 +1,39 @@
+[project]
+name = "tau-core"
+version = "0.1.0"
+description = "tau's agent core: build_agent, persona, tiers, roles, sessions and the tau CLI."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "strands-agents[anthropic]>=1.57",
+    "click>=8.1",
+    "rich>=13",
+    "python-dotenv>=1.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+]
+
+[project.scripts]
+tau = "tau_core.cli:main"
+
+[project.entry-points."tau.tools"]
+builtin = "tau_core.builtin_tools:TOOLS"
+
+[project.entry-points."tau.commands"]
+chat = "tau_core.channels.terminal:chat"
+hub = "tau_core.hub.cli:hub"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tau_core"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["tests/fixtures"]

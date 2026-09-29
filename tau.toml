@@ -1,0 +1,33 @@
+# tau.toml — static configuration read by tau_core.config.Config.
+# Role → provider + model id. Model ids are data; code never hardcodes them.
+# Bedrock ids use the Converse API form Strands uses (cross-region "global." prefix).
+# Verify the exact ids in the Bedrock console while doing issue 003.
+# Secrets never go here: credentials come from .env (see .env.example).
+
+[models.roles.brain]
+provider = "bedrock"                      # bedrock | anthropic | fake (ollama: issue 012)
+model_id = "global.anthropic.claude-sonnet-5"
+max_tokens = 4096
+
+[models.roles.brain.fallback]             # used only when the primary has no credentials
+provider = "anthropic"
+model_id = "claude-sonnet-5"
+
+[models.roles.fast]
+provider = "bedrock"
+model_id = "global.anthropic.claude-haiku-4-5"
+max_tokens = 1024
+
+[models.roles.local]
+provider = "ollama"                       # arrives in issue 012; resolving it now raises a clear error
+model_id = "qwen3:8b"
+
+[agent]
+max_turns = 12                            # per-turn loop guard, Strands Limits(turns=...)
+
+[sessions]
+backend = "memory"                        # memory | file (issue 007) | cloud (issue 018, via the tau-cloud Worker API)
+
+[hub]
+control_port = 7877
+heartbeat_seconds = 5

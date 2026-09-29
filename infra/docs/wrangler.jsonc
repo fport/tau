@@ -1,0 +1,15 @@
+// The docs site as Cloudflare static assets (the successor of Cloudflare Pages).
+// Build first (`uv run --group docs mkdocs build --strict` writes ./site at the repo root),
+// then deploy with `npx wrangler deploy -c infra/docs/wrangler.jsonc`. No code runs at the
+// edge: every request is served from the uploaded files. The custom hostname
+// (docs.tau.<domain>) is attached once the domain's DNS is on Cloudflare (roadmap 022/079).
+{
+  "$schema": "https://developers.cloudflare.com/schemas/wrangler.json",
+  "name": "tau-docs",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "../../site",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

@@ -1,17 +1,17 @@
 name: docs
 
 # Builds the MkDocs Material site (strict: a broken link or a missing page fails the build)
-# and deploys it to Cloudflare Pages, project `tau-docs`, served at
-# https://docs.tau.getporti.com.
+# and deploys it as Cloudflare Workers static assets (the successor of Cloudflare Pages):
+# Worker `tau-docs`, config in infra/docs/wrangler.jsonc, served at https://docs.tau.getporti.com
+# once the domain is on Cloudflare (until then at the account's workers.dev subdomain).
 #
 # One-time setup by the owner (details in docs/contributing/release.md):
-#   1. Cloudflare dashboard -> Workers & Pages -> Create -> Pages -> "Upload assets" (direct
-#      upload), project name `tau-docs`; or from a shell with a logged-in wrangler:
-#        npx wrangler pages project create tau-docs --production-branch main
-#   2. On that project: Custom domains -> add `docs.tau.getporti.com` (the zone is on
-#      Cloudflare, so the DNS record is added for you).
+#   1. First deploy from a shell with a logged-in wrangler (creates the Worker):
+#        uv run --group docs mkdocs build --strict && npx wrangler deploy -c infra/docs/wrangler.jsonc
+#   2. On the Worker: Settings -> Domains & Routes -> add `docs.tau.getporti.com` (the zone is
+#      on Cloudflare, so the DNS record is added for you).
 #   3. An API token (My Profile -> API Tokens -> Create -> "Edit Cloudflare Workers" template,
-#      or a custom one with Account > Cloudflare Pages > Edit) -> repository secret
+#      or a custom one with Account > Workers Scripts > Edit) -> repository secret
 #      CLOUDFLARE_API_TOKEN; the account id (dashboard sidebar) -> repository secret
 #      CLOUDFLARE_ACCOUNT_ID.
 # Without those two secrets (forks, dry runs) the workflow only builds the site and keeps it
@@ -29,7 +29,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: "Deploy to Cloudflare Pages (needs the secrets); off = build only"
+        description: "Deploy to Cloudflare (needs the secrets); off = build only"
         type: boolean
         default: false
 
@@ -61,11 +61,11 @@ jobs:
           path: site/
           if-no-files-found: error
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy to Cloudflare (Workers static assets)
         if: env.HAS_CLOUDFLARE == 'true' && (github.event_name == 'push' || inputs.deploy)
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # `main` is the production branch of the Pages project; any other ref is a preview.
-          command: pages deploy site --project-name tau-docs --branch ${{ github.ref_name }} --commit-dirty=true
+          # Every deploy from main replaces the production Worker; the config is versioned in the repo.
+          command: deploy -c infra/docs/wrangler.jsonc

@@ -9,6 +9,8 @@
   "compatibility_date": "2026-09-01",
   // Custom domain: Cloudflare creates the DNS record and the certificate on deploy.
   "routes": [{ "pattern": "docs.tau.getporti.com", "custom_domain": true }],
+  // Keep the workers.dev URL too: a fallback while resolvers still cache the old nameservers.
+  "workers_dev": true,
   "assets": {
     "directory": "../../site",
     "html_handling": "auto-trailing-slash",

@@ -99,7 +99,11 @@ class _Banner:
         pass
 
 
-@hub.command(name="run", help="Hub'ı ön planda çalıştırır (launchd ve systemd de bunu çalıştırır).")
+@hub.command(
+    name="run",
+    help="Hub'ı ön planda çalıştırır (launchd ve systemd de bunu çalıştırır).",
+    short_help="Hub'ı ön planda çalıştırır.",
+)
 @help_option()
 @click.pass_context
 def run_command(ctx: click.Context) -> None:
@@ -289,7 +293,11 @@ def stop_command(ctx: click.Context, timeout: float) -> None:
 # -- service management --------------------------------------------------------------------
 
 
-@hub.command(name="install", help="Hub'ı launchd kullanıcı ajanı olarak kurar ve başlatır (macOS).")
+@hub.command(
+    name="install",
+    help="Hub'ı launchd kullanıcı ajanı olarak kurar ve başlatır (macOS).",
+    short_help="launchd ajanını kurar ve başlatır (macOS).",
+)
 @help_option()
 @click.pass_context
 def install_command(ctx: click.Context) -> None:
@@ -316,7 +324,11 @@ def install_command(ctx: click.Context) -> None:
     click.echo("  Durum için: tau hub status")
 
 
-@hub.command(name="uninstall", help="launchd kullanıcı ajanını durdurur ve kaldırır (macOS).")
+@hub.command(
+    name="uninstall",
+    help="launchd kullanıcı ajanını durdurur ve kaldırır (macOS).",
+    short_help="launchd ajanını kaldırır (macOS).",
+)
 @help_option()
 @click.pass_context
 def uninstall_command(ctx: click.Context) -> None:

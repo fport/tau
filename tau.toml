@@ -26,7 +26,7 @@ model_id = "qwen3:8b"
 max_turns = 12                            # per-turn loop guard, Strands Limits(turns=...)
 
 [sessions]
-backend = "memory"                        # memory | file (issue 007) | cloud (issue 018, via the tau-cloud Worker API)
+backend = "file"                          # memory | file (under TAU_DATA_DIR/sessions) | cloud (issue 018, via the tau-cloud Worker API)
 
 [hub]
 control_port = 7877

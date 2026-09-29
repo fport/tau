@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Bir cihazın public key'ini ~/.ssh/authorized_keys'e ekler (tekrar eklemez).
-# Kullanım: ./add-key.sh "ssh-ed25519 AAAA… iphone-termius"   ya da argümansız çalıştırıp yapıştır.
+# Adds a device's public key to ~/.ssh/authorized_keys (never twice).
+# Usage: ./add-key.sh "ssh-ed25519 AAAA... iphone-termius"   or run without arguments and paste.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
@@ -11,9 +11,9 @@ if [[ -z "$key" ]]; then
 fi
 key=$(printf '%s' "$key" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
-fingerprint=$(printf '%s\n' "$key" | ssh-keygen -l -f - 2>/dev/null) || die "Geçerli bir public key değil"
+fingerprint=$(printf '%s\n' "$key" | ssh-keygen -l -f - 2>/dev/null) || die "Not a valid public key"
 case "$key" in
-  ssh-rsa*) warn "RSA anahtarı; mümkünse Termius'ta ED25519 üret" ;;
+  ssh-rsa*) warn "RSA key; generate an ED25519 key in Termius if you can" ;;
 esac
 
 mkdir -p "$HOME/.ssh"
@@ -22,8 +22,8 @@ ak="$HOME/.ssh/authorized_keys"
 touch "$ak"
 chmod 600 "$ak"
 if grep -qxF -- "$key" "$ak"; then
-  ok "Zaten ekli: $fingerprint"
+  ok "Already added: $fingerprint"
 else
   printf '%s\n' "$key" >> "$ak"
-  ok "Eklendi: $fingerprint"
+  ok "Added: $fingerprint"
 fi

@@ -51,7 +51,7 @@ that may become public.
   character for one call). A missing or empty `user.md` is a legitimate state (the user may
   delete it) and falls back to "siz"; an unreadable one keeps the last good version.
 - **Dynamic context**: always Europe/Istanbul (a naive clock is Istanbul time; without tzdata
-  a fixed UTC+3 is used, since Türkiye has had no DST since 2016). A value no layer provides
+  a fixed UTC+3 is used, since Turkey has had no DST since 2016). A value no layer provides
   reads `bilinmiyor` and an empty node list reads `yok`, so the model can tell "not wired yet"
   from "nothing there"; `persona.md` tells it never to guess an unknown value.
 - **Context sources** (`ContextSource`, passed as `build_agent(context_sources=...)`) are how
@@ -72,3 +72,21 @@ that may become public.
   `.env` over SSH); `TAU_DATA_DIR` moves with the session backend.
 - Changing tau's character is a text edit with no deploy; a bad edit is caught at the next
   start, not in the middle of a conversation.
+
+## Amended (2026-09-29, issue 062)
+
+- **Prompt headings are English.** The layout is `persona.md`, then `## User` with `user.md`
+  (or "No user file (persona/user.md). Address the user formally."), then `## Now` with the
+  dynamic context. This supersedes the reasoning above that the headings are Turkish because
+  the model reads them: everything the model reads is English, and `persona.md` refers to the
+  sections by their English names (`"User"`, `"Now"`). The persona body itself may be in any
+  language; it is Turkish by default and tells tau to mirror the user's language.
+- **Dynamic-context labels and markers are English**: `Date and time`, `Profile`, `Host
+  role`, `Live nodes`, `Budget today`; a value no layer provides reads `unknown` and an empty
+  node list reads `none`. Weekday names are English. Profiles are `home` / `travel` / `sport`.
+- The formal address in the "no user file" sentence is a persona instruction ("formally"),
+  not a Turkish pronoun in the scaffolding; the persona body decides how that reads in its
+  language.
+- The system prompt is also built as content blocks (`build_system_content`) with a cache point
+  after the persona and user sections, so the dynamic `## Now` block is the only part that
+  changes between calls.

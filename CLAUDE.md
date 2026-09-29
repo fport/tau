@@ -4,16 +4,18 @@ Personal "smart body" agent platform. A Strands agent runs on the **hub** (MacBo
 
 Read before non-trivial work:
 
-- `docs/ARCHITECTURE.md` — every decision, the principles and the layer roadmap (Turkish)
+- `docs/ARCHITECTURE.md` — every decision, the principles and the layer roadmap
 - `CONTEXT.md` — glossary; use its terms exactly
 - `roadmap/README.md` — how issues are tracked and worked
 
 ## Language
 
 - Talk to the user in Turkish.
-- English for new code, identifiers, comments, commit messages, issues and package READMEs.
-- Existing files keep their language: `docs/ARCHITECTURE.md` and everything in `infra/remote/` are Turkish. Don't translate them unasked.
-- tau's own user-facing output (persona, Telegram, CLI messages) is Turkish.
+- Everything in the repo is English: code, identifiers, comments, docstrings, docs, READMEs, ADRs, issues, commit messages, `docs/ARCHITECTURE.md`, `infra/remote/` and the messages its scripts print.
+- tau's persona (`persona/persona.md` body) is Turkish by default and language-adaptive: it answers in whichever language the user writes. Its HTML comments and `user.example.md` are English.
+- UI chrome (slash commands, labels, pane titles, key hints, notices, approval dialog, CLI help) goes through the `tau_core.i18n` message table (`t(key, language)`), selected by `[ui] language` in `tau.toml` (`en` default, `tr`), `TAU_LANG`, `tau --lang` or `/lang`. Errors raised before Config exists are plain English.
+- Everything the model reads (prompt headings `## User` / `## Now`, dynamic-context labels, gate texts, tool descriptions, test personas) is fixed English.
+- Never add Turkish strings to code. A Turkish UI string belongs in the `tr` column of the message table, nowhere else.
 
 ## Repo map
 
@@ -36,7 +38,7 @@ This repo is the center. Everything is built so it can be published or split out
 
 - Every directory in `packages/` is an independently publishable PyPI distribution named `tau-<name>` with the flat import name `tau_<name>`. Do not use a `tau` namespace package: `tau` is taken on PyPI (as are `tau-hub` and `tau-agent`).
 - Each package has its own `pyproject.toml`, version, README and tests, and depends on other packages only through their public API as declared dependencies — no path hacks, no private imports.
-- Extension goes through entry points (`tau.tools`, and later `tau.nodes`, `tau.channels`). A package developed in another repo plugs in with `pip install`, without changes here.
+- Extension goes through entry points (`tau.tools`, `tau.commands`, `tau.providers`, `tau.sessions`, `tau.context`, `tau.hub_services`; later `tau.nodes`, `tau.channels`). A package developed in another repo plugs in with `pip install`, without changes here. `tau components` lists what is installed.
 - Split a package into its own repo when it needs its own release cadence, firmware or contributors; tau then consumes it from PyPI and the entry-point contract stays the same.
 - Python 3.12+ with a uv workspace. TypeScript parts (`cloud/`, `apps/taubar`) use pnpm.
 
@@ -71,8 +73,12 @@ infra/remote/setup.sh                                          # re-apply remote
 
 # Python (uv workspace, Python 3.12; never pip-install into the system python)
 uv sync --all-packages --group dev                             # install every package + dev tools
+uv run tau init                                                # first config: tau.toml + persona/user.md from templates
+uv run tau doctor                                              # config, credentials, session store, persona, .env names, hub API
+uv run tau components                                          # every tau.* entry point with distribution, version, state
 uv run tau chat                                                # talk to tau in the terminal
 uv run tau tui                                                 # Textual UI (#008)
+uv run tau --lang tr chat                                      # UI chrome in Turkish for this run (also TAU_LANG, [ui] language)
 uv run tau hub run|status|stop|install|uninstall               # hub daemon (#009)
 uv run pytest -q                                               # all tests, offline (FakeModel)
 uv run ruff check .                                            # lint
@@ -80,7 +86,9 @@ uv run ruff format .                                           # format (CI runs
 uv build --package tau-core                                    # standalone wheel in dist/
 ```
 
-Config lives in `tau.toml` (roles → provider + model id) and `.env` (credentials; names in `.env.example`). Tests never need credentials: use `tau_core.testing` (`FakeModel`, `ScriptedApprover`, `test_config`). TypeScript commands are added by #014 and #024.
+`tau chat` and `tau tui` share the slash commands `/help /tools /sessions /resume /new /session /lang /quit` (Turkish aliases are accepted, never shown).
+
+Config lives in `tau.toml` (roles → provider + model id, `[ui] language`, `[components]`) and `.env` (credentials; names in `.env.example`). Tests never need credentials: use `tau_core.testing` (`FakeModel`, `ScriptedApprover`, `test_config`). TypeScript commands are added by #014 and #024.
 
 ## Agent skills
 

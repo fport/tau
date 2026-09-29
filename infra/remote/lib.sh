@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# infra/remote betiklerinin ortak yardımcıları. Doğrudan çalıştırılmaz, source edilir.
+# Shared helpers for the infra/remote scripts. Not run directly; sourced.
 
 REMOTE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$REMOTE_DIR/config.local.env" ]]; then
@@ -16,8 +16,8 @@ info() { printf '    %s\n' "$*"; }
 step() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 die()  { fail "$*"; exit 1; }
 
-# Dosyadaki `# >>> tau:<ad> >>>` … `# <<< tau:<ad> <<<` bloğunu ekler ya da yeniler.
-# Bloğun dışındaki satırlara dokunmaz; tekrar çalıştırmak güvenlidir.
+# Adds or refreshes the `# >>> tau:<name> >>>` ... `# <<< tau:<name> <<<` block in a file.
+# Lines outside the block are left alone; running it again is safe.
 upsert_block() {
   local file=$1 name=$2 content=$3
   local begin="# >>> tau:$name >>>" end="# <<< tau:$name <<<"
@@ -40,7 +40,7 @@ render_sshd_conf() {
       "$REMOTE_DIR/sshd/tau.conf"
 }
 
-# Tailscale CLI yolunu yazar; GUI uygulamasının içindeki binary'yi de bulur.
+# Prints the path of the Tailscale CLI; also finds the binary inside the GUI app.
 tailscale_cli() {
   if command -v tailscale >/dev/null 2>&1; then
     command -v tailscale

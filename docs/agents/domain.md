@@ -5,7 +5,7 @@ Single-context repo.
 ## Before exploring, read these
 
 - **`CONTEXT.md`** — the domain glossary. Use its terms in issue titles, code, test names and proposals; don't drift to synonyms it lists under *Avoid*.
-- **`docs/ARCHITECTURE.md`** — the decisions from the design session (in Turkish): stack, principles, safety model, roadmap, open items. Treat its decision table as the ADR log.
+- **`docs/ARCHITECTURE.md`** — the decisions from the design session: stack, principles, safety model, roadmap, open items. Treat its decision table as the ADR log.
 - **`docs/adr/`** — new architectural decisions made after the design session, one file each (`NNNN-slug.md`). Create the directory lazily when the first one is written.
 
 If `docs/adr/` doesn't exist, proceed silently.

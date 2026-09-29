@@ -1,0 +1,71 @@
+name: docs
+
+# Builds the MkDocs Material site (strict: a broken link or a missing page fails the build)
+# and deploys it to Cloudflare Pages, project `tau-docs`, served at
+# https://docs.tau.getporti.com.
+#
+# One-time setup by the owner (details in docs/contributing/release.md):
+#   1. Cloudflare dashboard -> Workers & Pages -> Create -> Pages -> "Upload assets" (direct
+#      upload), project name `tau-docs`; or from a shell with a logged-in wrangler:
+#        npx wrangler pages project create tau-docs --production-branch main
+#   2. On that project: Custom domains -> add `docs.tau.getporti.com` (the zone is on
+#      Cloudflare, so the DNS record is added for you).
+#   3. An API token (My Profile -> API Tokens -> Create -> "Edit Cloudflare Workers" template,
+#      or a custom one with Account > Cloudflare Pages > Edit) -> repository secret
+#      CLOUDFLARE_API_TOKEN; the account id (dashboard sidebar) -> repository secret
+#      CLOUDFLARE_ACCOUNT_ID.
+# Without those two secrets (forks, dry runs) the workflow only builds the site and keeps it
+# as an artifact.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy to Cloudflare Pages (needs the secrets); off = build only"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and deploy the site
+    runs-on: ubuntu-latest
+    env:
+      # `secrets` cannot be read in an `if:`; expose their presence through the environment.
+      HAS_CLOUDFLARE: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0 # same pin as ci.yml (no floating v10 tag is published)
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --only-group docs
+      - run: uv run --no-sync mkdocs build --strict
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: site/
+          if-no-files-found: error
+
+      - name: Deploy to Cloudflare Pages
+        if: env.HAS_CLOUDFLARE == 'true' && (github.event_name == 'push' || inputs.deploy)
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # `main` is the production branch of the Pages project; any other ref is a preview.
+          command: pages deploy site --project-name tau-docs --branch ${{ github.ref_name }} --commit-dirty=true

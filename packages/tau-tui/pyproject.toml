@@ -6,6 +6,24 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = ["click>=8.1", "rich>=13", "tau-core>=0.1.0", "textual>=8.2,<9"]
+keywords = ["tau", "agent", "assistant", "tui", "textual", "terminal", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+]
+
+[project.urls]
+Homepage = "https://github.com/fport/tau"
+Documentation = "https://docs.tau.getporti.com"
+Issues = "https://github.com/fport/tau/issues"
+Changelog = "https://github.com/fport/tau/releases"
 
 [project.entry-points."tau.commands"]
 tui = "tau_tui.cli:tui"

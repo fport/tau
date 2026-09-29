@@ -143,7 +143,7 @@ def test_chat_ctrl_d_exits_cleanly(tmp_path: Path) -> None:
     assert "Hoşça kalın." in result.output
 
 
-def test_chat_resume_and_session_placeholders(tmp_path: Path) -> None:
+def test_chat_resume_and_session_commands(tmp_path: Path) -> None:
     home = make_home(tmp_path, FAKE_TOML)
     result = run(
         ["--profile", "spor", "chat", "--resume", "--session", "20260929-120000-abcd"],
@@ -153,7 +153,9 @@ def test_chat_resume_and_session_placeholders(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert "Profil: spor, oturum: 20260929-120000-abcd" in result.output
-    assert result.output.count("Henüz yok (issue 007).") == 3
+    # Full /devam coverage is in test_resume.py; here: nothing earlier, new session, info.
+    assert "Devam edilecek önceki oturum yok." in result.output
+    assert "Yeni oturum: " in result.output and "Depo: memory" in result.output
 
 
 def test_home_option(tmp_path: Path) -> None:

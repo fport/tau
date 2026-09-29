@@ -77,18 +77,133 @@ def render_turn_event(event: TurnEvent) -> str | None:
 
 
 async def cmd_devam(state: ReplState, arg: str) -> None:
-    """``/devam [n|id]``: list recent sessions and resume one (issue 007)."""
-    state.console.print(NOT_YET_SESSIONS)
+    """``/devam [n|id]``: list recent sessions and resume one.
+
+    Without an argument the last 10 earlier sessions are listed and the most recent one is
+    resumed; ``n`` resumes the n-th of that list, an id resumes that session. The current
+    session and sessions without messages (opened and closed without a word) are not listed.
+    The resumed agent gets the stored messages back, so the model sees the whole conversation.
+    """
+    from datetime import datetime
+
+    from strands.types.exceptions import SessionException
+
+    from tau_core.persona import TIMEZONE
+
+    list_limit = 10
+    scan_limit = 100  # empty sessions are skipped, so look further back than the list shows
+    console = state.console
+    current = state.agent.session_id
+
+    def when(iso: str) -> str:
+        try:
+            return f"{datetime.fromisoformat(iso).astimezone(TIMEZONE):%d.%m.%Y %H:%M}"
+        except ValueError:
+            return iso or "?"
+
+    try:
+        if arg and not (arg.isascii() and arg.isdigit()):
+            if arg == current:
+                console.print(f"Zaten bu oturumdasınız: {current}.")
+                return
+            if state.store.read_session(arg) is None:
+                console.print(f"Oturum bulunamadı: {arg}.")
+                return
+            target = arg
+        else:
+            recent = [
+                s
+                for s in state.store.list_sessions(limit=scan_limit)
+                if s.session_id != current and s.message_count > 0
+            ][:list_limit]
+            if not recent:
+                console.print("Devam edilecek önceki oturum yok.")
+                return
+            if arg:
+                n = int(arg)
+                if not 1 <= n <= len(recent):
+                    console.print(f"Listede {n} numaralı oturum yok (1-{len(recent)}).")
+                    return
+                target = recent[n - 1].session_id
+            else:
+                console.print("Son oturumlar:")
+                for n, s in enumerate(recent, start=1):
+                    console.print(
+                        f"{n:>2}. {s.session_id}  {when(s.updated_at)}  {s.channel or '-'}  "
+                        f"{s.title or '(başlıksız)'} ({s.message_count} mesaj)"
+                    )
+                target = recent[0].session_id
+        agent = build_agent(
+            config=state.config,
+            role=state.role,
+            approver=state.approver,
+            session_store=state.store,
+            session_id=target,
+            channel="terminal",
+        )
+        title = str(state.store.read_meta(target).get("title") or "")
+    except (MissingCredentials, ConfigError) as exc:
+        console.print(str(exc))
+        return
+    except (SessionException, OSError, ValueError) as exc:
+        console.print(f"Oturum açılamadı: {exc}")
+        return
+    state.agent.close()
+    state.agent = agent
+    console.print(
+        f"Devam ediliyor: {title or '(başlıksız)'} · {target} "
+        f"({len(agent.messages)} mesaj yüklendi)."
+    )
 
 
 async def cmd_yeni(state: ReplState, arg: str) -> None:
-    """``/yeni``: start a fresh session (issue 007)."""
-    state.console.print(NOT_YET_SESSIONS)
+    """``/yeni``: start a fresh session; the current one stays on record for ``/devam``."""
+    from strands.types.exceptions import SessionException
+
+    try:
+        agent = build_agent(
+            config=state.config,
+            role=state.role,
+            approver=state.approver,
+            session_store=state.store,
+            channel="terminal",
+        )
+    except (MissingCredentials, ConfigError) as exc:
+        state.console.print(str(exc))
+        return
+    except (SessionException, OSError, ValueError) as exc:
+        state.console.print(f"Oturum açılamadı: {exc}")
+        return
+    state.agent.close()
+    state.agent = agent
+    state.console.print(f"Yeni oturum: {agent.session_id}.")
 
 
 async def cmd_oturum(state: ReplState, arg: str) -> None:
-    """``/oturum``: show the current session id and store backend (issue 007)."""
-    state.console.print(NOT_YET_SESSIONS)
+    """``/oturum``: the current session id, title, message count and store backend."""
+    from pathlib import Path
+
+    from strands.types.exceptions import SessionException
+
+    from tau_core.sessions import FileSessionStore
+
+    session_id = state.agent.session_id
+    try:
+        title = str(state.store.read_meta(session_id).get("title") or "")
+    except (SessionException, OSError, ValueError):
+        title = ""
+    backend = state.config.sessions.backend
+    if isinstance(state.store, FileSessionStore):
+        root = state.store.root
+        try:
+            where = f"~/{root.relative_to(Path.home())}"
+        except ValueError:
+            where = str(root)
+        backend = f"{backend} ({where})"
+    state.console.print(f"Oturum: {session_id}")
+    state.console.print(f"Başlık: {title or '(başlıksız)'}")
+    state.console.print(f"Mesaj sayısı: {len(state.agent.messages)}")
+    state.console.print(f"Depo: {backend}")
 
 
 async def cmd_araclar(state: ReplState, arg: str) -> None:

@@ -1,7 +1,8 @@
 """Session stores and the backend registry.
 
-``[sessions].backend`` in ``tau.toml`` picks a factory from :data:`SESSION_BACKENDS`. Issue 007
-registers ``file``; issue 018 registers ``cloud`` (through the tau-cloud Worker API only).
+``[sessions].backend`` in ``tau.toml`` picks a factory from :data:`SESSION_BACKENDS`: ``memory``
+(nothing survives the process) and ``file`` (``Config.sessions_dir``). Issue 018 registers
+``cloud``, which talks only to the tau-cloud Worker API and never holds D1 credentials.
 """
 
 from __future__ import annotations
@@ -10,11 +11,14 @@ from collections.abc import Callable
 
 from tau_core.config import Config, ConfigError
 from tau_core.sessions.base import SessionStore, SessionSummary, new_session_id
+from tau_core.sessions.file import FileSessionStore, InvalidSessionId
 from tau_core.sessions.memory import MemorySessionStore
 
 __all__ = [
     "PLANNED_BACKENDS",
     "SESSION_BACKENDS",
+    "FileSessionStore",
+    "InvalidSessionId",
     "MemorySessionStore",
     "SessionStore",
     "SessionSummary",
@@ -24,10 +28,11 @@ __all__ = [
 
 SESSION_BACKENDS: dict[str, Callable[[Config], SessionStore]] = {
     "memory": lambda config: MemorySessionStore(),
+    "file": lambda config: FileSessionStore(config.sessions_dir),
 }
 
 # Backends a later issue builds. tau.toml may name them; opening one fails with a clear message.
-PLANNED_BACKENDS: dict[str, str] = {"file": "007", "cloud": "018"}
+PLANNED_BACKENDS: dict[str, str] = {"cloud": "018"}
 
 
 def open_session_store(config: Config) -> SessionStore:

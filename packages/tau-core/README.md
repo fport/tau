@@ -126,8 +126,46 @@ fresh budget.
 
 ## Sessions
 
-Conversations are recorded through a `SessionStore` (a Strands `SessionRepository` plus
-listing, agent events and metadata); `[sessions].backend` picks the backend (`memory` today).
+Every conversation is a session: its messages, its agent events (tool calls, approval
+decisions, turn limits, errors) and its metadata (channel, profile, title = the first user
+message, cut to 60 characters). Callers only use `SessionStore`, a Strands
+`SessionRepository` plus `list_sessions`, `append_event`/`read_events`, `write_meta`/`read_meta`
+and `event_sink`. `[sessions].backend` in `tau.toml` picks the backend and
+`open_session_store(config)` builds it:
+
+| Backend  | Where                                  | Notes                                   |
+|----------|----------------------------------------|-----------------------------------------|
+| `memory` | the process                            | tests and throwaway runs                |
+| `file`   | `TAU_DATA_DIR/sessions/<session id>/`  | the default in the repo's `tau.toml`    |
+| `cloud`  | D1 through the tau-cloud Worker API    | issue 018; the hub holds no D1 secrets  |
+
+The `file` layout, one directory per session (ids look like `20260929-153012-3f9a`, UTC):
+
+```
+session.json                         Strands session record; updated_at orders /devam
+meta.json                            channel, profile, title
+events.jsonl                         one agent event per line, append-only
+agents/tau/agent.json                Strands agent state
+agents/tau/messages/000000.json      one file per message, in order
+```
+
+JSON files are replaced atomically (temp file, fsync, rename), directories are `0700` and
+files `0600`, symlinks and ids that are not plain names are refused. **Nothing is ever
+deleted**: the store has no delete method and never overwrites a message; retention is "keep
+everything".
+
+In `tau chat`:
+
+- `/devam` lists the last 10 earlier sessions that have messages
+  (`n. id  date  channel  title (N mesaj)`) and resumes the most recent one.
+- `/devam <n|id>` resumes that one; `tau chat --resume [ID]` does the same at start-up.
+- `/yeni` starts a fresh session; `/oturum` shows the current id, title, message count and
+  backend.
+
+Resuming rebuilds the agent on the stored session (`build_agent(session_id=...,
+session_store=...)`), so Strands restores `agent.messages` and the model sees the whole
+conversation again. A new backend implements the nine `SessionRepository` methods plus the
+five extras and registers a factory in `tau_core.sessions.SESSION_BACKENDS`.
 
 ## Hub
 

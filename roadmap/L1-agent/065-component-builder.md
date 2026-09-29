@@ -21,14 +21,14 @@ tau's pluggable parts (model providers per role, session backends, context sourc
 
 ## Acceptance criteria
 
-- [ ] `tau.providers`, `tau.sessions`, `tau.context` and `tau.hub_services` entry points are discovered through `tau_core.registry`; a broken entry point is logged and skipped; tests use fake entry points (no network)
-- [ ] `Config.load` validates component names lazily; `tau version` does not import provider modules
-- [ ] `[components]` with `tools.disabled`, `context`, `hub.services` and `[component.<name>]` tables is parsed; `Config.component(name)` returns the table; unknown top-level tables warn once
-- [ ] `tau components` lists every entry point in every `tau.*` group with distribution, version, enabled/disabled and load error
-- [ ] `tau doctor` checks config, per-role credentials (no client built), session store, persona files, `.env` vs `.env.example` names and hub control API reachability; exit 1 on a failing check; the unresolved `local` role is reported, not raised
-- [ ] `tau init` writes the config template, copies `user.example.md` to `user.md`, picks the provider from present credentials, asks for the UI language, and works non-interactively with flags
-- [ ] A package with a `tau.hub_services` entry point has its `HubService` started by `tau hub run` after the `ControlApi` and stopped in reverse order; a failing service is skipped; a service can add `/status` keys and control API routes (058)
-- [ ] Public API exports `ContextSource`, `PersonaLoader`, `HubService`, `discover_tools`, `register_provider`, `register_session_backend`, `PROVIDERS`, `SESSION_BACKENDS`
+- [x] `tau.providers`, `tau.sessions`, `tau.context` and `tau.hub_services` entry points are discovered through `tau_core.registry`; a broken entry point is logged and skipped; tests use fake entry points (no network)
+- [x] `Config.load` validates component names lazily; `tau version` does not import provider modules
+- [x] `[components]` with `tools.disabled`, `context`, `hub.services` and `[component.<name>]` tables is parsed; `Config.component(name)` returns the table; unknown top-level tables warn once
+- [x] `tau components` lists every entry point in every `tau.*` group with distribution, version, enabled/disabled and load error
+- [x] `tau doctor` checks config, per-role credentials (no client built), session store, persona files, `.env` vs `.env.example` names and hub control API reachability; exit 1 on a failing check; the unresolved `local` role is reported, not raised
+- [x] `tau init` writes the config template, copies `user.example.md` to `user.md`, picks the provider from present credentials, asks for the UI language, and works non-interactively with flags
+- [x] A package with a `tau.hub_services` entry point has its `HubService` started by `tau hub run` after the `ControlApi` and stopped in reverse order; a failing service is skipped; a service can add `/status` keys and control API routes (058)
+- [x] Public API exports `ContextSource`, `PersonaLoader`, `HubService`, `discover_tools`, `register_provider`, `register_session_backend`, `PROVIDERS`, `SESSION_BACKENDS`
 - [ ] ADR 0005 written; ADR 0002 points to it for the group names; tau-core README documents `[components]`, the three commands and the `## Hub` service contract; `CONTEXT.md` gains "Component"
 - [ ] All output is English; `uv run pytest -q`, `uv run ruff check .` and `uv run ruff format --check .` are green; 058 is closed with a note pointing here
 
@@ -39,3 +39,5 @@ None - can start immediately; the `tau init` language prompt uses `LANGUAGES` fr
 ## Comments
 
 - 2026-09-29: opened by the 2026-09-29 wave on the user's request (English UI, premium TUI, Strands audit, plug-and-play setup). Absorbs 058; spec: wave decisions section 6.
+- 2026-09-29: built by the 065 agent (wave 3). `tau_core.registry` (four groups, seed | entry points | registrations, cached, name-only validation), `ComponentsConfig` + `Config.component`, `tau components|doctor|init` in `tau_core.builder` with package templates (`tau_core/templates/`), `Hub.add_service(optional=True)` + `Hub.find_service`, `assemble_hub` in `tau hub run`, fixtures `tau-example-provider` (fake2 provider, example session backend) and `tau-example-service` (example hub service + context source), ADR 0005, README "Components"/"Logging", tau-core 0.2.0. Not done inside this wave's file set: ADR 0002 still needs a one-line pointer to ADR 0005 for the group names (the ADR is outside the agent's file set); CONTEXT.md already carried "Component". Test counts: tau-core 458 → 514.
+- 2026-09-29: review fixes (wave 3, fix round). `tau init` now reads `<home>/.env` under the process environment before picking the provider (the documented "add the key to .env, run init" loop works) and writes `<home>/.env.example` from a shipped `dotenv.example` template (the repo file minus L0; never overwritten) so the doctor's `.env` check has a list outside the checkout; `[components.tools]`/`[components.hub]` reject unknown keys; `tau doctor` warns about `[components]` names nothing provides (tools.disabled, context, hub.services); a declared-but-broken `tau.providers` entry point is reported as `Model provider 'x' from <dist> failed to load: ...` by `resolve_model` and the doctor (`registry.load_error`); `Hub.find_service` returns only started services; `ControlApi.add_route` refuses an existing `(method, path)` with `ValueError` so no service can replace `/health` or `/status`. Regression tests for each; tau-core 514 → 521 tests. README, ADR 0005 and the tau.toml comments updated.

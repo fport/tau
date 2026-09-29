@@ -20,20 +20,20 @@ This issue absorbs three smaller ones so the package is rewritten once:
 
 ## Acceptance criteria
 
-- [ ] Session sidebar lists recent sessions from `list_sessions()`; selecting one resumes it; the current session is highlighted
-- [ ] Replies render as markdown (headings, lists, code blocks) and stream in as text arrives
-- [ ] Tool calls appear as collapsible cards with tool, tier, approval result, duration and summary; errors and notices are visually distinct
+- [x] Session sidebar lists recent sessions from `list_sessions()`; selecting one resumes it; the current session is highlighted
+- [x] Replies render as markdown (headings, lists, code blocks) and stream in as text arrives
+- [x] Tool calls appear as collapsible cards with tool, tier, approval result, duration and summary; errors and notices are visually distinct
 - [ ] Status bar shows profile, session id, model role, the tier of a pending approval and a spend placeholder (filled by 011)
-- [ ] Logo and colors come from `docs/brand` (no redrawn assets)
-- [ ] Usable at 80x24 (snapshot test) and in a narrow portrait layout (panes stack, sidebar collapses); the 061 phone check is repeated after this lands
-- [ ] `/sessions`, `/resume`, `/resume <n|id>`, `/new`, `/session`, `/tools`, `/lang`, `/help`, `/quit` work through `tau_core.commands` with the same wording as the terminal channel; Turkish aliases still work (055)
-- [ ] Resuming rebuilds the agent, follows the new `EventBus`, replays stored events before live ones; a failed rebuild leaves the current agent working (055)
-- [ ] `ApprovalScreen` keeps explicit approval only, the arming delay and reject-on-cancel; keys `y`/`e` approve and `n`/`h`/Esc reject; a test proves tier 2 is never auto-approved
-- [ ] Nothing is written to stderr while the UI runs; the file log still receives records (059)
-- [ ] Exactly one `.raw` snapshot file per snapshot test, no glob; README documents the choice and the re-generation command (060)
-- [ ] `tau tui` keeps `--profile`, `--resume [ID]`, exit code 2 before the UI on config/credential/session errors, logging to `<data_dir>/logs/tau.log`
-- [ ] Only the tau-core public API is imported; pilot and snapshot tests run offline with `FakeModel`; `uv run pytest -q`, `ruff check` and `ruff format --check` are green
-- [ ] tau-tui README describes the layout, keys and commands in English; 055, 059 and 060 are closed with a note pointing here
+- [x] Logo and colors come from `docs/brand` (no redrawn assets)
+- [x] Usable at 80x24 (snapshot test) and in a narrow portrait layout (panes stack, sidebar collapses); the 061 phone check is repeated after this lands
+- [x] `/sessions`, `/resume`, `/resume <n|id>`, `/new`, `/session`, `/tools`, `/lang`, `/help`, `/quit` work through `tau_core.commands` with the same wording as the terminal channel; Turkish aliases still work (055)
+- [x] Resuming rebuilds the agent, follows the new `EventBus`, replays stored events before live ones; a failed rebuild leaves the current agent working (055)
+- [x] `ApprovalScreen` keeps explicit approval only, the arming delay and reject-on-cancel; keys `y`/`e` approve and `n`/`h`/Esc reject; a test proves tier 2 is never auto-approved
+- [x] Nothing is written to stderr while the UI runs; the file log still receives records (059)
+- [x] Exactly one `.raw` snapshot file per snapshot test, no glob; README documents the choice and the re-generation command (060)
+- [x] `tau tui` keeps `--profile`, `--resume [ID]`, exit code 2 before the UI on config/credential/session errors, logging to `<data_dir>/logs/tau.log`
+- [x] Only the tau-core public API is imported; pilot and snapshot tests run offline with `FakeModel`; `uv run pytest -q`, `ruff check` and `ruff format --check` are green
+- [x] tau-tui README describes the layout, keys and commands in English; 055, 059 and 060 are closed with a note pointing here
 
 ## Blocked by
 
@@ -42,3 +42,6 @@ None - 007 and 008 are done. Uses the message table and command spec from 062 (s
 ## Comments
 
 - 2026-09-29: opened by the 2026-09-29 wave on the user's request (English UI, premium TUI, Strands audit, plug-and-play setup). Absorbs 055, 059 and 060; spec: wave decisions section 5 plus the design workflow output.
+- 2026-09-29: built by the premium-TUI agent of the wave: `tau_tui` rewritten as theme/brand/strings/keys/transcript/tools/history/composer/events/sessions/approval/commands/header/app (`panes.py` deleted, tau-tui 0.2.0). Everything in the design spec except: the status-bar criterion is met by the header (profile, session id, role, tool count) plus the hint bar (pending approval) — the spend placeholder waits for 011 and is not shown; per-card keyboard browsing of older turns and OSC 52 copy are follow-ups per the spec. 059 stays open: tau-core exported `configure_logging` in the same wave, so the local `file_logging` can be replaced by it in a small follow-up. The 061 phone check is still due.
+- 2026-09-29: test plan of the design spec (§22) implemented by the TUI-tests agent: 105 tests in `packages/tau-tui/tests` (conftest/helpers, transcript, history, composer, approval, cancel, sessions, app, brand, cli, snapshots) and the twelve snapshots of §22, every one containing the fixed session id and no local path, suite under 40 s. Bugs fixed on the way: the app CSS made modal screens opaque (the chat behind the approval dialog and the picker was hidden); a resize never re-ran the chrome refresh after the band changed (`-short` kept the old composer cap and hints; fixed with `TauScreen.on_resize`); Enter on the command menu ran the highlighted row even when a full command was typed (a key burst made `/session` run `/sessions`; found by the pty smoke run); a late `tool_call: running` bus event reopened a finished card; a `tool_call` event for an unknown id mounted its card below the busy row; `load_history` left the welcome card in place; the expanded card showed a Python repr instead of JSON; the header text oracle ignored ASCII mode. Tab in the approval dialog now only moves between the two buttons (PageUp/PageDown scroll the arguments). pty smoke runs at 80x24, 50x24 and 120x40 exit 0.
+- 2026-09-29: review pass (two reviewers, seven findings, all confirmed and fixed with a regression test each): the chrome bands are read from the default screen (`TauApp.chrome_screen`), so an approval dialog or the picker on top no longer flips the phone/wide hints or the composer cap, and `#hint-left` keeps a one-cell gap before the right label; the events pane used a TCSS alpha (`"#FFF4E0 55%"`) as a Rich style, which Rich dropped — the live clock and the running dot now use the literal blends `theme.TEXT_MUTED`/`TEXT_DISABLED` (`test_events.py` parses every style string); `TAU_TUI_ASCII=1` now really switches the box borders (`theme.ASCII_CSS` on an `-ascii` screen class set by `mark_ascii` on the default screen and both modals; the uncalled `border_style()` is gone); a one-line fence costs one row plus its margins (`MarkdownFence > Label { padding: 0 1 }`, as mockup 4.6); the session picker no longer parses titles as markup (`OptionList(markup=False)`: a first message containing `[/x]` crashed the app); `EventLog._entries` is a `deque(maxlen=500)` like the log. Snapshots regenerated: chat_80x24 now pins the fence and the rejected card (spec §22), wide_100x30 the busy chrome (mockup 4.5), ultra_160x45 the fence (mockup 4.6). 112 tests in tau-tui, workspace green.

@@ -1,6 +1,6 @@
 # 009 · `tau hub` daemon with launchd service and self-heal
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-core

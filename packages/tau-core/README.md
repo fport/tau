@@ -435,7 +435,8 @@ tau hub systemd-unit   # prints the systemd user unit (RPi5 hub)
 The control API listens on `127.0.0.1:<control_port>` only (default 7877, `TAU_HUB_PORT`
 overrides) and speaks JSON: `GET /health` → `{"ok": true, "pid", "uptime_s"}`, `GET /status` →
 `role`, `profile`, `version`, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`,
-`approvals_pending`, `nodes`. Requests with a non-loopback `Host` header get 403.
+`approvals_pending`, `nodes`, plus the keys hub services add (`telegram`). Requests with a
+non-loopback `Host` header get 403.
 
 Extending the hub: a `HubService` has a `name`, `async start(hub)` and `async stop()`; services
 start in order after the crash check and stop in reverse. `tau hub run` starts the control API
@@ -453,28 +454,86 @@ never wires into a half-initialised component. A service's own settings live in
 `[component.<name>]` and are read with `config.component(name)`.
 
 ```python
-class TelegramRelay:  # in another distribution
-    name = "telegram"
+class VoiceService:  # in another distribution
+    name = "voice"
 
     def __init__(self, config):
-        self.settings = config.component("telegram")
+        self.settings = config.component("voice")
 
     async def start(self, hub):
-        hub.add_status_source(lambda: {"telegram": {"connected": True}})
+        hub.add_status_source(lambda: {"voice": {"listening": True}})
         api = hub.find_service("control-api")
-        api.add_route("POST", "/telegram/send", self.send)
+        api.add_route("POST", "/voice/say", self.say)
 
     async def stop(self): ...
 
 
-def make_relay(config):  # [project.entry-points."tau.hub_services"] telegram = "pkg:make_relay"
-    return TelegramRelay(config)
+def make_service(config):  # [project.entry-points."tau.hub_services"] voice = "pkg:make_service"
+    return VoiceService(config)
 ```
+
+tau-core itself ships one hub service, `telegram` (see [Telegram](#telegram)).
 
 launchd is driven through the `Launchctl`
 protocol; tests pass `FakeLaunchctl` to the CLI as `obj={"launchctl": fake}`. The launchd plist
 and systemd unit are package templates; `infra/services/` in the tau repo has rendered examples
 and the install notes.
+
+## Telegram
+
+`tau_core.channels.telegram` is the Telegram channel, a `tau.hub_services` component
+(`telegram = "tau_core.channels.telegram:make_service"`) that runs inside `tau hub run`. The hub
+polls the Bot API itself with a `getUpdates` long poll: outbound HTTPS only, no webhook, no relay,
+no inbound port (ADR 0006). Each text message from an allowed chat is one turn of that chat's
+session, built with `build_agent(channel="telegram")`, and the reply goes back with
+`sendMessage`. Messages and button presses from any other chat are dropped and logged, never
+answered.
+
+It reads two names from `.env` (or the environment):
+
+| variable | meaning |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | the bot token from @BotFather (`/newbot`) |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | the chat ids the bot answers, comma-separated (yours: send the bot a message, then read `message.chat.id` from `getUpdates`) |
+
+and its own table in `tau.toml`:
+
+```toml
+[component.telegram]
+poll_timeout_seconds = 50    # server-side long-poll timeout
+backoff_max_seconds = 60     # cap of the exponential backoff after network errors
+```
+
+Without a token, or without an allowed chat, the service starts idle, logs one line and reports
+`"telegram": {"configured": false, "reason": ...}` in `/status`; it never fails the hub. When it
+runs, `/status` shows `state` (`starting`, `polling`, `retrying`, `failed`, `stopped`), `bot`,
+`allowed_chats`, `last_poll_at`, `last_error`, `retry_in_s`, `handled` and `dropped`, never the
+token or a chat id; `tau doctor` prints the same as its `telegram` line. On start it calls
+`deleteWebhook` (Telegram refuses `getUpdates` while a webhook is set). Network errors back off
+exponentially (1 s, 2 s, 4 s, … up to `backoff_max_seconds`) and the hub stays up; a token the
+Bot API rejects (401) stops the poller until the next hub start.
+
+State lives under `TAU_DATA_DIR/telegram/`: `offset` is the next `update_id` to ask for, written
+after each update is handled, so a restart neither re-processes nor skips an update (one whose
+turn a stop interrupted runs again); `chats.json` maps each chat to its current session, so a
+chat keeps its conversation across restarts.
+
+The slash commands `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`,
+`/model`, `/compact` and `/lang` resolve through `tau_core.commands` with the terminal's wording
+(Turkish aliases accepted, never shown; `/start` shows the help). `/clear`, `/quit` and any
+command that edits the configuration answer that they are not available on Telegram; credentials
+are never set from a chat. Replies are sent as HTML converted from the model's Markdown and fall
+back to plain text when Telegram rejects the markup; longer than 4096 characters they are split.
+"typing…" shows while a turn runs.
+
+Tier 2: until inline-button approvals land (issue 017), `RefusingApprover` rejects every tier-2
+call made from Telegram. The refusal the model reads carries the approver's `refusal_note`
+(the gate appends it), which points the user at a trusted channel (the TUI or `tau chat`).
+Nothing is ever auto-approved.
+
+Tests use `tau_core.testing.FakeBotApi`, an offline Bot API: `push_message(chat_id, text)`
+queues an update, `sent` / `texts()` show what the bot sent, `fail(method, *errors)` scripts
+network losses and refusals.
 
 ## Components
 
@@ -513,7 +572,7 @@ cloud = "my_package.sessions:make_store"  # make_store(config) -> SessionStore
 nodes = "my_package.mesh:make_source"     # make_source(config) -> callable returning {"nodes": [...]}
 
 [project.entry-points."tau.hub_services"]
-telegram = "my_package.relay:make_relay"  # make_relay(config) -> HubService
+voice = "my_package.voice:make_service"   # make_service(config) -> HubService
 ```
 
 A seed name wins over an entry point with the same name (an installed package cannot replace
@@ -532,7 +591,7 @@ disabled = ["demo_physical_action", "dist:tau-example-tool"]   # tool names or d
 services = []                # enabled tau.hub_services; empty = every discovered one
 
 [component.telegram]         # a component's own settings: config.component("telegram")
-chat_id_env = "TELEGRAM_CHAT_ID"
+poll_timeout_seconds = 50
 ```
 
 `tools.disabled` can only remove tools; it never adds one, gives one a tier or changes a tier,
@@ -547,7 +606,8 @@ Three commands show, check and set up an installation (English, `--json` where u
 tau components          # every component in every group: distribution, version, enabled/disabled, load error
 tau doctor              # config, per-role provider + credentials (no client built), session store, persona
                         # files, .env names vs .env.example, component load errors, [components] names that
-                        # no installed component provides, control API reachable; exit 1 when a check fails
+                        # no installed component provides, control API reachable, Telegram poller state;
+                        # exit 1 when a check fails
                         # ("warn" for a planned provider such as ollama and for the unknown names)
 tau init                # tau.toml from the shipped template (provider: bedrock > anthropic > fake, by the
                         # credentials present in the environment or <home>/.env), persona/persona.md,

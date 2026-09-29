@@ -32,6 +32,13 @@ def fresh_registry() -> Iterator[None]:
     registry.reset()
 
 
+@pytest.fixture(autouse=True)
+def no_real_telegram(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test sees a real bot token, so no hub a test assembles ever polls Telegram."""
+    for name in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_CHAT_IDS"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def config(tmp_path: Path) -> Config:
     return test_config(tmp_path)

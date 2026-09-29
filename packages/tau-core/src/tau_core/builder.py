@@ -533,6 +533,24 @@ def _check_hub(config: Config) -> Check:
     return Check("hub", "warn", f"control API answered {status} on {url}: {body!r}")
 
 
+def _hub_status(config: Config) -> dict[str, object] | None:
+    """The running hub's ``/status`` payload; ``None`` when no hub answers."""
+    url = f"http://127.0.0.1:{config.hub.control_port}/status"
+    try:
+        with _OPENER.open(url, timeout=HEALTH_TIMEOUT) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _check_telegram(config: Config, env: Mapping[str, str]) -> Check:
+    from tau_core.channels.telegram import TOKEN_ENV, doctor_check
+
+    hub_status = _hub_status(config) if (env.get(TOKEN_ENV) or "").strip() else None
+    return doctor_check(config, env, hub_status)
+
+
 def _check_components(config: Config) -> list[Check]:
     """Load errors, then every ``[components]`` name that no installed component answers to
     (a typo there would otherwise only show as a warning when the agent or the hub starts)."""
@@ -602,6 +620,7 @@ def run_doctor(home: Path | None = None, *, env: Mapping[str, str] | None = None
     checks.append(_check_dotenv(config))
     checks += _check_components(config)
     checks.append(_check_hub(config))
+    checks.append(_check_telegram(config, env))
     return checks
 
 

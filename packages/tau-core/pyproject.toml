@@ -43,6 +43,9 @@ components = "tau_core.builder:components"
 doctor = "tau_core.builder:doctor"
 init = "tau_core.builder:init"
 
+[project.entry-points."tau.hub_services"]
+telegram = "tau_core.channels.telegram:make_service"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

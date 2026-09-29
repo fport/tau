@@ -243,7 +243,7 @@ def test_hub_services_are_built_and_checked(
     )
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         services = registry.hub_services(config)
-    assert set(services) == {"example"}
+    assert set(services) == {"example", "telegram"}
     assert services["example"].name == "example"
     assert "not_a_service" in caplog.text and "expected a HubService" in caplog.text
     # ConfigError(config) builds an exception instance, which is not a service either

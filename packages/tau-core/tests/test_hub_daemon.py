@@ -338,10 +338,16 @@ def test_discovered_service_adds_status_keys_and_routes(tmp_path: Path) -> None:
 
     def check(hub: Hub, api: ControlApi) -> None:
         names = [s.name for s in hub.services]
-        assert names == ["control-api", "example"]  # the control API first
+        assert names[0] == "control-api"  # the control API first
+        assert sorted(names[1:]) == ["example", "telegram"]  # tau-core ships telegram
         seen["service"] = hub.find_service("example")
         code, status = get_json(f"{api.url}/status")
         assert code == 200 and status["example"] == {"profile": "home"}
+        # Without a token the Telegram poller starts idle and the hub runs on.
+        assert status["telegram"] == {
+            "configured": False,
+            "reason": "TELEGRAM_BOT_TOKEN is not set",
+        }
         code, payload = get_json(f"{api.url}/example")
         assert code == 200
         assert payload == {"example": True, "component": {"greeting": "hi"}}

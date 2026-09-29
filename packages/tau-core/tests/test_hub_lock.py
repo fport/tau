@@ -10,7 +10,9 @@ import time
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 from tau_core import Config
+from tau_core.cli import cli
 from tau_core.hub import AlreadyRunning, Hub, HubLock
 
 # Exit 0 = acquired, 3 = AlreadyRunning (message on stdout).
@@ -103,3 +105,21 @@ def test_hub_run_raises_already_running(config: Config) -> None:
         with pytest.raises(AlreadyRunning):
             Hub(config).run()
     assert not (config.hub_dir / "state.json").exists()
+
+
+def test_tau_hub_run_refuses_a_second_hub(config: Config, tmp_path: Path) -> None:
+    env = {
+        "TAU_HOME": str(config.home),
+        "TAU_DATA_DIR": str(config.data_dir),
+        "TAU_PROFILE": None,
+        "TAU_ROLE": None,
+        "TAU_HUB_PORT": None,
+    }
+    with HubLock(config.hub_dir / "hub.lock"):
+        result = CliRunner().invoke(cli, ["hub", "run"], env=env)
+    assert result.exit_code == 1
+    assert (
+        f"tau hub zaten çalışıyor (pid {os.getpid()}). Aynı makinede tek hub çalışabilir."
+        in result.output
+    )
+    assert "Traceback" not in result.output

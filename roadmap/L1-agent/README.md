@@ -29,5 +29,6 @@
 | 072 | [Session commands: /clear, /compact, /status and /model in both channels](072-session-commands-clear-compact-status-model.md) | AFK | – |
 | 073 | [`tau ask "…"`: one-shot command for scripts and iOS Shortcuts](073-tau-ask-one-shot.md) | AFK | – |
 | 077 | [Tools assume hostile input: tier rules for shell, file and fetch tools, and an untrusted-text frame](077-hostile-input-tool-policy.md) | AFK | – |
+| 082 | [`test_doctor_all_green_on_the_test_config` fails while a real hub runs](082-doctor-test-assumes-no-hub.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py`

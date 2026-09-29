@@ -1,6 +1,6 @@
 # 055 · Session commands and event replay in the TUI
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-tui
@@ -31,3 +31,4 @@ None - #007 and #008 are done.
 - 2026-09-29: done inside 063 (`tau_tui/commands.py`, `TauApp.switch_session`, `EventLog.replay`; tests in `packages/tau-tui/tests/test_sessions.py` and `test_history.py`). The pilot tests use `MemorySessionStore`; the file store is covered by tau-core's own tests and the CLI smoke run.
 - 2026-09-29: tests extended (sidebar rows and a pick at 160x45, an invalid `/resume` name, `/lang` relabelling the open picker, the picker snapshot `test_picker_80x24`).
 - 2026-09-29: review fix: the picker built its rows as markup strings, so a session titled with `[/x]` raised `MarkupError` and took the app down; the list is `markup=False` now and `test_picker_shows_markup_looking_titles_verbatim` covers the picker, the `/sessions` card and the sidebar.
+- 2026-09-29: done (orchestrator): shipped inside 063 (commit b504eb7): /sessions, /resume [n|id], /new, /session in the TUI on the shared command spec, agent rebuilt on one app-scoped EventBus, stored events replayed before live ones, failed rebuild keeps the current agent.

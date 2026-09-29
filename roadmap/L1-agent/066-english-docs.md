@@ -1,6 +1,6 @@
 # 066 · English docs: README, ARCHITECTURE, infra/remote, CLAUDE.md, CONTEXT.md, ADRs
 
-Status: in-progress
+Status: ready-for-human
 Type: AFK
 Layer: L1 · Agent
 Packages: docs, infra/remote
@@ -20,14 +20,14 @@ The repo language becomes English everywhere except two places: the user's chat 
 
 ## Acceptance criteria
 
-- [ ] `README.md` is English; hero, badges and brand assets unchanged
-- [ ] `docs/ARCHITECTURE.md` is English in place with the same sections and decisions; no decision is dropped or changed in meaning
+- [x] `README.md` is English; hero, badges and brand assets unchanged
+- [x] `docs/ARCHITECTURE.md` is English in place with the same sections and decisions; no decision is dropped or changed in meaning
 - [ ] `infra/remote/README.md`, `setup.sh`, `doctor.sh` and helpers print and document in English; `doctor.sh` still exits 0 on the user's Mac with `remote access ready`; sshd invariants unchanged and `infra/remote/doctor.sh` re-run
-- [ ] `CLAUDE.md` Language section states the new policy; no rule forbids translating tracked files
-- [ ] `CONTEXT.md` uses English command and profile names and defines "UI language", "Slash command", "Component"
-- [ ] `docs/adr/*.md` quote `/resume` and English profile names; ADR history otherwise untouched
-- [ ] `grep -rn` for `/devam`, `/yeni`, `/oturum`, `/araçlar`, `/çık`, `/ayar`, `/hafiza`, `Onayla`, `Reddet`, `seyahat`, `spor` over tracked files hits only done issue files (001, 004-009), alias tables and persona content
-- [ ] Nothing personal in any file (hostnames, tailnet names, addresses, fingerprints stay example values)
+- [x] `CLAUDE.md` Language section states the new policy; no rule forbids translating tracked files
+- [x] `CONTEXT.md` uses English command and profile names and defines "UI language", "Slash command", "Component"
+- [x] `docs/adr/*.md` quote `/resume` and English profile names; ADR history otherwise untouched
+- [x] `grep -rn` for `/devam`, `/yeni`, `/oturum`, `/araçlar`, `/çık`, `/ayar`, `/hafiza`, `Onayla`, `Reddet`, `seyahat`, `spor` over tracked files hits only done issue files (001, 004-009), alias tables and persona content
+- [x] Nothing personal in any file (hostnames, tailnet names, addresses, fingerprints stay example values)
 
 ## Blocked by
 
@@ -36,3 +36,4 @@ None - can start immediately; terminology follows 062 (same wave).
 ## Comments
 
 - 2026-09-29: opened by the 2026-09-29 wave on the user's request (English UI, premium TUI, Strands audit, plug-and-play setup). Spec: wave decisions sections 1 and 7. The user asked for English docs in general, which lifts the earlier CLAUDE.md rule against translating `docs/ARCHITECTURE.md` and `infra/remote/`.
+- 2026-09-29: translation done (commits 53f0cdd, e45701b); one human step remains: the installed `/etc/ssh/sshd_config.d/010-tau.conf` still carries the old Turkish comments, so `infra/remote/doctor.sh` reports drift and exits 1 until `./infra/remote/setup-sudo.sh` is re-run (directives are identical). After that, `./infra/remote/doctor.sh` should end with `remote access ready`; tick the last criterion and set done.

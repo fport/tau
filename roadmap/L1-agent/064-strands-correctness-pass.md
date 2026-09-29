@@ -1,6 +1,6 @@
 # 064 · Strands-correctness pass over tau-core (strands-agents 1.57.1)
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-core
@@ -43,7 +43,7 @@ Out of scope, filed as follow-ups: 067 (ModelRouter failover), 068 (interrupt-ba
 - [x] 12 · Tier and effect live in `ToolSpec.annotations["tau"]`; a `@tau_tool` method keeps its tier; test covers the method case
 - [x] 13 · `SequentialToolExecutor` is chosen when a tier-2 tool is registered; `trace_attributes` carries session id, channel and profile
 - [x] 14 · `build_agent` accepts `hooks` and `plugins`; a plugin tool outside the catalog is refused; documented in the tau-core README and ADR 0001 (ADR 0005 is written by issue 065 and should quote the same rule)
-- [ ] `uv run pytest -q`, `uv run ruff check .` and `uv run ruff format --check .` are green; the strands-agents minor version is pinned in `tau-core`'s `pyproject.toml` (suite and lint are green; the pin is still `>=1.57` because tightening it re-locks the workspace, which this pass was not allowed to do)
+- [x] `uv run pytest -q`, `uv run ruff check .` and `uv run ruff format --check .` are green; the strands-agents minor version is pinned in `tau-core`'s `pyproject.toml` (`>=1.57,<1.58`; bump it only after re-running this audit)
 
 ## Blocked by
 
@@ -65,3 +65,4 @@ None - builds on 062 (same wave) for notice texts.
 
 - 2026-09-29 (review round): two reviewers verified the pass against the installed SDK and found six issues, all fixed with regression tests (`uv run pytest -q`: 468 → 482 passed; ruff clean). (1) A crash-restored history ending on an assistant `toolUse` (hub killed while an approval was pending) sent two consecutive user messages: `_build_prompt` now repairs every *dangling* last message (`user`, or `assistant` with a `toolUse`); the SDK inserts its "Tool was interrupted." result first. (2) The interrupt give-up path left the SDK in interrupt state forever (every later prompt failed with "must resume from interrupt"): refusals are now bounded by `[agent] max_turns` instead of 3, the continuation gets the turn's remaining `Limits` budget (turns and total tokens are per SDK invocation), and when refusals do not clear it tau calls `_InterruptState.deactivate()` and repairs next turn; a session restored in interrupt state is cleared the same way at the start of its first turn (`error` event, notice). (3) `TauAgent.cancel()` while idle cancelled the *next* turn (the SDK clears its signal only when an invocation ends): cancel is now a no-op unless a turn is in flight, and a late signal is cleared in the turn's `finally`. (4) A hook registered above `HookOrder.SDK_LAST` ran after the gate and could rewrite or un-cancel an approved call: `build_agent` now checks the registry (`hooks_behind_gate`) and raises `ConfigError`; the After callback records a refused call that ran, or an approved call whose arguments changed, as `error` with an `error` event (`where: tier_gate`) for hooks added after build. (5) The repair notice degraded to the generic text after a sliding-window trim and was dropped by a `busy` turn: "did the SDK append" is decided by identity of the last message, `_pending_repair` is cleared only once the SDK appended, and the session title is written only for a prompt that entered the history. (6) The tool-spec annotation carrying the tier is documented as trusted for in-process tools only (`tiers.py`, ADR 0001, note on 069). ADR 0001 and the README no longer say "resumes once" / "registration order plays no part" without the `SDK_LAST` check; `INTERRUPT_RESUMES` is gone.
 - 2026-09-29: opened by the 2026-09-29 wave on the user's request (English UI, premium TUI, Strands audit, plug-and-play setup). Spec: wave decisions section 4, verified against `strands-agents` 1.57.1.
+- 2026-09-29: done (orchestrator): all 14 fixes plus the four reviewer findings (idle cancel, hooks behind the gate, stuck interrupt state after a restore, dangling assistant toolUse) landed in commit b824a95; strands-agents pinned to the 1.57 line. Follow-ups: 067-071.

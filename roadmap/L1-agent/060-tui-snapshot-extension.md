@@ -1,6 +1,6 @@
 # 060 · Pin or fix the snapshot file extension for tau-tui snapshots
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-tui
@@ -29,3 +29,4 @@ None - can start immediately.
 - 2026-09-29: done inside 063: `.raw` kept and pinned in `packages/tau-tui/tests/test_snapshots.py` (seven snapshots, one file each, no glob; the old `test_app` snapshot was deleted), README section "Development" documents the choice and `--snapshot-update`.
 - 2026-09-29: twelve snapshots now (welcome 80x24/50x24/tr, chat, busy, approval, menu, picker, wide, ultra, events 50x24, short 80x18), each checked for the fixed session id and the absence of home/temp paths; README lists them.
 - 2026-09-29: three snapshots regenerated after the review fixes (chat: fence + rejected card; wide: busy chrome; ultra: fence), still one `.raw` per test, the session-id and no-path checks unchanged; README lists what each pins.
+- 2026-09-29: done (orchestrator): shipped inside 063: `.raw` kept, one file per snapshot test without a glob, README documents `--snapshot-update` and the path check.

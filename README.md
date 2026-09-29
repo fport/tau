@@ -129,7 +129,7 @@ tau is built layer by layer. The next layer starts only when the previous one is
 | 6 | [Robot](roadmap/L6-robot/README.md) | SO-101 and the workout coach | planned |
 | 7 | [Lab](roadmap/L7-lab/README.md) | AgentCore, autonomous task queue | planned |
 
-7 of 61 issues are done. Every piece of work is a separate markdown file under `roadmap/`. For the current state:
+15 of 71 issues are done. Every piece of work is a separate markdown file under `roadmap/`. For the current state:
 
 ```sh
 python3 roadmap/board.py           # everything, grouped by layer

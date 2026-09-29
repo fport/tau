@@ -520,11 +520,13 @@ chat keeps its conversation across restarts.
 
 The slash commands `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`,
 `/model`, `/compact` and `/lang` resolve through `tau_core.commands` with the terminal's wording
-(Turkish aliases accepted, never shown; `/start` shows the help). `/clear`, `/quit` and any
-command that edits the configuration answer that they are not available on Telegram; credentials
-are never set from a chat. Replies are sent as HTML converted from the model's Markdown and fall
-back to plain text when Telegram rejects the markup; longer than 4096 characters they are split.
-"typing…" shows while a turn runs.
+(Turkish aliases accepted, never shown; `/start` and a bare `/` show the help). On start they
+are set as the bot's command menu (`setMyCommands`) for each allowed chat only, in the UI
+language; `/lang` sets it again. `/clear`, `/quit` and any command that edits the configuration
+answer that they are not available on Telegram; credentials are never set from a chat. Replies
+are sent as HTML converted from the model's Markdown and fall back to plain text when Telegram
+rejects the markup; longer than 4096 characters they are split. "typing…" shows while a turn
+runs.
 
 Tier 2: until inline-button approvals land (issue 017), `RefusingApprover` rejects every tier-2
 call made from Telegram. The refusal the model reads carries the approver's `refusal_note`

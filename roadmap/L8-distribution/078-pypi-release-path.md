@@ -39,3 +39,4 @@ None - the human steps come first; the agent part starts once they are ticked.
 
 - 2026-09-29: opened for ADR 0006 (private-first), §8 ("installable by anyone"). The workflow, metadata and release notes are scaffolded by the docs wave of the same day; this issue tracks the human setup and the first verified release.
 - 2026-09-29: first release shipped: tag `v0.2.0` published `tau-core` and `tau-tui` 0.2.0 through trusted publishing (the tau-tui upload needed one rerun after PyPI dropped the connection) and created the GitHub release; `uv tool install tau-core --with tau-tui` from PyPI verified with `tau version`, `tau init --yes`, `tau doctor` and a fake-provider chat turn; both PyPI pages render the READMEs. Only the deliberate bad-tag dry run (last criterion) is still open.
+- 2026-09-29: second release `v0.3.0` (issue 083) went through the same path without a rerun; the release notes were edited by hand on top of the generated list, as the guide says.

@@ -37,6 +37,15 @@ Which ones you need depends on the providers in `tau.toml`. Each provider accept
 
 A missing credential stops `tau chat` and `tau tui` with exit 2 and a message naming the variables; `tau doctor` reports it without starting anything.
 
+## Telegram
+
+Read by the `telegram` hub service (see [Telegram](../guides/telegram.md)). Without a token, or without an allowed chat, the service stays idle and the hub runs on.
+
+| Variable | Meaning |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | The bot token from @BotFather, `123456789:AA…`. A password: it never appears in logs, `/status` or `tau doctor`. |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | The chat ids the bot answers, comma-separated. Messages from any other chat are dropped unanswered. |
+
 ## Remote access reference values (layer 0)
 
 These are **not read by tau**. They are the personal values of your remote-access setup, kept in `.env` so they are in one place and out of the repository. `infra/remote/doctor.sh` prints the live values.
@@ -82,8 +91,6 @@ Keep the file `0600` inside a `0700` directory.
 
 | Variable | Issue | Meaning |
 |---|---|---|
-| `TELEGRAM_BOT_TOKEN` | 013, 014 | The bot token from BotFather |
-| `TELEGRAM_CHAT_ID` | 013, 014 | Your chat id, the allowlist |
 | `TAU_BACKUP_PUBKEY` | 018 | The `age` public key the backup bundle is encrypted to; the name used in the [backup guide](../guides/backups.md) |
 
 ## A complete example

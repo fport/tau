@@ -145,3 +145,7 @@ t("session.not_found", "tr", session="x")   # "Oturum bulunamadı: x."
 ```
 
 Every string a person reads comes from `tau_core.i18n`, keyed and per language; plugins add their own keys with `register_messages`.
+
+## On Telegram
+
+The [Telegram](../guides/telegram.md) channel resolves the same specification with the same wording: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`, `/model`, `/compact` and `/lang` work, Turkish aliases included. `/start` (what Telegram sends when you open the bot) shows the help, and `/help@your_bot` works. The rest (`/clear`, `/quit` and any command that edits credentials) answer that they are not available on Telegram. `/lang` switches the language of that chat until the hub restarts.

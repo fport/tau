@@ -41,7 +41,7 @@ One directory per session. Ids are `YYYYMMDD-HHMMSS-xxxx` in UTC, for example `2
 
 | Key | Written when | Meaning |
 |---|---|---|
-| `channel` | the agent is built on the session | `terminal`, `tui`; later `telegram`, `voice`, … The last channel used. |
+| `channel` | the agent is built on the session | `terminal`, `tui`, `telegram`; later `voice`, … The last channel used. |
 | `profile` | the agent is built | the active profile at that time |
 | `title` | the first user message arrives | the first user message, cut to 60 characters |
 | `role` | the agent is built, and on `/model` | the model role the session last ran on; `/resume` comes back on it |

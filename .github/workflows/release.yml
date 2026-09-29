@@ -11,12 +11,12 @@ name: release
 #   PyPI, once per project (tau-core and tau-tui):
 #     https://pypi.org/manage/account/publishing/ -> "Add a new pending publisher" for a
 #     project that does not exist yet, or Manage -> Publishing on an existing project, with
-#       PyPI project name: tau-core (then again for tau-tui)
+#       PyPI project name: tau-core (then again for tau-tui with environment pypi-tui)
 #       Owner:             fport
 #       Repository:        tau
 #       Workflow name:     release.yml
-#       Environment name:  pypi
-#   GitHub: an environment called `pypi` (Settings -> Environments); the first run creates it
+#       Environment name:  pypi   (tau-tui: pypi-tui)
+#   GitHub: environments `pypi` and `pypi-tui` (Settings -> Environments); the first run creates them
 #     if it is missing. Optional: required reviewers, so a tag waits for a click before upload.
 # No API token is stored anywhere: the publish job exchanges its GitHub OIDC token for a
 # short-lived PyPI token (trusted publishing), which is why it needs `id-token: write`.
@@ -120,7 +120,10 @@ jobs:
     if: github.event_name == 'push' || inputs.dry_run == false
     runs-on: ubuntu-latest
     environment:
-      name: pypi
+      # One environment per package: PyPI accepts a single pending trusted publisher per
+      # (repository, workflow, environment) tuple, so tau-core publishes from `pypi` and
+      # tau-tui from `pypi-tui`.
+      name: ${{ matrix.environment }}
       url: https://pypi.org/project/${{ matrix.package }}/${{ needs.build.outputs.version }}/
     permissions:
       id-token: write # trusted publishing: the OIDC token is exchanged for a short-lived PyPI token
@@ -128,7 +131,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [tau-core, tau-tui]
+        include:
+          - package: tau-core
+            environment: pypi
+          - package: tau-tui
+            environment: pypi-tui
     steps:
       - uses: actions/download-artifact@v8
         with:

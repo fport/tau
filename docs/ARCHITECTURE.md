@@ -83,7 +83,7 @@ tau/
 ├── nodes/mac/                # macOS node (TauBar sidecar)
 ├── apps/taubar/              # Tauri v2 + React/TS
 ├── cloud/tau-cloud/          # Worker (TS): relay DO, D1, R2, Vectorize, AI Search, Whisper
-├── persona/                  # persona.md, user.md
+├── persona/                  # persona.md, user.example.md (user.md gitignored)
 ├── tools/                    # hot-reload tool'lar
 │   └── _pending/             # tau'nun yazdığı, onay bekleyen tool'lar
 ├── infra/

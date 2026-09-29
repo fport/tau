@@ -11,6 +11,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Capability** — a tool a node exposes over MCP, namespaced by node (`mac.screenshot`, `arm.play`).
 - **Mesh** — Zenoh network of the hub and nodes. **Control plane** = MCP (calling capabilities). **Data plane** = Zenoh (events, telemetry, liveliness).
 - **Relay** — the `tau-cloud` Worker plus its Durable Object. Receives external channel traffic and forwards it to the hub over the hub's outbound WebSocket. Queues messages while no hub is connected.
+- **Config** — static bootstrap configuration from `tau.toml` and `.env` (roles, ports, paths). Distinct from **Settings**, which are runtime data in D1.
 
 ## Talking to tau
 
@@ -36,6 +37,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 ## Behavior
 
 - **Event** — something that happened, published on Zenoh as `tau/<area>/<name>` (e.g. `tau/desk/presence`). Summaries of events are stored in D1.
+- **Agent event** — a record of what the agent did in a session (tool call, approval, turn limit, error, notice); distinct from a mesh **Event** on Zenoh.
 - **Telemetry** — high-frequency raw data (sensor streams, joint states). Never stored in D1; batched to R2.
 - **Routine** — a user-registered rule: event pattern → action, with optional conditions (time window, cooldown). Registering a tier-2 routine needs one approval; its firings do not.
 - **Reflex engine** — runs routines locally without an LLM or the cloud.

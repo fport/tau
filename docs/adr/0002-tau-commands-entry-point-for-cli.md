@@ -30,3 +30,10 @@ another repository must be able to add a subcommand with `pip install`, without 
 
 - Plugins depend on `click`, which `tau-core` already requires.
 - Two plugins registering the same command name: the first loaded wins; later ones are ignored.
+
+## Amended (2026-09-29)
+
+Four more groups exist now, recorded in [ADR 0005](0005-components-and-entry-point-groups.md):
+`tau.providers` (model providers), `tau.sessions` (session backends), `tau.context` (dynamic
+context sources) and `tau.hub_services` (services `tau hub run` starts after the control API).
+`tau.channels` stays reserved for L3. `tau components` lists every group.

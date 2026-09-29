@@ -1,6 +1,6 @@
 # 062 · English UI with a per-installation language setting
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-core, tau-tui
@@ -22,18 +22,18 @@ Every piece of UI chrome tau shows the user (slash commands, labels, pane titles
 
 ## Acceptance criteria
 
-- [ ] `tau_core.i18n` exists with `t`, `Language`, `LANGUAGES`, `DEFAULT_LANGUAGE`, `MESSAGES`, `register_messages`; an unknown key raises `KeyError`, a missing translation falls back to English; a test asserts every key has an `en` entry
-- [ ] `Config.ui.language` is read from `[ui] language`, validated against `LANGUAGES`, overridden by `TAU_LANG`; `tau --lang tr` exports it; `/lang en|tr` switches the current run in both channels
-- [ ] `tau_core.commands` exports `SlashCommand`, `SLASH_COMMANDS`, `resolve_command`, `command_hint`; both channels resolve commands through it; every Turkish alias in the table still works and never appears in hints
-- [ ] Unknown command → `Unknown command: /{name}. Commands: /help, /tools, /sessions, /resume, /new, /session, /lang, /quit` (Turkish equivalent under `tr`)
-- [ ] `/resume` without an argument resumes the most recent earlier session and says which; `/sessions` prints the numbered listing
-- [ ] Every string the model reads (prompt headings, context labels, `unknown`/`none`, weekday names, gate texts, tool descriptions, effects, `FakeModel` default reply) is English, verified by tests on `FakeModel.calls[i].system_prompt`
-- [ ] Pre-config errors and `tau hub status` output are plain English; no docstring says the message is Turkish
-- [ ] Approval input accepts `y`/`yes`/`e`/`evet` in the terminal and `y`/`e` (approve), `n`/`h`/Esc (reject) in the TUI under both languages; the arming delay is unchanged
-- [ ] Profiles are `home`/`travel`/`sport` everywhere (`DEFAULT_PROFILE`, `.env.example`, `CONTEXT.md`, package READMEs, tests); the old values are not accepted
-- [ ] `persona/persona.md` carries the adaptive language rule and the English heading names; comments in `persona.md` and `user.example.md` are English
-- [ ] Public API exports `t`, `Language`, `LANGUAGES`, `UiConfig` (via `Config`), `SlashCommand`, `SLASH_COMMANDS`, `resolve_command`, `command_hint`; `CONTEXT.md` gains "UI language" and "Slash command"
-- [ ] `uv run pytest -q`, `uv run ruff check .` and `uv run ruff format --check .` are green
+- [x] `tau_core.i18n` exists with `t`, `Language`, `LANGUAGES`, `DEFAULT_LANGUAGE`, `MESSAGES`, `register_messages`; an unknown key raises `KeyError`, a missing translation falls back to English; a test asserts every key has an `en` entry
+- [x] `Config.ui.language` is read from `[ui] language`, validated against `LANGUAGES`, overridden by `TAU_LANG`; `tau --lang tr` exports it; `/lang en|tr` switches the current run in both channels
+- [x] `tau_core.commands` exports `SlashCommand`, `SLASH_COMMANDS`, `resolve_command`, `command_hint`; both channels resolve commands through it; every Turkish alias in the table still works and never appears in hints
+- [x] Unknown command → `Unknown command: /{name}. Commands: /help, /tools, /sessions, /resume, /new, /session, /lang, /quit` (Turkish equivalent under `tr`)
+- [x] `/resume` without an argument resumes the most recent earlier session and says which; `/sessions` prints the numbered listing
+- [x] Every string the model reads (prompt headings, context labels, `unknown`/`none`, weekday names, gate texts, tool descriptions, effects, `FakeModel` default reply) is English, verified by tests on `FakeModel.calls[i].system_prompt`
+- [x] Pre-config errors and `tau hub status` output are plain English; no docstring says the message is Turkish
+- [x] Approval input accepts `y`/`yes`/`e`/`evet` in the terminal and `y`/`e` (approve), `n`/`h`/Esc (reject) in the TUI under both languages; the arming delay is unchanged
+- [x] Profiles are `home`/`travel`/`sport` everywhere (`DEFAULT_PROFILE`, `.env.example`, `CONTEXT.md`, package READMEs, tests); the old values are not accepted
+- [x] `persona/persona.md` carries the adaptive language rule and the English heading names; comments in `persona.md` and `user.example.md` are English
+- [x] Public API exports `t`, `Language`, `LANGUAGES`, `UiConfig` (via `Config`), `SlashCommand`, `SLASH_COMMANDS`, `resolve_command`, `command_hint`; `CONTEXT.md` gains "UI language" and "Slash command"
+- [x] `uv run pytest -q`, `uv run ruff check .` and `uv run ruff format --check .` are green
 
 ## Blocked by
 
@@ -42,3 +42,4 @@ None - can start immediately. 063 (premium TUI) and 064 (Strands pass) build on 
 ## Comments
 
 - 2026-09-29: opened by the 2026-09-29 wave on the user's request (English UI, premium TUI, Strands audit, plug-and-play setup). Spec: wave decisions sections 1-3.
+- 2026-09-29: done (orchestrator): tau_core.i18n + tau_core.commands, [ui] language / TAU_LANG / --lang / /lang, English everywhere the model or an operator reads, home/travel/sport profiles, adaptive persona rule; the TUI side landed with 063 (y/e approve, n/h/Esc reject). Commits 344594a, b504eb7.

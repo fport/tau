@@ -9,9 +9,10 @@ from typing import Any
 
 from click.testing import CliRunner
 from tau_core import Config, t
+from tau_core.logs import LOG_FILE
 from tau_core.testing import FakeModel
 from tau_tui import build_app
-from tau_tui.cli import LOG_FILE, file_logging, tui
+from tau_tui.cli import tui
 
 UNSET = {
     name: None
@@ -110,30 +111,26 @@ def test_resume_unknown_session_exits_2(tmp_path: Path) -> None:
     assert "Session not found: 20260101-000000-0000." in result.output
 
 
-def test_file_logging_writes_mutes_stderr_and_cleans_up(tmp_path: Path) -> None:
-    root = logging.getLogger()
-    stderr_handler = logging.StreamHandler()
-    root.addHandler(stderr_handler)
-    try:
-        before = list(root.handlers)
-        level = root.level
-        with file_logging(tmp_path / "logs") as path:
-            assert path == tmp_path / "logs" / LOG_FILE
-            assert stderr_handler not in root.handlers  # nothing reaches stderr meanwhile
-            logging.getLogger("tau_tui.test").info("tui log line")
-        assert root.handlers == before
-        assert root.level == level
-        assert "tui log line" in path.read_text(encoding="utf-8")
-    finally:
-        root.removeHandler(stderr_handler)
+def test_tui_logs_to_the_file_and_never_to_stderr(tmp_path: Path, monkeypatch: Any) -> None:
+    """While the UI owns the terminal, records go to <data_dir>/logs/tau.log only (059)."""
 
+    class StubAgent:
+        def close(self) -> None:
+            pass
 
-def test_file_logging_survives_an_unwritable_directory(tmp_path: Path) -> None:
-    blocker = tmp_path / "file"
-    blocker.write_text("not a directory", encoding="utf-8")
-    with file_logging(blocker / "logs") as path:
-        assert path is None
-        logging.getLogger("tau_tui.test").info("dropped, never raises")
+    class StubApp:
+        agent = StubAgent()
+
+        def run(self) -> None:
+            logging.getLogger("tau_tui.test").warning("only in the file")
+
+    monkeypatch.setattr("tau_tui.cli.build_app", lambda *a, **kw: StubApp())
+    result = run([], make_home(tmp_path, FAKE_TOML), tmp_path)
+    assert result.exit_code == 0, result.output
+    assert "only in the file" not in result.output
+    log = tmp_path / "data" / "logs" / LOG_FILE
+    assert "only in the file" in log.read_text(encoding="utf-8")
+    assert result.output.rstrip().endswith("Goodbye.")
 
 
 def test_tau_lang_reaches_the_app(tmp_path: Path) -> None:

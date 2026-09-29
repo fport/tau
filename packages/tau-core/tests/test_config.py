@@ -234,3 +234,85 @@ def test_role_cache_rejects_invalid_tables(tmp_path: Path, body: str, match: str
     home = write_home(tmp_path, MINIMAL + "\n" + body + "\n")
     with pytest.raises(ConfigError, match=match):
         Config.load(home, env={})
+
+
+# -- components (issue 065) ------------------------------------------------------------------
+
+COMPONENTS = (
+    MINIMAL
+    + """
+[components]
+context = ["example"]
+
+[components.tools]
+disabled = ["demo_physical_action", "dist:tau-example-tool"]
+
+[components.hub]
+services = ["telegram"]
+
+[component.telegram]
+chat_id_env = "TELEGRAM_CHAT_ID"
+retries = 3
+
+[component.example]
+nodes = ["mac"]
+"""
+)
+
+
+def test_components_tables(tmp_path: Path) -> None:
+    config = Config.load(write_home(tmp_path, COMPONENTS), env={})
+    assert config.components.tools_disabled == ("demo_physical_action", "dist:tau-example-tool")
+    assert config.components.context == ("example",)
+    assert config.components.hub_services == ("telegram",)
+    assert config.components.tool_disabled("demo_physical_action")
+    assert config.components.tool_disabled("example_echo", "tau-example-tool")
+    assert not config.components.tool_disabled("current_time", "tau-core")
+    assert config.component("telegram") == {"chat_id_env": "TELEGRAM_CHAT_ID", "retries": 3}
+    assert config.component("missing") == {}
+    table = config.component("example")
+    table["nodes"].append("arm")
+    assert config.component("example") == {"nodes": ["mac"]}  # a copy each time
+
+
+def test_components_default_to_everything(tmp_path: Path) -> None:
+    config = Config.load(write_home(tmp_path), env={})
+    assert config.components.tools_disabled == ()
+    assert config.components.context == () and config.components.hub_services == ()
+    assert config.component_tables == {}
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "[components]\ncontext = 'example'\n",
+        "[components]\ncontext = ['']\n",
+        "[components.tools]\ndisabled = [1]\n",
+        "[components.hub]\nservices = 'x'\n",
+        "[components]\ntools = 'x'\n",
+        "[components]\nplugins = []\n",
+        "[components.tools]\ndisable = ['current_time']\n",  # typo: must not leave the tool on
+        "[components.hub]\nservice = ['x']\n",
+        "[component]\ntelegram = 'x'\n",
+    ],
+)
+def test_invalid_components_rejected(tmp_path: Path, extra: str) -> None:
+    with pytest.raises(ConfigError, match=r"\[component"):
+        Config.load(write_home(tmp_path, MINIMAL + "\n" + extra), env={})
+
+
+def test_unknown_top_level_table_warns_once(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    home = write_home(tmp_path, MINIMAL + "\n[model]\nx = 1\n\n[telegram]\ntoken = 'x'\n")
+    with caplog.at_level(logging.WARNING, logger="tau_core.config"):
+        config = Config.load(home, env={})
+        Config.load(home, env={})
+    assert config.roles["brain"].provider == "fake"  # loading succeeded
+    messages = [
+        r.getMessage() for r in caplog.records if "unknown top-level table" in r.getMessage()
+    ]
+    assert len(messages) == 2  # one per table, not per load
+    assert any("[model]" in m for m in messages) and any("[telegram]" in m for m in messages)

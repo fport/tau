@@ -16,6 +16,12 @@ def _source_files() -> list[Path]:
     return [p for p in PACKAGES.glob("*/src/**/*") if p.is_file() and "__pycache__" not in p.parts]
 
 
+def _code_files() -> list[Path]:
+    """Source files minus package data: ``templates/`` holds ``tau init``'s tau.toml and the
+    model-id table, which are data like the repository's own ``tau.toml``."""
+    return [p for p in _source_files() if "templates" not in p.parts]
+
+
 def test_repo_root_found() -> None:
     assert (ROOT / "pyproject.toml").is_file()
     assert (PACKAGES / "tau-core").is_dir()
@@ -23,7 +29,7 @@ def test_repo_root_found() -> None:
 
 def test_no_model_ids_in_code() -> None:
     offenders = []
-    for path in _source_files():
+    for path in _code_files():
         text = path.read_text(encoding="utf-8", errors="ignore")
         if "claude-" in text or "anthropic.claude" in text:
             offenders.append(path.relative_to(ROOT))

@@ -1,0 +1,14 @@
+# Model ids `tau init` writes into tau.toml for each provider it can pick. Data, not code:
+# tau-core never names a model id in Python. Bedrock ids use the Converse API form Strands
+# uses (cross-region "global." prefix); Anthropic ids are the API's own.
+[bedrock]
+brain = "global.anthropic.claude-sonnet-5"
+fast = "global.anthropic.claude-haiku-4-5"
+
+[anthropic]
+brain = "claude-sonnet-5"
+fast = "claude-haiku-4-5"
+
+[fake]
+brain = "fake-brain"
+fast = "fake-fast"

@@ -27,7 +27,7 @@ from contextlib import suppress
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
-from tau_core import __version__
+from tau_core._version import __version__
 from tau_core.config import Config
 from tau_core.hub.lock import HubLock
 from tau_core.hub.state import CrashReport, HubFiles, HubState, parse_timestamp, timestamp, utc_now
@@ -68,13 +68,30 @@ class Hub:
         self.loop: asyncio.AbstractEventLoop | None = None
         self._clock = clock or utc_now
         self._status_sources: list[StatusSource] = []
+        self._optional: set[int] = set()
+        self._started: list[HubService] = []  # the services whose ``start`` succeeded, in order
         self._stop_event: asyncio.Event | None = None
         self._stop_requested = False
 
     # -- wiring ---------------------------------------------------------------------------
 
-    def add_service(self, service: HubService) -> None:
+    def add_service(self, service: HubService, *, optional: bool = False) -> None:
+        """Append a service. An ``optional`` one (a ``tau.hub_services`` component) that
+        raises in ``start`` is logged and skipped; the hub keeps running without it. A
+        required one (the control API) that fails still crashes the hub, as before."""
         self.services.append(service)
+        if optional:
+            self._optional.add(id(service))
+
+    def find_service(self, name: str) -> HubService | None:
+        """The *started* service called ``name`` (``"control-api"`` for the
+        :class:`ControlApi`), so a component started later can add routes to it. ``None`` for
+        a service that has not started yet, that failed to start (an optional one the hub
+        skipped) or after the hub stopped: a component never gets a half-initialised one."""
+        for service in self._started:
+            if getattr(service, "name", None) == name:
+                return service
+        return None
 
     def add_status_source(self, source: StatusSource) -> None:
         """Merge ``source()`` into :meth:`status` (later issues: spend, approvals, nodes)."""
@@ -191,12 +208,21 @@ class Hub:
         )
         self.files.write_state(self.state)
 
-        started: list[HubService] = []
+        started = self._started = []
         heartbeat: asyncio.Task[None] | None = None
         try:
             for service in self.services:
                 logger.info("starting hub service %s", service.name)
-                await service.start(self)
+                if id(service) in self._optional:
+                    try:
+                        await service.start(self)
+                    except Exception:
+                        logger.exception(
+                            "hub service %s failed to start; running without it", service.name
+                        )
+                        continue
+                else:
+                    await service.start(self)
                 started.append(service)
             heartbeat = asyncio.create_task(self._heartbeat(), name="tau-hub-heartbeat")
             logger.info("tau hub running (pid %s)", os.getpid())
@@ -212,6 +238,7 @@ class Hub:
                     await service.stop()
                 except Exception:
                     logger.exception("hub service %s failed to stop", service.name)
+            self._started = []
 
     async def _heartbeat(self) -> None:
         interval = self.config.hub.heartbeat_seconds

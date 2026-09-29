@@ -23,10 +23,11 @@ from tau_core import (
 )
 from tau_core.agent import turn_limit_text
 from tau_core.approval import AutoRejectApprover, refusal_text, unknown_tool_text
+from tau_core.builtin_tools import demo_physical_action
 from tau_core.config import AgentConfig
 from tau_core.persona import PersonaLoader
 from tau_core.sessions import new_session_id
-from tau_core.testing import FakeModel, ScriptedApprover, ToolCall
+from tau_core.testing import FakeModel, ScriptedApprover, ToolCall, test_config
 from tau_core.tiers import ToolCatalog, UntieredToolError
 
 REFUSAL = refusal_text("lamp")
@@ -392,3 +393,47 @@ async def test_sliding_window_trims_the_model_view_not_the_store(config: Config)
     assert [m["content"][0]["text"] for m in model.calls[-1].messages] == ["2", "iki", "3"]
     assert [m["content"][0]["text"] for m in agent.messages] == ["3", "üç"]
     assert len(store.list_messages(agent.session_id, "tau")) == 6  # the store keeps everything
+
+
+# -- components (issue 065) ------------------------------------------------------------------
+
+
+def _with_components(tmp_path: Path, toml: str) -> Config:
+    config = test_config(tmp_path)
+    with (config.home / "tau.toml").open("a", encoding="utf-8") as fh:
+        fh.write(toml)
+    return Config.load(config.home, env={})
+
+
+def test_tools_disabled_applies_after_discovery(tmp_path: Path) -> None:
+    config = _with_components(
+        tmp_path,
+        "\n[components.tools]\ndisabled = ['demo_physical_action', 'dist:tau-example-tool']\n",
+    )
+    agent = build_agent(config=config)
+    assert agent.catalog.names() == ["current_time"]
+    # an explicit tools= list bypasses the switch
+    explicit = build_agent(config=config, tools=[demo_physical_action])
+    assert explicit.catalog.names() == ["demo_physical_action"]
+
+
+async def test_context_sources_come_from_entry_points_unless_given(
+    tmp_path: Path, fixed_now: datetime
+) -> None:
+    config = _with_components(tmp_path, "\n[component.example]\nnodes = ['example-node']\n")
+    model = FakeModel(["ok"])
+    agent = build_agent(config=config, model=model, clock=lambda: fixed_now)
+    await agent.ask("hi")
+    assert "- Live nodes: example-node" in model.calls[0].system_prompt
+
+    model = FakeModel(["ok"])
+    agent = build_agent(config=config, model=model, clock=lambda: fixed_now, context_sources=[])
+    await agent.ask("hi")
+    assert "- Live nodes: unknown" in model.calls[0].system_prompt
+
+    off = _with_components(
+        tmp_path / "off", "\n[components]\ncontext = ['nope']\n[component.example]\nnodes = ['x']\n"
+    )
+    model = FakeModel(["ok"])
+    await build_agent(config=off, model=model, clock=lambda: fixed_now).ask("hi")
+    assert "- Live nodes: unknown" in model.calls[0].system_prompt

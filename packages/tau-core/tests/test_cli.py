@@ -60,7 +60,7 @@ def run(args: list[str], home: Path | None, tmp_path: Path, stdin: str | None = 
 def test_help_lists_commands(tmp_path: Path) -> None:
     result = run(["--help"], None, tmp_path)
     assert result.exit_code == 0
-    for name in ("chat", "hub", "tui", "version"):
+    for name in ("chat", "components", "doctor", "hub", "init", "tui", "version"):
         assert f"  {name}" in result.output
     assert "Show this help" in result.output
 

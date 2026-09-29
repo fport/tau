@@ -50,10 +50,14 @@ def reset_logging() -> None:
         _saved_level = None
 
 
-def configure_logging(logs_dir: Path | None = None, *, verbose: bool = False) -> Path | None:
+def configure_logging(
+    logs_dir: Path | None = None, *, verbose: bool = False, console: bool = True
+) -> Path | None:
     """Terminal at WARNING (INFO with ``verbose``); file at INFO when ``logs_dir`` is given.
 
-    Returns the log file path, or ``None`` without a file. Calling it again replaces the setup.
+    ``console=False`` adds no stderr handler (a full-screen UI that owns the terminal); the
+    file still receives every record. Returns the log file path, or ``None`` without a file.
+    Calling it again replaces the setup.
     """
     global _saved_level
     root = logging.getLogger()
@@ -62,11 +66,12 @@ def configure_logging(logs_dir: Path | None = None, *, verbose: bool = False) ->
     _saved_level = root.level if level is None else level
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
 
-    console = _StderrHandler()
-    console.setLevel(logging.INFO if verbose else logging.WARNING)
-    console.setFormatter(_ShortFormatter())
-    console._tau = True  # type: ignore[attr-defined]
-    root.addHandler(console)
+    if console:
+        handler = _StderrHandler()
+        handler.setLevel(logging.INFO if verbose else logging.WARNING)
+        handler.setFormatter(_ShortFormatter())
+        handler._tau = True  # type: ignore[attr-defined]
+        root.addHandler(handler)
 
     if logs_dir is None:
         return None

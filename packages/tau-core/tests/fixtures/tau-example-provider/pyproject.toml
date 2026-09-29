@@ -1,0 +1,19 @@
+[project]
+name = "tau-example-provider"
+version = "0.0.1"
+description = "Test fixture: a model provider and a session backend shipped by a separate distribution through the tau.providers and tau.sessions entry points."
+requires-python = ">=3.12"
+dependencies = ["tau-core"]
+
+[project.entry-points."tau.providers"]
+fake2 = "tau_example_provider:make_model"
+
+[project.entry-points."tau.sessions"]
+example = "tau_example_provider:make_store"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tau_example_provider"]

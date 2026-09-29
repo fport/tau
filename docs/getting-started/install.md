@@ -28,8 +28,9 @@ tau is a set of Python packages. `tau-core` holds the agent and the `tau` comman
 
 ## Install the packages
 
-!!! warning "Until the first PyPI release"
-    The packages are not on PyPI yet. Until they are, install from the repository with the uv workspace and run every command through `uv run`:
+!!! note "From the repository instead"
+    Contributors and anyone who wants the unreleased `main` branch install from the uv
+    workspace and run every command through `uv run`:
 
     ```sh
     git clone https://github.com/fport/tau.git

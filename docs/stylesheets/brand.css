@@ -1,0 +1,25 @@
+/* tau brand palette (docs/brand/README.md): Void, Signal, Ember, Flare, Core, Ink */
+:root {
+  --tau-void: #05071a;
+  --tau-signal: #ff2e63;
+  --tau-ember: #ff7a3d;
+  --tau-flare: #ffb25c;
+  --tau-core: #fff4e0;
+  --tau-ink: #14060d;
+  --md-primary-fg-color: var(--tau-ember);
+  --md-primary-fg-color--light: var(--tau-flare);
+  --md-primary-fg-color--dark: var(--tau-signal);
+  --md-accent-fg-color: var(--tau-flare);
+}
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: var(--tau-void);
+  --md-default-fg-color: var(--tau-core);
+  --md-default-fg-color--light: rgba(255, 244, 224, 0.75);
+  --md-default-fg-color--lighter: rgba(255, 244, 224, 0.45);
+  --md-code-bg-color: #0a0c24;
+  --md-typeset-a-color: var(--tau-flare);
+  --md-footer-bg-color: #12061a;
+}
+.md-header { background: #12061a; }
+.md-typeset h1, .md-typeset h2 { color: var(--tau-core); }
+.md-typeset code { color: var(--tau-flare); }

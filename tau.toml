@@ -61,4 +61,4 @@ language = "en"                           # en | tr: chrome of the terminal and 
 #
 # Free tables for a component's own settings, read with Config.component("name"):
 # [component.telegram]
-# chat_id_env = "TELEGRAM_CHAT_ID"
+# poll_timeout_seconds = 50

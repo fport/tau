@@ -34,9 +34,51 @@ and `fake`; a missing credential stops `tau chat` with a Turkish message naming 
 
 ## Persona
 
-The system prompt is rebuilt before every model call from `persona/persona.md`,
-`persona/user.md` (gitignored; `user.example.md` is the template) and a dynamic block with the
-time (Europe/Istanbul), profile, host role, live nodes and budget; edits apply on the next turn.
+The system prompt is rebuilt before every model call (a Strands `BeforeModelCallEvent` hook), so
+an edit to a persona file applies on the next model call without a restart, even inside a tool
+loop. Its layout is fixed:
+
+```text
+<persona/persona.md>
+
+## Kullanıcı
+<persona/user.md, or: Kullanıcı dosyası yok (persona/user.md). Hitap: siz.>
+
+## Şu an
+- Tarih ve saat: 29.09.2026 15:30, Salı (Europe/Istanbul)
+- Profil: ev
+- Rol: hub
+- Canlı node'lar: bilinmiyor
+- Bugünkü bütçe: bilinmiyor
+```
+
+- `persona.md` is tau's character: Jarvis-style, Turkish, polite, dry humor, at most two
+  sentences for notifications and voice, no jokes in approval requests, never inventing facts
+  about the user. It is tracked, so it holds nothing personal.
+- `user.md` holds the facts about the user and how to address them. It is gitignored; start
+  from the made-up template with `cp persona/user.example.md persona/user.md`. Without it (or
+  when it is empty) tau addresses the user as "siz" and knows nothing about them.
+- A file is re-read only when its `(st_mtime_ns, st_size)` changes. HTML comments
+  (`<!-- ... -->`) are notes for humans and never reach the model.
+- A missing, empty or unreadable `persona.md` makes `build_agent` raise `ConfigError`. If the
+  file breaks later (deleted, truncated mid-save, not UTF-8), the last good version stays in
+  use until it is fixed; each such problem is logged once.
+- Time is always Europe/Istanbul. A value no layer provides yet reads `bilinmiyor` (an empty
+  node list reads `yok`), and the persona tells the model never to guess it.
+
+Later layers fill the dynamic block through context sources: zero-argument callables that
+return partial overrides (`nodes`, `budget`), merged in order. They run before every model
+call, so they must return a cached value quickly. Unknown keys are ignored, `None` means
+unknown, and a source that raises is skipped and logged once.
+
+```python
+agent = build_agent(
+    context_sources=[
+        lambda: {"nodes": ["mac", "arm"]},  # live nodes (L5)
+        lambda: {"budget": "fast 0,12 $ / 1 $"},  # today's spend (L2)
+    ],
+)
+```
 
 ## Tiers and approval
 

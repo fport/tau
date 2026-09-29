@@ -29,6 +29,8 @@ from tau_tui.tools import clip
 
 HISTORY_SIZE = 50
 MENU_PATTERN = re.compile(r"^/\S*$")
+USAGE_COLUMN = 22
+"""Width of the menu's usage column: the widest usage (``/settings [key value]``) plus one."""
 
 
 def usage(command: SlashCommand) -> str:
@@ -38,15 +40,15 @@ def usage(command: SlashCommand) -> str:
 class CommandMenu(OptionList, can_focus=False):
     """Fuzzy list of the slash commands, shown while the composer holds ``/…`` alone.
 
-    Heights are border-box: ``max-height`` is the twelve command rows plus the two border rows,
-    so every row is on screen at 80x24 (the transcript keeps five rows and its bottom). In the
-    ``-short`` band the list scrolls instead of eating the whole screen.
+    Heights are border-box: ``max-height`` is the thirteen command rows plus the two border
+    rows, so every row is on screen at 80x24 (the transcript keeps four rows and its bottom).
+    In the ``-short`` band the list scrolls instead of eating the whole screen.
     """
 
     SCOPED_CSS = False  # the -short rule starts with Screen
     DEFAULT_CSS = """
     CommandMenu {
-        display: none; height: auto; max-height: 14; margin: 0 1;
+        display: none; height: auto; max-height: 15; margin: 0 1;
         border: round $primary 60%; background: $panel; padding: 0;
     }
     Screen.-short CommandMenu { max-height: 8; }
@@ -85,12 +87,12 @@ class CommandMenu(OptionList, can_focus=False):
             width = self.screen.size.width
         except Exception:
             width = 80
-        help_width = max(10, width - 2 - 2 - 2 - 18)  # margin, border, padding, usage column
+        help_width = max(10, width - 2 - 2 - 2 - USAGE_COLUMN)  # margin, border, padding, usage
         self.add_options(
             [
                 Option(
                     Content.assemble(
-                        (usage(cmd).ljust(18), "bold"),
+                        (usage(cmd).ljust(USAGE_COLUMN), "bold"),
                         (clip(t(cmd.help_key, self.language), help_width), "dim"),
                     ),
                     id=cmd.name,
@@ -274,7 +276,12 @@ class PromptArea(TextArea):
 
 
 class Composer(Vertical):
-    """Rounded box with a caret and the prompt area. ``state``: idle | busy | attention."""
+    """Rounded box with a caret and the prompt area.
+
+    ``state``: idle | busy | attention | disabled. ``disabled`` is the no-agent state (no
+    credentials yet): the box is dimmed and the placeholder says what to do, but the area
+    still takes slash commands such as ``/settings``.
+    """
 
     SCOPED_CSS = False
     DEFAULT_CSS = """
@@ -285,10 +292,12 @@ class Composer(Vertical):
     Composer:focus-within { border: round $primary; }
     Composer.-busy { border: round $secondary; }
     Composer.-attention { border: round $accent; }
+    Composer.-disabled { border: round $primary 30%; }
     Composer .row { height: auto; }
     Composer .caret { width: 3; padding-left: 1; color: $primary; text-style: bold; }
     Composer.-busy .caret { color: $secondary; }
     Composer.-attention .caret { color: $accent; }
+    Composer.-disabled .caret { color: $text-muted; }
     Screen.-phone Composer {
         border: none; min-height: 1; max-height: 3; background: $surface; padding: 0;
     }
@@ -334,10 +343,13 @@ class Composer(Vertical):
     def watch_state(self, state: str) -> None:
         self.set_class(state == "busy", "-busy")
         self.set_class(state == "attention", "-attention")
+        self.set_class(state == "disabled", "-disabled")
+        self.relabel(self.language)
 
     def relabel(self, language: str) -> None:
         self.language = language
-        self.prompt.placeholder = t("tui.composer.placeholder", language)
+        key = "settings.no_credentials" if self.state == "disabled" else "tui.composer.placeholder"
+        self.prompt.placeholder = t(key, language)
 
     def set_max_rows(self, rows: int) -> None:
         self.prompt.max_rows = rows

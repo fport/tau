@@ -136,6 +136,111 @@ TUI_MESSAGES: dict[str, dict[str, str]] = {
     },
     "tui.key.scroll": {"en": "Scroll the transcript", "tr": "Dökümü kaydır"},
     "tui.key.bottom": {"en": "Back to the bottom", "tr": "En alta dön"},
+    "tui.key.settings": {"en": "Settings", "tr": "Ayarlar"},
+    "tui.busy_settings": {
+        "en": "Wait for the current turn before opening the settings.",
+        "tr": "Ayarları açmak için turun bitmesini bekle.",
+    },
+    # -- settings screen -------------------------------------------------------------------------
+    "tui.settings.title": {"en": "Settings", "tr": "Ayarlar"},
+    "tui.settings.section.roles": {"en": "Model roles", "tr": "Model rolleri"},
+    "tui.settings.section.credentials": {"en": "Credentials", "tr": "Kimlik bilgileri"},
+    "tui.settings.section.interface": {"en": "Interface", "tr": "Arayüz"},
+    "tui.settings.section.agent": {"en": "Agent", "tr": "Ajan"},
+    "tui.settings.section.doctor": {"en": "Doctor", "tr": "Doktor"},
+    "tui.settings.section.files": {"en": "Files", "tr": "Dosyalar"},
+    "tui.settings.hint": {
+        "en": "↑↓ section · tab fields · ctrl+s / F2 save · esc close",
+        "tr": "↑↓ bölüm · tab alanlar · ctrl+s / F2 kaydet · esc kapat",
+    },
+    "tui.settings.hint_phone": {
+        "en": "↑↓ section · tab · ^s/F2 save · esc",
+        "tr": "↑↓ bölüm · tab · ^s/F2 kaydet · esc",
+    },
+    "tui.settings.provider": {"en": "provider", "tr": "sağlayıcı"},
+    "tui.settings.model_id": {"en": "model id", "tr": "model kimliği"},
+    "tui.settings.max_tokens": {"en": "max tokens", "tr": "azami token"},
+    "tui.settings.fallback": {"en": "fallback", "tr": "yedek"},
+    "tui.settings.fallback_model": {"en": "fallback id", "tr": "yedek kimlik"},
+    "tui.settings.no_fallback": {"en": "(none)", "tr": "(yok)"},
+    "tui.settings.planned": {"en": "{provider} (planned)", "tr": "{provider} (planlı)"},
+    "tui.settings.needed_by": {"en": "needed by {roles}", "tr": "{roles} için gerekli"},
+    "tui.settings.needed": {"en": "needed", "tr": "gerekli"},
+    "tui.settings.set": {"en": "set · {masked}", "tr": "ayarlı · {masked}"},
+    "tui.settings.not_set": {"en": "not set", "tr": "ayarlı değil"},
+    "tui.settings.new_value": {"en": "new value (hidden)", "tr": "yeni değer (gizli)"},
+    "tui.settings.clear": {"en": "clear", "tr": "sil"},
+    "tui.settings.keep": {"en": "keep", "tr": "koru"},
+    "tui.settings.will_clear": {"en": "will be removed", "tr": "silinecek"},
+    "tui.settings.language": {"en": "UI language", "tr": "arayüz dili"},
+    "tui.settings.profile": {"en": "profile", "tr": "profil"},
+    "tui.settings.profile_note": {
+        "en": "TAU_PROFILE in .env: home, travel, sport or your own name",
+        "tr": ".env içinde TAU_PROFILE: home, travel, sport ya da kendi adınız",
+    },
+    "tui.settings.context": {"en": "context", "tr": "bağlam"},
+    "tui.settings.window_size": {"en": "window size", "tr": "pencere"},
+    "tui.settings.max_turns": {"en": "max turns", "tr": "azami tur"},
+    "tui.settings.max_total_tokens": {"en": "token budget", "tr": "token bütçesi"},
+    "tui.settings.agent_note": {
+        "en": "per-turn limits; the budget may be empty (none)",
+        "tr": "tur başına sınırlar; bütçe boş olabilir (yok)",
+    },
+    "tui.settings.number_expected": {
+        "en": "{field}: enter a whole number",
+        "tr": "{field}: tam sayı girin",
+    },
+    "tui.settings.fallback_needs_model": {
+        "en": "{role}: the fallback needs a model id",
+        "tr": "{role}: yedek için bir model kimliği gerekli",
+    },
+    "tui.settings.doctor_running": {"en": "Running the checks…", "tr": "Kontroller çalışıyor…"},
+    "tui.settings.doctor_summary": {
+        "en": "{n} checks: {ok} ok, {warn} warnings, {fail} failed",
+        "tr": "{n} kontrol: {ok} tamam, {warn} uyarı, {fail} hata",
+    },
+    "tui.settings.files_hint": {
+        "en": "Edit the persona files in any editor; tau re-reads them before the next turn.",
+        "tr": "Persona dosyalarını herhangi bir düzenleyicide düzenleyin; tau bir sonraki "
+        "turdan önce yeniden okur.",
+    },
+    # -- first-run setup screen ------------------------------------------------------------------
+    "tui.setup.title": {
+        "en": "Welcome to tau · first run",
+        "tr": "tau'ya hoş geldiniz · ilk çalıştırma",
+    },
+    "tui.setup.intro": {
+        "en": "Nothing is configured yet. Pick a home directory, the model provider and the UI "
+        "language; tau writes tau.toml and the persona files there.",
+        "tr": "Henüz bir yapılandırma yok. Bir ana dizin, model sağlayıcısı ve arayüz dili "
+        "seçin; tau oraya tau.toml ve persona dosyalarını yazar.",
+    },
+    "tui.setup.home": {"en": "home directory", "tr": "ana dizin"},
+    "tui.setup.provider": {"en": "provider", "tr": "sağlayıcı"},
+    "tui.setup.language": {"en": "UI language", "tr": "arayüz dili"},
+    "tui.setup.create": {"en": "Create", "tr": "Oluştur"},
+    "tui.setup.hint": {
+        "en": "tab fields · enter / ctrl+s / F2 create · esc quit",
+        "tr": "tab alanlar · enter / ctrl+s / F2 oluştur · esc çık",
+    },
+    "tui.setup.hint_phone": {
+        "en": "enter / ^s / F2 create · esc quit",
+        "tr": "enter / ^s / F2 oluştur · esc çık",
+    },
+    "tui.setup.has_credentials": {
+        "en": "{provider} · credentials found",
+        "tr": "{provider} · kimlik bilgisi bulundu",
+    },
+    "tui.setup.no_credentials": {
+        "en": "{provider} · no credentials found",
+        "tr": "{provider} · kimlik bilgisi bulunamadı",
+    },
+    "tui.setup.fake_note": {
+        "en": "fake · no credentials needed",
+        "tr": "fake · kimlik bilgisi gerekmez",
+    },
+    "tui.setup.empty_home": {"en": "Enter a home directory.", "tr": "Bir ana dizin girin."},
+    "tui.setup.failed": {"en": "Setup failed: {error}", "tr": "Kurulum başarısız: {error}"},
 }
 
 _collisions = set(TUI_MESSAGES) & set(MESSAGES)

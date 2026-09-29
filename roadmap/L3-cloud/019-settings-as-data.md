@@ -29,3 +29,4 @@ None - can start immediately; Telegram gets `/settings` through `tau_core.comman
 
 - 2026-09-29: reworded `/ayar` → `/settings` (Turkish alias `/ayar` stays accepted, see 062).
 - 2026-09-29: rewritten for ADR 0006 (private-first). Before: a D1 table pushed to the hub through the relay, blocked by 014. Now: a local file under `TAU_DATA_DIR`, hot-reloaded by the hub, edited by `/settings`, the control API, TauBar and the web UI; nothing blocks it.
+- 2026-09-29: issue 083 shipped the editor for the *bootstrap* config (`tau.toml`, `.env`) behind `/settings` and the TUI's settings screen (`tau_core.settings`, `tau_tui.settings`). This issue keeps its scope: the runtime settings file under `TAU_DATA_DIR` with hot reload, the audit log and the control API. When it lands, `/settings` should grow the runtime keys next to the bootstrap sections rather than replace them, and a key present in both stays a `ConfigError`.

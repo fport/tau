@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  tau hub as a launchd user agent. Rendered by `tau hub install` into
+  ~/Library/LaunchAgents/com.tau.hub.plist; `tau hub uninstall` removes it.
+  KeepAlive/SuccessfulExit=false: launchd restarts the hub after a crash or kill,
+  but not after a clean stop (`tau hub stop` exits 0).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tau.hub</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/venv/bin/python</string>
+        <string>-m</string>
+        <string>tau_core</string>
+        <string>hub</string>
+        <string>run</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TAU_HOME</key>
+        <string>/path/to/tau</string>
+        <key>TAU_DATA_DIR</key>
+        <string>/path/to/tau-data</string>
+        <key>TAU_ROLE</key>
+        <string>hub</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>/path/to/tau</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>3</integer>
+    <key>StandardOutPath</key>
+    <string>/path/to/tau-data/hub/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/path/to/tau-data/hub/logs/launchd.err.log</string>
+</dict>
+</plist>

@@ -165,7 +165,7 @@ def test_home_option(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
 
 
-@pytest.mark.parametrize("args", [["hub", "status"], ["hub", "run"], ["tui"]])
+@pytest.mark.parametrize("args", [["tui"]])
 def test_placeholders(tmp_path: Path, args: list[str]) -> None:
     result = run(args, None, tmp_path)
     assert result.exit_code == 0

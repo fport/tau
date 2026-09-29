@@ -13,7 +13,7 @@ Each role key gets a hard spend cap (e.g. `fast` $1/day, `brain` $15/month). Whe
 ## Acceptance criteria
 
 - [ ] Exceeding a cap blocks further calls on that key (verified with a tiny test cap)
-- [ ] The user gets a clear Turkish message, never a stack trace
+- [ ] The user gets a clear message in the UI language, never a stack trace
 - [ ] Spend per role is visible in the dynamic context and via the control API
 - [ ] Cap values change without code changes
 

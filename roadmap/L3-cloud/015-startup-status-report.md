@@ -15,7 +15,7 @@ When the hub starts, or restarts after a crash, it sends one status report to Te
 - [ ] Starting the hub produces exactly one status report
 - [ ] After a crash the report includes the crash reason recorded by #009
 - [ ] Missing sources render as n/a, not as errors
-- [ ] Short, Turkish, Jarvis tone
+- [ ] Short, in the UI language, Jarvis tone
 
 ## Blocked by
 

@@ -8,7 +8,7 @@ Blocked by: 014
 
 ## What to build
 
-If no hub is connected, the relay answers once per burst that tau is offline (Turkish, Jarvis tone) and queues the messages durably. When the hub reconnects, queued messages are delivered in order and answered.
+If no hub is connected, the relay answers once per burst that tau is offline (in the UI language, Jarvis tone) and queues the messages durably. When the hub reconnects, queued messages are delivered in order and answered.
 
 ## Acceptance criteria
 

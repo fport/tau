@@ -12,5 +12,6 @@
 | 035 | [MQTT → Zenoh bridge proven with a simulated device](035-mqtt-zenoh-bridge.md) | AFK | 032 |
 | 036 | [Desk presence: screen unlock → `tau/desk/presence`](036-desk-presence-event.md) | AFK | 024, 032 |
 | 037 | [Reflex engine for user-registered routines](037-reflex-routine-engine.md) | AFK | 006, 032 |
+| 069 | [Tiers for node capabilities loaded through MCP `ToolProvider`s](069-mcp-tool-provider-tiers.md) | AFK | 033 |
 
 Live status: `python3 roadmap/board.py`

@@ -1,6 +1,6 @@
 # 057 · Verify the `tau hub` launchd agent live (install, kill -9 relaunch, uninstall)
 
-Status: needs-triage
+Status: ready-for-human
 Type: HITL
 Layer: L1 · Agent
 Packages: tau-core, infra/services
@@ -14,8 +14,8 @@ On the Mac, from a Terminal in the logged-in GUI session (the `gui/<uid>` domain
 
 ## Acceptance criteria
 
-- [ ] `uv run tau hub install` then `uv run tau hub status` shows `launchd: kurulu ve yüklü` and `curl 127.0.0.1:7877/health` answers
-- [ ] After `pkill -9 -f "tau_core hub run"`, within about 3 s `tau hub status` shows a new pid and `Son çökme: … unexpected exit (no clean shutdown)`
+- [ ] `uv run tau hub install` then `uv run tau hub status` shows launchd as installed and loaded and `curl 127.0.0.1:7877/health` answers
+- [ ] After `pkill -9 -f "tau_core hub run"`, within about 3 s `tau hub status` shows a new pid and a last-crash line ending in `unexpected exit (no clean shutdown)`
 - [ ] `tau hub stop` leaves it stopped (no relaunch after a clean exit)
 - [ ] `tau hub uninstall` removes the plist
 - [ ] Any surprise is recorded under `## Comments` of #009 or as a new issue
@@ -27,3 +27,4 @@ None - needs the user's machine and GUI session.
 ## Comments
 
 - 2026-09-29: proposed by the agent that closed #009; the criterion was ticked there on FakeLaunchctl tests and this live check.
+- 2026-09-29: triaged → ready-for-human (HITL, needs the GUI session on the Mac; steps in `infra/services/README.md`). `tau hub status` lines are plain English from 062 on, so the criteria quote their meaning, not the exact text.

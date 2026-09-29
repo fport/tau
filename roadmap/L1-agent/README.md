@@ -21,5 +21,10 @@
 | 059 | [Export a logging helper from tau-core's public API](059-logging-helper-public-api.md) | AFK | – |
 | 060 | [Pin or fix the snapshot file extension for tau-tui snapshots](060-tui-snapshot-extension.md) | AFK | – |
 | 061 | [Verify `tau tui` from the phone over mosh (Termius)](061-verify-tui-on-phone.md) | HITL | – |
+| 062 | [English UI with a per-installation language setting](062-english-ui-language-setting.md) | AFK | – |
+| 063 | [Premium TUI: session sidebar, markdown replies, tool cards, status bar](063-premium-tui.md) | AFK | – |
+| 064 | [Strands-correctness pass over tau-core (strands-agents 1.57.1)](064-strands-correctness-pass.md) | AFK | – |
+| 065 | [Component builder: entry-point groups, `[components]` config, `tau components\|doctor\|init`](065-component-builder.md) | AFK | – |
+| 066 | [English docs: README, ARCHITECTURE, infra/remote, CLAUDE.md, CONTEXT.md, ADRs](066-english-docs.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py`

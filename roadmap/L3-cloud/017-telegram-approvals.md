@@ -8,7 +8,7 @@ Blocked by: 006, 014
 
 ## What to build
 
-Implement the approval interface for Telegram. A tier-2 call sends a message with inline "✅ Onayla / ❌ Reddet" buttons showing tool, arguments and effect; the button callback resolves the pending call on the hub. Unanswered approvals time out as rejected.
+Implement the approval interface for Telegram. A tier-2 call sends a message with inline "✅ Approve / ❌ Reject" buttons (labels from the message table, so the UI language applies) showing tool, arguments and effect; the button callback resolves the pending call on the hub. Unanswered approvals time out as rejected.
 
 ## Acceptance criteria
 

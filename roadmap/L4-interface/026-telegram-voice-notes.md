@@ -14,7 +14,7 @@ Voice notes sent to the bot are transcribed in the Worker with Workers AI Whispe
 
 - [ ] A Turkish voice note yields a correct transcript on the hub and a reply on Telegram
 - [ ] Audio is stored privately in R2 and referenced from the session
-- [ ] Transcription failures produce a clear Turkish error, not silence
+- [ ] Transcription failures produce a clear error in the UI language, not silence
 - [ ] Voice replies are controlled by a setting, default off
 
 ## Blocked by

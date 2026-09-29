@@ -1,6 +1,6 @@
 # 059 · Export a logging helper from tau-core's public API
 
-Status: needs-triage
+Status: in-progress
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-core, tau-tui
@@ -26,3 +26,4 @@ None - can start immediately.
 ## Comments
 
 - 2026-09-29: proposed by the agent that closed #008.
+- 2026-09-29: absorbed by 063 (premium TUI), closed when 063 closes. 063 uses tau-core's logging helper if it is exported by then; otherwise it keeps the local one and this issue stays open under 063's note.

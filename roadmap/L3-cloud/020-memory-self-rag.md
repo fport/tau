@@ -14,7 +14,7 @@ Blocked by: 014
 
 - [ ] A fact remembered in one turn is recallable in the very next turn
 - [ ] The grading step filters irrelevant results (test with seeded data)
-- [ ] The user can list, edit and delete memories (e.g. `/hafiza`)
+- [ ] The user can list, edit and delete memories (e.g. `/memory`)
 - [ ] Embedding model and index dimensions are documented; a re-index command exists
 
 ## Blocked by
@@ -22,3 +22,5 @@ Blocked by: 014
 - [014 · Telegram relay tracer bullet: webhook → Worker → Durable Object → hub → reply](014-telegram-relay-tracer-bullet.md)
 
 ## Comments
+
+- 2026-09-29: reworded `/hafiza` → `/memory` (Turkish alias stays accepted, see 062). Whether the store is exposed to the agent through Strands `MemoryManager` with a tau `MemoryStore` over the Worker is decided in 070 before this starts.

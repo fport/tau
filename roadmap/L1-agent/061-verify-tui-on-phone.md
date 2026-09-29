@@ -15,7 +15,7 @@ Issue #008 checked the TUI at 80x24 and at 50 columns in a local pseudo-terminal
 - [ ] Header, chat pane, event pane and input are all readable in portrait on the phone
 - [ ] A reply streams into the chat pane and its tool calls appear in the event pane
 - [ ] A tier-2 approval dialog can be answered with `e` / `h` from the phone keyboard
-- [ ] Ctrl+Q (or `/çık`) exits cleanly and the tmux window survives
+- [ ] Ctrl+Q (or `/quit`) exits cleanly and the tmux window survives
 - [ ] Any surprise is recorded under `## Comments` of #008 or as a new issue
 
 ## Blocked by

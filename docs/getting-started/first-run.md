@@ -127,7 +127,8 @@ warn persona: <root>/persona/user.md is missing: tau addresses you formally and 
 ok   .env: every name in .env is listed in .env.example
 ok   components: every component loads
 info hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
-10 checks: 5 ok, 4 warnings, 0 failed
+info telegram: not configured (TELEGRAM_BOT_TOKEN is not set)
+11 checks: 5 ok, 4 warnings, 0 failed
 ```
 
 | Check | What it verifies | When it fails |
@@ -139,6 +140,7 @@ info hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
 | `.env` | Every name in `.env` is listed in `.env.example`, so a typo in a variable name is caught. `info` when there is no `.env`. | Never; unknown names are a `warn`. Add your own names to `.env.example` to silence it. |
 | `components` | Every `tau.*` entry point loads. | A broken component: the distribution and its error are printed. |
 | `hub` | Whether a hub answers on `http://127.0.0.1:<control_port>/health`. Information only. | Never. `warn` when something answers with an error. |
+| `telegram` | Whether the [Telegram](../guides/telegram.md) channel is configured and, when the hub runs, the poller's state (`polling as @bot`, retrying, stopped). `info` without a token. | A token the Bot API rejected: `fail`. An empty or invalid `TELEGRAM_ALLOWED_CHAT_IDS` or a poller that keeps retrying: `warn`. |
 
 Exit code 1 means at least one `fail`. `tau doctor --json` prints the same checks as JSON for scripts.
 

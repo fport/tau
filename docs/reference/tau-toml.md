@@ -109,7 +109,8 @@ Free tables for a component's own settings, returned as a fresh dict by `Config.
 
 ```toml
 [component.telegram]
-chat_id_env = "TELEGRAM_CHAT_ID"
+poll_timeout_seconds = 50    # Telegram long-poll timeout (default 50)
+backoff_max_seconds = 60     # cap of the backoff after network errors (default 60)
 
 [component.example]
 nodes = ["mac", "arm"]

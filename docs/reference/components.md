@@ -15,7 +15,7 @@ A *plugin* is a third-party distribution that provides components. To write one,
 | `tau.context` | `factory(Config) -> ContextSource` (a callable returning `{"nodes": …, "budget": …}`) | `build_agent` when no explicit `context_sources` are passed, minus what `[components] context` leaves out |
 | `tau.hub_services` | `factory(Config) -> HubService` | `tau hub run`, after the control API, minus what `[components.hub] services` leaves out |
 
-`tau.channels` is reserved for hub-hosted channels; a channel that runs inside the hub ships a `tau.hub_services` entry point today.
+`tau.channels` is reserved for hub-hosted channels; a channel that runs inside the hub ships a `tau.hub_services` entry point today, as tau-core's own `telegram` service does ([Telegram](../guides/telegram.md)).
 
 ### Precedence
 
@@ -36,7 +36,7 @@ disabled = ["demo_physical_action", "dist:tau-example-tool"]   # tool names or d
 services = []                # enabled tau.hub_services; empty = every discovered one
 
 [component.telegram]         # a component's own settings: Config.component("telegram")
-chat_id_env = "TELEGRAM_CHAT_ID"
+poll_timeout_seconds = 50
 ```
 
 - `tools.disabled` can only remove tools. It never adds one, gives one a tier or changes a tier. An explicit `build_agent(tools=[...])` bypasses it.

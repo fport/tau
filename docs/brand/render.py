@@ -444,7 +444,7 @@ def hero() -> str:
     {glint_svg}
   </g>
 
-  <text x="{CX}" y="{H - 26}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" letter-spacing="7" fill="#F6B9A6" opacity="0.75">DÜŞÜNÜR · DOKUNUR · HATIRLAR</text>
+  <text x="{CX}" y="{H - 26}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" letter-spacing="7" fill="#F6B9A6" opacity="0.75">THINKS · TOUCHES · REMEMBERS</text>
   <rect width="{W}" height="{H}" fill="url(#vignette)"/>
 """
     return svg(W, H, body)

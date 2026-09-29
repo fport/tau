@@ -13,5 +13,12 @@
 | 007 | [Session persistence and `/devam` resume](007-session-persistence-resume.md) | AFK | 004 |
 | 008 | [Textual TUI with chat and live event pane](008-textual-tui.md) | AFK | 004 |
 | 009 | [`tau hub` daemon with launchd service and self-heal](009-hub-daemon.md) | AFK | 004 |
+| 054 | [Show the conversation channel in the dynamic context](054-channel-in-dynamic-context.md) | AFK | – |
+| 055 | [Session commands and event replay in the TUI](055-tui-session-commands.md) | AFK | – |
+| 056 | [Session index for fast listing once sessions number in the thousands](056-session-index.md) | AFK | – |
+| 057 | [Verify the `tau hub` launchd agent live (install, kill -9 relaunch, uninstall)](057-verify-hub-launchd-live.md) | HITL | – |
+| 058 | [Load hub-hosted services from entry points in `tau hub run`](058-hub-services-from-entry-points.md) | AFK | – |
+| 059 | [Export a logging helper from tau-core's public API](059-logging-helper-public-api.md) | AFK | – |
+| 060 | [Pin or fix the snapshot file extension for tau-tui snapshots](060-tui-snapshot-extension.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py`

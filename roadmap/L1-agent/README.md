@@ -31,5 +31,6 @@
 | 077 | [Tools assume hostile input: tier rules for shell, file and fetch tools, and an untrusted-text frame](077-hostile-input-tool-policy.md) | AFK | – |
 | 082 | [`test_doctor_all_green_on_the_test_config` fails while a real hub runs](082-doctor-test-assumes-no-hub.md) | AFK | – |
 | 083 | [Settings and first run inside the TUI: edit tau.toml and .env from `/settings`, set up without `tau init`](083-settings-and-first-run-in-the-tui.md) | AFK | – |
+| 087 | [`tau hub status` reports the launchd agent for every data dir](087-hub-status-launchd-ignores-data-dir.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py`

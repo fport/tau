@@ -19,13 +19,13 @@ Why: on the user's Mac (macOS 26.3.1) launchd pends every non-demand spawn of a 
 
 ## Acceptance criteria
 
-- [ ] Turning "Run the hub" on starts the hub; `/health` answers within a few seconds and the menu shows it as up
-- [ ] `pkill -9 -f "tau_core hub run"` → TauBar restarts the hub within about 5 s; the new hub reports the crash (`unexpected exit (no clean shutdown)`)
-- [ ] `tau hub stop` or turning the switch off leaves the hub stopped; quitting TauBar stops a hub it started
-- [ ] A hub started elsewhere is detected and never duplicated
+- [x] Turning "Run the hub" on starts the hub; `/health` answers within a few seconds and the menu shows it as up
+- [x] `pkill -9 -f "tau_core hub run"` → TauBar restarts the hub within about 5 s; the new hub reports the crash (`unexpected exit (no clean shutdown)`)
+- [x] `tau hub stop` or turning the switch off leaves the hub stopped; quitting TauBar stops a hub it started
+- [x] A hub started elsewhere is detected and never duplicated
 - [ ] "Launch at login" is a checkbox that survives restarts and actually starts TauBar at the next login
-- [ ] The switches' state persists across TauBar restarts
-- [ ] `infra/services/README.md` and the docs explain TauBar as the macOS default and launchd as the alternative
+- [x] The switches' state persists across TauBar restarts
+- [x] `infra/services/README.md` and the docs explain TauBar as the macOS default and launchd as the alternative
 
 ## Blocked by
 
@@ -34,3 +34,6 @@ Why: on the user's Mac (macOS 26.3.1) launchd pends every non-demand spawn of a 
 ## Comments
 
 - 2026-09-30: opened at the user's request after 057 found launchd pending every automatic spawn on this Mac; the user wants background jobs switchable from TauBar ("Launch at login" style checkboxes).
+- 2026-09-30: built by an agent right after 024 (024 stays in-progress only for checks that need the user). Commits b7cc689 (`tau hub status --json` adds `control_port`, `data_dir`, `hub_dir`, `lock`), b596628 (the supervisor: `apps/taubar/src-tauri/src/hub/`, wired into the menu, the window and a 1 s supervisor thread), 297b0bc (the doctor test no longer probes the live hub's port; see 082), 4596768 (docs). TauBar starts `<python> -m tau_core hub run` as its direct child in `TAU_HOME` with an explicit environment; restart after an unclean exit after 1 s, doubling to 60 s, reset after a minute-long run; a clean exit it did not ask for turns the switch off for the session (the saved switch still starts the hub at the next TauBar start, like launchd's `RunAtLoad`); switch off and quit send SIGTERM. Before every start it runs `tau hub status --json` and probes that data dir's hub lock; a loaded `com.tau.hub` agent whose plist has the same `TAU_DATA_DIR` keeps the hub. An orphaned hub of a crashed TauBar is adopted through `hub_pid` in `state.json` plus the lock. First start imports Python/`TAU_HOME`/`TAU_DATA_DIR`/`PATH` from an installed `com.tau.hub.plist`. `cargo test`: 59 (13 supervisor tests run real `/bin/sh` children: crash backoff, kill -9, clean exit, switch off, SIGTERM-deaf hub, foreign lock holder, launchd-owned data dir, adoption, shutdown); vitest: 9.
+  Verified live with an isolated hub (fake provider, own `TAU_HOME`/`TAU_DATA_DIR`, port 7897, `TELEGRAM_BOT_TOKEN=` empty), driving TauBar's window through System Events; the live launchd hub (port 7877) was only read (`/health`) and kept its pid throughout. (1) Switch on → "hub: pid … is up (/health answered after 1.0 s)"; the window (same strings as the menu) showed `Hub: up 15 s · pid …`, `Telegram: off (TELEGRAM_BOT_TOKEN is not set)`, `Last crash: none`. (2) `kill -9 <pid>` (not `pkill -f`, which would also have killed the live hub) → restarted within 1.3 s, and the new hub's `/status` had `last_crash.reason = "unexpected exit (no clean shutdown)"`. (3) `tau hub stop` → "exited cleanly without TauBar asking … leaving it stopped", no restart; switch off → SIGTERM, stopped in about 1 s, no restart; SIGTERM to TauBar and the window's Quit button each stopped the hub first. (4) A hub started by hand showed as `started outside TauBar`; switching on logged "not starting a second one" (still one test hub); switching off left it running and showed how to stop it; after `tau hub stop` on it TauBar started its own. With the real setup (fresh TauBar home, switch off) TauBar imported the plist and showed the live hub as `up 1 h 5 min · pid … · run by launchd` with the Telegram poller line, without touching it. (5) `kill -9` of TauBar itself: its hub kept running; the next TauBar logged "took over the hub an earlier TauBar started" and restarted it after a `kill -9`. (6) With the switch on, a TauBar restart logged "run the hub: on (saved setting)" and started the hub; the login item stayed registered across a TauBar restart (then unregistered again).
+  Not verified: that TauBar (and with it the hub) actually starts at the next login; nobody logged out. The tray menu could not be clicked in tests because macOS hid TauBar's icon (full menu bar, see 024); menu and window call the same code. Follow-ups: 085 (start/restart TauBar's hub from the phone), 086 (TauBar UI language), 087 (`tau hub status`'s launchd line ignores the data dir). Once TauBar runs the hub on this Mac, 057 and 052 matter only for the launchd alternative.

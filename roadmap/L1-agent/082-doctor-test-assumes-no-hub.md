@@ -12,7 +12,7 @@ Blocked by: none
 
 ## Acceptance criteria
 
-- [ ] The tau-core suite passes with a real hub running on 7877
+- [x] The tau-core suite passes with a real hub running on 7877
 - [ ] No test talks to a real hub's control API
 
 ## Blocked by
@@ -22,3 +22,4 @@ None - can start immediately.
 ## Comments
 
 - 2026-09-29: found while testing 014 live with a hub running.
+- 2026-09-30: hit again while working on 084 with the live hub up. Commit 297b0bc points this one test at a port nothing listens on (`TAU_HUB_PORT`), and the tau-core suite passes with the real hub on 7877 (611 passed). Not done: `test_config` still fixes `control_port = 7877`, so other tests that probe `/health` (the `/status` command, `tau doctor` without an override) may still reach a live hub; they pass either way, but the second criterion needs an audit or an unused port in `test_config`. Left for triage.

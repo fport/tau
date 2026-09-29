@@ -18,5 +18,7 @@
 | 075 | [tau-voice: push-to-talk from the TUI with local speech-to-text and text-to-speech](075-tau-voice-push-to-talk.md) | AFK | 054 |
 | 080 | [Voice from the phone: browser microphone in the web UI, transcribed on the hub](080-voice-from-the-phone.md) | AFK | 074, 075 |
 | 084 | [TauBar runs the hub: on/off switch, restart after a crash, launch at login](084-taubar-runs-the-hub.md) | AFK | 024 |
+| 085 | [Start or restart the hub TauBar supervises from the phone](085-start-taubar-hub-from-the-phone.md) | AFK | 084 |
+| 086 | [TauBar follows the UI language setting](086-taubar-ui-language.md) | AFK | 024 |
 
 Live status: `python3 roadmap/board.py --layer L4`

@@ -116,9 +116,23 @@ Typing `/` into an empty composer opens a fuzzy menu of the slash commands (`↑
 complete, Enter run, Esc close). An exact name ranks first, and a command typed in full runs as
 typed even when the menu has not caught up with a burst of keys (a paste, mosh), so `/session`
 never runs `/sessions`. The commands are the shared spec of `tau_core.commands`, with
-the same wording as `tau chat`: `/help`, `/tools`, `/sessions`, `/resume [n|id]`, `/new`,
-`/session`, `/lang en|tr`, `/quit`. The Turkish aliases (`/devam`, `/çık`, …) keep working but
-are never listed. `/new` and `/resume` wait for the current turn.
+the same wording as `tau chat`:
+
+| command | effect |
+|---|---|
+| `/help`, `/tools`, `/sessions`, `/session`, `/lang en\|tr` | as in `tau chat` |
+| `/resume [n\|id]`, `/new` | switch sessions (see below) |
+| `/compact [focus]` | summarize this session with its own model and continue in a new session seeded with the summary; the old session is kept |
+| `/clear` | empty the transcript (turns, welcome card, info cards, the fold); the session and the agent go on, `/resume` or `--resume` show the history again |
+| `/status` | an info card: profile, session, model, context, tools, language, versions, hub |
+| `/model [role]` | list the roles of `tau.toml`, or switch this session to one; the header follows |
+| `/quit` (alias `/exit`) | leave |
+
+The Turkish aliases (`/devam`, `/çık`, `/özet`, `/temizle`, `/durum`, `/rol`, …) keep working
+but are never listed; the menu shows the twelve canonical names and every row is on screen at
+80x24 (in the `-short` band it scrolls). `/new`, `/resume`, `/compact`, `/clear` and
+`/model <role>` wait for the current turn (a toast says so); `/status` and `/model` without an
+argument run any time.
 
 ## Approvals
 
@@ -148,6 +162,24 @@ result), replays the stored agent events into the events pane before live ones, 
 current agent when the rebuild fails. The last 40 turns stay live; older ones fold into one
 line and PageUp at the top pages them in. One `EventBus` serves the app for its lifetime; events
 stamped with another session id are ignored.
+
+`/compact [focus]` asks the agent's own model for a continuation summary, opens a new session
+whose history starts with that summary, links the two sessions in their metadata
+(`compacted_from` / `compacted_to`) and keeps the old one untouched; the transcript is reset
+like `/new`, then shows the summary as an info card and the notice `Compacted N messages into a
+summary. New session <id>; the previous session <old id> is kept.`, the header shows the new id
+and the events pane starts empty. The summary is written in a worker, so the app stays
+responsive: the chrome is busy (`✻ Summarizing…`, `esc cancel` in the hint bar), read-only
+commands such as `/status` still answer, turns and session switches are refused, and Esc
+cancels the summarizer (`Compaction cancelled; the session continues.`). A failure (nothing to
+summarize, a model error, missing credentials) is a notice and the current session goes on.
+The details are in tau-core's README under "Compaction".
+
+`/model fast` rebuilds the agent on the same session with that role (the transcript stays,
+the header and the welcome card follow) and remembers the role in the session's metadata, so
+`/resume` and `tau tui --resume` come back on it; `build_app(role=...)` pins a role for the
+whole run instead. An unknown role, missing credentials or an unavailable provider leave the
+current agent working and say why.
 
 ## Knobs
 
@@ -180,9 +212,12 @@ app.run()
 ```
 
 `build_app` creates one `EventBus` and one `TuiApprover`, builds the first agent with
-`tau_core.build_agent(..., channel="tui")` and gives `TauApp` a factory that builds every later
-agent (`/new`, `/resume`) on the same bus, store and approver. Tests pass `model=FakeModel([...])`,
-`tools=[...]`, a fixed `clock`, `tz=UTC`, `motion=False` and `show_durations=False`.
+`tau_core.build_agent(..., channel="tui")` and gives `TauApp` a factory
+`agent_factory(session_id, *, role=None, seed_messages=None)` that builds every later agent
+(`/new`, `/resume`, `/compact`, `/model`) on the same bus, store and approver. `role=None`
+means `brain`, or the role a resumed `session_id` remembers from `/model`; an explicit `role`
+is pinned for the run. Tests pass `model=FakeModel([...])`, `tools=[...]`, a fixed `clock`,
+`tz=UTC`, `motion=False` and `show_durations=False`.
 `resolve_resume(store, resume, language=...)` turns `--resume [ID]` into a session id and an
 optional notice (`SessionNotFound` for an unknown id). `rasterise(cols)` is the τ mark as
 half-block cells (`docs/brand/README.md`, "Terminal").
@@ -198,8 +233,8 @@ Snapshots live under `tests/__snapshots__/test_snapshots/` as `.raw` files: pyte
 1.0 with syrupy 6 writes SVG under that extension, and the extension is pinned in
 `test_snapshots.py` (exactly one file per snapshot test, no glob). There are twelve: welcome at
 80x24, 50x24 and in Turkish, chat (a markdown list, a one-line fence and a rejected tier-2 card),
-busy, approval, menu and picker at 80x24, wide 100x30 (busy chrome), ultra 160x45 (a fence and the
-last turn's cards expanded), the events view at 50x24 and short 80x18. Every snapshot uses the fixed session id
+busy, approval, menu (all twelve rows) and picker at 80x24, wide 100x30 (busy chrome), ultra
+160x45 (a fence and the last turn's cards expanded), the events view at 50x24 and short 80x18. Every snapshot uses the fixed session id
 `20260929-120000-abcd` (checked in every file), a fixed clock, UTC event times, no motion and no
 durations, and is taken after the streams stopped; review a regenerated file before committing it
 (it must never contain a local path, which the test also checks). The pilot tests read the widgets

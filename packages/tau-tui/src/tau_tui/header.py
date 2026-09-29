@@ -98,6 +98,12 @@ class HeaderBar(HorizontalGroup):
         self.events_view = active
         self.refresh_text()
 
+    def set_role(self, role: str, provider: str) -> None:
+        """``/model``: the context label follows the role the agent now runs on."""
+        self.role = role
+        self.provider = provider
+        self.refresh_text()
+
     def relabel(self, language: str) -> None:
         self.language = language
         self.refresh_text()

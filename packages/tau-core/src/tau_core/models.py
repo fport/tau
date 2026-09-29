@@ -101,7 +101,7 @@ def resolve_model(role: str, config: Config, *, env: Mapping[str, str] | None = 
         raise ConfigError(f"Role '{role}' is not defined in tau.toml (add [models.roles.{role}]).")
     missing = missing_credentials(role_cfg, env)
     if not missing:
-        return _build(role_cfg, env)
+        return _tag(_build(role_cfg, env), role_cfg.provider, None)
     fallback = role_cfg.fallback
     if fallback is not None:
         try:
@@ -116,8 +116,21 @@ def resolve_model(role: str, config: Config, *, env: Mapping[str, str] | None = 
                 ", ".join(missing),
                 fallback.provider,
             )
-            return _build(fallback, env)
+            return _tag(_build(fallback, env), fallback.provider, role_cfg.provider)
     raise MissingCredentials(role, role_cfg.provider, missing)
+
+
+def _tag(model: Model, provider: str, fallback_of: str | None) -> Model:
+    """Mark the instance with the provider that built it (``tau_provider``) and, when it is
+    a role's fallback, the primary it stands in for (``tau_fallback_of``), so ``/status`` can
+    say what serves a role without guessing from the class name (entry-point providers have
+    any class). An object that refuses attributes is left untagged."""
+    for name, value in (("tau_provider", provider), ("tau_fallback_of", fallback_of)):
+        try:
+            setattr(model, name, value)
+        except (AttributeError, TypeError):
+            logger.debug("model %r refused the %s tag", type(model).__name__, name)
+    return model
 
 
 def _check_supported(role_cfg: RoleConfig) -> None:

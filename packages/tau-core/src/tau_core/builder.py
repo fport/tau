@@ -519,6 +519,11 @@ def _check_hub(config: Config) -> Check:
         return Check("hub", "warn", f"control API answered {exc.code} on {url}")
     except (OSError, ValueError):
         return Check("hub", "info", f"hub is not running (nothing answers on {url})")
+    except Exception as exc:  # e.g. http.client.IncompleteRead: a check must never raise
+        logger.warning("hub check failed on %s: %s: %s", url, type(exc).__name__, exc)
+        return Check(
+            "hub", "warn", f"control API check failed on {url}: {type(exc).__name__}: {exc}"
+        )
     if status == 200 and isinstance(body, dict) and body.get("ok"):
         return Check(
             "hub",

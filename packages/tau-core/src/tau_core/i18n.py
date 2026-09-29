@@ -57,6 +57,22 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "current session id, title, message count and store",
         "tr": "geçerli oturumun kimliği, başlığı, mesaj sayısı ve deposu",
     },
+    "command.compact": {
+        "en": "summarize this session into a new one and continue there (the old one is kept)",
+        "tr": "bu oturumu özetleyip yeni bir oturumda devam eder (eskisi saklanır)",
+    },
+    "command.clear": {
+        "en": "clear the screen; the session continues",
+        "tr": "ekranı temizler; oturum devam eder",
+    },
+    "command.status": {
+        "en": "profile, session, model, context, tools, language, versions and hub",
+        "tr": "profil, oturum, model, bağlam, araçlar, dil, sürümler ve hub",
+    },
+    "command.model": {
+        "en": "show the model roles, or switch this session to one",
+        "tr": "model rollerini gösterir ya da bu oturumu bir role geçirir",
+    },
     "command.lang": {
         "en": "switch the UI language for this run",
         "tr": "bu çalıştırma için arayüz dilini değiştirir",
@@ -120,6 +136,61 @@ MESSAGES: dict[str, dict[str, str]] = {
     "session.info.title": {"en": "Title: {title}", "tr": "Başlık: {title}"},
     "session.info.count": {"en": "Messages: {n}", "tr": "Mesaj sayısı: {n}"},
     "session.info.store": {"en": "Store: {store}", "tr": "Depo: {store}"},
+    # -- clear, compact, status, model -------------------------------------------------------------
+    "clear.done": {
+        "en": "Screen cleared; the session continues ({n} messages kept).",
+        "tr": "Ekran temizlendi; oturum devam ediyor ({n} mesaj korundu).",
+    },
+    "compact.started": {"en": "Compacting {n} messages…", "tr": "{n} mesaj özetleniyor…"},
+    "compact.done": {
+        "en": "Compacted {n} messages into a summary. New session {session}; the previous "
+        "session {previous} is kept.",
+        "tr": "{n} mesaj bir özete indirildi. Yeni oturum {session}; önceki oturum {previous} "
+        "saklandı.",
+    },
+    "compact.failed": {
+        "en": "Compaction failed: {error}",
+        "tr": "Özetleme başarısız oldu: {error}",
+    },
+    "compact.cancelled": {
+        "en": "Compaction cancelled; the session continues.",
+        "tr": "Özetleme iptal edildi; oturum devam ediyor.",
+    },
+    "status.profile": {"en": "Profile: {profile}", "tr": "Profil: {profile}"},
+    "status.session": {
+        "en": "Session: {session} · {title} · {n} messages stored · role {role}",
+        "tr": "Oturum: {session} · {title} · {n} mesaj kayıtlı · rol {role}",
+    },
+    "status.model": {
+        "en": "Model: {role} → {provider} · {model_id}",
+        "tr": "Model: {role} → {provider} · {model_id}",
+    },
+    "status.model_fallback": {
+        "en": "Model: {role} → {provider} (fallback; {primary} has no credentials) · {model_id}",
+        "tr": "Model: {role} → {provider} (yedek; {primary} için kimlik bilgisi yok) · {model_id}",
+    },
+    "status.context": {
+        "en": "Context: {mode}, window {window} · {n} messages in memory",
+        "tr": "Bağlam: {mode}, pencere {window} · bellekte {n} mesaj",
+    },
+    "status.tools": {
+        "en": "Tools: {n} registered · {approval} need approval (tier 2)",
+        "tr": "Araçlar: {n} kayıtlı · {approval} onay ister (tier 2)",
+    },
+    "status.language": {"en": "UI language: {language}", "tr": "Arayüz dili: {language}"},
+    "status.versions": {"en": "Versions: {versions}", "tr": "Sürümler: {versions}"},
+    "status.hub": {"en": "Hub: {detail}", "tr": "Hub: {detail}"},
+    "model.current": {
+        "en": "Model role: {role} ({provider})",
+        "tr": "Model rolü: {role} ({provider})",
+    },
+    "model.roles_header": {"en": "Roles in tau.toml:", "tr": "tau.toml'daki roller:"},
+    "model.fallback_note": {"en": "fallback {provider}", "tr": "yedek {provider}"},
+    "model.current_mark": {"en": "current", "tr": "geçerli"},
+    "model.unknown": {
+        "en": "Unknown role: {role}. Roles: {roles}",
+        "tr": "Bilinmeyen rol: {role}. Roller: {roles}",
+    },
     # -- language --------------------------------------------------------------------------------
     "lang.switched": {"en": "UI language: {language}.", "tr": "Arayüz dili: {language}."},
     "lang.usage": {

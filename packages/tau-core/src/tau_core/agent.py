@@ -26,6 +26,7 @@ Stream contract (one ``stream(prompt)`` call is one user turn):
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterable
@@ -220,17 +221,43 @@ def _repair_message(text: str) -> Message:
     return {"role": "assistant", "content": [{"text": f"({text})"}]}
 
 
-def _dangling(message: Message) -> bool:
+def dangling(message: Message) -> bool:
     """A history ending on this message needs a repair before the next user prompt.
 
     Either a ``user`` message (no reply was stored: failed, cancelled, limited or crash-cut
     turn) or an ``assistant`` message with a ``toolUse`` block (the tool result was never
     stored, e.g. the hub died while an approval was pending, or an interrupt was given up).
+    Shared with :mod:`tau_core.compaction`, whose summarizer sends the same repair pair.
     """
     role = message.get("role")
     if role == "user":
         return True
     return role == "assistant" and any("toolUse" in block for block in message.get("content", []))
+
+
+CONTEXT_MANAGERS = {
+    "SlidingWindowConversationManager": "sliding",
+    "SummarizingConversationManager": "summarize",
+}
+"""Strands conversation manager class → the ``[agent] context`` value that picks it."""
+
+
+class SessionContextMismatch(ConfigError):
+    """The session was recorded under another ``[agent] context`` value.
+
+    Strands stores the conversation manager's class with the session and refuses to restore
+    it under a different one (``ValueError("Invalid conversation manager state.")``), so the
+    session can only be resumed with the setting it was recorded with, or left as it is.
+    """
+
+    def __init__(self, session_id: str, previous: str | None) -> None:
+        self.session_id = session_id
+        self.previous = CONTEXT_MANAGERS.get(previous or "", previous)
+        back_to = f"set it back to {self.previous}" if self.previous else "set it back"
+        super().__init__(
+            f"Session {session_id} was recorded with a different [agent] context setting; "
+            f"{back_to} or start a new session."
+        )
 
 
 def _usage_of(result: Any) -> tuple[int, int]:
@@ -262,11 +289,15 @@ class TauAgent:
     catalog: ToolCatalog
     store: SessionStore | None
     gate: TierGate
+    role: str = "brain"
+    """The model role this agent was built for (``/status``, ``/model``); a label when the
+    caller passed its own ``model``."""
     _unsubscribe_store: Callable[[], None] | None = field(default=None, repr=False)
     _pending_repair: str | None = field(default=None, repr=False)
     """The notice the next turn prepends as an assistant message when the history ends
     dangling; ``None`` falls back to ``notice.previous_turn_unfinished``. Kept until the SDK
-    has appended the repair (a ``busy`` turn appends nothing and leaves it alone)."""
+    has appended the repair (a ``busy`` turn appends nothing and leaves it alone); a rebuilt
+    agent on the same session takes it over with :meth:`carry_over`."""
     _lock: asyncio.Lock | None = field(default=None, repr=False)
     _lock_loop: asyncio.AbstractEventLoop | None = field(default=None, repr=False)
     _running: bool = field(default=False, repr=False)
@@ -322,7 +353,7 @@ class TauAgent:
         history ends dangling (see :func:`_dangling`). ``_pending_repair`` is not cleared
         here: it is consumed once the SDK has actually appended the messages."""
         messages = self.agent.messages
-        if not messages or not _dangling(messages[-1]):
+        if not messages or not dangling(messages[-1]):
             return prompt
         text = self._pending_repair or t("notice.previous_turn_unfinished", language)
         logger.info("repairing an unfinished turn in session %s", self.session_id)
@@ -533,8 +564,15 @@ class TauAgent:
         nothing (nothing new to repair) leaves the pending notice alone.
         """
         messages = self.agent.messages
-        if self._appended_since(last_before) and _dangling(messages[-1]):
+        if self._appended_since(last_before) and dangling(messages[-1]):
             self._pending_repair = text
+
+    def carry_over(self, previous: TauAgent) -> None:
+        """Take over the pending repair notice of the agent this one replaces on the same
+        session (``/model``): a rebuilt agent restores the same dangling history, and the
+        notice the next turn prepends should stay the specific one, not the generic text."""
+        if previous is not self and previous.session_id == self.session_id:
+            self._pending_repair = previous._pending_repair
 
     async def ask(self, prompt: str) -> str:
         """Run one turn and return only the reply text."""
@@ -578,6 +616,23 @@ def discovered_tools(config: Config) -> list[AgentTool]:
     return kept
 
 
+def _check_context_state(
+    store: SessionStore, session_id: str, manager: ConversationManager
+) -> None:
+    """Raise :class:`SessionContextMismatch` when the stored agent record of ``session_id``
+    names another conversation manager class than ``manager`` (the SDK would refuse the
+    restore with a bare ``ValueError``). Store problems are left to the SDK to report."""
+    try:
+        record = store.read_agent(session_id, AGENT_ID)
+    except Exception:
+        return
+    if record is None:
+        return
+    stored = (getattr(record, "conversation_manager_state", None) or {}).get("__name__")
+    if stored and stored != type(manager).__name__:
+        raise SessionContextMismatch(session_id, str(stored))
+
+
 def conversation_manager_for(agent_cfg: AgentConfig) -> ConversationManager:
     """The Strands conversation manager ``[agent] context`` asks for.
 
@@ -609,6 +664,7 @@ def build_agent(
     exemptions: Iterable[Exemption] = (),
     hooks: Iterable[HookProvider] = (),
     plugins: Iterable[Any] = (),
+    seed_messages: Iterable[Message] | None = None,
 ) -> TauAgent:
     """Assemble a tau agent. Raises ``ConfigError``/``MissingCredentials`` before any model call.
 
@@ -616,6 +672,17 @@ def build_agent(
     every ``tau.tools`` entry point minus ``[components] tools.disabled`` (an explicit ``tools``
     list bypasses the switch), ``context_sources=None`` means the enabled ``tau.context``
     components (``[components] context``; an explicit list, even empty, replaces them).
+
+    ``seed_messages`` is the initial history of a *new* session (``/compact`` seeds the summary
+    this way). They go in as ``Agent(messages=...)``, and the SDK's ``RepositorySessionManager``
+    writes them to the store when it creates the agent record, so they survive ``--resume``. For
+    a session that already exists in the store the SDK restores the stored history instead and
+    the seed is ignored; callers pass ``session_id=None`` with a seed.
+
+    With a store, the session's metadata records ``channel``, ``profile`` and ``role`` every
+    time it is opened, so a resumed session comes back on the role it last ran on. A session
+    recorded under another ``[agent] context`` value raises :class:`SessionContextMismatch`
+    (a ``ConfigError``) before anything is built.
 
     ``hooks`` and ``plugins`` are passed to the Strands ``Agent`` as extra components. The tier
     gate keeps the last word: ``TierHook`` runs at ``HookOrder.SDK_LAST``, no component may
@@ -661,24 +728,35 @@ def build_agent(
     # would otherwise execute at the same time in different threads.
     sequential = any(tier_of(tool) is Tier.PHYSICAL for tool in catalog.tools())
     tier_hook = TierHook(gate)
-    agent = Agent(
-        model=model,
-        tools=catalog.tools(),
-        system_prompt=system_prompt,
-        hooks=[PersonaHook(persona, context_factory), *hooks, tier_hook],
-        plugins=list(plugins) or None,
-        conversation_manager=conversation_manager_for(config.agent),
-        session_manager=session_manager,
-        tool_executor=SequentialToolExecutor() if sequential else None,
-        trace_attributes={
-            "tau.session_id": session_id,
-            "tau.channel": channel,
-            "tau.profile": config.profile,
-        },
-        callback_handler=None,
-        agent_id=AGENT_ID,
-        name="tau",
-    )
+    seed = copy.deepcopy(list(seed_messages)) if seed_messages is not None else None
+    conversation_manager = conversation_manager_for(config.agent)
+    if session_store is not None:
+        _check_context_state(session_store, session_id, conversation_manager)
+    try:
+        agent = Agent(
+            model=model,
+            messages=seed or None,
+            tools=catalog.tools(),
+            system_prompt=system_prompt,
+            hooks=[PersonaHook(persona, context_factory), *hooks, tier_hook],
+            plugins=list(plugins) or None,
+            conversation_manager=conversation_manager,
+            session_manager=session_manager,
+            tool_executor=SequentialToolExecutor() if sequential else None,
+            trace_attributes={
+                "tau.session_id": session_id,
+                "tau.channel": channel,
+                "tau.profile": config.profile,
+            },
+            callback_handler=None,
+            agent_id=AGENT_ID,
+            name="tau",
+        )
+    except ValueError as exc:
+        # The SDK's own refusal, in case a stored state slipped past the check above.
+        if "conversation manager state" in str(exc).lower():
+            raise SessionContextMismatch(session_id, None) from exc
+        raise
     behind = hooks_behind_gate(agent, tier_hook)
     if behind:
         raise ConfigError(
@@ -689,7 +767,7 @@ def build_agent(
 
     unsubscribe = None
     if session_store is not None:
-        session_store.write_meta(session_id, channel=channel, profile=config.profile)
+        session_store.write_meta(session_id, channel=channel, profile=config.profile, role=role)
         unsubscribe = events.subscribe(session_store.event_sink(session_id))
 
     return TauAgent(
@@ -700,5 +778,6 @@ def build_agent(
         catalog=catalog,
         store=session_store,
         gate=gate,
+        role=role,
         _unsubscribe_store=unsubscribe,
     )

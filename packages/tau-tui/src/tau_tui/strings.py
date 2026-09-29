@@ -21,9 +21,18 @@ TUI_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Model yoğun, {seconds} sn sonra tekrar…",
     },
     "tui.busy.cancelling": {"en": "Cancelling…", "tr": "İptal ediliyor…"},
+    "tui.busy.summarizing": {"en": "Summarizing…", "tr": "Özetleniyor…"},
     "tui.busy_switch": {
         "en": "Wait for the current turn before switching sessions.",
         "tr": "Oturum değiştirmek için turun bitmesini bekle.",
+    },
+    "tui.busy_model": {
+        "en": "Wait for the current turn before switching the model.",
+        "tr": "Modeli değiştirmek için turun bitmesini bekle.",
+    },
+    "tui.busy_clear": {
+        "en": "Wait for the current turn before clearing the screen.",
+        "tr": "Ekranı temizlemek için turun bitmesini bekle.",
     },
     "tui.tool.waiting": {"en": "waiting for your approval", "tr": "onayın bekleniyor"},
     # -- turn footer -----------------------------------------------------------------------------

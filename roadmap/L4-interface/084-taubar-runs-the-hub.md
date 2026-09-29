@@ -1,6 +1,6 @@
 # 084 · TauBar runs the hub: on/off switch, restart after a crash, launch at login
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L4 · Interface
 Packages: apps/taubar, tau-core

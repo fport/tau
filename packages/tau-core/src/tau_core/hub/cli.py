@@ -151,7 +151,12 @@ def run_command(ctx: click.Context) -> None:
 def collect_status(
     config: Config, *, launchctl: Launchctl | None, now: datetime | None = None
 ) -> dict[str, Any]:
-    """Everything ``tau hub status`` shows, read from the hub's files (no network)."""
+    """Everything ``tau hub status`` shows, read from the hub's files (no network).
+
+    ``data_dir``, ``hub_dir``, ``lock`` and ``control_port`` are the values this configuration
+    resolves to (``tau.toml``, ``.env`` and the environment), so a supervisor such as TauBar
+    can probe the same lock and control API the hub will use without re-implementing the
+    config rules."""
     files = HubFiles(config.hub_dir)
     running, lock_pid = HubLock.probe(files.lock)
     state = files.read_state()
@@ -171,6 +176,10 @@ def collect_status(
         "running": running,
         "pid": pid,
         "control_url": f"http://{HOST}:{config.hub.control_port}",
+        "control_port": config.hub.control_port,
+        "data_dir": str(config.data_dir),
+        "hub_dir": str(config.hub_dir),
+        "lock": str(files.lock),
         "heartbeat_seconds": config.hub.heartbeat_seconds,
         "state": state.to_dict() if state else None,
         "last_crash": files.read_last_crash(),

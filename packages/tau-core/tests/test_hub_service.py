@@ -288,6 +288,11 @@ def test_status_after_an_unclean_exit_and_a_crash(config: Config, tmp_path: Path
     assert info["last_crash"]["reason"] == "RuntimeError: boom"
     assert info["launchd"]["loaded"] is True
     assert info["control_url"] == "http://127.0.0.1:7877"
+    # What a supervisor (TauBar) needs to probe the same hub the config resolves to.
+    assert info["control_port"] == 7877
+    assert info["data_dir"] == str(config.data_dir)
+    assert info["hub_dir"] == str(config.hub_dir)
+    assert info["lock"] == str(config.hub_dir / "hub.lock")
 
 
 def test_status_while_running(config: Config, tmp_path: Path) -> None:

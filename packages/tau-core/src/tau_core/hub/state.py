@@ -218,7 +218,10 @@ class HubFiles:
             detected_at=timestamp(now),
         )
         self.dir.mkdir(parents=True, exist_ok=True)
-        with self.crash_reports.open("a", encoding="utf-8") as handle:
+        # Append with an explicit 0600 mode so the file matches the other hub files
+        # instead of inheriting the umask.
+        fd = os.open(self.crash_reports, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(report.to_dict(), ensure_ascii=False) + "\n")
         write_text_atomic(self.last_crash, _dump(report.to_dict()))
         return report

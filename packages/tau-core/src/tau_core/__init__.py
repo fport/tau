@@ -6,8 +6,8 @@ Public API (other tau packages import only these names and ``tau_core.testing``)
     build_agent, TauAgent, TurnEvent, TextDelta, ToolUseStarted, ToolFinished, Notice, TurnEnd
     SessionStore, MemorySessionStore, open_session_store
     EventBus, AgentEvent
-    Approver, Decision, ApprovalRequest
-    tau_tool, Tier, ToolCatalog
+    Approver, Decision, ApprovalRequest, TerminalApprover, TierGate, TierHook, Exemption
+    tau_tool, Tier, ToolCatalog, UntieredToolError, tier_of, effect_of
 """
 
 from __future__ import annotations
@@ -24,12 +24,20 @@ from tau_core.agent import (
     TurnEvent,
     build_agent,
 )
-from tau_core.approval import ApprovalRequest, Approver, Decision
+from tau_core.approval import (
+    ApprovalRequest,
+    Approver,
+    Decision,
+    Exemption,
+    TerminalApprover,
+    TierGate,
+    TierHook,
+)
 from tau_core.config import Config, ConfigError
 from tau_core.events import AgentEvent, EventBus
 from tau_core.models import MissingCredentials
 from tau_core.sessions import MemorySessionStore, SessionStore, open_session_store
-from tau_core.tiers import Tier, ToolCatalog, tau_tool
+from tau_core.tiers import Tier, ToolCatalog, UntieredToolError, effect_of, tau_tool, tier_of
 
 try:
     __version__ = version("tau-core")
@@ -44,20 +52,27 @@ __all__ = [
     "ConfigError",
     "Decision",
     "EventBus",
+    "Exemption",
     "MemorySessionStore",
     "MissingCredentials",
     "Notice",
     "SessionStore",
     "TauAgent",
+    "TerminalApprover",
     "TextDelta",
     "Tier",
+    "TierGate",
+    "TierHook",
     "ToolCatalog",
     "ToolFinished",
     "ToolUseStarted",
     "TurnEnd",
     "TurnEvent",
+    "UntieredToolError",
     "__version__",
     "build_agent",
+    "effect_of",
     "open_session_store",
     "tau_tool",
+    "tier_of",
 ]

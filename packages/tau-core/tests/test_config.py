@@ -96,6 +96,13 @@ def test_unknown_role_key_rejected(tmp_path: Path) -> None:
         Config.load(home, env={})
 
 
+@pytest.mark.parametrize("value", ["true", "0", '"12"', "2.5"])
+def test_invalid_max_turns_rejected(tmp_path: Path, value: str) -> None:
+    home = write_home(tmp_path, MINIMAL + f"\n[agent]\nmax_turns = {value}\n")
+    with pytest.raises(ConfigError, match="max_turns"):
+        Config.load(home, env={})
+
+
 def test_invalid_host_role_and_port(tmp_path: Path) -> None:
     home = write_home(tmp_path)
     with pytest.raises(ConfigError, match="TAU_ROLE"):

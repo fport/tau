@@ -187,15 +187,6 @@ async def test_turn_limit_is_recorded_in_the_session(config: Config) -> None:
     assert events[-1].data == {"max_turns": 2}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "agent.py (issue 004) leaves the history ending with a user toolResult message when the "
-        "guard trips, so the next prompt makes two user messages in a row, which the Bedrock "
-        "Converse API rejects. Fix in TauAgent.stream: close the turn with an assistant message "
-        "(e.g. _close_dangling_turn(turn_limit_text(n))) on limit_turns, then drop this marker."
-    ),
-)
 async def test_history_stays_alternating_after_the_guard(config: Config) -> None:
     model = runaway_model()
     agent = build_agent(config=with_max_turns(config, 2), model=model, tools=[poll_sensor])

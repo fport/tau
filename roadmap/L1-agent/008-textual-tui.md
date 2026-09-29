@@ -1,6 +1,6 @@
 # 008 · Textual TUI with chat and live event pane
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-tui

@@ -1,6 +1,6 @@
 # 017 · Tier-2 approvals with Telegram inline buttons
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L3 · Access and data
 Packages: tau-core
@@ -14,11 +14,11 @@ First slice: an asynchronous `Approver` for the Telegram channel that awaits a f
 
 ## Acceptance criteria
 
-- [ ] A tier-2 call from a Telegram conversation shows inline buttons with tool, arguments and effect
-- [ ] Approve runs the tool once; reject or timeout returns the tier gate's refusal text; the message is edited to show the outcome
-- [ ] Callbacks from non-allowlisted users, or for unknown or expired requests, are acknowledged with `answerCallbackQuery`, have no effect and are logged
-- [ ] Every decision is recorded in the session as an agent event
-- [ ] Tier 2 is never auto-approved, in code or in tests (fake Bot API plus the `tau_core.testing` fakes)
+- [x] A tier-2 call from a Telegram conversation shows inline buttons with tool, arguments and effect
+- [x] Approve runs the tool once; reject or timeout returns the tier gate's refusal text; the message is edited to show the outcome
+- [x] Callbacks from non-allowlisted users, or for unknown or expired requests, are acknowledged with `answerCallbackQuery`, have no effect and are logged
+- [x] Every decision is recorded in the session as an agent event
+- [x] Tier 2 is never auto-approved, in code or in tests (fake Bot API plus the `tau_core.testing` fakes)
 
 ## Blocked by
 
@@ -28,3 +28,4 @@ First slice: an asynchronous `Approver` for the Telegram channel that awaits a f
 ## Comments
 
 - 2026-09-29: rewritten for ADR 0006 (private-first): the callback is handled by the hub's own polling loop instead of a Worker/Durable Object, which is what makes the button a trusted approval; 068 is the restart-safe, interrupt-based follow-up.
+- 2026-09-30: done. `TelegramApprover` (tau_core.channels.telegram) sends the tool, arguments and effect with Approve / Reject inline buttons (labels from `approval.approve` / `approval.reject`); the press arrives as a `callback_query` through the hub's own poll loop and counts only when the presser and the chat are allowlisted and the request id, chat and message match a pending request, otherwise it is answered with `answerCallbackQuery`, logged and ignored. The approver keeps its own timeout (`[component.telegram] approval_timeout_seconds`, 300) and edits the message to show the outcome (approved, rejected, timed out, or cancelled by a hub stop) without buttons. The poller no longer blocks on a turn: each allowed chat has a worker, and `inflight.json` keeps unfinished messages so a stop mid-turn runs the message again after the restart; a pending approval does not survive a restart (068). The seam for 068 is `PendingApproval` (request id, chat, tool, arguments, effect, expiry, message id, future). Tests: 35 in `test_telegram.py` against `FakeBotApi` (`buttons()`, `press()`, `edits`, `answers`), no auto-approval anywhere. Verified live with the user's bot through the TauBar-supervised hub: "ışıkları yak" → buttons → Approve → the message edited to "✓ Approved.", the demo tool ran once, and the session recorded `approval` events (`approved`, `rejected`) via telegram. Commit: 25db9b3.

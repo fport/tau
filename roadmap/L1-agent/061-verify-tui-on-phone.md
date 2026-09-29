@@ -25,3 +25,4 @@ None - needs the user's phone.
 ## Comments
 
 - 2026-09-29: opened while closing the L1 wave; the "in Termius on a phone over mosh" half of #008's first criterion was verified only in a local 80x24 and 50-column pseudo-terminal.
+- 2026-09-29: first run from the phone. Two surprises, both fixed or documented: (1) `tau tui` started a stale `uv tool install` (tau-core/tau-tui 0.2.0 in `~/.local/bin`, first on `PATH`) instead of the checkout; `uv run tau tui` runs the checkout, and the phone guide's troubleshooting now says so. (2) The TUI was black and white: `tau.tmux.conf` forced `RGB` for every `xterm-256color` client, and Termius over mosh drops 24-bit colour escapes (256 colours come through; `TEXTUAL_COLOR_SYSTEM=256` brought the colours back). The override is gone, so tmux maps to 256 colours for the phone; the guide has a troubleshooting entry. The remaining criteria are still open.

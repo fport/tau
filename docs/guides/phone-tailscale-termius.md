@@ -165,6 +165,10 @@ Nothing else can approve. The tmux session is the trusted channel here: it runs 
 
 **I cannot reach the hub.** Check in order: is Tailscale on on the phone, is the hub asleep, what does `doctor.sh` say. A MacBook sleeps with the lid closed; plug it in and leave the lid open, or use clamshell mode with an external display. The "stay awake even with the lid closed" mode arrives with TauBar (roadmap issue 024).
 
+**The TUI is black and white.** Termius over mosh drops 24-bit colour escapes; 256 colours come through. `infra/remote/tmux/tau.tmux.conf` therefore does not force truecolor (`RGB`) for `xterm-256color` clients, so tmux maps the TUI's colours to the 256-colour palette for the phone. If you set such an override in your own `~/.tmux.conf`, remove it, reload with `Ctrl-b r` and reconnect in Termius (tmux decides a client's colours when it attaches). Outside tmux, `TEXTUAL_COLOR_SYSTEM=256 uv run tau tui` does the same for one run.
+
+**The TUI shows an older version than the checkout.** A `uv tool install tau-core --with tau-tui` puts its own `tau` in `~/.local/bin`, and that comes first on `PATH`, even inside the checkout. Run `uv run tau tui` in the checkout, or update the tool with `uv tool upgrade tau-core`. The welcome card shows the version that is running.
+
 **Claude Code asks to sign in again over SSH.** The macOS login keychain can look locked in an SSH session. Either `security unlock-keychain ~/Library/Keychains/login.keychain-db` in the session, or create a long-lived token with `claude setup-token` and export it from `~/.config/tau/remote.env`, which `~/.zshenv` loads only in SSH sessions. `GH_TOKEN` and `CLOUDFLARE_API_TOKEN` can live in the same file.
 
 **The phone is lost.** Delete that device's line from `~/.ssh/authorized_keys` on the hub and remove the device from the Tailscale admin console. Both take a minute; do them in that order.

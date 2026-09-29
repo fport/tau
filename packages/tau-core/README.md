@@ -34,6 +34,26 @@ state, default `~/.local/share/tau`), `TAU_PROFILE` (`home` | `travel` | `sport`
 `bedrock`, `anthropic` (with an optional per-role `fallback`) and `fake`; a missing credential
 stops `tau chat` with a message naming the variables.
 
+```toml
+[models.roles.brain]
+provider = "bedrock"
+model_id = "..."
+max_tokens = 4096
+cache = { strategy = "auto", ttl = "1h" }  # optional: Strands CacheConfig (bedrock, anthropic)
+
+[agent]
+max_turns = 12            # model calls per user turn (Limits(turns=...))
+context = "sliding"       # sliding | summarize: the model's window on a long session
+window_size = 60          # sliding: messages kept; summarize: recent messages never summarized
+max_total_tokens = 200000 # optional per-turn token budget (Limits(total_tokens=...))
+```
+
+`context` picks Strands' `SlidingWindowConversationManager` or `SummarizingConversationManager`;
+the session store still keeps every message, only what the model sees is windowed. The SDK's
+`context_manager = "auto"`/`"agentic"` presets are rejected with a `ConfigError`: they register
+untiered SDK tools that the tier gate would refuse. `cache` accepts the `CacheConfig` fields
+(`strategy`, `ttl`, `system_prompt_ttl`, `tools_ttl`); the fake provider ignores it.
+
 ## UI language and commands
 
 Everything a person reads in a channel's chrome (commands, notices, the approval prompt, tier
@@ -101,7 +121,10 @@ loop. Its layout is fixed:
 ```
 
 The scaffolding (headings, labels, `unknown`) is English because the model reads it; the
-persona decides the reply language.
+persona decides the reply language. The model receives the prompt as three content blocks
+(`PersonaLoader.build_system_content`): the persona plus `## User` (stable), a `cachePoint`,
+then `## Now` (changes every minute), so a provider that caches system prompts reuses the
+stable part; `build_system_prompt` returns the same text as one string for tests and logging.
 
 - `persona.md` is tau's character: Jarvis-style, Turkish by default and mirroring the language
   the user writes in, polite, dry humor, at most two sentences for notifications and voice, no
@@ -158,9 +181,15 @@ def desk_lamp(state: str) -> str:
 `effect` is the sentence approval prompts show (default: the tool description); write
 descriptions and effects in English, the model reads them. A plain
 Strands `@tool` has no tier: `ToolCatalog.add` raises `UntieredToolError`, `build_agent` refuses
-it when passed in `tools=` and skips it with a warning when a plugin ships it.
+it when passed in `tools=` and skips it with a warning when a plugin ships it. `tau_tool`
+records the tier and effect in the tool spec (`tool_spec["annotations"]["tau"] = {"tier",
+"effect"}`), so a `@tau_tool` method on a class keeps its tier when accessed through an
+instance (Strands builds a new tool object for bound methods); `tier_of`/`effect_of` read the
+annotation first and the older `tau_tier`/`tau_effect` attributes second.
 
-Every call passes `TierGate` (`build_agent` wires it in through `TierHook`):
+Every call passes `TierGate` (`build_agent` wires it in through `TierHook`, registered at
+`HookOrder.SDK_LAST` so the `tool_use` the gate sees is the one Strands runs, whatever other
+hooks, interventions or plugins rewrite before it):
 
 - **Unknown tool** (not in the catalog, looked up live): refused with
   `Tool '{tool}' is not registered; it was not run.` and an `error` agent event.
@@ -213,12 +242,70 @@ agent = build_agent(approver=ButtonApprover(), channel="telegram")
 `TierGate.check()` and `record()` do not need Strands, so the reflex engine and the MCP server
 can use the same policy.
 
-**Loop guard.** `[agent] max_turns` in `tau.toml` (default 12) caps the model calls of one user
-turn (Strands `Limits(turns=...)`); the tools the last allowed call asked for still run. When it
-trips, the turn ends with a notice in the UI language (`notice.turn_limit`: "I reached the
-tool-call limit for this turn ({n} turns). I stopped; tell me if you want me to continue."),
-a `turn_limit` event and `TurnEnd(stop_reason="limit_turns")`. The next user turn starts with a
-fresh budget. A failed model call ends the same way with `notice.model_error`.
+**Extra components.** `build_agent(hooks=[...], plugins=[...])` passes Strands `HookProvider`s
+and `Plugin`s through to the `Agent`. The gate keeps the last word: `TierHook` runs at
+`HookOrder.SDK_LAST`, no `BeforeToolCallEvent` callback may run after it (`build_agent`
+checks the registry and raises `ConfigError` for a hook registered above `SDK_LAST`, since the
+SDK accepts any order), and a tool a plugin registers behind the catalog's back is refused as
+unknown (fail closed); a component that wants its tools to run ships them through `tau.tools`
+with a tier. A hook added to the SDK agent *after* build cannot be refused; the gate then
+records a refused call that ran, or an approved call whose arguments changed, as `error`
+with an `error` event (`where: tier_gate`). When any registered tool is tier 2, `build_agent` uses the SDK's
+`SequentialToolExecutor`, so two approved physical calls in one model turn never run at the
+same time. Every span carries `trace_attributes` `tau.session_id`, `tau.channel`,
+`tau.profile`.
+
+## Turns and stop reasons
+
+`TauAgent.stream(prompt)` runs one user turn and yields `TurnEvent`s; `ask(prompt)` returns
+only the text. Calls are serialized with an `asyncio.Lock` (created per event loop), so two
+channels on one agent queue up instead of overlapping.
+
+| event | meaning |
+|---|---|
+| `TextDelta(text)` | a piece of the reply |
+| `ReasoningDelta(text)` | a piece of the model's extended thinking (SDK `reasoningText`) |
+| `ToolUseStarted(tool_use_id, tool, tier)` | the model asked for a tool (`tier` is `None` for an unknown tool) |
+| `ToolProgress(tool_use_id, tool, text)` | progress from a streaming tool (SDK `tool_stream_event`) |
+| `ToolFinished(tool_use_id, tool, status, summary, approval)` | from the `tool_call` event the gate recorded |
+| `Throttled(delay_seconds)` | the provider throttled the call; the SDK retries after the delay |
+| `Notice(text)` | something the user should read, in the UI language |
+| `TurnEnd(stop_reason)` | always the last event |
+
+`to_turn_event(event)` is the pure mapping from the SDK's dict events (`data`,
+`current_tool_use`, `reasoningText`, `tool_stream_event`, `event_loop_throttled_delay`,
+`force_stop`); the terminal prints `Throttled` as a dim line and ignores reasoning and progress
+for now. `TurnEnd.stop_reason` (`tau_core.STOP_REASONS`):
+
+| stop reason | what happened | notice / event |
+|---|---|---|
+| `end_turn` | the model finished | – |
+| `limit_turns` | `[agent] max_turns` model calls were used; the last call's tools still ran | `notice.turn_limit`, `turn_limit` event |
+| `limit_total_tokens` | `[agent] max_total_tokens` was reached | `notice.total_tokens`, `turn_limit` event |
+| `max_tokens` | the reply hit the provider's output limit; the partial reply is kept | `notice.max_tokens`, `notice` event |
+| `cancelled` | `TauAgent.cancel()` stopped the turn at the SDK's next safe point; a cancel while no turn runs is ignored | `notice.cancelled`, `notice` event |
+| `interrupt` | a hook kept interrupting after `max_turns` refusals; tau cleared the SDK's interrupt state | `notice.interrupt_refused`, `error` event |
+| `error` | the model call failed (`notice.model_error`), the context window overflowed (`notice.overflow`) | `error` event with `where`: `model`, `context` or `interrupt` |
+| `busy` | another invocation held the SDK's concurrency guard; nothing ran | `notice.busy`, no event |
+
+tau never appends to the history by hand. When a turn leaves the history *dangling* - on a
+`user` message (a failed model call, the loop guard or token budget after a tool result, a
+cancel around tool execution, a session restored after a crash) or on an `assistant` message
+with a `toolUse` and no result (the hub died while an approval was pending, or an interrupt
+was given up) - the **next** `stream()` sends a two-message prompt to the SDK: an `assistant`
+message with the last notice in parentheses (or "The previous turn did not finish." for a
+crash-restored session), then the new `user` message. Both go through the SDK's own append
+path, so they get tracking ids and reach the session store like every other message; for a
+dangling `toolUse` the SDK first inserts its own "Tool was interrupted." result, so roles keep
+alternating. The pending notice survives a `busy` turn (nothing was appended) and a window
+trim (the check is by identity of the last message, not by length). A cancel during model
+streaming needs no repair: the SDK stores its own "Cancelled by user" placeholder as the
+reply. A hook that raises a Strands interrupt (`event.interrupt(...)`) gets
+`{"tau": "rejected"}` as the answer inside the same turn, once per interrupt up to
+`max_turns` refusals, with the turn's remaining `Limits` budget; the user sees
+`notice.interrupt_refused`. If that does not clear it, or a session comes back from the store
+in interrupt state, tau leaves the SDK's interrupt state itself and repairs on the next turn,
+so the agent is never left stuck (interrupt-based approvals are issue 068).
 
 ## Sessions
 
@@ -262,9 +349,10 @@ In `tau chat`:
   backend.
 
 Resuming rebuilds the agent on the stored session (`build_agent(session_id=...,
-session_store=...)`), so Strands restores `agent.messages` and the model sees the whole
-conversation again. A new backend implements the nine `SessionRepository` methods plus the
-five extras and registers a factory in `tau_core.sessions.SESSION_BACKENDS`.
+session_store=...)`), so Strands restores `agent.messages`; the model sees the last
+`[agent] window_size` messages (or a summary plus the recent ones), the store keeps them all.
+A new backend implements the nine `SessionRepository` methods plus the five extras and
+registers a factory in `tau_core.sessions.SESSION_BACKENDS`.
 
 ## Hub
 

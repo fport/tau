@@ -331,6 +331,8 @@ async def test_tool_that_lost_its_tier_fails_closed() -> None:
 
     gate, _ = make_gate()
     gate.catalog.add(shifty)
+    # The tier lives in the spec annotation first and the attribute second; lose both.
+    shifty.tool_spec = {**shifty.tool_spec, "annotations": {}}
     shifty.tau_tier = None
     allowed, text, _ = await gate.check("shifty", {}, tool_use_id="t1")
     assert allowed is False and text == unknown_tool_text("shifty")

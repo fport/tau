@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from strands.models.model import Model
-from strands.types.content import Message
+from strands.types.content import Message, SystemContentBlock
 from strands.types.tools import ToolSpec
 
 from tau_core.approval import ApprovalRequest, AutoRejectApprover, Decision
@@ -28,6 +28,7 @@ __all__ = [
     "Reply",
     "ScriptedApprover",
     "ToolCall",
+    "Truncated",
     "test_config",
 ]
 
@@ -41,24 +42,37 @@ class ToolCall:
     tool_use_id: str | None = None
 
 
-Reply = str | list[ToolCall] | Callable[[list[Message], str | None], "Reply"]
+@dataclass
+class Truncated:
+    """A text reply cut by the provider's output limit (``stopReason: max_tokens``)."""
+
+    text: str
+
+
+Reply = str | Truncated | list[ToolCall] | Callable[[list[Message], str | None], "Reply"]
 
 
 @dataclass
 class FakeCall:
-    """What the agent sent on one model call."""
+    """What the agent sent on one model call.
+
+    ``system_prompt`` is the string form the SDK derives (text blocks joined with a newline);
+    ``system_prompt_content`` is the block list with cache points, when the agent used one.
+    """
 
     messages: list[Message]
     system_prompt: str | None
     tool_specs: list[ToolSpec] | None
+    system_prompt_content: list[SystemContentBlock] | None = None
 
 
 class FakeModel(Model):
     """A Strands model that replays scripted replies.
 
     Replies are used in order; when they run out, ``default`` is returned. A ``str`` streams
-    as two text deltas, a ``list[ToolCall]`` streams tool uses (``stopReason: tool_use``), a
-    callable receives ``(messages, system_prompt)`` and returns one of those.
+    as two text deltas, a ``Truncated`` streams its text and stops with ``max_tokens``, a
+    ``list[ToolCall]`` streams tool uses (``stopReason: tool_use``), a callable receives
+    ``(messages, system_prompt)`` and returns one of those (or raises, to fail the call).
     """
 
     def __init__(self, replies: Sequence[Reply] | None = None, *, default: str = "Okay."):
@@ -92,17 +106,20 @@ class FakeModel(Model):
                 messages=copy.deepcopy(messages),
                 system_prompt=system_prompt,
                 tool_specs=tool_specs,
+                system_prompt_content=copy.deepcopy(kwargs.get("system_prompt_content")),
             )
         )
         reply = self._next_reply(messages, system_prompt)
         yield {"messageStart": {"role": "assistant"}}
-        if isinstance(reply, str):
-            half = len(reply) // 2
+        if isinstance(reply, str | Truncated):
+            text = reply if isinstance(reply, str) else reply.text
+            half = len(text) // 2
             yield {"contentBlockStart": {"start": {}}}
-            for part in (reply[:half], reply[half:]):
+            for part in (text[:half], text[half:]):
                 yield {"contentBlockDelta": {"delta": {"text": part}}}
             yield {"contentBlockStop": {}}
-            yield {"messageStop": {"stopReason": "end_turn"}}
+            stop = "end_turn" if isinstance(reply, str) else "max_tokens"
+            yield {"messageStop": {"stopReason": stop}}
         else:
             for call in reply:
                 self._tool_counter += 1

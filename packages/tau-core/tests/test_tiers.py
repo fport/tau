@@ -458,3 +458,67 @@ async def test_gate_failure_fails_closed(config: Config, monkeypatch: pytest.Mon
     await run_turn(agent)
     assert ran == []
     assert tool_result_text(model)[1] == refusal_text("read_note")
+
+
+# --- tier metadata in ToolSpec.annotations (issue 064) --------------------------------------
+
+
+def test_tau_tool_writes_the_tau_annotation() -> None:
+    assert open_door.tool_spec["annotations"]["tau"] == {"tier": 2, "effect": "Kapıyı açar."}
+    assert read_note.tool_spec["annotations"]["tau"] == {"tier": 0, "effect": None}
+    for declared in TOOLS:  # the Strands spec fields survive the annotated copy
+        assert set(declared.tool_spec) >= {"name", "description", "inputSchema", "annotations"}
+
+
+def test_annotation_is_read_before_the_attribute() -> None:
+    bare = _bare_tool()
+    bare.tool_spec = {**bare.tool_spec, "annotations": {"tau": {"tier": 1, "effect": "Writes."}}}
+    assert not hasattr(bare, "tau_tier")
+    assert tier_of(bare) is Tier.DIGITAL_WRITE and effect_of(bare) == "Writes."
+    bare.tau_tier = Tier.PHYSICAL  # the attribute is only a fallback
+    assert tier_of(bare) is Tier.DIGITAL_WRITE
+    bare.tool_spec = {**bare.tool_spec, "annotations": {"tau": {"tier": 9, "effect": None}}}
+    with pytest.raises(UntieredToolError):
+        tier_of(bare)
+
+
+class Lamp:
+    """A tool declared as a method: bound access builds a new DecoratedFunctionTool."""
+
+    def __init__(self) -> None:
+        self.switched: list[str] = []
+
+    @tau_tool(tier=Tier.PHYSICAL, effect="Switches the lamp.")
+    def switch(self, state: str) -> str:
+        """Switches the lamp.
+
+        Args:
+            state: "on" or "off".
+        """
+        self.switched.append(state)
+        return f"lamp {state}"
+
+
+def test_tau_tool_method_keeps_its_tier_when_bound() -> None:
+    lamp = Lamp()
+    bound = lamp.switch
+    assert bound is not Lamp.switch and bound.tool_name == "switch"
+    assert not hasattr(bound, "tau_tier")  # the instance attribute did not travel ...
+    assert tier_of(bound) is Tier.PHYSICAL  # ... the annotation did
+    assert effect_of(bound) == "Switches the lamp."
+    assert ToolCatalog([bound]).tier("switch") is Tier.PHYSICAL
+
+
+async def test_tau_tool_method_runs_through_the_gate(config: Config) -> None:
+    lamp = Lamp()
+    approver = ScriptedApprover([Decision.APPROVED])
+    model = FakeModel([[ToolCall("switch", {"state": "on"})], "Açtım."])
+    agent = build_agent(config=config, model=model, tools=[lamp.switch], approver=approver)
+
+    turn = await run_turn(agent, "lambayı aç")
+
+    assert lamp.switched == ["on"]
+    assert approver.requests[0].tier is Tier.PHYSICAL
+    assert approver.requests[0].effect == "Switches the lamp."
+    [finished] = [e for e in turn if isinstance(e, ToolFinished)]
+    assert (finished.status, finished.approval) == ("ok", "approved")

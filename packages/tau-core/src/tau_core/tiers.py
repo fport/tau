@@ -48,6 +48,13 @@ def tau_tool(
 
     def decorate(func: Callable[..., Any]) -> AgentTool:
         agent_tool = strands_tool(**tool_kwargs)(func) if tool_kwargs else strands_tool(func)
+        # The spec is the durable home: a @tau_tool method accessed on an instance is a new
+        # DecoratedFunctionTool that shares the spec but not instance attributes.
+        spec = dict(agent_tool.tool_spec)
+        annotations = dict(spec.get("annotations") or {})
+        annotations[ANNOTATION_KEY] = {"tier": int(declared), "effect": effect}
+        spec["annotations"] = annotations
+        agent_tool.tool_spec = spec  # the validated setter
         agent_tool.tau_tier = declared  # type: ignore[attr-defined]
         agent_tool.tau_effect = effect  # type: ignore[attr-defined]
         return agent_tool
@@ -55,9 +62,37 @@ def tau_tool(
     return decorate
 
 
+ANNOTATION_KEY = "tau"
+"""``ToolSpec["annotations"]["tau"] = {"tier": int, "effect": str | None}``, set by ``tau_tool``.
+
+The annotation is plain data in the spec and is authoritative only for tools registered
+in-process (``tau.tools`` entry points, ``@tau_tool``), where tau code wrote it. A spec that
+arrives from outside the process (an MCP ``ToolProvider``, issue 033/069) must not be trusted
+to declare its own tier: the hub strips ``annotations["tau"]`` from such specs and assigns
+tiers from its own manifest/config before a tool reaches the :class:`ToolCatalog`.
+"""
+
+
+def _annotation(tool: AgentTool) -> dict[str, Any] | None:
+    spec = getattr(tool, "tool_spec", None)
+    if not isinstance(spec, dict):
+        return None
+    annotations = spec.get("annotations")
+    if not isinstance(annotations, dict):
+        return None
+    tau = annotations.get(ANNOTATION_KEY)
+    return tau if isinstance(tau, dict) else None
+
+
 def tier_of(tool: AgentTool) -> Tier:
-    """The tool's declared tier; :class:`UntieredToolError` when it has none or an invalid one."""
-    value = getattr(tool, "tau_tier", None)
+    """The tool's declared tier; :class:`UntieredToolError` when it has none or an invalid one.
+
+    The ``tau`` annotation of the tool spec is read first, the ``tau_tier`` attribute second.
+    """
+    tau = _annotation(tool)
+    value = tau.get("tier") if tau is not None else None
+    if value is None:
+        value = getattr(tool, "tau_tier", None)
     name = getattr(tool, "tool_name", repr(tool))
     if value is None or isinstance(value, bool):
         raise UntieredToolError(name)
@@ -68,8 +103,11 @@ def tier_of(tool: AgentTool) -> Tier:
 
 
 def effect_of(tool: AgentTool) -> str:
-    """What running the tool does, for approval prompts: ``tau_effect`` or the description."""
-    effect = getattr(tool, "tau_effect", None)
+    """What running the tool does, for approval prompts: the declared effect or the description."""
+    tau = _annotation(tool)
+    effect = tau.get("effect") if tau is not None else None
+    if not effect:
+        effect = getattr(tool, "tau_effect", None)
     if effect:
         return str(effect)
     spec = getattr(tool, "tool_spec", None) or {}

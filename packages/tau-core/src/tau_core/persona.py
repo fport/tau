@@ -41,6 +41,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from strands.hooks import BeforeModelCallEvent, HookProvider, HookRegistry
+from strands.types.content import SystemContentBlock
 
 from tau_core.config import Config, ConfigError
 
@@ -246,13 +247,30 @@ class PersonaLoader:
         return text or None  # missing or empty: no facts, address the user formally
 
     def build_system_prompt(self, context: DynamicContext) -> str:
+        """The whole prompt as one string (tests, logging); the model gets the block form."""
         current = self.read()
         user = current.user or NO_USER_FILE
         return f"{current.persona}\n\n{USER_HEADING}\n{user}\n\n{NOW_HEADING}\n{context.render()}"
 
+    def build_system_content(self, context: DynamicContext) -> list[SystemContentBlock]:
+        """The prompt as content blocks with a cache point after the stable part.
+
+        ``[persona + "## User"]``, ``cachePoint``, ``["## Now" + context]``: the persona and the
+        user facts change rarely, the ``## Now`` block changes every minute, so providers that
+        cache the system prompt (Anthropic, Bedrock) reuse the first block. The SDK joins the
+        text blocks with one newline, so the string form equals :meth:`build_system_prompt`.
+        """
+        current = self.read()
+        user = current.user or NO_USER_FILE
+        return [
+            {"text": f"{current.persona}\n\n{USER_HEADING}\n{user}\n"},
+            {"cachePoint": {"type": "default"}},
+            {"text": f"{NOW_HEADING}\n{context.render()}"},
+        ]
+
 
 class PersonaHook(HookProvider):
-    """Sets ``agent.system_prompt`` before every model call.
+    """Sets ``agent.system_prompt`` (the content-block form) before every model call.
 
     If assembling the prompt fails anyway (a broken clock, a custom loader), the previous
     prompt stays in place and the turn goes on; the error is logged.
@@ -268,7 +286,7 @@ class PersonaHook(HookProvider):
 
     def _before_model_call(self, event: BeforeModelCallEvent) -> None:
         try:
-            prompt = self.loader.build_system_prompt(self.context_factory())
+            prompt = self.loader.build_system_content(self.context_factory())
         except Exception as exc:
             self._problems.report(
                 "system prompt",

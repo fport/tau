@@ -184,3 +184,37 @@ async def test_fake_model_callable_and_default() -> None:
     agent = Agent(model=model, callback_handler=None)
     assert str(await agent.invoke_async("bir")).strip() == "1 mesaj"
     assert str(await agent.invoke_async("iki")).strip() == "varsayılan"
+
+
+# --- cache tables → CacheConfig (issue 064) ---------------------------------------------------
+
+
+def _with_cache(cfg: Config, role: str, cache: dict) -> Config:
+    from dataclasses import replace
+
+    return cfg.with_overrides(roles={**cfg.roles, role: replace(cfg.roles[role], cache=cache)})
+
+
+def test_anthropic_cache_table_becomes_cache_config(cfg: Config) -> None:
+    from strands.models import CacheConfig
+
+    cfg = _with_cache(cfg, "fast", {"strategy": "auto", "ttl": "1h"})
+    model = resolve_model("fast", cfg, env={"ANTHROPIC_API_KEY": "k"})
+    assert model.get_config()["cache_config"] == CacheConfig(strategy="auto", ttl="1h")
+    plain = resolve_model("fast", _with_cache(cfg, "fast", None), env={"ANTHROPIC_API_KEY": "k"})
+    assert "cache_config" not in plain.get_config()
+
+
+def test_bedrock_cache_table_becomes_cache_config(cfg: Config) -> None:
+    from strands.models import CacheConfig
+
+    cfg = _with_cache(cfg, "brain", {"strategy": "auto", "tools_ttl": True})
+    env = {"AWS_REGION": "eu-central-1", "AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}
+    model = resolve_model("brain", cfg, env=env)
+    assert model.get_config()["cache_config"] == CacheConfig(strategy="auto", tools_ttl=True)
+
+
+def test_fake_provider_ignores_cache_table(cfg: Config) -> None:
+    model = resolve_model("test", _with_cache(cfg, "test", {"strategy": "auto"}), env={})
+    assert isinstance(model, FakeModel)
+    assert "cache_config" not in model.get_config()

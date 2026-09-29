@@ -30,7 +30,12 @@ PROFILES = ("home", "travel", "sport")
 DEFAULT_ROLE = "hub"
 HOST_ROLES = ("hub", "node")
 
-_ROLE_KEYS = {"provider", "model_id", "region", "max_tokens", "params", "fallback"}
+_ROLE_KEYS = {"provider", "model_id", "region", "max_tokens", "params", "fallback", "cache"}
+_CACHE_STRATEGIES = ("auto", "anthropic")
+_CACHE_KEYS = {"strategy", "ttl", "system_prompt_ttl", "tools_ttl"}
+CONTEXT_MODES = ("sliding", "summarize")
+"""``[agent] context`` values. The SDK's ``auto``/``agentic`` presets are rejected on purpose:
+they register untiered SDK tools that the tier gate would refuse."""
 
 
 class ConfigError(Exception):
@@ -47,11 +52,19 @@ class RoleConfig:
     max_tokens: int | None = None
     params: dict[str, Any] = field(default_factory=dict)
     fallback: RoleConfig | None = None
+    cache: dict[str, Any] | None = None
+    """Prompt-cache settings (``strategy``, ``ttl``, ``system_prompt_ttl``, ``tools_ttl``), the
+    keyword arguments of Strands' ``CacheConfig``; ``None`` leaves caching to the provider."""
 
 
 @dataclass(frozen=True)
 class AgentConfig:
+    """``[agent]``: the loop guard, the conversation window and the optional token budget."""
+
     max_turns: int = 12
+    context: str = "sliding"
+    window_size: int = 60
+    max_total_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -217,6 +230,7 @@ def _parse_role(name: str, raw: Any, *, allow_fallback: bool = True) -> RoleConf
         if not allow_fallback:
             raise ConfigError(f"tau.toml: {where} cannot nest another 'fallback'.")
         fallback = _parse_role(f"{name}.fallback", raw["fallback"], allow_fallback=False)
+    cache = _parse_cache(where, raw.get("cache"))
     return RoleConfig(
         provider=provider,
         model_id=model_id,
@@ -224,16 +238,62 @@ def _parse_role(name: str, raw: Any, *, allow_fallback: bool = True) -> RoleConf
         max_tokens=max_tokens,
         params=dict(params),
         fallback=fallback,
+        cache=cache,
     )
+
+
+def _parse_cache(where: str, raw: Any) -> dict[str, Any] | None:
+    """``cache = { strategy = "auto", ttl = "1h", ... }`` → ``CacheConfig`` keyword arguments."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError(f"tau.toml: {where} 'cache' must be a table.")
+    unknown = sorted(set(raw) - _CACHE_KEYS)
+    if unknown:
+        raise ConfigError(f"tau.toml: {where} 'cache' has unknown keys: {', '.join(unknown)}.")
+    cache = dict(raw)
+    strategy = cache.get("strategy", "auto")
+    if strategy not in _CACHE_STRATEGIES:
+        raise ConfigError(
+            f"tau.toml: {where} 'cache.strategy' must be one of {', '.join(_CACHE_STRATEGIES)}."
+        )
+    cache["strategy"] = strategy
+    if "ttl" in cache and not isinstance(cache["ttl"], str):
+        raise ConfigError(f"tau.toml: {where} 'cache.ttl' must be a string like \"1h\".")
+    for key in ("system_prompt_ttl", "tools_ttl"):
+        if key in cache and not isinstance(cache[key], bool | str):
+            raise ConfigError(f"tau.toml: {where} 'cache.{key}' must be a boolean or a string.")
+    return cache
+
+
+def _positive_int(raw: Any, table: str, key: str) -> int:
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+        raise ConfigError(f"tau.toml: [{table}] '{key}' must be an integer of 1 or more.")
+    return raw
 
 
 def _parse_agent(raw: Any) -> AgentConfig:
     if not isinstance(raw, dict):
         raise ConfigError("tau.toml: [agent] must be a table.")
-    max_turns = raw.get("max_turns", AgentConfig.max_turns)
-    if isinstance(max_turns, bool) or not isinstance(max_turns, int) or max_turns < 1:
-        raise ConfigError("tau.toml: [agent] 'max_turns' must be an integer of 1 or more.")
-    return AgentConfig(max_turns=max_turns)
+    max_turns = _positive_int(raw.get("max_turns", AgentConfig.max_turns), "agent", "max_turns")
+    context = raw.get("context", AgentConfig.context)
+    if not isinstance(context, str) or context not in CONTEXT_MODES:
+        raise ConfigError(
+            f"tau.toml: [agent] 'context' must be one of {', '.join(CONTEXT_MODES)}, "
+            f"not {context!r}."
+        )
+    window_size = _positive_int(
+        raw.get("window_size", AgentConfig.window_size), "agent", "window_size"
+    )
+    max_total_tokens = raw.get("max_total_tokens")
+    if max_total_tokens is not None:
+        max_total_tokens = _positive_int(max_total_tokens, "agent", "max_total_tokens")
+    return AgentConfig(
+        max_turns=max_turns,
+        context=context,
+        window_size=window_size,
+        max_total_tokens=max_total_tokens,
+    )
 
 
 def _parse_sessions(raw: Any) -> SessionsConfig:

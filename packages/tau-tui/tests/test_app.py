@@ -1,380 +1,469 @@
-"""TauApp driven through Textual's pilot, plus one SVG snapshot of the empty app.
-
-Everything runs offline: ``FakeModel`` scripts the replies, tools are defined here, and the
-approval dialog is answered with key presses the way a user would.
-"""
+"""Layout bands, the events pane, language, Esc precedence and privacy of the chrome."""
 
 from __future__ import annotations
 
-import asyncio
-import threading
-from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import pytest
-from tau_core import AgentEvent, Decision, MemorySessionStore, Tier, build_agent, tau_tool
-from tau_core.testing import FakeModel, ToolCall, test_config
-from tau_tui import ApprovalScreen, ChatPane, EventPane, TauApp, TuiApprover, build_app
-from tau_tui.app import NO_SESSION_TEXT, SessionNotFound, resolve_resume
-from textual.pilot import Pilot
-from textual.widgets import Input, Static
-
-SESSION_ID = "20260929-120000-abcd"
-FIXED_NOW = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)
-SNAPSHOT = Path(__file__).parent / "__snapshots__" / Path(__file__).stem
-# Split so a repository-wide search for personal paths does not flag this file.
-PATH_FRAGMENTS = ("/" + "Users/", "/" + "home/", "/" + "tmp/")
+from helpers import PATH_FRAGMENTS, SESSION_ID, finish, fixed_clock, make_app, send, wait_until
+from tau_core import AgentEvent
+from tau_core.i18n import MESSAGES
+from tau_tui.composer import PromptArea
+from tau_tui.events import describe_event
+from tau_tui.strings import TUI_MESSAGES
+from tau_tui.transcript import NoticeRow
 
 
-def fixed_clock() -> datetime:
-    return FIXED_NOW
-
-
-def make_app(tmp_path: Path, replies: list[Any], tools: list[Any] | None = None, **kw) -> TauApp:
-    return build_app(
-        test_config(tmp_path),
-        model=FakeModel(replies),
-        tools=tools or [],
-        session_id=SESSION_ID,
-        clock=fixed_clock,
-        **kw,
-    )
-
-
-async def wait_until(pilot: Pilot, condition: Callable[[], bool], timeout: float = 5.0) -> None:
-    deadline = asyncio.get_running_loop().time() + timeout
-    while not condition():
-        if asyncio.get_running_loop().time() > deadline:
-            raise AssertionError("condition not met in time")
-        await pilot.pause(0.02)
-
-
-async def type_and_send(pilot: Pilot, text: str) -> None:
-    """Type ``text`` key by key and press Enter."""
-    for char in text:
-        await pilot.press("space" if char == " " else char)
-    await pilot.press("enter")
-
-
-async def send(pilot: Pilot, text: str) -> None:
-    """Fill the input and press Enter (faster than typing every key)."""
-    pilot.app.query_one(Input).value = text
-    await pilot.press("enter")
-
-
-def arm_tool(calls: list[dict[str, Any]]):
-    @tau_tool(tier=Tier.PHYSICAL, effect="Test kolu sola hareket eder.")
-    def move_arm(direction: str) -> str:
-        """Test kolunu hareket ettirir."""
-        calls.append({"direction": direction})
-        return f"kol {direction} tarafa gitti"
-
-    return move_arm
-
-
-# -- the three tests the brief asks for ---------------------------------------------------------
-
-
-async def test_reply_streams_into_chat_pane(tmp_path: Path) -> None:
-    app = make_app(tmp_path, ["Merhaba efendim, buradayım."])
-    async with app.run_test(size=(80, 24)) as pilot:
-        await type_and_send(pilot, "merhaba tau")
-        await wait_until(pilot, lambda: not app.busy and "buradayım" in app.chat.text)
-        text = app.chat.text
-        assert "sen: merhaba tau" in text
-        assert "tau: Merhaba efendim, buradayım." in text
-        assert text.count("tau:") == 1  # both streamed deltas landed in one block
-        assert app.prompt_input.value == ""
-        assert app.event_pane.text.strip() == ""  # no tool, no event
-
-
-async def test_tier2_tool_asks_in_modal_and_h_rejects(tmp_path: Path) -> None:
-    calls: list[dict[str, Any]] = []
-    model_replies = [[ToolCall("move_arm", {"direction": "sol"})], "Peki, kolu oynatmadım."]
-    app = make_app(tmp_path, model_replies, tools=[arm_tool(calls)])
-    async with app.run_test(size=(80, 24)) as pilot:
-        await send(pilot, "kolu sola oynat")
-        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
-        screen = app.screen
-        assert isinstance(screen, ApprovalScreen)
-        shown = " ".join(str(w.content) for w in screen.query(Static))
-        assert "Onay gerekiyor (tier 2)" in shown
-        assert "move_arm" in shown
-        assert '"direction": "sol"' in shown
-        assert "Test kolu sola hareket eder." in shown
-        assert app.approver is not None and app.approver.pending is not None
-
-        await pilot.press("h")
-        await wait_until(pilot, lambda: "rejected" in app.event_pane.text and not app.busy)
-        assert not isinstance(app.screen, ApprovalScreen)
-        assert calls == []  # the tool never ran
-        events = app.event_pane.text
-        assert "move_arm · tier 2 · rejected" in events
-        assert "onay: move_arm · tier 2 → rejected (tui)" in events
-        chat = app.chat.text
-        assert "✗ move_arm: onaylanmadı" in chat
-        assert "tau: Peki, kolu oynatmadım." in chat
-
-
-def test_empty_app_snapshot(tmp_path: Path, snap_compare) -> None:
+async def test_regions_at_80x24(tmp_path: Path) -> None:
     app = make_app(tmp_path, [])
-    screenshots: list[str] = []
-
-    async def steady(pilot: Pilot) -> None:
-        pilot.app.query_one(Input).cursor_blink = False
+    async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
-        screenshots.append(pilot.app.export_screenshot())
+        assert app.screen.has_class("-narrow") and app.screen.has_class("-mid")
+        assert app.header.region.height == 1
+        assert app.transcript.region.height == 19 and app.transcript.region.y == 1
+        assert app.composer.region.height == 3
+        assert app.hint.region.height == 1 and app.hint.region.y == 23
+        assert not app.events_pane.display
+        assert not app.sidebar.display
+        assert app.focused is app.query_one(PromptArea)
+        assert app.header.text == f"τ tau  home · {SESSION_ID}  brain · en"
+        assert app.hint.text == "? shortcuts · / commands · ctrl+j newline | ctrl+q quit"
 
-    assert snap_compare(app, terminal_size=(80, 24), run_before=steady)
-    # The committed snapshot (written at session end with --snapshot-update). Its suffix depends
-    # on the syrupy version pytest-textual-snapshot runs with (.raw with syrupy 6), so glob.
-    committed = sorted(SNAPSHOT.glob("test_empty_app_snapshot.*"))
-    svgs = screenshots + [path.read_text(encoding="utf-8") for path in committed]
-    for svg in svgs:
+
+async def test_phone_50x24(tmp_path: Path) -> None:
+    app = make_app(tmp_path, [])
+    async with app.run_test(size=(50, 24)) as pilot:
+        await pilot.pause()
+        assert app.screen.has_class("-phone")
+        assert app.header.text == "τ tau · home  en"
+        assert app.composer.region.height == 1
+        assert app.transcript.region.height == 21
+        assert app.hint.text == "? keys · / cmds · ^j newline | F4 events"
+        await pilot.press("f4")
+        await pilot.pause()
+        assert app.screen.has_class("-events") and app.events_pane.display
+        assert not app.transcript.display
+        assert app.header.text == "τ tau · home  events"
+        assert app.hint.text == "esc chat · ^j newline | F4 chat"
+        assert app.focused is app.query_one(PromptArea)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not app.screen.has_class("-events") and app.transcript.display
+
+
+async def test_wide_and_ultra_and_tall(tmp_path: Path) -> None:
+    app = make_app(tmp_path, [])
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause()
+        assert app.screen.has_class("-wide") and app.screen.has_class("-tall")
+        assert app.events_pane.display and app.events_pane.region.width == 34
+        assert app.transcript.region.height == 25
+        assert app.header.text.endswith("brain · 0 tools · en")
+        assert app.hint.text.endswith("| ctrl+e events · ctrl+q quit")
+        await pilot.press("ctrl+e")
+        await pilot.pause()
+        assert app.screen.has_class("-events-hidden") and not app.events_pane.display
+        await pilot.press("ctrl+e")
+        await pilot.pause()
+        assert app.events_pane.display
+
+        await pilot.resize_terminal(160, 45)
+        await pilot.pause()
+        assert app.screen.has_class("-ultra")
+        assert app.sidebar.display and app.sidebar.region.width == 28
+        assert app.events_pane.region.width == 40
+        assert app.transcript.region.height == 40
+        assert app.header.text.endswith("brain → fake · 0 tools · en")
+
+        await pilot.resize_terminal(80, 30)
+        await pilot.pause()
+        assert app.screen.has_class("-narrow") and app.screen.has_class("-tall")
+        assert app.events_pane.display and app.events_pane.region.height == 8
+        assert app.events_pane.region.width == 80
+        assert app.transcript.region.bottom <= app.events_pane.region.y
+
+        await pilot.resize_terminal(80, 18)
+        await pilot.pause()
+        assert app.screen.has_class("-short")
+        assert not app.hint.display
+        assert app.transcript.region.height == 14
+
+
+async def test_events_pane_renders_every_kind(tmp_path: Path) -> None:
+    app = make_app(tmp_path, [])
+    async with app.run_test(size=(100, 30)) as pilot:
+        bus = app.bus
+        for kind, data in [
+            ("turn_limit", {"max_turns": 12}),
+            ("turn_limit", {"max_total_tokens": 4000}),
+            ("error", {"message": "connection reset", "where": "model"}),
+            ("notice", {"message": "hub restarted", "reason": "restart"}),
+            ("notice", {"text": "old style"}),
+            (
+                "approval",
+                {"tool": "set_light", "tier": 2, "decision": "approved", "channel": "tui"},
+            ),
+            (
+                "tool_call",
+                {
+                    "tool": "set_light",
+                    "tier": 2,
+                    "status": "ok",
+                    "approval": "approved",
+                    "duration_ms": 412,
+                    "result_summary": "Light turned off",
+                    "tool_use_id": "q",
+                },
+            ),
+            ("mesh_event", {"topic": "home/hall/temp", "value": 22}),
+        ]:
+            bus.emit(AgentEvent.create(kind, data, session_id=SESSION_ID, clock=fixed_clock))
+        await wait_until(pilot, lambda: app.events_pane.log.count == 8)
+        await pilot.pause()
+        text = app.events_pane.text
+        flat = text
+        assert text.startswith("12:00:00 ◆ turn limit: 12 turns")
+        assert "◆ token limit: 4000 tokens" in flat
+        assert "✗ error [model]: connection reset" in flat
+        assert "▸ notice · hub restarted" in flat and "▸ notice · old style" in flat
+        assert "◆ approval set_light · tier 2 → approved (tui)" in flat
+        assert "● set_light · tier 2 · ok · approved" in flat and "412ms" not in flat
+        assert "— Light turned off" in flat
+        assert '• mesh_event: {"topic": "home/hall/temp", "value": 22}' in flat
+        assert "Events · 8" in app.query_one("#events-title").content.plain
+        described = describe_event(
+            AgentEvent.create(
+                "tool_call", {"tool": "x", "status": "ok", "duration_ms": 5}, clock=fixed_clock
+            ),
+            "en",
+            show_durations=True,
+        )
+        assert "5ms" in described.plain
+
+
+async def test_lang_relabels_the_chrome(tmp_path: Path) -> None:
+    app = make_app(tmp_path, [], tools=[])
+    async with app.run_test(size=(80, 24), notifications=True) as pilot:
+        await send(pilot, "/lang tr")
+        await pilot.pause()
+        assert app.language == "tr"
+        assert app.query_one(PromptArea).placeholder == "Bir mesaj yaz…"
+        assert app.hint.text == "? kısayollar · / komutlar · ctrl+j yeni satır | ctrl+q çık"
+        assert app.query_one("#events-title").content.plain == "Olaylar · 0"
+        assert "τ = 2π, tam bir tur." in app.transcript.text
+        assert app.header.text.endswith("brain · tr")
+        await send(pilot, "/xyz")
+        await pilot.pause()
+        assert "Bilinmeyen komut: /xyz. Komutlar: /help, /tools" in app.transcript.text
+        await send(pilot, "/lang xx")
+        await pilot.pause()
+        assert "Bilinmeyen dil: xx." in app.transcript.text
+        await send(pilot, "/lang")  # typed in full: Enter runs it although it takes an argument
+        await pilot.pause()
+        assert "Kullanım: /lang en|tr (şu an: tr)." in app.transcript.text
+        await send(pilot, "/dil en")
+        await pilot.pause()
+        assert app.language == "en"
+
+
+def test_tui_messages_have_both_languages_and_no_collisions() -> None:
+    for key, templates in TUI_MESSAGES.items():
+        assert key.startswith("tui."), key
+        assert set(templates) == {"en", "tr"}, key
+        assert templates["en"] and templates["tr"]
+    assert set(TUI_MESSAGES) <= set(MESSAGES)
+
+
+async def test_header_and_screenshot_never_contain_a_path(tmp_path: Path) -> None:
+    app = make_app(tmp_path, ["ok"])
+    async with app.run_test(size=(80, 24)) as pilot:
+        await send(pilot, "/session")
+        await pilot.pause()
+        assert str(tmp_path) not in app.header.text
+        svg = app.export_screenshot()
         assert SESSION_ID in svg
         for fragment in PATH_FRAGMENTS:
             assert fragment not in svg
+            assert fragment not in app.transcript.text
 
 
-# -- approvals ----------------------------------------------------------------------------------
+async def test_help_and_tools_commands_and_aliases(tmp_path: Path) -> None:
+    from helpers import arm_tool
 
-
-async def test_approve_key_is_ignored_until_armed(tmp_path: Path) -> None:
-    calls: list[dict[str, Any]] = []
-    replies = [[ToolCall("move_arm", {"direction": "sol"})], "Kolu sola oynattım."]
-    app = make_app(tmp_path, replies, tools=[arm_tool(calls)], approve_delay=0.3)
-    async with app.run_test(size=(80, 24)) as pilot:
-        await send(pilot, "kolu oynat")
-        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
-        await pilot.press("e")  # typed too early: must not approve
-        await pilot.pause()
-        assert isinstance(app.screen, ApprovalScreen)
-        assert calls == []
-
-        await wait_until(pilot, lambda: app.screen.armed)  # type: ignore[attr-defined]
-        await pilot.press("e")
-        await wait_until(pilot, lambda: "ok (onay: approved)" in app.event_pane.text)
-        await wait_until(pilot, lambda: not app.busy)
-        assert calls == [{"direction": "sol"}]
-        assert "✓ move_arm: kol sol tarafa gitti" in app.chat.text
-        assert "→ approved (tui)" in app.event_pane.text
-
-
-async def test_escape_rejects(tmp_path: Path) -> None:
-    calls: list[dict[str, Any]] = []
-    replies = [[ToolCall("move_arm", {"direction": "sağ"})], "Tamam."]
-    app = make_app(tmp_path, replies, tools=[arm_tool(calls)])
-    async with app.run_test(size=(80, 24)) as pilot:
-        await send(pilot, "kolu oynat")
-        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
-        await pilot.press("escape")
-        await wait_until(pilot, lambda: "rejected" in app.event_pane.text and not app.busy)
-        assert calls == []
-
-
-async def test_enter_on_default_button_rejects(tmp_path: Path) -> None:
-    calls: list[dict[str, Any]] = []
-    replies = [[ToolCall("move_arm", {"direction": "sol"})], "Tamam."]
-    app = make_app(tmp_path, replies, tools=[arm_tool(calls)], approve_delay=0)
-    async with app.run_test(size=(80, 24)) as pilot:
-        await send(pilot, "kolu oynat")
-        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
-        await pilot.press("enter")  # focus starts on "Reddet"
-        await wait_until(pilot, lambda: "rejected" in app.event_pane.text and not app.busy)
-        assert calls == []
-
-
-async def test_tui_approver_without_running_app_rejects() -> None:
-    from tau_core import ApprovalRequest
-
-    request = ApprovalRequest(
-        request_id="r1",
-        tool="move_arm",
-        tier=Tier.PHYSICAL,
-        arguments={},
-        effect="",
-        session_id=None,
-        channel="tui",
-    )
-    approver = TuiApprover()
-    assert approver.name == "tui"
-    assert await approver.decide(request) is Decision.REJECTED
-
-
-async def test_message_while_busy_is_kept_in_the_input(tmp_path: Path) -> None:
-    release = threading.Event()
-
-    @tau_tool(tier=Tier.READ)
-    def slow_lookup() -> str:
-        """Yavaş bir okuma aracı."""
-        release.wait(5)
-        return "bitti"
-
-    app = make_app(tmp_path, [[ToolCall("slow_lookup", {})], "Tamam."], tools=[slow_lookup])
-    async with app.run_test(size=(80, 24), notifications=True) as pilot:
-        await send(pilot, "yavaş olanı çalıştır")
-        await wait_until(pilot, lambda: "slow_lookup (tier 0)" in app.chat.text)
-        assert app.busy
-        await send(pilot, "ikinci")
-        assert app.prompt_input.value == "ikinci"  # not sent, not lost
-        assert app.chat.text.count("sen:") == 1
-        release.set()
-        await wait_until(pilot, lambda: not app.busy)
-        assert "tau: Tamam." in app.chat.text
-
-
-# -- panes, layout, commands --------------------------------------------------------------------
-
-
-async def test_event_pane_renders_every_kind(tmp_path: Path) -> None:
-    app = make_app(tmp_path, [])
-    async with app.run_test(size=(80, 24)) as pilot:
-        bus = app.agent.events
-        for kind, data in [
-            ("turn_limit", {"max_turns": 12}),
-            ("error", {"message": "bağlantı koptu", "where": "model"}),
-            ("notice", {"text": "hub yeniden başladı"}),
-            ("mesh_event", {"topic": "ev/salon/sicaklik", "value": 22}),
-        ]:
-            bus.emit(AgentEvent.create(kind, data, session_id=SESSION_ID))
-        await wait_until(pilot, lambda: app.event_pane.entry_count == 4)
-        text = app.event_pane.text
-        assert "tur sınırı: 12 tur" in text
-        assert "hata [model]: bağlantı koptu" in text
-        assert "ℹ hub yeniden başladı" in text
-        assert "mesh_event:" in text and '"topic": "ev/salon/sicaklik"' in text
-
-
-async def test_model_error_becomes_notice_and_error_event(tmp_path: Path) -> None:
-    def boom(messages, system_prompt):
-        raise RuntimeError("sağlayıcı yanıt vermedi")
-
-    app = make_app(tmp_path, [boom])
-    async with app.run_test(size=(80, 24)) as pilot:
-        await send(pilot, "merhaba")
-        await wait_until(pilot, lambda: not app.busy and "hata" in app.event_pane.text)
-        assert "Model call failed" in app.chat.text
-        assert "hata [model]" in app.event_pane.text
-
-
-async def test_layout_stacks_under_100_columns_and_splits_above(tmp_path: Path) -> None:
-    app = make_app(tmp_path, [])
-    async with app.run_test(size=(80, 24)) as pilot:
-        header = app.query_one("#header", Static)
-        chat, events, prompt = app.chat, app.event_pane, app.prompt_input
-        assert header.region.height == 1 and prompt.region.height == 1
-        assert chat.region.width == events.region.width == 80
-        assert chat.region.bottom <= events.region.y  # chat above events
-        assert chat.region.height >= 12  # most rows go to the conversation
-        assert events.region.height >= 5
-        assert header.region.height + chat.region.height + events.region.height + 1 == 24
-
-        await pilot.resize_terminal(120, 30)
-        await pilot.pause()
-        assert app.screen.has_class("-wide")
-        assert chat.region.y == events.region.y  # side by side
-        assert chat.region.right <= events.region.x
-
-
-async def test_header_shows_profile_and_session_id_only(tmp_path: Path) -> None:
-    app = make_app(tmp_path, [])
-    async with app.run_test(size=(80, 24)):
-        header = str(app.query_one("#header", Static).content)
-        assert header.split() == ["tau", "profil:", "home", "oturum:", SESSION_ID]
-        assert str(tmp_path) not in header
-
-
-async def test_streamed_reply_repaints_in_place(tmp_path: Path) -> None:
-    app = make_app(tmp_path, [])
-    async with app.run_test(size=(80, 24)) as pilot:
-        chat = app.chat
-        chat.add_user("uzun bir soru " * 4)  # wider than the reply: the line width stays put
-        chat.append_reply("Merhaba")
-        await pilot.pause()
-        assert chat.render_line(1).text.rstrip() == "tau: Merhaba"  # painted (and cached)
-        chat.append_reply(" efendim, buyurun.")
-        await pilot.pause()
-        assert chat.render_line(1).text.rstrip() == "tau: Merhaba efendim, buyurun."
-        chat.end_reply()
-        chat.append_reply("Yeni blok.")
-        await pilot.pause()
-        assert chat.text.count("tau:") == 2
-
-
-async def test_resize_rewraps_the_transcript(tmp_path: Path) -> None:
-    long = "uzun " * 40
-    app = make_app(tmp_path, [long.strip()])
-    async with app.run_test(size=(60, 24)) as pilot:
-        await send(pilot, "anlat")
-        await wait_until(pilot, lambda: not app.busy and "uzun" in app.chat.text)
-        narrow_lines = len(app.chat.lines)
-        await pilot.resize_terminal(99, 24)
-        await wait_until(pilot, lambda: len(app.chat.lines) < narrow_lines)
-        assert all(len(line.text.rstrip()) <= 99 for line in app.chat.lines)
-
-
-async def test_slash_commands(tmp_path: Path) -> None:
     app = make_app(tmp_path, [], tools=[arm_tool([])])
     async with app.run_test(size=(80, 24)) as pilot:
         await send(pilot, "/araçlar")
         await pilot.pause()
-        assert "Araçlar (1):" in app.chat.text
-        assert "move_arm  tier 2 · fiziksel, onay gerekir — Test kolunu hareket" in app.chat.text
-        await send(pilot, "/bilinmeyen")
+        text = app.transcript.text
+        assert "Tools (1):" in text
+        assert "move_arm  tier 2 · physical, needs approval — Moves the test arm." in text
+        await pilot.press("f3")
         await pilot.pause()
-        assert "Bilinmeyen komut: /bilinmeyen. Komutlar: /araçlar, /çık" in app.chat.text
-        await send(pilot, "/cik")
+        assert app.transcript.text.count("Tools (1):") == 2
+        await send(pilot, "/help")
+        await pilot.pause()
+        assert "Commands:" in app.transcript.text and "/quit" in app.transcript.text
+        await send(pilot, "/unknown")
+        await pilot.pause()
+        assert (
+            "Unknown command: /unknown. Commands: /help, /tools, /sessions, /resume, /new, "
+            "/session, /lang, /quit"
+        ) in app.query(NoticeRow).last().content.plain
+        await send(pilot, "/çık")
         await pilot.pause()
     assert not app.is_running
 
 
-async def test_resumed_session_shows_history(tmp_path: Path) -> None:
-    config = test_config(tmp_path)
-    store = MemorySessionStore()
-    first = build_agent(
-        config=config,
-        model=FakeModel(["İlk yanıtım."]),
-        tools=[],
-        session_store=store,
-        session_id=SESSION_ID,
-        channel="tui",
-    )
-    assert await first.ask("ilk mesajım") == "İlk yanıtım."
-    first.close()
+@pytest.mark.parametrize("case", ["menu", "events", "scroll", "nothing"])
+async def test_escape_precedence(tmp_path: Path, case: str) -> None:
+    app = make_app(tmp_path, ["line\n\n" * 30])
+    size = (50, 24) if case == "events" else (80, 24)
+    async with app.run_test(size=size) as pilot:
+        await pilot.pause()
+        if case == "menu":
+            await pilot.press("slash")
+            await pilot.pause()
+            assert app.menu.open
+            await pilot.press("escape")
+            assert not app.menu.open and app.composer.text == "/"
+        elif case == "events":
+            await pilot.press("f4")
+            await pilot.pause()
+            assert app.screen.has_class("-events")
+            await pilot.press("escape")
+            assert not app.screen.has_class("-events")
+        elif case == "scroll":
+            await send(pilot, "long")
+            await finish(pilot)
+            transcript = app.transcript
+            assert transcript.is_vertical_scroll_end
+            await pilot.press("pageup")
+            await pilot.pause()
+            assert not transcript.is_vertical_scroll_end
+            await pilot.press("escape")
+            await pilot.pause()
+            assert transcript.is_vertical_scroll_end
+            await pilot.press("pageup")
+            await pilot.pause()
+            await pilot.press("f9")
+            await pilot.pause()
+            assert transcript.is_vertical_scroll_end
+        else:
+            app.query_one(PromptArea).load_text("typed")
+            await pilot.press("escape")
+            assert app.composer.text == "typed"  # Esc never clears typed text
 
-    session_id, notice = resolve_resume(store, "")
-    assert session_id == SESSION_ID
-    assert notice == f"Oturuma devam ediliyor: {SESSION_ID} (ilk mesajım)"
 
-    app = build_app(
-        config,
-        model=FakeModel([]),
-        tools=[],
-        session_store=store,
-        session_id=session_id,
-        notice=notice,
-    )
+async def test_lang_while_busy_relabels_the_busy_row_and_hints(tmp_path: Path) -> None:
+    import threading
+
+    from tau_core import Tier, tau_tool
+    from tau_core.testing import ToolCall
+    from tau_tui.transcript import BusyRow
+
+    release = threading.Event()
+
+    @tau_tool(tier=Tier.READ)
+    def blocked() -> str:
+        """Waits for the test."""
+        release.wait(5)
+        return "released"
+
+    app = make_app(tmp_path, [[ToolCall("blocked", {})], "Bitti."], tools=[blocked])
+    async with app.run_test(size=(80, 24)) as pilot:
+        await send(pilot, "block")
+        await wait_until(pilot, lambda: "✻ Running blocked…" in app.transcript.text)
+        await send(pilot, "/lang tr")  # read-only commands run while busy
+        await pilot.pause()
+        assert app.query_one(BusyRow).text == "✻ blocked çalışıyor…"
+        assert app.hint.text == "esc iptal · ctrl+j yeni satır | meşgul · ctrl+q çık"
+        assert app.query_one(PromptArea).placeholder == "Bir mesaj yaz…"
+        release.set()
+        await finish(pilot)
+        assert "✓ 0s çalıştı · 1 araç çağrısı · ctrl+o aç" in app.transcript.text
+
+
+async def test_ctrl_c_never_quits(tmp_path: Path) -> None:
+    """With a selection ctrl+c copies; otherwise it only says how to quit (Textual's rule)."""
+    app = make_app(tmp_path, [])
+    async with app.run_test(size=(80, 24), notifications=True) as pilot:
+        prompt = app.query_one(PromptArea)
+        prompt.load_text("kept")
+        prompt.select_all()
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        assert app.is_running and app.composer.text == "kept"
+        assert not list(app._notifications)  # the text area's copy, no toast
+        prompt.move_cursor(prompt.document.end)  # no selection
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        assert app.is_running and app.composer.text == "kept"
+        assert any("ctrl+q" in str(n.message).lower() for n in app._notifications)
+
+
+async def test_ascii_mode_swaps_the_vocabulary(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TAU_TUI_ASCII", "1")
+    app = make_app(tmp_path, ["fine"])
+    async with app.run_test(size=(80, 24)) as pilot:
+        assert app.header.text.startswith("t tau  home")
+        await send(pilot, "hi")
+        await finish(pilot)
+        assert "> hi" in app.transcript.text
+        assert app.query_one("#glyph").content.plain == "t"
+        svg = app.export_screenshot()
+        assert "τ" not in svg and "›" not in svg and "❯" not in svg
+
+
+BOX_DRAWING = "╭╮╰╯│─┃┏┓┗┛━┃"
+
+
+def _no_boxes(app, where: str) -> None:
+    svg = app.export_screenshot()
+    found = sorted({ch for ch in BOX_DRAWING if ch in svg})
+    assert not found, f"{where}: box-drawing characters {found} in ASCII mode"
+
+
+async def test_ascii_mode_switches_every_box_border(tmp_path: Path, monkeypatch) -> None:
+    """Spec §2: with ``TAU_TUI_ASCII=1`` the boxes use the ``ascii`` border style.
+
+    160x45 shows every bordered widget at once: the welcome card, the composer, the events
+    column, the sidebar, the menu, the approval dialog, the expanded detail boxes and a fence.
+    """
+    from helpers import PROMPT, light_tools, steady
+    from tau_core.testing import ToolCall
+    from tau_tui import ApprovalScreen
+    from tau_tui.sessions import SessionPicker
+
+    monkeypatch.setenv("TAU_TUI_ASCII", "1")
+    reply = 'Komut:\n\n```python\nset_light(room="salon", on=False)\n```\n'
+    replies = [[ToolCall("set_light", {"room": "salon", "on": False})], reply]
+    app = make_app(tmp_path, replies, tools=light_tools(), approve_delay=0)
+    async with app.run_test(size=(160, 45)) as pilot:
+        await steady(pilot)
+        assert app.screen.has_class("-ascii") and app.query_one("#welcome").display
+        _no_boxes(app, "welcome")
+        assert app.composer.styles.border_top[0] == "ascii"
+        await pilot.press("slash")
+        await pilot.pause()
+        assert app.menu.open
+        _no_boxes(app, "menu")
+        await pilot.press("escape")
+        await send(pilot, PROMPT)
+        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+        await pilot.pause()
+        assert app.screen.has_class("-ascii")
+        _no_boxes(app, "approval dialog")
+        await pilot.press("y")
+        await finish(pilot)
+        await pilot.press("ctrl+o")
+        await pilot.pause()
+        assert app.query(".detail-box") and app.query("MarkdownFence")
+        _no_boxes(app, "expanded cards and fence")
+        await pilot.press("ctrl+r")
+        await wait_until(pilot, lambda: isinstance(app.screen, SessionPicker))
+        await pilot.pause()
+        assert app.screen.has_class("-ascii")
+        _no_boxes(app, "session picker")
+
+
+async def test_a_modal_never_changes_the_chrome_bands(tmp_path: Path) -> None:
+    """While a modal is on top ``app.screen`` has no breakpoint classes: the bands still come
+    from the default screen, so the phone hint reads ``approval`` and the composer cap stays."""
+    from helpers import PROMPT, light_tools, steady
+    from tau_core.testing import ToolCall
+    from tau_tui import ApprovalScreen
+
+    def app_for(tmp: Path):
+        replies = [[ToolCall("set_light", {"room": "salon", "on": False})], "Tamam."]
+        return make_app(tmp, replies, tools=light_tools(), approve_delay=0)
+
+    app = app_for(tmp_path)
+    async with app.run_test(size=(50, 24)) as pilot:
+        await steady(pilot)
+        await send(pilot, PROMPT)
+        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+        await pilot.pause()
+        assert app.chrome_screen is not app.screen and app.chrome_screen.has_class("-phone")
+        # The hints were refreshed on ``ApprovalPending``, before the modal had any band class.
+        assert app.hint.phone and not app.hint.wide
+        assert app.hint.text == "waiting for your approval · y approve · n reject | approval"
+        assert app.query_one(PromptArea).max_rows == 3
+        left = app.hint.query_one("#hint-left")
+        right = app.hint.query_one("#hint-right")
+        assert left.region.right < right.region.x  # a clipped left hint never touches the label
+        await pilot.press("n")
+        await finish(pilot)
+        assert app.hint.text == "? keys · / cmds · ^j newline | F4 events"
+
+    app = app_for(tmp_path)
+    async with app.run_test(size=(100, 30)) as pilot:
+        await steady(pilot)
+        await send(pilot, PROMPT)
+        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+        await pilot.pause()
+        assert app.hint.wide and app.hint.text.endswith("| approval · ctrl+q quit")
+        assert app.query_one(PromptArea).max_rows == 5
+        # ctrl+e is a priority binding: with a modal on top it still acts on the chrome screen.
+        await pilot.press("ctrl+e")
+        await pilot.pause()
+        assert app.chrome_screen.has_class("-events-hidden")
+        assert not app.screen.has_class("-events-hidden") and not app.events_pane.display
+        await pilot.press("n")
+        await finish(pilot)
+
+
+async def test_short_band_hides_the_welcome_mark_and_the_hint(tmp_path: Path) -> None:
+    app = make_app(tmp_path, [])
+    async with app.run_test(size=(80, 18)) as pilot:
+        await pilot.pause()
+        assert app.screen.has_class("-short") and not app.hint.display
+        assert not app.query_one("#welcome .mark-wide").display
+        assert app.transcript.region.height == 18 - 1 - 3
+        assert app.query_one("#welcome").region.height == 14  # the facts fit the whole band
+        assert app.query_one(PromptArea).max_rows == 2
+        await pilot.resize_terminal(80, 24)
+        await pilot.pause()
+        await pilot.pause()
+        assert app.hint.display and app.query_one("#welcome .mark-wide").display
+        assert app.query_one(PromptArea).max_rows == 5
+
+
+async def test_resize_between_bands_refreshes_the_hints(tmp_path: Path) -> None:
+    app = make_app(tmp_path, [])
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
-        text = app.chat.text
-        assert "sen: ilk mesajım" in text
-        assert "tau: İlk yanıtım." in text
-        assert f"Oturuma devam ediliyor: {SESSION_ID}" in text
-    app.agent.close()
+        assert app.hint.text.endswith("| ctrl+q quit")
+        await pilot.resize_terminal(50, 24)
+        await wait_until(pilot, lambda: app.hint.text == "? keys · / cmds · ^j newline | F4 events")
+        assert app.query_one(PromptArea).max_rows == 3
+        await pilot.resize_terminal(120, 30)
+        await wait_until(pilot, lambda: app.hint.text.endswith("| ctrl+e events · ctrl+q quit"))
+        assert app.query_one(PromptArea).max_rows == 5
 
 
-def test_resolve_resume_without_sessions() -> None:
-    store = MemorySessionStore()
-    assert resolve_resume(store, None) == (None, None)
-    assert resolve_resume(store, "") == (None, NO_SESSION_TEXT)
-    with pytest.raises(SessionNotFound, match="Oturum bulunamadı: yok-boyle-bir-oturum"):
-        resolve_resume(store, "yok-boyle-bir-oturum")
+async def test_pageup_pagedown_scroll_a_modal_dialog(tmp_path: Path) -> None:
+    from helpers import arm_tool
+    from tau_core.testing import ToolCall
+    from tau_tui import ApprovalScreen
 
-
-def test_public_names() -> None:
-    import tau_tui
-
-    for cls in (TauApp, ChatPane, EventPane, ApprovalScreen, TuiApprover):
-        assert cls.__name__ in tau_tui.__all__
+    long_argument = {"direction": "left", "path": [f"point {i}" for i in range(40)]}
+    app = make_app(
+        tmp_path,
+        [[ToolCall("move_arm", long_argument)], "ok"],
+        tools=[arm_tool([])],
+        approve_delay=0,
+    )
+    async with app.run_test(size=(80, 24)) as pilot:
+        await send(pilot, "move")
+        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+        await pilot.pause()
+        box = app.screen.query_one("#arguments")
+        assert box.scroll_y == 0 and box.max_scroll_y > 0
+        await pilot.press("pagedown")
+        await pilot.pause()
+        assert box.scroll_y > 0
+        await pilot.press("pageup")
+        await pilot.pause()
+        assert box.scroll_y == 0
+        await pilot.press("n")
+        await finish(pilot)

@@ -15,16 +15,18 @@ from tau_tui.app import SessionNotFound, build_app, resolve_resume
 LOG_FILE = "tau.log"
 """Same file as the other channels: ``<data_dir>/logs/tau.log``."""
 
-HELP_TEXT = "Bu yardımı gösterir ve çıkar."
+HELP_TEXT = "Show this help and exit."
 _FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
 @contextmanager
 def file_logging(logs_dir: Path, *, verbose: bool = False) -> Iterator[Path | None]:
-    """Log to ``<logs_dir>/tau.log`` while the TUI runs.
+    """Log to ``<logs_dir>/tau.log`` while the TUI runs; nothing reaches stderr meanwhile.
 
-    The terminal belongs to Textual, so details (and the tracebacks behind a Turkish notice)
-    only reach the log file. The handler is removed again on exit.
+    The terminal belongs to Textual, so details (and the tracebacks behind a short notice)
+    only reach the log file. Stream handlers on the root logger (the ``tau`` group's stderr
+    handler) are detached for the duration and restored on exit, as is the file handler.
+    Local until tau-core exports its logging helper (issue 059).
     """
     root = logging.getLogger()
     saved_level = root.level
@@ -36,6 +38,13 @@ def file_logging(logs_dir: Path, *, verbose: bool = False) -> Iterator[Path | No
         handler = logging.FileHandler(path, encoding="utf-8")
     except OSError:
         path = None
+    muted = [
+        h
+        for h in root.handlers
+        if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+    ]
+    for stream_handler in muted:
+        root.removeHandler(stream_handler)
     if handler is not None:
         handler.setLevel(level)
         handler.setFormatter(logging.Formatter(_FORMAT))
@@ -49,18 +58,22 @@ def file_logging(logs_dir: Path, *, verbose: bool = False) -> Iterator[Path | No
             root.removeHandler(handler)
             handler.close()
             root.setLevel(saved_level)
+        for stream_handler in muted:
+            root.addHandler(stream_handler)
 
 
-@click.command(name="tui", help="tau'yu Textual arayüzünde açar.")
+@click.command(name="tui", help="Open tau in the Textual interface.")
 @click.help_option("-h", "--help", help=HELP_TEXT)
-@click.option("--profile", metavar="AD", help="Etkin profil (varsayılan: TAU_PROFILE, yoksa 'ev').")
+@click.option(
+    "--profile", metavar="NAME", help="Active profile (default: TAU_PROFILE, else 'home')."
+)
 @click.option(
     "--resume",
     is_flag=False,
     flag_value="",
     default=None,
     metavar="[ID]",
-    help="Önceki bir oturuma devam eder (ID verilmezse en son oturuma).",
+    help="Resume an earlier session (the most recent one when ID is omitted).",
 )
 @click.pass_context
 def tui(ctx: click.Context, profile: str | None, resume: str | None) -> None:
@@ -77,7 +90,7 @@ def tui(ctx: click.Context, profile: str | None, resume: str | None) -> None:
     with file_logging(config.logs_dir, verbose=bool(obj.get("verbose"))):
         try:
             store = open_session_store(config)
-            session_id, notice = resolve_resume(store, resume)
+            session_id, notice = resolve_resume(store, resume, language=config.ui.language)
             app = build_app(config, session_store=store, session_id=session_id, notice=notice)
         except (MissingCredentials, ConfigError, SessionNotFound) as exc:
             click.echo(str(exc), err=True)
@@ -87,4 +100,4 @@ def tui(ctx: click.Context, profile: str | None, resume: str | None) -> None:
             app.run()
         finally:
             app.agent.close()
-    click.echo("Hoşça kalın.")
+    click.echo("Goodbye.")

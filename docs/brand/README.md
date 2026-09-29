@@ -56,6 +56,25 @@ The hero's motion is the vocabulary for every screen tau has (hub display, TauBa
 
 Motion always stops under `prefers-reduced-motion`.
 
+## Terminal
+
+The TUI (`tau tui`) draws the mark from the same geometry as `render.py` (the constants are
+copied into `tau_tui/brand.py`), rasterised into half-block cells: each terminal cell holds two
+square pixels (`▀` with the top pixel as foreground and the bottom pixel as background), so a
+24-column mark is 12 rows and the 16-column phone mark is 8 rows. It is anti-aliased toward Void,
+uses the palette only (Signal → Ember ring, Ember τ with a Core centre line) and, following the
+small-size rule, has no glow. Below 20 rows the mark gives way to the wordmark line. The header
+`τ` carries the motion vocabulary in one cell: it breathes (Ember ↔ Flare, 5 s) while the welcome
+card is on screen and runs the comet (Ember → Flare → Core, 2 s) while tau works; it is static
+otherwise and under `TEXTUAL_ANIMATIONS=none`. Under `TAU_TUI_ASCII=1` (terminals without the
+block characters) the mark falls back to `#`, `^` and `_` in Ember only and every box border is
+drawn in ASCII.
+
+State colours for terminal UIs (TauBar and the hub screen reuse them): **ok / success = Flare**,
+**error = Signal**, **rejected = Ember**, **running / pending = Core at 55 %**, **attention =
+Flare**, notice = Ember. There is no green and no red: shapes double the colours (`●`/`○`,
+`✓`/`✗`, `◆`).
+
 ## Physical objects
 
 For the necklace, enclosures and the hub's case, use **`tau-mark-mono.svg`** or **`tau-coin.svg`**. Both are one filled compound path with even-odd holes (no strokes), so CAD tools and slicers can import them, scale them and extrude them directly.

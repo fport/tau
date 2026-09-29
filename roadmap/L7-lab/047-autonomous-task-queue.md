@@ -19,6 +19,7 @@ The user queues a long-running task ("bu gece şunu araştır"); tau works on it
 ## Blocked by
 
 - [011 · Hard budgets per role with graceful degradation](../L2-models/011-hard-budgets.md)
-- [019 · Settings as data with live reload and `/settings`](../L3-cloud/019-settings-as-data.md)
+- [019 · Settings as local data with live reload and `/settings`](../L3-cloud/019-settings-as-data.md)
 
 ## Comments
+- 2026-09-29: rewritten for ADR 0006 (private-first): results go to the local KB and memory (020/021); the queue's settings live in the local settings file (019).

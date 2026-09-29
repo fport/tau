@@ -27,5 +27,7 @@
 | 065 | [Component builder: entry-point groups, `[components]` config, `tau components\|doctor\|init`](065-component-builder.md) | AFK | – |
 | 066 | [English docs: README, ARCHITECTURE, infra/remote, CLAUDE.md, CONTEXT.md, ADRs](066-english-docs.md) | AFK | – |
 | 072 | [Session commands: /clear, /compact, /status and /model in both channels](072-session-commands-clear-compact-status-model.md) | AFK | – |
+| 073 | [`tau ask "…"`: one-shot command for scripts and iOS Shortcuts](073-tau-ask-one-shot.md) | AFK | – |
+| 077 | [Tools assume hostile input: tier rules for shell, file and fetch tools, and an untrusted-text frame](077-hostile-input-tool-policy.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py`

@@ -1,27 +1,37 @@
-# 014 · Telegram relay tracer bullet: webhook → Worker → Durable Object → hub → reply
+# 014 · Telegram channel by direct polling: `getUpdates` loop on the hub → agent → reply
 
 Status: ready-for-agent
 Type: AFK
-Layer: L3 · Cloud
-Packages: cloud/tau-cloud, tau-core
-Blocked by: 009, 013
+Layer: L3 · Access and data
+Packages: tau-core
+Blocked by: 013
 
 ## What to build
 
-The first external channel, end to end. Telegram delivers updates by webhook to the `tau-cloud` Worker. The Worker verifies Telegram's secret token, drops anything that is not from the allowlisted chat, and hands the message to a Durable Object. The hub keeps an outbound, authenticated WebSocket to that Durable Object; the message reaches the hub, the agent answers, and the reply goes back through the relay to Telegram. The hub never opens an inbound port.
+The first external channel, end to end and without a middleman (ADR 0006 §2). A `tau.hub_services` component `telegram` in tau-core (`tau_core.channels.telegram`, entry point `telegram = "tau_core.channels.telegram:make_service"`, contract in ADR 0005) runs a `getUpdates` long-poll loop inside `tau hub run`: outbound HTTPS only, no webhook, no Worker, no Durable Object, no inbound port. Each update from an allowlisted `chat_id` becomes one turn of that chat's session (`build_agent(channel="telegram")`, so the session metadata and the dynamic context (054) say `telegram`); the reply goes back with `sendMessage`. Anything from another chat is dropped and logged, never answered, so the bot does not confirm its existence to strangers.
+
+- Configuration: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALLOWED_CHAT_IDS` from `.env` (013); `[component.telegram]` for `poll_timeout_seconds` and similar knobs. Without a token the service starts idle, logs one line and reports `telegram: {configured: false}` in `/status`; it never fails the hub.
+- Polling: `deleteWebhook` on start (Telegram refuses `getUpdates` while a webhook is set), long poll with a server-side timeout, the `offset` persisted under `TAU_DATA_DIR/telegram/offset` so a restart neither re-processes nor skips updates, exponential backoff on network errors, `allowed_updates` limited to `message` and `callback_query` (the latter for 017).
+- Conversation: a chat keeps its current session across hub restarts (`TAU_DATA_DIR/telegram/chats.json`: chat id → session id). `/help`, `/new`, `/sessions`, `/resume`, `/session`, `/status`, `/model`, `/compact` and `/lang` resolve through `tau_core.commands` exactly as in the terminal; unknown commands get the shared hint. `sendChatAction typing` while a turn runs; replies longer than 4096 characters are split; markup Telegram would reject falls back to plain text.
+- Tier 2 before 017 lands: a `RefusingApprover` rejects with the tier gate's refusal text plus one sentence pointing at a trusted channel (TUI, TauBar). Nothing is ever auto-approved.
+- One consumer per token: Telegram hands each update to one `getUpdates` caller; the hub lock already guarantees one hub per machine, and the RPi5 handover (048) stops the old poller before the new one starts.
+- Tests use a fake Bot API in `tau_core.testing` (no network): allowlist, offset persistence, command dispatch, message splitting, idle start without a token.
 
 ## Acceptance criteria
 
-- [ ] A message from the allowlisted account gets a Jarvis reply on Telegram
-- [ ] Messages from any other chat are dropped at the Worker and never reach the hub
-- [ ] The webhook secret is verified; the hub ↔ Durable Object WebSocket is authenticated
-- [ ] The hub reconnects with backoff after network loss
-- [ ] Only one hub connection is accepted at a time; a second one is rejected with a clear error
-- [ ] The Worker deploys with one command, secrets via `wrangler secret`, tests in the Workers Vitest pool
+- [ ] A message from the allowlisted chat gets a Jarvis reply on Telegram; the session's metadata records `channel = "telegram"`
+- [ ] Messages from any other chat are dropped and logged; the bot never replies to them
+- [ ] No webhook is set, no inbound port is opened and no Cloudflare resource is involved; `/status` and `tau doctor` show the poller state
+- [ ] A hub restart neither re-processes nor loses updates (offset persisted; fake Bot API test)
+- [ ] Network loss → reconnect with backoff; the hub stays up while the poller is down
+- [ ] Slash commands from `tau_core.commands` work on Telegram with the terminal's wording; Turkish aliases accepted, never shown
+- [ ] A tier-2 call from Telegram is refused with a pointer to a trusted channel until 017 lands; no auto-approval in code or tests
+- [ ] Without a token the service starts idle and the hub runs on; the tau-core README documents `[component.telegram]` and the `.env` names
 
 ## Blocked by
 
-- [009 · `tau hub` daemon with launchd service and self-heal](../L1-agent/009-hub-daemon.md)
-- [013 · Create the Telegram bot and a scoped Cloudflare API token](013-telegram-bot-and-cloudflare-token.md)
+- [013 · Create the Telegram bot and a Cloudflare token scoped to Tunnel, Access and R2](013-telegram-bot-and-cloudflare-token.md)
 
 ## Comments
+
+- 2026-09-29: rewritten for ADR 0006 (private-first). Before: webhook → `tau-cloud` Worker → Durable Object → authenticated WebSocket to the hub → reply, with `cloud/tau-cloud` as a package. Now: the hub polls `getUpdates` directly as a `tau.hub_services` component; no Worker, no inbound port. It lives in tau-core next to the terminal channel; if it ever needs dependencies of its own it moves to a `tau-telegram` distribution behind the same entry point. 009 (hub daemon) and 058/065 (hub services) are done, so only 013 blocks it. The file keeps its old slug so links stay stable.

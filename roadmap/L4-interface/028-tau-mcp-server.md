@@ -19,7 +19,8 @@ tau exposes an MCP server (stdio locally, streamable HTTP on the tailnet) so Cla
 
 ## Blocked by
 
-- [020 · Memory with Vectorize and a Self-RAG loop](../L3-cloud/020-memory-self-rag.md)
-- [021 · Knowledge base: markdown → R2 → AI Search with `kb_search`](../L3-cloud/021-knowledge-base-ai-search.md)
+- [020 · Local memory: Strands `MemoryManager` with a tau `MemoryStore` on SQLite + local embeddings](../L3-cloud/020-memory-self-rag.md)
+- [021 · Local knowledge base index and `kb_search`](../L3-cloud/021-knowledge-base-ai-search.md)
 
 ## Comments
+- 2026-09-29: rewritten for ADR 0006 (private-first): the blockers are the local memory (020) and knowledge base (021) issues; the MCP server stays loopback/tailnet only, which the ADR's §6 also requires.

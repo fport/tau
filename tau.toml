@@ -39,7 +39,7 @@ window_size = 60                          # sliding: messages kept; summarize: r
 # max_total_tokens = 200000               # optional per-turn token budget, Strands Limits(total_tokens=...)
 
 [sessions]
-backend = "file"                          # memory | file (under TAU_DATA_DIR/sessions) | cloud (issue 018, via the tau-cloud Worker API)
+backend = "file"                          # memory | file (under TAU_DATA_DIR/sessions); the store stays on the hub (ADR 0006)
 
 [hub]
 control_port = 7877

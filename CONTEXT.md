@@ -43,12 +43,12 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 
 ## Behavior
 
-- **Event** — something that happened, published on Zenoh as `tau/<area>/<name>` (e.g. `tau/desk/presence`). Summaries of events are stored in D1.
+- **Event** — something that happened, published on Zenoh as `tau/<area>/<name>` (e.g. `tau/desk/presence`). Summaries of events are stored locally on the hub.
 - **Agent event** — a record of what the agent did in a session (tool call, approval, turn limit, error, notice); distinct from a mesh **Event** on Zenoh.
 - **Turn event** — what a channel receives while one user turn streams: `TextDelta`, `ReasoningDelta`, `ToolUseStarted`, `ToolProgress`, `ToolFinished`, `Throttled`, `Notice`, `TurnEnd`. Rendered by the terminal and the TUI; not stored (agent events are).
 - **Stop reason** — why a turn ended, carried by `TurnEnd`: `end_turn`, `limit_turns`, `limit_total_tokens`, `max_tokens`, `cancelled`, `interrupt`, `error`, `busy`.
 - **Repair turn** — when the history ends on an unfinished turn (a failed, cancelled or limited turn, or a crash-restored session), the next turn sends an assistant notice before the user's prompt so the history keeps alternating. Only the SDK appends to history; tau never does by hand.
-- **Telemetry** — high-frequency raw data (sensor streams, joint states). Never stored in D1; batched to R2.
+- **Telemetry** — high-frequency raw data (sensor streams, joint states). Never stored with the sessions; batched to local files and backed up encrypted with the rest of the data dir.
 - **Routine** — a user-registered rule: event pattern → action, with optional conditions (time window, cooldown). Registering a tier-2 routine needs one approval; its firings do not.
 - **Reflex engine** — runs routines locally without an LLM or the cloud.
 - **Ambient mode** — tau thinking proactively about events. Off by default; the user turns it on per **profile**.
@@ -57,6 +57,6 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 
 ## Knowledge
 
-- **KB (knowledge base)** — long-form markdown documents, stored in R2 and indexed by AI Search.
-- **Memory** — short facts extracted from conversations; D1 row plus a Vectorize embedding, searchable immediately.
+- **KB (knowledge base)** — long-form markdown documents under `kb/`, indexed locally on the hub (SQLite vectors + a local embedding model).
+- **Memory** — short facts extracted from conversations; a local SQLite row plus a local embedding, searchable immediately.
 - **Self-RAG loop** — the agent decides whether to retrieve, retrieves from memory/KB, grades relevance, and re-queries once if needed.

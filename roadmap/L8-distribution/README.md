@@ -1,0 +1,12 @@
+# L8 · Distribution
+
+**Goal:** Anyone can install tau from PyPI and follow the docs to run it privately ([ADR 0006](../../docs/adr/0006-private-first-topology.md) §8): `uv tool install tau-core --with tau-tui`, then `tau init` and `tau doctor`; step-by-step guides on a docs site that needs nothing personal.
+
+**Done when:** A version tag publishes the packages to PyPI from CI with trusted publishing and the documented install works from the published wheels, and the docs site builds strictly in CI and is live on Cloudflare Pages at `docs.tau.<domain>`.
+
+| # | Issue | Type | Blocked by |
+|---|---|---|---|
+| 078 | [PyPI release path: trusted publishing on tags, version policy, install verified from wheels](078-pypi-release-path.md) | HITL | – |
+| 079 | [Docs site: MkDocs Material built strictly in CI and deployed to Cloudflare Pages at `docs.tau.<domain>`](079-docs-site.md) | HITL | – |
+
+Live status: `python3 roadmap/board.py --layer L8`

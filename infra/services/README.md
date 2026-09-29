@@ -27,7 +27,7 @@ login session, so an SSH session without one cannot bootstrap it):
 ```sh
 cd /path/to/tau
 uv run tau hub install      # render the plist, create the log dir, launchctl bootstrap gui/$UID
-uv run tau hub status       # running, heartbeat, last crash, "launchd: kurulu ve yüklü"
+uv run tau hub status       # running, heartbeat, last crash, "launchd: installed and loaded"
 ```
 
 - `RunAtLoad`: the hub starts at install and at every login.
@@ -48,7 +48,7 @@ Check the self-heal by hand:
 ```sh
 curl -s 127.0.0.1:7877/health
 pkill -9 -f "tau_core hub run"
-sleep 5; uv run tau hub status   # a new pid, and "Son çökme: … unexpected exit (no clean shutdown)"
+sleep 5; uv run tau hub status   # a new pid, and "Last crash: … unexpected exit (no clean shutdown)"
 ```
 
 ## Linux (RPi5): systemd user unit

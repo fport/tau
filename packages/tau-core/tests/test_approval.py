@@ -14,10 +14,10 @@ from tau_core.approval import (
     TerminalApprover,
     TierGate,
     format_approval_prompt,
+    refusal_text,
+    unknown_tool_text,
 )
 from tau_core.testing import ScriptedApprover, UnansweredApprover, record_events
-
-REFUSAL = "Kullanıcı bu eylemi onaylamadı: {}. Eylemi yapma, kullanıcıya kısaca bildir."
 
 
 @tau_tool(tier=Tier.READ)
@@ -131,12 +131,23 @@ async def test_a_custom_channel_only_implements_decide() -> None:
 
 def test_prompt_shows_tool_arguments_and_effect() -> None:
     assert format_approval_prompt(request()) == (
+        "⚠️  Approval needed (tier 2)\n"
+        "  Tool: move_arm\n"
+        '  Arguments: {"target": {"x": 1, "y": 2}}\n'
+        "  Effect: Robot kolu verilen konuma götürür.\n"
+        "  Approve? [y/N] "
+    )
+
+
+def test_prompt_in_turkish() -> None:
+    assert format_approval_prompt(request(), "tr") == (
         "⚠️  Onay gerekiyor (tier 2)\n"
         "  Araç: move_arm\n"
         '  Argümanlar: {"target": {"x": 1, "y": 2}}\n'
         "  Etki: Robot kolu verilen konuma götürür.\n"
         "  Onaylıyor musunuz? [e/H] "
     )
+    assert format_approval_prompt(request(), "xx") == format_approval_prompt(request(), "en")
 
 
 def test_prompt_escapes_terminal_control_characters() -> None:
@@ -145,7 +156,7 @@ def test_prompt_escapes_terminal_control_characters() -> None:
     assert "\x1b" not in prompt and "\x9b" not in prompt and "‮" not in prompt
     assert "\\u202e" in prompt and "\\x9b" in prompt and "\\u001b" in prompt
     assert '"şehir": "İzmir"' in prompt  # Turkish text stays readable
-    assert "  Etki: Satır 1 Satır 2\n" in prompt
+    assert "  Effect: Satır 1 Satır 2\n" in prompt
     assert prompt.count("\n") == 4
 
 
@@ -154,8 +165,10 @@ def test_prompt_survives_non_json_arguments() -> None:
     assert '"at": "2026-09-29 15:30:00"' in prompt
 
 
-@pytest.mark.parametrize("answer", ["e", "E", "evet", "EVET", " Evet ", "e\n"])
-async def test_terminal_approves_only_e_or_evet(answer: str) -> None:
+@pytest.mark.parametrize(
+    "answer", ["e", "E", "evet", "EVET", " Evet ", "e\n", "y", "Y", "yes", "YES", " Yes "]
+)
+async def test_terminal_approves_yes_in_both_languages(answer: str) -> None:
     prompts: list[str] = []
 
     def fake_input(prompt: str) -> str:
@@ -168,7 +181,7 @@ async def test_terminal_approves_only_e_or_evet(answer: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "answer", ["", "h", "H", "hayır", "y", "yes", "ok", "evet!", "e e", "onayla", "1"]
+    "answer", ["", "h", "H", "hayır", "n", "no", "ok", "evet!", "e e", "onayla", "approve", "1"]
 )
 async def test_terminal_rejects_everything_else(answer: str) -> None:
     approver = TerminalApprover(input_func=lambda prompt: answer)
@@ -208,13 +221,13 @@ async def test_terminal_prompt_through_the_gate() -> None:
 
     gate, seen = make_gate(TerminalApprover(input_func=fake_input))
     result = await gate.check("move_arm", {"target": {"x": 3}}, tool_use_id="t1")
-    assert result == (False, REFUSAL.format("move_arm"), "rejected")
+    assert result == (False, refusal_text("move_arm"), "rejected")
     assert prompts == [
-        "⚠️  Onay gerekiyor (tier 2)\n"
-        "  Araç: move_arm\n"
-        '  Argümanlar: {"target": {"x": 3}}\n'
-        "  Etki: Robot kolu verilen konuma götürür.\n"
-        "  Onaylıyor musunuz? [e/H] "
+        "⚠️  Approval needed (tier 2)\n"
+        "  Tool: move_arm\n"
+        '  Arguments: {"target": {"x": 3}}\n'
+        "  Effect: Robot kolu verilen konuma götürür.\n"
+        "  Approve? [y/N] "
     ]
     assert seen[0].data["channel"] == "terminal" and seen[0].data["decision"] == "rejected"
 
@@ -270,7 +283,7 @@ async def test_effect_falls_back_to_the_description() -> None:
 async def test_tier2_not_approved(decision: Decision) -> None:
     gate, seen = make_gate(ScriptedApprover([decision]))
     result = await gate.check("feed_cat", {}, tool_use_id="t1")
-    assert result == (False, REFUSAL.format("feed_cat"), decision.value)
+    assert result == (False, refusal_text("feed_cat"), decision.value)
     assert seen[0].data["decision"] == decision.value
 
 
@@ -278,7 +291,7 @@ async def test_default_approver_rejects() -> None:
     gate, seen = make_gate()
     assert await gate.check("feed_cat", {}, tool_use_id="t1") == (
         False,
-        REFUSAL.format("feed_cat"),
+        refusal_text("feed_cat"),
         "rejected",
     )
     assert seen[0].data["channel"] == "auto-reject"
@@ -288,7 +301,8 @@ async def test_unknown_tool_fails_closed() -> None:
     approver = ScriptedApprover([Decision.APPROVED])
     gate, seen = make_gate(approver, exemptions=[lambda name, args: True])
     result = await gate.check("self_destruct", {}, tool_use_id="t1")
-    assert result == (False, "'self_destruct' aracı kayıtlı değil; çalıştırılmadı.", None)
+    assert result == (False, unknown_tool_text("self_destruct"), None)
+    assert result[1] == "Tool 'self_destruct' is not registered; it was not run."
     assert approver.requests == []
     assert [(e.kind, e.data["where"], e.data["tool"]) for e in seen] == [
         ("error", "tier_gate", "self_destruct")
@@ -319,7 +333,7 @@ async def test_tool_that_lost_its_tier_fails_closed() -> None:
     gate.catalog.add(shifty)
     shifty.tau_tier = None
     allowed, text, _ = await gate.check("shifty", {}, tool_use_id="t1")
-    assert allowed is False and text == "'shifty' aracı kayıtlı değil; çalıştırılmadı."
+    assert allowed is False and text == unknown_tool_text("shifty")
 
 
 # --- failing approvers -------------------------------------------------------------------------
@@ -353,7 +367,7 @@ async def test_raising_approver_rejects(caplog: pytest.LogCaptureFixture) -> Non
     gate, seen = make_gate(RaisingApprover())
     with caplog.at_level(logging.ERROR, logger="tau_core.approval"):
         result = await gate.check("feed_cat", {}, tool_use_id="t1")
-    assert result == (False, REFUSAL.format("feed_cat"), "rejected")
+    assert result == (False, refusal_text("feed_cat"), "rejected")
     assert "approver raising failed" in caplog.text
     assert seen[0].data["decision"] == "rejected"
 
@@ -363,7 +377,7 @@ async def test_invalid_answer_rejects(answer: object) -> None:
     gate, _ = make_gate(AnsweringApprover(answer))
     assert await gate.check("feed_cat", {}, tool_use_id="t1") == (
         False,
-        REFUSAL.format("feed_cat"),
+        refusal_text("feed_cat"),
         "rejected",
     )
 
@@ -387,7 +401,7 @@ async def test_gate_timeout_records_timeout(caplog: pytest.LogCaptureFixture) ->
     gate, seen = make_gate(approver, timeout_seconds=0.01)
     with caplog.at_level(logging.WARNING, logger="tau_core.approval"):
         result = await gate.check("move_arm", {"target": {}}, tool_use_id="t1")
-    assert result == (False, REFUSAL.format("move_arm"), "timeout")
+    assert result == (False, refusal_text("move_arm"), "timeout")
     assert approver.cancelled == 1  # the pending question was withdrawn
     assert seen[0].data["decision"] == "timeout"
     assert "timed out" in caplog.text

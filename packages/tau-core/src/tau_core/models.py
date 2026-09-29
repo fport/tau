@@ -43,16 +43,16 @@ _DEFAULT_ENV: dict[str, list[list[str]]] = {
 
 
 class MissingCredentials(Exception):
-    """The provider behind a role has no usable credentials. ``str(exc)`` is Turkish."""
+    """The provider behind a role has no usable credentials; ``str(exc)`` names the variables."""
 
     def __init__(self, role: str, provider: str, variables: list[str]):
         self.role = role
         self.provider = provider
         self.variables = list(variables)
         super().__init__(
-            f"Model kimlik bilgileri eksik ({role} rolü, {provider}). "
-            f"Şu değişkenleri .env dosyasına ekleyin: {', '.join(self.variables)}\n"
-            "Örnek isimler .env.example dosyasında."
+            f"Missing model credentials for role '{role}' ({provider}). "
+            f"Add these variables to .env: {', '.join(self.variables)}\n"
+            "Example names are in .env.example."
         )
 
 
@@ -92,9 +92,7 @@ def resolve_model(role: str, config: Config, *, env: Mapping[str, str] | None = 
     env = os.environ if env is None else env
     role_cfg = config.roles.get(role)
     if role_cfg is None:
-        raise ConfigError(
-            f"'{role}' rolü tau.toml içinde tanımlı değil ([models.roles.{role}] ekleyin)."
-        )
+        raise ConfigError(f"Role '{role}' is not defined in tau.toml (add [models.roles.{role}]).")
     missing = missing_credentials(role_cfg, env)
     if not missing:
         return _build(role_cfg, env)
@@ -122,9 +120,9 @@ def _check_supported(role_cfg: RoleConfig) -> None:
         return
     if provider in PLANNED_PROVIDERS:
         raise ConfigError(
-            f"'{provider}' sağlayıcısı henüz desteklenmiyor (issue {PLANNED_PROVIDERS[provider]})."
+            f"Provider '{provider}' is not supported yet (issue {PLANNED_PROVIDERS[provider]})."
         )
-    raise ConfigError(f"Bilinmeyen model sağlayıcısı: '{provider}'.")
+    raise ConfigError(f"Unknown model provider: '{provider}'.")
 
 
 def _build(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
@@ -161,7 +159,7 @@ def _bedrock(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
             region_name=region, api_key=env.get("AWS_BEARER_TOKEN_BEDROCK") or None, **kwargs
         )
     except BotoCoreError as exc:
-        raise ConfigError(f"Bedrock istemcisi kurulamadı: {exc}") from exc
+        raise ConfigError(f"Bedrock client could not be created: {exc}") from exc
 
 
 def _anthropic(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
@@ -192,7 +190,7 @@ def _fake(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
 
     def tool_call(raw: Any) -> ToolCall:
         if not isinstance(raw, dict) or "tool" not in raw:
-            raise ConfigError(f"fake sağlayıcı: geçersiz yanıt: {raw!r}")
+            raise ConfigError(f"fake provider: invalid reply: {raw!r}")
         return ToolCall(name=str(raw["tool"]), input=dict(raw.get("input") or {}))
 
     def reply(raw: Any) -> Any:
@@ -202,10 +200,10 @@ def _fake(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
             return [tool_call(raw)]
         if isinstance(raw, list):
             return [tool_call(item) for item in raw]
-        raise ConfigError(f"fake sağlayıcı: geçersiz yanıt: {raw!r}")
+        raise ConfigError(f"fake provider: invalid reply: {raw!r}")
 
     replies = [reply(raw) for raw in role_cfg.params.get("replies") or []]
-    default = role_cfg.params.get("default") or "Tamam efendim."
+    default = role_cfg.params.get("default") or "Okay."
     return FakeModel(replies, default=str(default))
 
 

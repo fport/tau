@@ -1,4 +1,4 @@
-"""The per-turn loop guard: Strands ``Limits(turns=[agent].max_turns)`` and its Turkish notice."""
+"""The per-turn loop guard: Strands ``Limits(turns=[agent].max_turns)`` and its notice."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from tau_core import (
     build_agent,
     tau_tool,
 )
+from tau_core.agent import turn_limit_text
 from tau_core.config import AgentConfig
 from tau_core.testing import FakeModel, ScriptedApprover, ToolCall, record_events, test_config
 
@@ -45,10 +46,12 @@ def _reset_polls() -> None:
 
 
 def notice_text(n: int) -> str:
-    return (
-        f"Bu turda araç çağrısı sınırına ulaştım ({n} tur). "
-        "Durdum; devam etmemi isterseniz söyleyin."
+    text = turn_limit_text(n)
+    assert text == (
+        f"I reached the tool-call limit for this turn ({n} turns). I stopped; tell me if you "
+        "want me to continue."
     )
+    return text
 
 
 def runaway_model(tool: str = "poll_sensor") -> FakeModel:

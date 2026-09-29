@@ -25,12 +25,12 @@ class Tier(IntEnum):
 
 
 class UntieredToolError(Exception):
-    """A tool without a declared tier. The message is Turkish and names the tool."""
+    """A tool without a declared tier; the message names the tool."""
 
     def __init__(self, tool: str):
         self.tool = tool
         super().__init__(
-            f"'{tool}' aracı tier bildirmiyor; kaydedilemez. @tau_tool(tier=...) kullanın."
+            f"Tool '{tool}' declares no tier and cannot be registered. Use @tau_tool(tier=...)."
         )
 
 

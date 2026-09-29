@@ -1,9 +1,10 @@
-"""Record and resume: sessions survive a restart and ``/devam`` brings the context back."""
+"""Record and resume: sessions survive a restart and ``/resume`` brings the context back."""
 
 from __future__ import annotations
 
 import itertools
 import json
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -90,7 +91,7 @@ async def test_record_and_resume_across_a_restart(file_config: Config) -> None:
     assert summary.session_id == session_id
     assert summary.title == "Salon kaç derece?"
     assert summary.message_count == 6
-    assert (summary.channel, summary.profile) == ("terminal", "ev")
+    assert (summary.channel, summary.profile) == ("terminal", "home")
     messages_dir = file_config.sessions_dir / session_id / "agents" / "tau" / "messages"
     assert sorted(p.name for p in messages_dir.iterdir()) == [f"{i:06d}.json" for i in range(6)]
 
@@ -187,7 +188,7 @@ async def test_sessions_listed_newest_first(
     assert [s.session_id for s in listed][0] == agents["bir"].session_id
 
 
-# -- the terminal channel: quit, restart, /devam ----------------------------------------------
+# -- the terminal channel: quit, restart, /sessions and /resume ------------------------------
 
 FILE_TOML = """\
 [models.roles.brain]
@@ -253,20 +254,20 @@ def chat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Chat:
     return Chat(tmp_path, monkeypatch)
 
 
-def test_quit_restart_and_devam_restores_context(chat: Chat) -> None:
-    out = chat("Salon kaç derece?\n/çık\n")
+def test_quit_restart_and_resume_restores_context(chat: Chat) -> None:
+    out = chat("Salon kaç derece?\n/quit\n")
     assert "tau> Buyurun efendim." in out
     [first] = chat.session_ids()
     before = chat.files()
 
-    out = chat("/devam\nNe sormuştum?\n/oturum\n/çık\n")
-    assert "Son oturumlar:" in out
+    out = chat("/sessions\n/resume\nNe sormuştum?\n/session\n/quit\n")
+    assert "Recent sessions:" in out
     assert f" 1. {first}  " in out
-    assert "  terminal  Salon kaç derece? (2 mesaj)" in out
-    assert f"Devam ediliyor: Salon kaç derece? · {first} (2 mesaj yüklendi)." in out
-    assert f"Oturum: {first}" in out
-    assert "Mesaj sayısı: 4" in out
-    assert "Depo: file (" in out
+    assert "  terminal  Salon kaç derece? (2 messages)" in out
+    assert f"Resuming: Salon kaç derece? · {first} (2 messages loaded)." in out
+    assert f"Session: {first}" in out
+    assert "Messages: 4" in out
+    assert "Store: file (" in out
 
     sent = chat.models[-1].calls[-1].messages
     assert texts(sent) == ["Salon kaç derece?", "Buyurun efendim.", "Ne sormuştum?"]
@@ -278,52 +279,63 @@ def test_quit_restart_and_devam_restores_context(chat: Chat) -> None:
     assert len(chat.session_ids()) == 2
 
 
-def test_devam_by_number_and_id(chat: Chat) -> None:
-    chat("birinci konu\n/çık\n")
-    chat("ikinci konu\n/çık\n")
+def test_resume_by_number_and_id(chat: Chat) -> None:
+    chat("birinci konu\n/quit\n")
+    chat("ikinci konu\n/quit\n")
     by_title = {s.title: s.session_id for s in FileSessionStore(chat.sessions_dir).list_sessions()}
     first, second = by_title["birinci konu"], by_title["ikinci konu"]
 
-    out = chat("/devam 2\n/devam 9\n/devam 20200101-000000-0000\n/çık\n")
-    assert f"Devam ediliyor: birinci konu · {first} (2 mesaj yüklendi)." in out
-    assert "Listede 9 numaralı oturum yok (1-1)." in out  # the current one is not listed
-    assert "Oturum bulunamadı: 20200101-000000-0000." in out
-    assert "Son oturumlar:" not in out  # an argument resumes without listing
+    # Without a prior /sessions, a number refers to the listing /sessions would print now.
+    out = chat("/resume 2\n/resume 9\n/resume 20200101-000000-0000\n/quit\n")
+    assert f"Resuming: birinci konu · {first} (2 messages loaded)." in out
+    assert "There is no session 9 in the list (1-1)." in out  # the current one is not listed
+    assert "Session not found: 20200101-000000-0000." in out
+    assert "Recent sessions:" not in out  # /resume never prints the listing
 
-    out = chat(f"/devam {second}\n/devam {second}\n/devam ../dışarı\n/çık\n")
-    assert f"Devam ediliyor: ikinci konu · {second} (2 mesaj yüklendi)." in out
-    assert f"Zaten bu oturumdasınız: {second}." in out
-    assert "Geçersiz oturum kimliği: '../dışarı'." in out
+    # The Turkish alias keeps working; an id resumes that session; a bad id is refused.
+    out = chat(f"/devam {second}\n/resume {second}\n/resume ../dışarı\n/quit\n")
+    assert f"Resuming: ikinci konu · {second} (2 messages loaded)." in out
+    assert f"You are already in this session: {second}." in out
+    assert "Invalid session id: '../dışarı'." in out
+
+    # After /sessions, a number refers to that listing.
+    out = chat("/sessions\n/resume 2\n/quit\n")
+    listed = re.findall(r"^ (\d)\. (\S+)  ", out, re.MULTILINE)
+    assert [n for n, _ in listed] == ["1", "2"]
+    assert f"· {listed[1][1]} (2 messages loaded)." in out
 
 
-def test_resume_flag_and_yeni(chat: Chat) -> None:
-    chat("eski konu\n/çık\n")
+def test_resume_flag_and_new(chat: Chat) -> None:
+    chat("eski konu\n/quit\n")
     [old] = chat.session_ids()
 
-    out = chat("/yeni\nyeni konu\n/devam\n/çık\n", "--resume", old)
-    assert f"Devam ediliyor: eski konu · {old} (2 mesaj yüklendi)." in out
-    new_id = out.split("Yeni oturum: ", 1)[1].split(".", 1)[0]
+    out = chat("/new\nyeni konu\n/resume\n/quit\n", "--resume", old)
+    assert f"Resuming: eski konu · {old} (2 messages loaded)." in out
+    new_id = out.split("New session: ", 1)[1].split(".", 1)[0]
     assert new_id != old
     store = FileSessionStore(chat.sessions_dir)
     assert store.read_meta(new_id)["title"] == "yeni konu"
-    # /devam after /yeni lists the old session and the new one is current, so it resumes "eski".
-    assert out.count(f"Devam ediliyor: eski konu · {old}") == 2
+    # /resume after /new: the new one is current, so the most recent earlier one is "eski".
+    assert out.count(f"Resuming: eski konu · {old}") == 2
     assert len(store.list_messages(old, "tau")) == 2  # resuming alone adds nothing
 
-    out = chat("/devam\n/çık\n", "--resume")
-    assert "Son oturumlar:" in out
-    assert "yeni konu (2 mesaj)" in out and "eski konu (2 mesaj)" in out
+    # Bare --resume takes the most recently touched session: "eski", resumed last above.
+    out = chat("/sessions\n/quit\n", "--resume")
+    assert f"Resuming: eski konu · {old} (2 messages loaded)." in out
+    assert "Recent sessions:" in out
+    assert "yeni konu (2 messages)" in out
+    assert "eski konu (2 messages)" not in out  # the current session is never listed
 
 
-def test_devam_with_nothing_earlier(chat: Chat) -> None:
-    out = chat("/devam\n/oturum\n/çık\n")
-    assert "Devam edilecek önceki oturum yok." in out
-    assert "Başlık: (başlıksız)" in out and "Mesaj sayısı: 0" in out
+def test_resume_with_nothing_earlier(chat: Chat) -> None:
+    out = chat("/resume\n/session\n/quit\n")
+    assert "No earlier session to resume." in out
+    assert "Title: (untitled)" in out and "Messages: 0" in out
 
 
 def test_invalid_session_option_exits_2(chat: Chat) -> None:
     env = dict(CLEAN_ENV, TAU_HOME=str(chat.home), TAU_DATA_DIR=str(chat.data))
     result = CliRunner().invoke(cli, ["chat", "--session", "../x"], env=env, input="")
     assert result.exit_code == 2
-    assert "Geçersiz oturum kimliği: '../x'." in result.output
+    assert "Invalid session id: '../x'." in result.output
     assert "Traceback" not in result.output

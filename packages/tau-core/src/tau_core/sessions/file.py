@@ -56,19 +56,18 @@ _OLDEST = datetime.min.replace(tzinfo=UTC)
 
 
 class InvalidSessionId(ConfigError, ValueError):
-    """An id that cannot be a directory name. The message is Turkish and meant for the user.
+    """An id that cannot be a directory name; the message is meant for the user.
 
     A ``ConfigError`` so ``tau chat --session <bad id>`` fails with the message instead of a
     traceback; a ``ValueError`` like Strands' own id validation.
     """
 
 
-def validate_id(value: str, *, what: str = "oturum") -> str:
+def validate_id(value: str, *, what: str = "session") -> str:
     """Return ``value`` if it is a safe directory name (letters, digits, ``.``, ``_``, ``-``)."""
     if not isinstance(value, str) or not _ID_PATTERN.match(value):
         raise InvalidSessionId(
-            f"Geçersiz {what} kimliği: '{value}'. "
-            "Yalnızca harf, rakam, '.', '_' ve '-' kullanılabilir."
+            f"Invalid {what} id: '{value}'. Only letters, digits, '.', '_' and '-' are allowed."
         )
     return value
 
@@ -99,7 +98,7 @@ class FileSessionStore(SessionStore):
         return path
 
     def _agent_dir(self, session_id: str, agent_id: str) -> Path:
-        path = self._session_dir(session_id) / AGENTS_DIR / validate_id(agent_id, what="ajan")
+        path = self._session_dir(session_id) / AGENTS_DIR / validate_id(agent_id, what="agent")
         if path.is_symlink():
             raise SessionException(f"Refusing to use symlink at {path}")
         return path

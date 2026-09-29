@@ -161,7 +161,7 @@ def test_install_and_uninstall_with_fake_launchctl(config: Config, tmp_path: Pat
 
     result = invoke(config, tmp_path, ["install"], fake)
     assert result.exit_code == 0, result.output
-    assert f"launchd ajanı kuruldu: {plist_path}" in result.output
+    assert f"launchd agent installed: {plist_path}" in result.output
     assert fake.calls == [("bootstrap", domain(), plist_path)]
     assert fake.is_loaded(domain(), LABEL)
     plist = plistlib.loads(plist_path.read_bytes())
@@ -175,7 +175,7 @@ def test_install_and_uninstall_with_fake_launchctl(config: Config, tmp_path: Pat
 
     result = invoke(config, tmp_path, ["install"], fake)
     assert result.exit_code == 0, result.output
-    assert "launchd ajanı yeniden kuruldu" in result.output
+    assert "launchd agent reinstalled" in result.output
     assert fake.calls[1:] == [
         ("bootout", domain(), LABEL),
         ("bootstrap", domain(), plist_path),
@@ -183,30 +183,30 @@ def test_install_and_uninstall_with_fake_launchctl(config: Config, tmp_path: Pat
 
     result = invoke(config, tmp_path, ["uninstall"], fake)
     assert result.exit_code == 0, result.output
-    assert "launchd ajanı kaldırıldı." in result.output
+    assert "launchd agent removed." in result.output
     assert not plist_path.exists()
     assert not fake.is_loaded(domain(), LABEL)
 
     result = invoke(config, tmp_path, ["uninstall"], fake)
     assert result.exit_code == 0
-    assert "launchd ajanı kurulu değildi." in result.output
+    assert "launchd agent was not installed." in result.output
 
 
 def test_install_warns_about_a_hub_started_by_hand(config: Config, tmp_path: Path) -> None:
     with HubLock(config.hub_dir / "hub.lock"):
         result = invoke(config, tmp_path, ["install"], FakeLaunchctl())
     assert result.exit_code == 0, result.output
-    assert f"elle başlatılmış bir hub çalışıyor (pid {os.getpid()})" in result.output
+    assert f"a hub started by hand is running (pid {os.getpid()})" in result.output
 
 
 def test_install_reports_launchctl_failure(config: Config, tmp_path: Path) -> None:
     class Failing(FakeLaunchctl):
         def bootstrap(self, domain: str, plist: Path) -> None:
-            raise LaunchctlError("launchctl bootstrap başarısız: 5: Input/output error")
+            raise LaunchctlError("launchctl bootstrap failed: 5: Input/output error")
 
     result = invoke(config, tmp_path, ["install"], Failing())
     assert result.exit_code == 1
-    assert "launchd ajanı kurulamadı: launchctl bootstrap başarısız" in result.output
+    assert "launchd agent could not be installed: launchctl bootstrap failed" in result.output
     assert "Traceback" not in result.output
 
 
@@ -217,7 +217,7 @@ def test_install_needs_launchd(
     for command in ("install", "uninstall"):
         result = invoke(config, tmp_path, [command])
         assert result.exit_code == 2
-        assert "launchd yalnızca macOS'ta var. Linux'ta systemd için: tau hub systemd-unit" in (
+        assert "launchd exists only on macOS. For systemd on Linux: tau hub systemd-unit" in (
             result.output
         )
 
@@ -239,9 +239,9 @@ def test_status_when_never_started(config: Config, tmp_path: Path) -> None:
     result = invoke(config, tmp_path, ["status"], FakeLaunchctl())
     assert result.exit_code == 0, result.output
     assert result.output.splitlines() == [
-        "tau hub çalışmıyor.",
-        "  Son çökme: yok",
-        "  launchd: kurulu değil (kurmak için: tau hub install)",
+        "tau hub is not running.",
+        "  Last crash: none",
+        "  launchd: not installed (to install: tau hub install)",
     ]
 
 
@@ -274,12 +274,12 @@ def test_status_after_an_unclean_exit_and_a_crash(config: Config, tmp_path: Path
     result = invoke(config, tmp_path, ["status"], fake)
     assert result.exit_code == 0, result.output
     out = result.output
-    assert out.startswith("tau hub çalışmıyor.\n")
-    assert "  Son çalışma temiz kapanmadı (pid 4242, son nabız " in out
-    assert "bir sonraki başlatma bunu çökme olarak kaydeder." in out
-    assert "  Son çökme: pid 4100, son nabız " in out
+    assert out.startswith("tau hub is not running.\n")
+    assert "  Last run did not stop cleanly (pid 4242, last heartbeat " in out
+    assert "the next start records it as a crash." in out
+    assert "  Last crash: pid 4100, last heartbeat " in out
     assert out.count("RuntimeError: boom") == 1
-    assert f"  launchd: kurulu ve yüklü ({LABEL})" in out
+    assert f"  launchd: installed and loaded ({LABEL})" in out
 
     result = invoke(config, tmp_path, ["status", "--json"], fake)
     info = json.loads(result.output)
@@ -300,24 +300,24 @@ def test_status_while_running(config: Config, tmp_path: Path) -> None:
                 heartbeat_at=timestamp(utc_now() - timedelta(minutes=5)),
                 version="0.1.0",
                 role="hub",
-                profile="ev",
+                profile="home",
                 last_crash=None,
             )
         )
         result = invoke(config, tmp_path, ["status"], FakeLaunchctl())
     assert result.exit_code == 0, result.output
     lines = result.output.splitlines()
-    assert lines[0] == f"tau hub çalışıyor (pid {os.getpid()})."
-    assert lines[1] == "  Profil: ev · Rol: hub · Sürüm: 0.1.0"
-    assert lines[3].endswith("— gecikmiş; hub yanıt vermiyor olabilir")  # an old heartbeat
-    assert "  Kontrol API: http://127.0.0.1:7877" in lines
+    assert lines[0] == f"tau hub is running (pid {os.getpid()})."
+    assert lines[1] == "  Profile: home · Role: hub · Version: 0.1.0"
+    assert lines[3].endswith("— overdue; the hub may not be responding")  # an old heartbeat
+    assert "  Control API: http://127.0.0.1:7877" in lines
 
 
 def test_stop_when_not_running(config: Config, tmp_path: Path) -> None:
     fake = FakeLaunchctl()
     result = invoke(config, tmp_path, ["stop"], fake)
     assert result.exit_code == 0
-    assert result.output.strip() == "tau hub çalışmıyor."
+    assert result.output.strip() == "tau hub is not running."
     assert fake.killed == []
 
 
@@ -332,8 +332,8 @@ def test_stop_sends_sigterm_and_waits(config: Config, tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert fake.killed == [(os.getpid(), signal.SIGTERM)]
     assert result.output.splitlines() == [
-        f"Durdurma sinyali gönderildi (pid {os.getpid()}).",
-        "tau hub durdu.",
+        f"Stop signal sent (pid {os.getpid()}).",
+        "tau hub stopped.",
     ]
 
 
@@ -342,7 +342,7 @@ def test_stop_times_out(config: Config, tmp_path: Path) -> None:
     with HubLock(config.hub_dir / "hub.lock"):
         result = invoke(config, tmp_path, ["stop", "--timeout", "0.2"], fake)
     assert result.exit_code == 1
-    assert "tau hub 0.2 sn içinde durmadı." in result.output
+    assert "tau hub did not stop within 0.2 s." in result.output
 
 
 def test_hub_commands_without_config_exit_2(tmp_path: Path) -> None:
@@ -352,4 +352,4 @@ def test_hub_commands_without_config_exit_2(tmp_path: Path) -> None:
             cli, ["hub", command], env=env, obj={"launchctl": FakeLaunchctl()}
         )
         assert result.exit_code == 2, (command, result.output)
-        assert "Yapılandırma dosyası bulunamadı" in result.output
+        assert "Configuration file not found" in result.output

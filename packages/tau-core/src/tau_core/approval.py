@@ -23,6 +23,7 @@ from typing import Any, Protocol, runtime_checkable
 from strands.hooks import AfterToolCallEvent, BeforeToolCallEvent, HookProvider, HookRegistry
 
 from tau_core.events import AgentEvent, EventBus
+from tau_core.i18n import DEFAULT_LANGUAGE, t
 from tau_core.tiers import Tier, ToolCatalog, UntieredToolError, effect_of
 
 logger = logging.getLogger(__name__)
@@ -81,48 +82,55 @@ def _printable(text: str) -> str:
     )
 
 
-def format_approval_prompt(request: ApprovalRequest) -> str:
-    """The Turkish terminal prompt for one request (no jokes, no decoration beyond the header)."""
+def format_approval_prompt(request: ApprovalRequest, language: str = DEFAULT_LANGUAGE) -> str:
+    """The terminal prompt for one request in the UI language (no jokes, no decoration)."""
     arguments = json.dumps(request.arguments, ensure_ascii=False, sort_keys=True, default=str)
     effect = " ".join(str(request.effect).split())
     return (
-        f"⚠️  Onay gerekiyor (tier {int(request.tier)})\n"
-        f"  Araç: {_printable(request.tool)}\n"
-        f"  Argümanlar: {_printable(arguments)}\n"
-        f"  Etki: {_printable(effect)}\n"
-        "  Onaylıyor musunuz? [e/H] "
+        f"⚠️  {t('approval.title', language, tier=int(request.tier))}\n"
+        f"  {t('approval.tool', language)}: {_printable(request.tool)}\n"
+        f"  {t('approval.arguments', language)}: {_printable(arguments)}\n"
+        f"  {t('approval.effect', language)}: {_printable(effect)}\n"
+        f"  {t('approval.question', language)}"
     )
 
 
-APPROVE_ANSWERS = frozenset({"e", "evet"})
+APPROVE_ANSWERS = frozenset({"y", "yes", "e", "evet"})
+"""Answers that approve on the terminal, in both languages whatever the UI setting."""
 
 
 class TerminalApprover:
-    """Asks on stdin. ``e``/``evet`` approves; anything else, EOF included, rejects.
+    """Asks on stdin. ``y``/``yes``/``e``/``evet`` approves; anything else, EOF included, rejects.
 
     No timeout: ``input()`` blocks a worker thread that cannot be cancelled, so a gate timeout
     would leave the thread reading the next line the user types. Do not give a gate that uses
-    this approver a ``timeout_seconds``.
+    this approver a ``timeout_seconds``. ``language`` picks the wording of the prompt.
     """
 
     name = "terminal"
     timeout_seconds: float | None = None
 
-    def __init__(self, input_func: Callable[[str], str] = input):
+    def __init__(
+        self, input_func: Callable[[str], str] = input, *, language: str = DEFAULT_LANGUAGE
+    ):
         self._input = input_func
+        self.language = language
         self.pending = False
 
     async def decide(self, request: ApprovalRequest) -> Decision:
         self.pending = True
         try:
-            answer = await asyncio.to_thread(self._input, format_approval_prompt(request))
+            prompt = format_approval_prompt(request, self.language)
+            answer = await asyncio.to_thread(self._input, prompt)
         except (EOFError, KeyboardInterrupt):
             return Decision.REJECTED
         finally:
             self.pending = False
         if not isinstance(answer, str):
             return Decision.REJECTED
-        return Decision.APPROVED if answer.strip().lower() in APPROVE_ANSWERS else Decision.REJECTED
+        if answer.strip().casefold() in APPROVE_ANSWERS:
+            return Decision.APPROVED
+        return Decision.REJECTED
 
 
 Exemption = Callable[[str, dict[str, Any]], bool]
@@ -136,11 +144,15 @@ raises counts as "not exempt".
 
 
 def refusal_text(tool: str) -> str:
-    return f"Kullanıcı bu eylemi onaylamadı: {tool}. Eylemi yapma, kullanıcıya kısaca bildir."
+    """What the model reads as the tool result of a refused call (fixed English)."""
+    return (
+        f"The user did not approve this action: {tool}. Do not perform it; tell the user briefly."
+    )
 
 
 def unknown_tool_text(tool: str) -> str:
-    return f"'{tool}' aracı kayıtlı değil; çalıştırılmadı."
+    """Tool result for a call to a tool the catalog does not know (fixed English)."""
+    return f"Tool '{tool}' is not registered; it was not run."
 
 
 def _copy_arguments(arguments: dict[str, Any]) -> dict[str, Any]:

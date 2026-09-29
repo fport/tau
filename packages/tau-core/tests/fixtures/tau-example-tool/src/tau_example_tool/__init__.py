@@ -5,10 +5,10 @@ from tau_core import Tier, tau_tool
 
 @tau_tool(tier=Tier.READ)
 def example_echo(text: str) -> str:
-    """Verilen metni aynen geri döndürür (test eklentisi).
+    """Returns the given text unchanged (test plugin).
 
     Args:
-        text: Geri döndürülecek metin.
+        text: The text to return.
     """
     return text
 

@@ -173,7 +173,7 @@ class Hub:
     async def _serve(self) -> None:
         self.crash_report = self.files.check_previous_run(now=self._clock())
         if self.crash_report is not None:
-            # INFO: the log file keeps it; the terminal gets the Turkish line from the CLI.
+            # INFO: the log file keeps it; the terminal gets the banner line from the CLI.
             logger.info(
                 "previous hub (pid %s) did not stop cleanly: %s",
                 self.crash_report.pid,

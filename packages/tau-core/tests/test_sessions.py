@@ -133,9 +133,9 @@ def test_bytes_survive(store: SessionStore) -> None:
 
 def test_meta_merges_and_creates_the_session(store: SessionStore) -> None:
     assert store.read_meta("s9") == {}
-    store.write_meta("s9", channel="terminal", profile="ev")
+    store.write_meta("s9", channel="terminal", profile="home")
     store.write_meta("s9", title="Saat kaç?")
-    assert store.read_meta("s9") == {"channel": "terminal", "profile": "ev", "title": "Saat kaç?"}
+    assert store.read_meta("s9") == {"channel": "terminal", "profile": "home", "title": "Saat kaç?"}
     assert store.read_session("s9") is not None
 
 
@@ -162,7 +162,9 @@ def test_event_sink_ignores_other_sessions(store: SessionStore) -> None:
 
 def test_list_sessions_newest_first(store: SessionStore, ticking_clock: None) -> None:
     for session_id in ("a", "b", "c"):
-        store.write_meta(session_id, channel="terminal", profile="ev", title=f"başlık {session_id}")
+        store.write_meta(
+            session_id, channel="terminal", profile="home", title=f"başlık {session_id}"
+        )
     new_session(store, "d")
     store.create_message("d", AGENT, message(0, "merhaba"))
     store.create_message("d", AGENT, message(1, "buyurun", "assistant"))
@@ -174,7 +176,7 @@ def test_list_sessions_newest_first(store: SessionStore, ticking_clock: None) ->
     by_id = {s.session_id: s for s in listed}
     assert by_id["d"].message_count == 2 and by_id["a"].message_count == 0
     assert by_id["b"].title == "başlık b" and by_id["b"].channel == "terminal"
-    assert by_id["b"].profile == "ev"
+    assert by_id["b"].profile == "home"
     assert by_id["a"].updated_at > by_id["a"].created_at
 
 
@@ -329,8 +331,8 @@ def test_invalid_ids_are_refused(tmp_path: Path, bad: str) -> None:
     with pytest.raises(InvalidSessionId) as info:
         store.read_session(bad)
     assert isinstance(info.value, ConfigError) and isinstance(info.value, ValueError)
-    assert "Geçersiz oturum kimliği" in str(info.value)
-    with pytest.raises(InvalidSessionId, match="ajan"):
+    assert "Invalid session id" in str(info.value)
+    with pytest.raises(InvalidSessionId, match="agent"):
         store.read_agent("ok", bad)
     assert not (tmp_path / "escape").exists()
 

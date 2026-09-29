@@ -21,14 +21,15 @@ from tau_core import (
     build_agent,
     tau_tool,
 )
-from tau_core.approval import AutoRejectApprover
+from tau_core.agent import turn_limit_text
+from tau_core.approval import AutoRejectApprover, refusal_text, unknown_tool_text
 from tau_core.config import AgentConfig
 from tau_core.persona import PersonaLoader
 from tau_core.sessions import new_session_id
 from tau_core.testing import FakeModel, ScriptedApprover, ToolCall
 from tau_core.tiers import ToolCatalog, UntieredToolError
 
-REFUSAL = "Kullanıcı bu eylemi onaylamadı: lamp. Eylemi yapma, kullanıcıya kısaca bildir."
+REFUSAL = refusal_text("lamp")
 
 lamp_calls: list[str] = []
 
@@ -171,7 +172,7 @@ def test_untiered_tool_refused(config: Config) -> None:
         ToolCatalog().add(bare)
     assert (
         str(info.value)
-        == "'bare' aracı tier bildirmiyor; kaydedilemez. @tau_tool(tier=...) kullanın."
+        == "Tool 'bare' declares no tier and cannot be registered. Use @tau_tool(tier=...)."
     )
     with pytest.raises(UntieredToolError):
         build_agent(config=config, model=FakeModel(), tools=[bare])
@@ -186,7 +187,8 @@ async def test_unknown_tool_fails_closed(config: Config) -> None:
     finished = [e for e in turn if isinstance(e, ToolFinished)][0]
     assert finished.status == "rejected"
     text = model.calls[1].messages[-1]["content"][0]["toolResult"]["content"][0]["text"]
-    assert text == "'ghost' aracı kayıtlı değil; çalıştırılmadı."
+    assert text == unknown_tool_text("ghost")
+    assert text == "Tool 'ghost' is not registered; it was not run."
     assert [e.kind for e in seen] == ["error", "tool_call"]
 
 
@@ -201,12 +203,8 @@ async def test_loop_guard(config: Config) -> None:
     turn = await collect(agent, "sonsuza kadar saat sor")
 
     notices = [e for e in turn if isinstance(e, Notice)]
-    assert notices == [
-        Notice(
-            text="Bu turda araç çağrısı sınırına ulaştım (2 tur). "
-            "Durdum; devam etmemi isterseniz söyleyin."
-        )
-    ]
+    assert notices == [Notice(text=turn_limit_text(2))]
+    assert notices[0].text.startswith("I reached the tool-call limit for this turn (2 turns).")
     assert turn[-1] == TurnEnd(stop_reason="limit_turns")
     assert len(model.calls) == 2
     limits = [e for e in seen if e.kind == "turn_limit"]
@@ -226,7 +224,7 @@ async def test_model_error_becomes_notice(config: Config, caplog: pytest.LogCapt
     with caplog.at_level(logging.ERROR):
         turn = await collect(agent, "merhaba")
     assert turn == [
-        Notice(text="Model çağrısı başarısız oldu: bağlantı koptu. Ayrıntı günlükte."),
+        Notice(text="Model call failed: bağlantı koptu. Details are in the log."),
         TurnEnd(stop_reason="error"),
     ]
     assert [e.kind for e in seen] == ["error"]
@@ -248,20 +246,20 @@ async def test_persona_hook_rereads_changed_file(config: Config, fixed_now: date
     await agent.ask("ikinci")
 
     first, second = (call.system_prompt or "" for call in model.calls)
-    assert first.startswith("Sen tau'sun")
+    assert first.startswith("You are tau")
     assert second.startswith("Yeni persona: çok resmi konuş.")
     for prompt in (first, second):
-        assert "## Kullanıcı\nKullanıcıya 'siz' diye hitap et." in prompt
-        assert "- Tarih ve saat: 29.09.2026 15:30, Salı (Europe/Istanbul)" in prompt
-        assert "- Profil: ev" in prompt
-        assert "- Canlı node'lar: bilinmiyor" in prompt
-        assert "- Bugünkü bütçe: bilinmiyor" in prompt
+        assert "## User\nAddress the user formally." in prompt
+        assert "- Date and time: 29.09.2026 15:30, Tuesday (Europe/Istanbul)" in prompt
+        assert "- Profile: home" in prompt
+        assert "- Live nodes: unknown" in prompt
+        assert "- Budget today: unknown" in prompt
 
 
 async def test_profile_and_context_sources(config: Config) -> None:
     model = FakeModel(["tamam"])
     agent = build_agent(
-        "spor",
+        "sport",
         config=config,
         model=model,
         tools=[],
@@ -269,10 +267,10 @@ async def test_profile_and_context_sources(config: Config) -> None:
     )
     await agent.ask("durum")
     prompt = model.calls[0].system_prompt or ""
-    assert "- Profil: spor" in prompt
-    assert "- Canlı node'lar: mac, arm" in prompt
-    assert "- Bugünkü bütçe: 2,40 $ kaldı" in prompt
-    assert agent.config.profile == "spor"
+    assert "- Profile: sport" in prompt
+    assert "- Live nodes: mac, arm" in prompt
+    assert "- Budget today: 2,40 $ kaldı" in prompt
+    assert agent.config.profile == "sport"
 
 
 def test_missing_user_file_defaults_to_siz(config: Config) -> None:
@@ -307,7 +305,7 @@ async def test_session_round_trip(config: Config, fixed_now: datetime) -> None:
 
     meta = store.read_meta(session_id)
     assert meta["title"] == "Saat kaç, lütfen söyler misiniz?"
-    assert meta["channel"] == "terminal" and meta["profile"] == "ev"
+    assert meta["channel"] == "terminal" and meta["profile"] == "home"
     events = store.read_events(session_id)
     assert [e.kind for e in events] == ["tool_call"]
     summary = store.list_sessions()[0]
@@ -332,7 +330,7 @@ async def test_discovered_tools_and_untiered_plugin_skipped(
     with caplog.at_level(logging.WARNING, logger="tau_core.agent"):
         agent = build_agent(config=config, model=FakeModel())
     assert agent.catalog.names() == ["clock_tool"]
-    assert "tau-rogue" in caplog.text and "'rogue' aracı tier bildirmiyor" in caplog.text
+    assert "tau-rogue" in caplog.text and "Tool 'rogue' declares no tier" in caplog.text
 
 
 def test_build_agent_is_self_contained(tmp_path: Path, config: Config) -> None:

@@ -42,6 +42,6 @@ def open_session_store(config: Config) -> SessionStore:
         return factory(config)
     if backend in PLANNED_BACKENDS:
         raise ConfigError(
-            f"'{backend}' oturum deposu henüz yok (issue {PLANNED_BACKENDS[backend]})."
+            f"Session backend '{backend}' is not available yet (issue {PLANNED_BACKENDS[backend]})."
         )
-    raise ConfigError(f"Bilinmeyen oturum deposu: '{backend}'.")
+    raise ConfigError(f"Unknown session backend: '{backend}'.")

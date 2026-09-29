@@ -1,7 +1,7 @@
 """Logging setup for tau's command-line entry points.
 
 Details go to ``<data_dir>/logs/tau.log``; the terminal only gets short warnings, never a
-traceback (the user sees a Turkish notice, the log keeps the details).
+traceback (the user sees a short notice, the log keeps the details).
 """
 
 from __future__ import annotations

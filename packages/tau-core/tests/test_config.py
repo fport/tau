@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from tau_core import Config, ConfigError
-from tau_core.config import AgentConfig
+from tau_core.config import AgentConfig, UiConfig
 from tau_core.testing import test_config
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -29,7 +29,8 @@ def test_defaults(tmp_path: Path) -> None:
     home = write_home(tmp_path)
     config = Config.load(home, env={})
     assert config.home == home.resolve()
-    assert config.profile == "ev"
+    assert config.profile == "home"
+    assert config.ui.language == "en"
     assert config.role == "hub"
     assert config.data_dir == Path("~/.local/share/tau").expanduser().resolve()
     assert config.agent.max_turns == 12
@@ -45,11 +46,11 @@ def test_defaults(tmp_path: Path) -> None:
 def test_env_precedence_over_dotenv(tmp_path: Path) -> None:
     home = write_home(
         tmp_path,
-        dotenv="TAU_PROFILE=spor\nTAU_DATA_DIR=/from/dotenv\nTAU_HUB_PORT=9000\n",
+        dotenv="TAU_PROFILE=sport\nTAU_DATA_DIR=/from/dotenv\nTAU_HUB_PORT=9000\n",
     )
     config = Config.load(home, env={"TAU_DATA_DIR": str(tmp_path / "data")})
     assert config.data_dir == (tmp_path / "data").resolve()  # explicit env wins
-    assert config.profile == "spor"  # .env fills what the env lacks
+    assert config.profile == "sport"  # .env fills what the env lacks
     assert config.hub.control_port == 9000  # TAU_HUB_PORT overrides [hub]
 
 
@@ -62,24 +63,24 @@ def test_home_from_tau_home_then_cwd(
     assert Config.load(env={}).home == home.resolve()
 
 
-def test_missing_config_is_turkish_and_names_path(tmp_path: Path) -> None:
+def test_missing_config_names_path(tmp_path: Path) -> None:
     with pytest.raises(ConfigError) as info:
         Config.load(tmp_path / "nowhere", env={})
     message = str(info.value)
-    assert "Yapılandırma dosyası bulunamadı" in message
+    assert "Configuration file not found" in message
     assert str((tmp_path / "nowhere" / "tau.toml").resolve()) in message
     assert "TAU_HOME" in message
 
 
 def test_unknown_provider_rejected(tmp_path: Path) -> None:
     home = write_home(tmp_path, MINIMAL.replace('"fake"', '"openai"'))
-    with pytest.raises(ConfigError, match="bilinmeyen sağlayıcı"):
+    with pytest.raises(ConfigError, match="unknown provider"):
         Config.load(home, env={})
 
 
 def test_unknown_backend_rejected(tmp_path: Path) -> None:
     home = write_home(tmp_path, MINIMAL + '\n[sessions]\nbackend = "sqlite"\n')
-    with pytest.raises(ConfigError, match="oturum deposu"):
+    with pytest.raises(ConfigError, match="unknown session backend"):
         Config.load(home, env={})
 
 
@@ -119,9 +120,9 @@ def test_fallback_parsed(tmp_path: Path) -> None:
 
 def test_with_overrides(tmp_path: Path) -> None:
     config = test_config(tmp_path)
-    changed = config.with_overrides(profile="seyahat", agent=AgentConfig(max_turns=2))
-    assert changed.profile == "seyahat" and changed.agent.max_turns == 2
-    assert config.profile == "ev"
+    changed = config.with_overrides(profile="travel", agent=AgentConfig(max_turns=2))
+    assert changed.profile == "travel" and changed.agent.max_turns == 2
+    assert config.profile == "home"
 
 
 def test_test_config_layout(tmp_path: Path) -> None:
@@ -135,3 +136,34 @@ def test_repo_tau_toml_loads() -> None:
     config = Config.load(ROOT, env={})
     assert set(config.roles) >= {"brain", "fast", "local"}
     assert config.roles["brain"].fallback is not None
+
+
+# -- [ui] language ---------------------------------------------------------------------------
+
+
+def test_ui_language_from_file_env_and_overrides(tmp_path: Path) -> None:
+    home = write_home(tmp_path, MINIMAL + '\n[ui]\nlanguage = "tr"\n')
+    assert Config.load(home, env={}).ui.language == "tr"
+    assert Config.load(home, env={"TAU_LANG": "en"}).ui.language == "en"  # env wins
+    assert Config.load(write_home(tmp_path), env={"TAU_LANG": "tr"}).ui.language == "tr"
+    overridden = Config.load(home, env={}).with_overrides(ui=UiConfig(language="en"))
+    assert overridden.ui.language == "en"
+
+
+@pytest.mark.parametrize(
+    ("toml", "env", "message"),
+    [
+        (
+            MINIMAL + '\n[ui]\nlanguage = "de"\n',
+            {},
+            r"tau.toml: \[ui\] 'language' must be one of en, tr, not 'de'",
+        ),
+        (MINIMAL + "\n[ui]\nlanguage = 3\n", {}, r"tau.toml: \[ui\] 'language' must be one of"),
+        ("ui = 5\n" + MINIMAL, {}, r"tau.toml: \[ui\] must be a table"),
+        (MINIMAL, {"TAU_LANG": "fr"}, "TAU_LANG must be one of en, tr, not 'fr'"),
+    ],
+    ids=["file-unknown", "file-not-a-string", "not-a-table", "env-unknown"],
+)
+def test_ui_language_is_validated(tmp_path: Path, toml: str, env: dict, message: str) -> None:
+    with pytest.raises(ConfigError, match=message):
+        Config.load(write_home(tmp_path, toml), env=env)

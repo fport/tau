@@ -56,7 +56,7 @@ def make_persona_dir(tmp_path: Path, persona: str | None, user: str | None = Non
 
 
 def ctx(now: datetime, **values) -> DynamicContext:
-    return DynamicContext(now=now, profile="ev", role="hub", **values)
+    return DynamicContext(now=now, profile="home", role="hub", **values)
 
 
 def first_line_of_prompt(messages, system_prompt: str | None) -> str:
@@ -85,15 +85,15 @@ def test_prompt_layout_is_exact(tmp_path: Path, fixed_now: datetime) -> None:
     assert prompt == (
         "Sen tau'sun.\n"
         "\n"
-        "## Kullanıcı\n"
+        "## User\n"
         "- Hitap: siz\n"
         "\n"
-        "## Şu an\n"
-        "- Tarih ve saat: 29.09.2026 15:30, Salı (Europe/Istanbul)\n"
-        "- Profil: ev\n"
-        "- Rol: hub\n"
-        "- Canlı node'lar: bilinmiyor\n"
-        "- Bugünkü bütçe: bilinmiyor"
+        "## Now\n"
+        "- Date and time: 29.09.2026 15:30, Tuesday (Europe/Istanbul)\n"
+        "- Profile: home\n"
+        "- Host role: hub\n"
+        "- Live nodes: unknown\n"
+        "- Budget today: unknown"
     )
 
 
@@ -102,13 +102,15 @@ def test_prompt_layout_is_exact(tmp_path: Path, fixed_now: datetime) -> None:
     [None, "", "   \n\n", "<!-- yalnızca bir not -->\n"],
     ids=["missing", "empty", "blank", "comment-only"],
 )
-def test_no_user_facts_defaults_to_siz(tmp_path: Path, fixed_now: datetime, user) -> None:
+def test_no_user_facts_defaults_to_formal_address(
+    tmp_path: Path, fixed_now: datetime, user
+) -> None:
     persona_dir = make_persona_dir(tmp_path, "Sen tau'sun.\n", user)
     loader = PersonaLoader(persona_dir)
     assert loader.read().user is None
     prompt = loader.build_system_prompt(ctx(fixed_now))
-    assert f"## Kullanıcı\n{NO_USER_FILE}\n\n## Şu an\n" in prompt
-    assert NO_USER_FILE.endswith("Hitap: siz.")
+    assert f"## User\n{NO_USER_FILE}\n\n## Now\n" in prompt
+    assert NO_USER_FILE.endswith("Address the user formally.")
 
 
 def test_html_comments_never_reach_the_model(tmp_path: Path, fixed_now: datetime) -> None:
@@ -133,9 +135,9 @@ def test_utf8_bom_and_crlf_are_tolerated(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("content", "message"),
     [
-        (None, "Persona dosyası bulunamadı"),
-        ("  \n<!-- boş -->\n", "Persona dosyası boş"),
-        (b"\xff\xfe\xfa bozuk", "Persona dosyası okunamadı"),
+        (None, "Persona file not found"),
+        ("  \n<!-- boş -->\n", "Persona file is empty"),
+        (b"\xff\xfe\xfa bozuk", "Persona file could not be read"),
     ],
     ids=["missing", "empty", "undecodable"],
 )
@@ -149,7 +151,7 @@ def test_unusable_persona_fails_on_first_read(tmp_path: Path, content, message: 
 
 def test_build_agent_fails_early_without_persona(config: Config) -> None:
     (config.persona_dir / "persona.md").unlink()
-    with pytest.raises(ConfigError, match="Persona dosyası bulunamadı"):
+    with pytest.raises(ConfigError, match="Persona file not found"):
         build_agent(config=config, model=FakeModel(), tools=[])
 
 
@@ -259,10 +261,7 @@ async def test_persona_edit_changes_the_next_reply(config: Config, fixed_now: da
     persona_file = config.persona_dir / "persona.md"
     user_file = config.persona_dir / "user.md"
 
-    assert (
-        await agent.ask("merhaba")
-        == "Sen tau'sun: kibar, kısa konuşan, Türkçe yanıt veren bir asistansın."
-    )
+    assert await agent.ask("merhaba") == "You are tau: a polite assistant who keeps replies short."
 
     rewrite(persona_file, "Sen tau'sun ve bugün çok resmisin.\n")
     rewrite(user_file, "- Hitap: efendim\n")
@@ -272,10 +271,10 @@ async def test_persona_edit_changes_the_next_reply(config: Config, fixed_now: da
     await agent.ask("beni tanıyor musun?")
 
     prompts = [call.system_prompt or "" for call in model.calls]
-    assert "## Kullanıcı\nKullanıcıya 'siz' diye hitap et.\n" in prompts[0]
-    assert prompts[1].startswith("Sen tau'sun ve bugün çok resmisin.\n\n## Kullanıcı\n")
-    assert "## Kullanıcı\n- Hitap: efendim\n" in prompts[1]
-    assert f"## Kullanıcı\n{NO_USER_FILE}\n" in prompts[2]
+    assert "## User\nAddress the user formally.\n" in prompts[0]
+    assert prompts[1].startswith("Sen tau'sun ve bugün çok resmisin.\n\n## User\n")
+    assert "## User\n- Hitap: efendim\n" in prompts[1]
+    assert f"## User\n{NO_USER_FILE}\n" in prompts[2]
     # Same agent, same conversation: the history kept growing while the prompt changed.
     assert [len(call.messages) for call in model.calls] == [1, 3, 5]
     assert agent.agent.system_prompt == prompts[2]
@@ -301,11 +300,11 @@ async def test_prompt_is_rebuilt_before_every_model_call_in_a_turn(
     assert await agent.ask("ping at") == "pong geldi"
 
     first, second = (call.system_prompt or "" for call in model.calls)
-    assert first.startswith("Sen tau'sun")
+    assert first.startswith("You are tau")
     assert second.startswith("Araçtan sonra değişen persona.")
     # tick 0 is build_agent's eager prompt; each model call reads the clock again.
-    assert "- Tarih ve saat: 29.09.2026 15:31, Salı" in first
-    assert "- Tarih ve saat: 29.09.2026 15:32, Salı" in second
+    assert "- Date and time: 29.09.2026 15:31, Tuesday" in first
+    assert "- Date and time: 29.09.2026 15:32, Tuesday" in second
 
 
 async def test_hook_keeps_previous_prompt_when_assembly_fails(
@@ -342,38 +341,38 @@ def test_persona_hook_sets_system_prompt(tmp_path: Path, fixed_now: datetime) ->
         agent = FakeAgent()
 
     hook._before_model_call(FakeEvent())  # type: ignore[arg-type]
-    assert FakeEvent.agent.system_prompt.startswith("Sen tau'sun.\n\n## Kullanıcı\n")
-    assert FakeEvent.agent.system_prompt.endswith("- Bugünkü bütçe: 3 $")
+    assert FakeEvent.agent.system_prompt.startswith("Sen tau'sun.\n\n## User\n")
+    assert FakeEvent.agent.system_prompt.endswith("- Budget today: 3 $")
 
 
 # --- dynamic context -----------------------------------------------------------------------
 
 
-def test_unknown_sources_render_bilinmiyor(fixed_now: datetime) -> None:
+def test_unknown_sources_render_unknown(fixed_now: datetime) -> None:
     lines = ctx(fixed_now).render().splitlines()
-    assert lines[-2:] == [f"- Canlı node'lar: {UNKNOWN}", f"- Bugünkü bütçe: {UNKNOWN}"]
-    assert UNKNOWN == "bilinmiyor"
+    assert lines[-2:] == [f"- Live nodes: {UNKNOWN}", f"- Budget today: {UNKNOWN}"]
+    assert UNKNOWN == "unknown"
 
 
 def test_known_values_render(fixed_now: datetime) -> None:
     rendered = ctx(fixed_now, nodes=["mac", "arm"], budget="2,40 $ kaldı").render()
-    assert "- Canlı node'lar: mac, arm" in rendered
-    assert "- Bugünkü bütçe: 2,40 $ kaldı" in rendered
+    assert "- Live nodes: mac, arm" in rendered
+    assert "- Budget today: 2,40 $ kaldı" in rendered
     # Known to be empty is not the same as unknown.
-    assert "- Canlı node'lar: yok" in ctx(fixed_now, nodes=[]).render()
+    assert "- Live nodes: none" in ctx(fixed_now, nodes=[]).render()
 
 
 @pytest.mark.parametrize(
     ("now", "expected"),
     [
-        (datetime(2026, 9, 29, 12, 30, tzinfo=UTC), "29.09.2026 15:30, Salı"),
-        (datetime(2026, 9, 28, 22, 30, tzinfo=UTC), "29.09.2026 01:30, Salı"),
+        (datetime(2026, 9, 29, 12, 30, tzinfo=UTC), "29.09.2026 15:30, Tuesday"),
+        (datetime(2026, 9, 28, 22, 30, tzinfo=UTC), "29.09.2026 01:30, Tuesday"),
         (
             datetime(2026, 9, 29, 8, 30, tzinfo=ZoneInfo("America/New_York")),
-            "29.09.2026 15:30, Salı",
+            "29.09.2026 15:30, Tuesday",
         ),
-        (datetime(2026, 9, 29, 15, 30), "29.09.2026 15:30, Salı"),  # naive = Istanbul time
-        (datetime(2026, 10, 4, 9, 5, tzinfo=TIMEZONE), "04.10.2026 09:05, Pazar"),
+        (datetime(2026, 9, 29, 15, 30), "29.09.2026 15:30, Tuesday"),  # naive = Istanbul time
+        (datetime(2026, 10, 4, 9, 5, tzinfo=TIMEZONE), "04.10.2026 09:05, Sunday"),
     ],
     ids=["utc", "utc-previous-day", "new-york", "naive", "sunday"],
 )
@@ -381,9 +380,9 @@ def test_time_is_always_europe_istanbul(config: Config, now: datetime, expected:
     context = default_context_factory(config, clock=lambda: now)()
     assert context.now.tzinfo is TIMEZONE
     assert context.now.utcoffset() == timedelta(hours=3)
-    assert f"- Tarih ve saat: {expected} (Europe/Istanbul)" in context.render()
+    assert f"- Date and time: {expected} (Europe/Istanbul)" in context.render()
     # DynamicContext built by hand renders the same way.
-    assert f"- Tarih ve saat: {expected} " in ctx(now).render()
+    assert f"- Date and time: {expected} " in ctx(now).render()
 
 
 def test_default_clock_is_istanbul_now(config: Config) -> None:
@@ -393,9 +392,9 @@ def test_default_clock_is_istanbul_now(config: Config) -> None:
 
 
 def test_profile_and_role_come_from_config(config: Config, fixed_now: datetime) -> None:
-    config = config.with_overrides(profile="spor", role="node")
+    config = config.with_overrides(profile="sport", role="node")
     rendered = default_context_factory(config, clock=lambda: fixed_now)().render()
-    assert "- Profil: spor\n- Rol: node\n" in rendered
+    assert "- Profile: sport\n- Host role: node\n" in rendered
 
 
 # --- context sources -----------------------------------------------------------------------
@@ -410,7 +409,7 @@ def test_sources_merge_in_order(config: Config, fixed_now: datetime) -> None:
     context = default_context_factory(config, clock=lambda: fixed_now, sources=sources)()
     assert context.nodes == ["mac", "arm"]
     assert context.budget is None
-    assert "- Bugünkü bütçe: bilinmiyor" in context.render()
+    assert "- Budget today: unknown" in context.render()
 
 
 def test_sources_are_read_on_every_call(config: Config, fixed_now: datetime) -> None:
@@ -481,9 +480,9 @@ async def test_live_sources_reach_the_model(config: Config, fixed_now: datetime)
     live["nodes"] = ["mac", "arm"]
     await agent.ask("şimdi?")
     first, second = (call.system_prompt or "" for call in model.calls)
-    assert "- Canlı node'lar: bilinmiyor" in first
-    assert "- Canlı node'lar: mac, arm" in second
-    assert "- Bugünkü bütçe: 2,40 $ kaldı" in first and "- Bugünkü bütçe: 2,40 $ kaldı" in second
+    assert "- Live nodes: unknown" in first
+    assert "- Live nodes: mac, arm" in second
+    assert "- Budget today: 2,40 $ kaldı" in first and "- Budget today: 2,40 $ kaldı" in second
 
 
 # --- the tracked persona files -------------------------------------------------------------
@@ -497,15 +496,17 @@ def tracked_persona() -> str:
     "rule",
     [
         "Jarvis tarzındasın",
-        "Her zaman Türkçe konuşursun",
+        "Varsayılan dilin Türkçe.",
+        "Kullanıcı hangi dilde yazarsa o dilde yanıt verirsin",
         "Kibarsın.",
         "Kuru, ölçülü bir mizahın var",
         "Bildirimlerde ve sesli yanıtlarda en fazla iki cümle kurarsın.",
         "Onay isterken şaka yapmazsın",
         "Kullanıcı hakkında bilgi uydurmazsın.",
-        '"Kullanıcı" bölümünde yazan hitapla seslenirsin',
+        '"User" bölümünde yazan hitapla seslenirsin',
         'hitap yazmıyorsa "siz" dersin',
-        '"bilinmiyor" yazan bir şeyi tahmin etmezsin',
+        '"Now" bölümüne bakarsın',
+        '"unknown" yazan bir şeyi tahmin etmezsin',
     ],
 )
 def test_tracked_persona_encodes_the_jarvis_rules(rule: str) -> None:
@@ -516,10 +517,13 @@ def test_tracked_persona_files_assemble(fixed_now: datetime) -> None:
     loader = PersonaLoader(REPO_PERSONA, user_file="user.example.md")
     prompt = loader.build_system_prompt(ctx(fixed_now))
     assert prompt.startswith("# tau\n\nSen tau'sun")
-    assert '\n\n## Kullanıcı\n- Hitap: "siz"' in prompt
-    assert "\n\n## Şu an\n- Tarih ve saat: 29.09.2026 15:30, Salı" in prompt
+    assert '\n\n## User\n- Form of address: "siz"' in prompt
+    assert "\n\n## Now\n- Date and time: 29.09.2026 15:30, Tuesday" in prompt
     assert "<!--" not in prompt
-    assert prompt.count("\n## Kullanıcı\n") == 1 and prompt.count("\n## Şu an\n") == 1
+    assert prompt.count("\n## User\n") == 1 and prompt.count("\n## Now\n") == 1
+    # The persona must not point at headings that no longer exist.
+    assert 'Kullanıcı" bölüm' not in prompt and 'Şu an" bölüm' not in prompt
+    assert '"bilinmiyor"' not in prompt
 
 
 @pytest.mark.parametrize("name", ["persona.md", "user.example.md"])

@@ -25,6 +25,7 @@ from strands.types.tools import AgentTool
 from tau_core.approval import Approver, AutoRejectApprover, Exemption, TierGate, TierHook
 from tau_core.config import Config
 from tau_core.events import AgentEvent, EventBus
+from tau_core.i18n import DEFAULT_LANGUAGE, t
 from tau_core.models import resolve_model
 from tau_core.persona import ContextSource, PersonaHook, PersonaLoader, default_context_factory
 from tau_core.plugins import discover_tools
@@ -71,16 +72,15 @@ class TurnEnd:
 TurnEvent = TextDelta | ToolUseStarted | ToolFinished | Notice | TurnEnd
 
 
-def turn_limit_text(n: int) -> str:
-    return (
-        f"Bu turda araç çağrısı sınırına ulaştım ({n} tur). "
-        "Durdum; devam etmemi isterseniz söyleyin."
-    )
+def turn_limit_text(n: int, language: str = DEFAULT_LANGUAGE) -> str:
+    """The notice shown (and kept in the history) when the loop guard trips."""
+    return t("notice.turn_limit", language, n=n)
 
 
-def model_error_text(exc: BaseException) -> str:
+def model_error_text(exc: BaseException, language: str = DEFAULT_LANGUAGE) -> str:
+    """The notice for a failed model call: a short detail, the rest is in the log."""
     detail = " ".join(str(exc).split())[:160].rstrip(". ") or type(exc).__name__
-    return f"Model çağrısı başarısız oldu: {detail}. Ayrıntı günlükte."
+    return t("notice.model_error", language, detail=detail)
 
 
 @dataclass
@@ -163,6 +163,7 @@ class TauAgent:
         started: set[str] = set()
         stop_reason = "end_turn"
         max_turns = self.config.agent.max_turns
+        language = self.config.ui.language
         try:
             self._write_title(prompt)
             try:
@@ -196,13 +197,13 @@ class TauAgent:
                     yield item
                 logger.exception("model call failed in session %s", self.session_id)
                 self._emit("error", {"message": str(exc)[:500], "where": "model"})
-                text = model_error_text(exc)
+                text = model_error_text(exc, language)
                 await self._close_dangling_turn(text)
                 yield Notice(text=text)
                 stop_reason = "error"
             if stop_reason == "limit_turns":
                 self._emit("turn_limit", {"max_turns": max_turns})
-                text = turn_limit_text(max_turns)
+                text = turn_limit_text(max_turns, language)
                 await self._close_dangling_turn(text)
                 yield Notice(text=text)
             yield TurnEnd(stop_reason=stop_reason)

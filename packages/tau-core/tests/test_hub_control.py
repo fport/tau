@@ -28,7 +28,7 @@ def call(
     return status, head, json.loads(raw.decode("utf-8"))
 
 
-STATUS = {"role": "hub", "profile": "ev", "not": "ascii: çğıöşü"}
+STATUS = {"role": "hub", "profile": "home", "not": "ascii: çğıöşü"}
 
 
 def echo(request: ControlRequest) -> tuple[int, Any]:
@@ -74,7 +74,7 @@ def test_unknown_path_and_wrong_method(api: ControlApi) -> None:
     assert call(f"{api.url}/nope")[0] == 404
     status, _, payload = call(f"{api.url}/health", method="POST", body={})
     assert status == 405
-    assert payload == {"error": "bu yöntem desteklenmiyor"}
+    assert payload == {"error": "method not allowed"}
 
 
 def test_added_routes(api: ControlApi) -> None:
@@ -83,7 +83,7 @@ def test_added_routes(api: ControlApi) -> None:
     assert payload == {"got": {"a": "ş"}, "query": {"x": ["1"]}}
     status, _, payload = call(f"{api.url}/boom")
     assert status == 500
-    assert payload == {"error": "iç hata; ayrıntı günlükte"}
+    assert payload == {"error": "internal error; details are in the log"}
 
 
 @pytest.mark.parametrize(
@@ -103,7 +103,7 @@ def test_non_loopback_host_header_is_refused(api: ControlApi, host: str, allowed
         assert status == 200
     else:
         assert status == 403
-        assert payload == {"error": "yalnızca yerel erişim"}
+        assert payload == {"error": "local access only"}
 
 
 def test_shutdown_closes_the_port() -> None:

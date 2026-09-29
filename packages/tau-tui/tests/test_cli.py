@@ -64,13 +64,13 @@ def test_help_is_turkish(tmp_path: Path) -> None:
 def test_missing_config_exits_2(tmp_path: Path) -> None:
     result = run([], tmp_path / "yok", tmp_path)
     assert result.exit_code == 2
-    assert "Yapılandırma dosyası bulunamadı" in result.output
+    assert "Configuration file not found" in result.output
 
 
 def test_missing_credentials_exit_2_before_the_ui(tmp_path: Path) -> None:
     result = run([], make_home(tmp_path, BEDROCK_TOML), tmp_path)
     assert result.exit_code == 2
-    assert "Model kimlik bilgileri eksik (brain rolü, bedrock)." in result.output
+    assert "Missing model credentials for role 'brain' (bedrock)." in result.output
     assert "Traceback" not in result.output
 
 

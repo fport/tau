@@ -1,13 +1,13 @@
 <!--
-persona/user.md için şablon. Aşağıdaki bilgilerin hepsi uydurmadır.
-Kendi dosyanızı oluşturun:  cp persona/user.example.md persona/user.md
-persona/user.md git'e girmez ve sizinle ilgili gerçek bilgilerin tek yeridir. Dosya yoksa tau
-size "siz" diye hitap eder ve hakkınızda hiçbir şey bilmez. Değişiklik bir sonraki model
-çağrısında geçerli olur. Bunun gibi HTML yorumları silinir, modele hiç gitmez.
+Template for persona/user.md. Every fact below is made up.
+Create your own file:  cp persona/user.example.md persona/user.md
+persona/user.md is gitignored and is the only place for real facts about you. Without it tau
+addresses you formally ("siz") and knows nothing about you. An edit takes effect on the next
+model call. HTML comments like this one are stripped and never reach the model.
 -->
-- Hitap: "siz"; resmi ama sıcak. Ara sıra "efendim" olabilir.
-- Ad: Deniz (yalnızca selamlaşırken kullan)
-- Şehir: İzmir
-- Çalışma saatleri: hafta içi 09:00–18:00; bu saatlerde bildirimler kısa olsun.
-- Tercihler: kısa yanıtlar, metrik birimler, 24 saat biçimi.
-- İlgi alanları: elektronik, bisiklet, deniz kenarında yürüyüş.
+- Form of address: "siz" (formal but warm); an occasional "efendim" is fine.
+- Name: Deniz (use it only when greeting)
+- City: Izmir
+- Working hours: weekdays 09:00–18:00; keep notifications short during them.
+- Preferences: short answers, metric units, 24-hour clock.
+- Interests: electronics, cycling, walks by the sea.

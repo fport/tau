@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from tau_core.agent import Notice, TauAgent, TextDelta, ToolFinished, build_agent
 from tau_core.approval import ApprovalRequest, Decision
-from tau_core.commands import SLASH_COMMANDS, command_hint, resolve_command, usage
+from tau_core.commands import SLASH_COMMANDS, SlashCommand, resolve_command, usage
 from tau_core.compaction import (
     CompactionError,
     compaction_title,
@@ -557,8 +557,25 @@ class TelegramService:
                 continue
             username = (me or {}).get("username") if isinstance(me, dict) else None
             self.bot = f"@{username}" if username else None
+            for chat_id in sorted(self.allowed):
+                await self.register_commands(chat_id, self.config.ui.language)
             logger.info("telegram: polling as %s", self.bot or "the bot")
             return True
+
+    async def register_commands(self, chat_id: int, language: str) -> None:
+        """The command menu Telegram shows when the user types ``/`` (``setMyCommands``),
+        scoped to one allowed chat so strangers who open the bot see no menu at all. A failure
+        is logged; the commands still work when typed."""
+        commands = [
+            {"command": command.name, "description": t(command.help_key, language)[:256]}
+            for command in telegram_commands()
+        ]
+        try:
+            await self._api().call(
+                "setMyCommands", commands=commands, scope={"type": "chat", "chat_id": chat_id}
+            )
+        except Exception as exc:
+            logger.warning("telegram: could not set the command menu: %s", exc)
 
     def _fail(self, exc: TelegramError) -> bool:
         self.state, self.last_error, self.retry_in_s = "failed", str(exc), None
@@ -823,12 +840,13 @@ class TelegramService:
     async def run_command(self, chat: ChatState, text: str) -> None:
         head, _, rest = text.partition(" ")
         head = head.split("@", 1)[0]  # "/help@my_bot" in a group
-        if head.casefold() == "/start":
+        if head.casefold() in ("/", "/start"):
             head = "/help"
         resolved = resolve_command(f"{head} {rest}")
         chat.lines = []
         if resolved is None:
-            chat.say("chat.unknown_command", name=head[1:], hint=command_hint(chat.language))
+            hint = ", ".join(f"/{command.name}" for command in telegram_commands())
+            chat.say("chat.unknown_command", name=head[1:], hint=hint)
         else:
             name, arg = resolved
             handler = COMMAND_HANDLERS.get(name)
@@ -866,11 +884,15 @@ def _title(service: TelegramService, session_id: str) -> str:
         return ""
 
 
+def telegram_commands() -> list[SlashCommand]:
+    """The shared commands that work on Telegram, in the shared order."""
+    return [command for command in SLASH_COMMANDS if command.name in COMMAND_HANDLERS]
+
+
 async def cmd_help(service: TelegramService, chat: ChatState, arg: str) -> None:
     chat.say("chat.help_header")
-    for command in SLASH_COMMANDS:
-        if command.name in COMMAND_HANDLERS:
-            chat.print(f"{usage(command)} — {t(command.help_key, chat.language)}")
+    for command in telegram_commands():
+        chat.print(f"{usage(command)} — {t(command.help_key, chat.language)}")
 
 
 async def cmd_tools(service: TelegramService, chat: ChatState, arg: str) -> None:
@@ -1026,6 +1048,7 @@ async def cmd_lang(service: TelegramService, chat: ChatState, arg: str) -> None:
         return
     chat.language = arg
     chat.say("lang.switched", language=arg)
+    await service.register_commands(chat.chat_id, arg)
 
 
 COMMAND_HANDLERS: dict[str, ChatHandler] = {

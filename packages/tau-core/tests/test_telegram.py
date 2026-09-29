@@ -170,7 +170,7 @@ def test_allowlisted_message_gets_a_reply_in_a_telegram_session(tmp_path: Path) 
         await run.until(replies_to(run, 1))
 
     run = serve(config, body)
-    assert run.api.methods()[:3] == ["getMe", "deleteWebhook", "getUpdates"]
+    assert run.api.methods()[:4] == ["getMe", "deleteWebhook", "setMyCommands", "getUpdates"]
     polls = [p for m, p in run.api.calls if m == "getUpdates"]
     assert polls[0]["allowed_updates"] == ["message", "callback_query"]
     assert polls[0]["timeout"] == 50
@@ -374,6 +374,54 @@ def test_help_uses_the_shared_wording_and_only_lists_what_works_here(tmp_path: P
     assert "yardım" not in first  # aliases are accepted, never shown
 
 
+def test_the_command_menu_is_set_for_allowed_chats_only_and_follows_lang(tmp_path: Path) -> None:
+    async def body(run: Run) -> None:
+        await run.until(lambda: run.api.menu(ME) is not None)
+        run.api.push_message(ME, "/lang tr")
+        await run.until(replies_to(run, 1))
+
+    run = serve(make_config(tmp_path), body)
+    menus = [p for m, p in run.api.calls if m == "setMyCommands"]
+    assert [p["scope"] for p in menus] == [{"type": "chat", "chat_id": ME}] * 2  # never default
+    english, turkish = (p["commands"] for p in menus)
+    assert [c["command"] for c in english] == [
+        "help",
+        "tools",
+        "sessions",
+        "resume",
+        "new",
+        "session",
+        "compact",
+        "status",
+        "model",
+        "lang",
+    ]
+    assert english[0]["description"] == t("command.help", "en")
+    assert turkish[0]["description"] == t("command.help", "tr")
+    assert run.api.menu(ME) == turkish
+
+
+def test_a_failing_command_menu_does_not_stop_the_poller(tmp_path: Path) -> None:
+    api = FakeBotApi()
+    api.fail("setMyCommands", TelegramError("setMyCommands", 400, "Bad Request", None))
+
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "hi")
+        await run.until(replies_to(run, 1))
+
+    run = serve(make_config(tmp_path), body, api=api)
+    assert run.api.texts() == ["Okay."]
+
+
+def test_a_bare_slash_shows_the_help(tmp_path: Path) -> None:
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "/")
+        await run.until(replies_to(run, 1))
+
+    run = serve(make_config(tmp_path), body)
+    assert run.api.texts()[0].splitlines()[0] == t("chat.help_header", "en")
+
+
 def test_unknown_and_unavailable_commands(tmp_path: Path) -> None:
     async def body(run: Run) -> None:
         run.api.push_message(ME, "/nope")
@@ -383,7 +431,10 @@ def test_unknown_and_unavailable_commands(tmp_path: Path) -> None:
 
     run = serve(make_config(tmp_path), body)
     unknown, quit_, quit_alias = run.api.texts()
-    assert unknown.startswith("Unknown command: /nope. Commands: /help, ")
+    assert unknown == (
+        "Unknown command: /nope. Commands: /help, /tools, /sessions, /resume, /new, /session, "
+        "/compact, /status, /model, /lang"
+    )  # only what works on Telegram
     assert quit_ == quit_alias == t("telegram.unavailable", "en", command="quit")
 
 

@@ -290,6 +290,8 @@ class FakeBotApi:
         """Every method called with its parameters, failed calls included."""
         self.sent: list[dict[str, Any]] = []
         """The parameters of every ``sendMessage`` that went through."""
+        self.commands: dict[str, list[dict[str, str]]] = {}
+        """Command menus by ``setMyCommands`` scope (JSON); read one with :meth:`menu`."""
         self._failures: dict[str, list[BaseException]] = {}
         self._next_update_id = 1
         self._next_message_id = 1
@@ -422,6 +424,17 @@ class FakeBotApi:
 
     async def _api_sendChatAction(self, chat_id: int, action: str, **params: Any) -> bool:
         return True
+
+    async def _api_setMyCommands(
+        self, commands: list[dict[str, str]], scope: dict[str, Any] | None = None, **params: Any
+    ) -> bool:
+        key = json.dumps(scope or {"type": "default"}, sort_keys=True)
+        self.commands[key] = copy.deepcopy(commands)
+        return True
+
+    def menu(self, chat_id: int) -> list[dict[str, str]] | None:
+        """The command menu set for ``chat_id`` with ``setMyCommands``; ``None`` if none."""
+        return self.commands.get(json.dumps({"chat_id": chat_id, "type": "chat"}, sort_keys=True))
 
     async def _api_answerCallbackQuery(self, callback_query_id: str, **params: Any) -> bool:
         return True

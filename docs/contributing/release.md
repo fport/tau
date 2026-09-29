@@ -122,29 +122,42 @@ project:
     the claims in the OIDC token. A typo shows up as `invalid-publisher` in the `publish` job.
     Fix the publisher on PyPI and rerun; no code change is needed.
 
-### Cloudflare Pages: the docs site
+### The docs site on Cloudflare
 
-The `docs` workflow builds the site with `mkdocs build --strict` on every push to `main` that
-touches `docs/**` or `mkdocs.yml`, and deploys it with `wrangler pages deploy` to the Pages
-project `tau-docs`, served at `docs.tau.getporti.com`. Without the secrets below it only
-builds, which is what forks and dry runs get.
+`.github/workflows/docs.yml` builds the site with `mkdocs build --strict` on every push that
+touches `docs/**` or `mkdocs.yml`, and deploys it as **Cloudflare Workers static assets**
+(the successor of Cloudflare Pages) with `wrangler deploy -c infra/docs/wrangler.jsonc`. No
+code runs at the edge; the Worker `tau-docs` only serves the uploaded files.
 
-1. Create the Pages project once: dashboard → **Workers & Pages → Create → Pages → Upload
-   assets**, name `tau-docs`; or, with a logged-in wrangler,
-   `npx wrangler pages project create tau-docs --production-branch main`.
-2. Under the project's **Custom domains** add `docs.tau.getporti.com`. The zone is on
-   Cloudflare, so the DNS record is created for you.
-3. Create an API token (**My Profile → API Tokens → Create Token**; the *Edit Cloudflare
-   Workers* template, or a custom token with *Account · Cloudflare Pages · Edit*) and note the
-   account id from the dashboard sidebar.
-4. In the GitHub repository, **Settings → Secrets and variables → Actions**: add
-   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-5. Deploy the first time by hand, **Actions → docs → Run workflow** with **deploy** ticked,
-   or push a docs change to `main`.
+1. The first deploy creates the Worker. From a shell where `wrangler` is logged in
+   (`npx wrangler login`):
 
-!!! note "Previews"
-    A manual run from a branch other than `main` with **deploy** ticked publishes a preview
-    deployment (`<branch>.tau-docs.pages.dev`). Production is only ever deployed from `main`.
+    ```sh
+    uv run --group docs mkdocs build --strict
+    npx wrangler deploy -c infra/docs/wrangler.jsonc
+    ```
+
+    The site is live at `https://tau-docs.<your-subdomain>.workers.dev` right away.
+
+2. For the automated deploy, create an API token (**My Profile → API Tokens → Create
+   Token → "Edit Cloudflare Workers"** template, or a custom token with *Account · Workers
+   Scripts · Edit*) and note the account id (dashboard sidebar). Store both as repository
+   secrets:
+
+    ```sh
+    gh secret set CLOUDFLARE_API_TOKEN
+    gh secret set CLOUDFLARE_ACCOUNT_ID
+    ```
+
+    Without them the workflow only builds the site and keeps it as an artifact.
+
+3. Once the domain's DNS is on Cloudflare (roadmap issue 022): Worker → **Settings →
+   Domains & Routes → add** `docs.tau.<your-domain>`. Cloudflare creates the DNS record and
+   the certificate; `site_url` in `mkdocs.yml` already points there.
+
+!!! tip "Dry run"
+    **Actions → docs → Run workflow** with *deploy* unticked builds the site without touching
+    Cloudflare; the built `site/` is attached to the run as an artifact.
 
 ## What the workflows check
 

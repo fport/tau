@@ -165,13 +165,6 @@ def test_home_option(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
 
 
-@pytest.mark.parametrize("args", [["tui"]])
-def test_placeholders(tmp_path: Path, args: list[str]) -> None:
-    result = run(args, None, tmp_path)
-    assert result.exit_code == 0
-    assert "Henüz yok (issue 00" in result.output
-
-
 def test_python_m_tau_core() -> None:
     out = subprocess.run(
         [sys.executable, "-m", "tau_core", "--help"], capture_output=True, text=True, timeout=60

@@ -291,7 +291,7 @@ def test_doctor_flags_component_names_nothing_provides(tmp_path: Path) -> None:
         "[components]\ncontext = ['example', 'nope']\n"
         "[components.tools]\ndisabled = ['current_time', 'dist:tau-example-tool', "
         "'demo_physical_actoin', 'dist:tau-nothing']\n"
-        "[components.hub]\nservices = ['telegram']\n",
+        "[components.hub]\nservices = ['voice']\n",
         encoding="utf-8",
     )
     checks = [c for c in run_doctor(config.home, env={}) if c.name == "components"]
@@ -299,7 +299,7 @@ def test_doctor_flags_component_names_nothing_provides(tmp_path: Path) -> None:
     assert checks[1].detail == (
         "[components] names no installed component provides: "
         "[components.tools] disabled: demo_physical_actoin, dist:tau-nothing; "
-        "[components] context: nope; [components.hub] services: telegram (see `tau components`)"
+        "[components] context: nope; [components.hub] services: voice (see `tau components`)"
     )
     result = run(["doctor"], tmp_path, home=config.home)
     assert result.exit_code == 0, result.output  # a warning, not a failure

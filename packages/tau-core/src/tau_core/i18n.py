@@ -258,6 +258,23 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The previous turn did not finish.",
         "tr": "Önceki tur tamamlanmadı.",
     },
+    # -- Telegram channel (tau_core.channels.telegram) -------------------------------------------
+    "telegram.unavailable": {
+        "en": "/{command} is not available on Telegram; use tau chat or the TUI on the hub.",
+        "tr": "/{command} Telegram'da kullanılamaz; hub'da tau chat ya da TUI'yi kullan.",
+    },
+    "telegram.text_only": {
+        "en": "I can only read text messages here for now.",
+        "tr": "Burada şimdilik yalnızca metin mesajlarını okuyabiliyorum.",
+    },
+    "telegram.turn_failed": {
+        "en": "The turn failed: {detail}. Details are in the hub log.",
+        "tr": "Tur başarısız oldu: {detail}. Ayrıntı hub günlüğünde.",
+    },
+    "telegram.empty_reply": {
+        "en": "(no reply)",
+        "tr": "(yanıt yok)",
+    },
     # -- TUI (consumed by tau-tui; kept here so both channels share one table) --------------------
     "tui.placeholder": {
         "en": "Type a message · /help · /quit",

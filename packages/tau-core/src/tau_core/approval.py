@@ -60,7 +60,9 @@ class Approver(Protocol):
 
     An approver may also define ``timeout_seconds`` (``float | None``): the gate then stops
     waiting after that long and records ``Decision.TIMEOUT``, unless the gate has its own
-    ``timeout_seconds``. ``decide`` must be cancellable for that to work.
+    ``timeout_seconds``. ``decide`` must be cancellable for that to work. ``refusal_note``
+    (``str``, fixed English) is appended to the refusal the model reads when the call is not
+    approved, e.g. where the user can approve it instead.
     """
 
     name: str
@@ -149,11 +151,13 @@ raises counts as "not exempt".
 """
 
 
-def refusal_text(tool: str) -> str:
-    """What the model reads as the tool result of a refused call (fixed English)."""
-    return (
+def refusal_text(tool: str, note: str | None = None) -> str:
+    """What the model reads as the tool result of a refused call (fixed English); ``note`` is
+    the approver's ``refusal_note``, appended as is."""
+    text = (
         f"The user did not approve this action: {tool}. Do not perform it; tell the user briefly."
     )
+    return f"{text} {note}" if note else text
 
 
 def unknown_tool_text(tool: str) -> str:
@@ -337,7 +341,12 @@ class TierGate:
         )
         if decision is Decision.APPROVED:
             return True, None, decision.value
-        return False, refusal_text(tool_name), decision.value
+        note = getattr(self.approver, "refusal_note", None)
+        return (
+            False,
+            refusal_text(tool_name, note if isinstance(note, str) else None),
+            decision.value,
+        )
 
     def record(
         self,

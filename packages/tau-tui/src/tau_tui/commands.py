@@ -1,7 +1,9 @@
 """Slash-command handlers for the TUI (the spec is ``tau_core.commands``).
 
-Each handler is ``async (app, argument) -> None``. Read-only commands run while a turn is
-busy; ``/new`` and ``/resume`` are refused with a toast until the turn ends.
+Each handler is ``async (app, argument) -> None``. Read-only commands (``/help``, ``/tools``,
+``/sessions``, ``/session``, ``/status``, ``/model`` without an argument, ``/lang``) run while
+a turn is busy; ``/new``, ``/resume``, ``/compact``, ``/clear`` and ``/model <role>`` are
+refused with a toast until the turn ends.
 """
 
 from __future__ import annotations
@@ -9,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from tau_core import LANGUAGES, t, tier_of
+from tau_core import LANGUAGES, role_lines, status_report, t, tier_of
 from tau_core.commands import help_lines
 
 from tau_tui.keys import hints_for_help
@@ -124,6 +126,25 @@ async def cmd_session(app: TauApp, argument: str) -> None:
     )
 
 
+async def cmd_compact(app: TauApp, argument: str) -> None:
+    await app.compact_session(argument or None)
+
+
+async def cmd_clear(app: TauApp, argument: str) -> None:
+    await app.clear_screen()
+
+
+async def cmd_status(app: TauApp, argument: str) -> None:
+    await app.transcript.add_info(await status_report(app.agent, language=app.language))
+
+
+async def cmd_model(app: TauApp, argument: str) -> None:
+    if not argument:
+        await app.transcript.add_info(role_lines(app.agent, app.language))
+        return
+    await app.switch_model(argument)
+
+
 async def cmd_lang(app: TauApp, argument: str) -> None:
     lang = app.language
     choices = "|".join(LANGUAGES)
@@ -148,9 +169,14 @@ HANDLERS: dict[str, CommandHandler] = {
     "resume": cmd_resume,
     "new": cmd_new,
     "session": cmd_session,
+    "compact": cmd_compact,
+    "clear": cmd_clear,
+    "status": cmd_status,
+    "model": cmd_model,
     "lang": cmd_lang,
     "quit": cmd_quit,
 }
 
-SWITCHING = frozenset({"new", "resume"})
-"""Commands refused while a turn is busy."""
+SWITCHING = frozenset({"new", "resume", "compact"})
+"""Commands refused with the session-switch toast while a turn is busy; ``/clear`` and
+``/model <role>`` check inside their flows, each with its own wording."""

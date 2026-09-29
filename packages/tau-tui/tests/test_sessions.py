@@ -232,7 +232,7 @@ async def test_failed_rebuild_keeps_the_current_agent(tmp_path: Path) -> None:
     store, ids = await _seed(config, 1)
     app = _app(config, store)
 
-    def broken(session_id):
+    def broken(session_id, **kwargs):
         raise RuntimeError("store exploded")
 
     async with app.run_test(size=(80, 24)) as pilot:

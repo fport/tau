@@ -26,5 +26,6 @@
 | 064 | [Strands-correctness pass over tau-core (strands-agents 1.57.1)](064-strands-correctness-pass.md) | AFK | – |
 | 065 | [Component builder: entry-point groups, `[components]` config, `tau components\|doctor\|init`](065-component-builder.md) | AFK | – |
 | 066 | [English docs: README, ARCHITECTURE, infra/remote, CLAUDE.md, CONTEXT.md, ADRs](066-english-docs.md) | AFK | – |
+| 072 | [Session commands: /clear, /compact, /status and /model in both channels](072-session-commands-clear-compact-status-model.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py`

@@ -42,6 +42,10 @@ SLASH_COMMANDS: tuple[SlashCommand, ...] = (
     SlashCommand("resume", ("devam",), "[n|id]", "command.resume"),
     SlashCommand("new", ("yeni",), None, "command.new"),
     SlashCommand("session", ("oturum",), None, "command.session"),
+    SlashCommand("compact", ("özet", "ozet"), "[focus]", "command.compact"),
+    SlashCommand("clear", ("temizle", "cls"), None, "command.clear"),
+    SlashCommand("status", ("durum",), None, "command.status"),
+    SlashCommand("model", ("rol",), "[role]", "command.model"),
     SlashCommand("lang", ("dil",), "en|tr", "command.lang"),
     SlashCommand("quit", ("çık", "cik", "exit"), None, "command.quit"),
 )

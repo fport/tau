@@ -52,7 +52,12 @@ max_total_tokens = 200000 # optional per-turn token budget (Limits(total_tokens=
 ```
 
 `context` picks Strands' `SlidingWindowConversationManager` or `SummarizingConversationManager`;
-the session store still keeps every message, only what the model sees is windowed. The SDK's
+the session store still keeps every message, only what the model sees is windowed. A session
+remembers the manager it was recorded with (Strands refuses to restore it under the other one),
+so after changing `context` an earlier session fails to open with `Session <id> was recorded
+with a different [agent] context setting; set it back to sliding or start a new session`
+(`SessionContextMismatch`, a `ConfigError`) in `tau chat --session`/`--resume`, `tau tui
+--resume`, `/resume` and the TUI's picker and sidebar alike; the current session is kept. The SDK's
 `context_manager = "auto"`/`"agentic"` presets are rejected with a `ConfigError`: they register
 untiered SDK tools that the tier gate would refuse. `cache` accepts the `CacheConfig` fields
 (`strategy`, `ttl`, `system_prompt_ttl`, `tools_ttl`); the fake provider ignores it.
@@ -86,8 +91,12 @@ are accepted forever but never shown in hints:
 | `/resume [n\|id]` | `/devam` | resume the most recent earlier session, the n-th of the last listing, or an id |
 | `/new` | `/yeni` | start a fresh session |
 | `/session` | `/oturum` | current session id, title, message count, store |
+| `/compact [focus]` | `/özet`, `/ozet` | summarize this session into a new one and continue there; the old one is kept (see [Compaction](#compaction)) |
+| `/clear` | `/temizle`, `/cls` | clear the screen; the session continues, nothing is deleted (`--resume` shows the history again) |
+| `/status` | `/durum` | profile, session, model, context, tools, UI language, versions, hub |
+| `/model [role]` | `/rol` | list the model roles, or switch this session to one (remembered by `/resume`) |
 | `/lang en\|tr` | `/dil` | switch the UI language for this run |
-| `/quit` | `/çık`, `/cik`, `/exit` | leave |
+| `/quit` | `/çık`, `/cik`, `/exit` | leave (`/exit` is an alias, `/quit` is the name the hints show) |
 
 Matching is `str.casefold()` on the typed name (`/ARAÇLAR` works). In code:
 
@@ -351,7 +360,25 @@ In `tau chat`:
   print now); `/resume <id>` resumes that session. `tau chat --resume [ID]` does the same at
   start-up.
 - `/new` starts a fresh session; `/session` shows the current id, title, message count and
-  backend.
+  backend; `/clear` erases the screen (an ANSI clear, then the ready banner again) and nothing
+  else: the session and the agent go on, and `--resume` shows the history again.
+- `/status` prints the profile, the session (id, title, stored message count, role), the model
+  (role → provider, whether the role's `fallback` is in use, the model id; never a key), the
+  context mode and window with the in-memory message count, the tools (registered, how many
+  need approval), the UI language, the installed `tau-*` versions and whether a hub answers on
+  `http://127.0.0.1:<control_port>/health` (the `tau doctor` probe, one second, information
+  only).
+- `/model` lists the roles of `tau.toml` with their providers and marks the current one;
+  `/model fast` rebuilds the agent on the **same** session with that role: the new agent is
+  built first (`build_agent(role=..., session_id=<current>)`, which restores the stored history
+  and takes over a pending repair notice), and only then is the previous one closed, so a
+  failed build changes nothing. Every session records the `role` it last ran on in its
+  metadata (`build_agent` writes it next to `channel` and `profile`), so `/resume` and
+  `tau chat --resume` come back on that role, also for sessions opened by `/new` and
+  `/compact`. `tau chat --role ROLE` pins the role for the run and wins over the stored one
+  (and is recorded in turn); an unknown role, missing credentials or an unavailable provider
+  leave the current agent unchanged and print why. `TauAgent.role` is the role an agent was
+  built for.
 
 Resuming rebuilds the agent on the stored session (`build_agent(session_id=...,
 session_store=...)`), so Strands restores `agent.messages`; the model sees the last
@@ -359,6 +386,33 @@ session_store=...)`), so Strands restores `agent.messages`; the model sees the l
 A new backend implements the nine `SessionRepository` methods plus the five extras and arrives
 as a `tau.sessions` entry point or through `register_session_backend(name, factory)` (see
 [Components](#components)); `SESSION_BACKENDS` is the built-in seed.
+
+### Compaction
+
+`/compact [focus]` is how a long conversation goes on without its whole history, while every
+session stays on record:
+
+1. `tau_core.compaction.summarize(agent, focus=...)` runs a throwaway Strands `Agent` on the
+   agent's **own model** over a deep copy of `agent.messages` (no tools, no hooks, no session
+   manager, so the tier gate is not involved and the live agent is untouched), with an English
+   system prompt that asks for a continuation summary: facts about the user, decisions, open
+   tasks, tool results that still matter, and the language the user writes in; `focus` is
+   appended as `Focus on: ...`. An empty history, a failed model call or an empty reply raise
+   `CompactionError` and nothing changes.
+2. `seed_messages(summary, previous_session_id)` is the two-message history the new session
+   starts with: a user message `Summary of the previous conversation (session <id>):` plus the
+   summary, and the assistant's `Understood. I will continue from this summary.`.
+3. `build_agent(seed_messages=..., session_id=None)` opens the new session with that history.
+   The seed goes in as the Strands `Agent(messages=...)`; the SDK's `RepositorySessionManager`
+   writes every initial message to the store when it creates the agent record, so the seed is
+   part of the session and survives `--resume` (a test proves the file-store round trip).
+4. The new session's metadata gets `title` (the old title, or its first user line) and
+   `compacted_from = <old id>`; the old session gets `compacted_to = <new id>` and keeps every
+   message. `/sessions` lists both.
+
+The channel then prints `Compacted N messages into a summary. New session <id>; the previous
+session <old id> is kept.` and the summary itself. `N` is what was summarized: the messages in
+memory, which the conversation window may have trimmed below the stored count.
 
 ## Hub
 

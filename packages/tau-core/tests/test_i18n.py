@@ -82,6 +82,10 @@ def test_command_names_and_aliases() -> None:
         "resume",
         "new",
         "session",
+        "compact",
+        "clear",
+        "status",
+        "model",
         "lang",
         "quit",
     ]
@@ -89,7 +93,13 @@ def test_command_names_and_aliases() -> None:
     assert by_name["help"].aliases == ("yardım", "yardim", "?")
     assert by_name["tools"].aliases == ("araçlar", "araclar")
     assert by_name["quit"].aliases == ("çık", "cik", "exit")
+    assert by_name["compact"].aliases == ("özet", "ozet")
+    assert by_name["clear"].aliases == ("temizle", "cls")
+    assert by_name["status"].aliases == ("durum",)
+    assert by_name["model"].aliases == ("rol",)
     assert by_name["resume"].argument == "[n|id]" and by_name["lang"].argument == "en|tr"
+    assert by_name["compact"].argument == "[focus]" and by_name["model"].argument == "[role]"
+    assert by_name["clear"].argument is None and by_name["status"].argument is None
     assert all(c.help_key in MESSAGES for c in SLASH_COMMANDS)
     assert isinstance(by_name["help"], SlashCommand)
 
@@ -107,6 +117,14 @@ def test_command_names_and_aliases() -> None:
         ("/exit", ("quit", "")),
         ("/çık", ("quit", "")),
         ("/cik", ("quit", "")),
+        ("/özet hedefler", ("compact", "hedefler")),
+        ("/Ozet", ("compact", "")),
+        ("/compact keep the decisions", ("compact", "keep the decisions")),
+        ("/temizle", ("clear", "")),
+        ("/CLS", ("clear", "")),
+        ("/durum", ("status", "")),
+        ("/rol fast", ("model", "fast")),
+        ("/model", ("model", "")),
         ("/nope", None),
         ("help", None),
         ("/", None),
@@ -118,14 +136,22 @@ def test_resolve_command(line: str, expected: tuple[str, str] | None) -> None:
 
 def test_hint_and_help_lines() -> None:
     hint = command_hint()
-    assert hint == "/help, /tools, /sessions, /resume, /new, /session, /lang, /quit"
+    assert hint == (
+        "/help, /tools, /sessions, /resume, /new, /session, /compact, /clear, /status, /model, "
+        "/lang, /quit"
+    )
     assert command_hint("tr") == hint  # canonical names only, never aliases
-    assert "devam" not in hint and "araçlar" not in hint
+    assert "devam" not in hint and "araçlar" not in hint and "özet" not in hint
     assert usage(SLASH_COMMANDS[3]) == "/resume [n|id]"
+    assert usage(SLASH_COMMANDS[6]) == "/compact [focus]"
     en, tr = help_lines("en"), help_lines("tr")
     assert len(en) == len(tr) == len(SLASH_COMMANDS)
     assert en[0].startswith("  /help ") and en[0].rstrip().endswith("list the commands")
     assert tr[-1].rstrip().endswith("çıkar")
+    listed = {line.split()[0] for line in en}
+    assert {"/compact", "/clear", "/status", "/model"} <= listed
+    assert any(line.startswith("  /compact [focus]  summarize") for line in en)
+    assert any(line.startswith("  /model [role]") and "roles" in line for line in en)
 
 
 def test_public_api_exports() -> None:

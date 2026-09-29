@@ -3,7 +3,9 @@
 The reply streams under ``tau>``; tool calls show as indented lines; tier-2 calls ask on stdin
 through :class:`TerminalApprover`. Slash commands are the shared spec in
 :mod:`tau_core.commands` (``/help``, ``/tools``, ``/sessions``, ``/resume``, ``/new``,
-``/session``, ``/lang``, ``/quit`` plus their aliases), one handler each in :data:`HANDLERS`.
+``/session``, ``/compact``, ``/clear``, ``/status``, ``/model``, ``/lang``, ``/quit`` plus
+their aliases), one handler each in :data:`HANDLERS`. The REPL runs one thing at a time, so a
+command can never overlap a turn; the TUI's "busy" refusals have no counterpart here.
 Every string a person reads comes from :func:`tau_core.i18n.t` in ``ReplState.language``.
 """
 
@@ -32,15 +34,26 @@ from tau_core.agent import (
 from tau_core.approval import Approver, TerminalApprover
 from tau_core.cli import help_option
 from tau_core.commands import command_hint, help_lines, resolve_command
+from tau_core.compaction import (
+    CompactionError,
+    compaction_title,
+    record_compaction,
+    seed_messages,
+    summarize,
+)
 from tau_core.config import Config, ConfigError
 from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES, t
 from tau_core.logs import configure_logging
 from tau_core.models import MissingCredentials
 from tau_core.sessions import SessionStore, open_session_store
+from tau_core.status import describe_model, role_lines, status_report, stored_role
 from tau_core.tiers import tier_of
 
 LIST_LIMIT = 10
 SCAN_LIMIT = 100  # empty sessions are skipped, so look further back than the list shows
+DEFAULT_ROLE = "brain"
+CLEAR_SCREEN = "\x1b[2J\x1b[H"
+"""ANSI: erase the whole screen, cursor to the top-left."""
 
 
 @dataclass
@@ -50,7 +63,9 @@ class ReplState:
     approver: Approver
     agent: TauAgent
     console: Console
-    role: str = "brain"
+    role: str = DEFAULT_ROLE
+    role_pinned: bool = False
+    """``--role`` was given: a resumed session's stored role never overrides it."""
     running: bool = True
     language: str = DEFAULT_LANGUAGE
     last_listing: list[str] = field(default_factory=list)
@@ -94,18 +109,34 @@ def _recent_sessions(state: ReplState) -> list:
     ][:LIST_LIMIT]
 
 
-def _switch_to(state: ReplState, session_id: str | None) -> bool:
-    """Replace the agent with one on ``session_id`` (a fresh one when ``None``)."""
+def _switch_to(
+    state: ReplState,
+    session_id: str | None,
+    *,
+    role: str | None = None,
+    seed_messages: list | None = None,
+) -> bool:
+    """Replace the agent with one on ``session_id`` (a fresh one when ``None``).
+
+    ``role`` overrides the current role (``/model``); otherwise a resumed session's stored role
+    is used unless ``--role`` pinned one. ``seed_messages`` is the initial history of a fresh
+    session (``/compact``). On any failure the message is printed and the agent is unchanged.
+    """
     from strands.types.exceptions import SessionException
 
+    if role is None:
+        role = state.role
+        if session_id is not None and not state.role_pinned:
+            role = stored_role(state.store, session_id, state.config) or state.role
     try:
         agent = build_agent(
             config=state.config,
-            role=state.role,
+            role=role,
             approver=state.approver,
             session_store=state.store,
             session_id=session_id,
             channel="terminal",
+            seed_messages=seed_messages,
         )
     except (MissingCredentials, ConfigError) as exc:
         state.console.print(str(exc))
@@ -113,9 +144,20 @@ def _switch_to(state: ReplState, session_id: str | None) -> bool:
     except (SessionException, OSError, ValueError) as exc:
         state.say("session.open_failed", error=exc)
         return False
+    agent.carry_over(state.agent)  # a rebuild on the same session keeps its pending repair
     state.agent.close()
     state.agent = agent
+    state.role = role
     return True
+
+
+def _ready_banner(state: ReplState) -> None:
+    state.say(
+        "chat.ready",
+        profile=state.config.profile,
+        session=state.agent.session_id,
+        hint=command_hint(state.language),
+    )
 
 
 def _title_of(state: ReplState, session_id: str) -> str:
@@ -250,6 +292,64 @@ async def cmd_tools(state: ReplState, arg: str) -> None:
         )
 
 
+async def cmd_clear(state: ReplState, arg: str) -> None:
+    """``/clear``: erase the screen and print the ready banner again. The session and the
+    agent are untouched: ``--resume`` shows the history again."""
+    state.console.print(CLEAR_SCREEN, end="")
+    _ready_banner(state)
+    state.say("clear.done", n=len(state.agent.messages))
+
+
+async def cmd_compact(state: ReplState, arg: str) -> None:
+    """``/compact [focus]``: summarize the session with the agent's own model, open a new
+    session seeded with the summary and continue there. The old session stays in the store;
+    the two are linked through ``compacted_from`` / ``compacted_to`` in their metadata."""
+    old = state.agent
+    n = len(old.messages)
+    if n:
+        state.say("compact.started", n=n)
+    try:
+        summary = await summarize(old, focus=arg or None)
+    except CompactionError as exc:
+        state.say("compact.failed", error=exc)
+        return
+    title = compaction_title(old)
+    if not _switch_to(state, None, seed_messages=seed_messages(summary, old.session_id)):
+        return
+    record_compaction(
+        state.store,
+        previous=old.session_id,
+        new=state.agent.session_id,
+        title=title,
+        role=state.role,
+    )
+    state.say("compact.done", n=n, session=state.agent.session_id, previous=old.session_id)
+    state.console.print(summary, style="dim")
+
+
+async def cmd_status(state: ReplState, arg: str) -> None:
+    """``/status``: profile, session, model, context, tools, UI language, versions, hub."""
+    for line in await status_report(state.agent, language=state.language):
+        state.console.print(line)
+
+
+async def cmd_model(state: ReplState, arg: str) -> None:
+    """``/model [role]``: without an argument, the roles of ``tau.toml`` with the current one
+    marked; with one, rebuild the agent on the same session with that role and remember it in
+    the session's metadata, so ``/resume`` and ``--resume`` come back on the same role."""
+    if not arg:
+        for line in role_lines(state.agent, state.language):
+            state.console.print(line)
+        return
+    if arg not in state.config.roles:
+        state.say("model.unknown", role=arg, roles=", ".join(state.config.roles))
+        return
+    if arg != state.role and not _switch_to(state, state.agent.session_id, role=arg):
+        return
+    state.store.write_meta(state.agent.session_id, role=arg)
+    state.say("model.current", role=arg, provider=describe_model(state.agent).provider)
+
+
 async def cmd_lang(state: ReplState, arg: str) -> None:
     """``/lang en|tr``: switch the UI language for this run only."""
     choices = "|".join(LANGUAGES)
@@ -277,6 +377,10 @@ HANDLERS: dict[str, CommandHandler] = {
     "resume": cmd_resume,
     "new": cmd_new,
     "session": cmd_session,
+    "compact": cmd_compact,
+    "clear": cmd_clear,
+    "status": cmd_status,
+    "model": cmd_model,
     "lang": cmd_lang,
     "quit": cmd_quit,
 }
@@ -333,12 +437,7 @@ def run_repl(
 ) -> None:
     """Read lines until ``/quit``, Ctrl-D or Ctrl-C."""
     console = state.console
-    state.say(
-        "chat.ready",
-        profile=state.config.profile,
-        session=state.agent.session_id,
-        hint=command_hint(state.language),
-    )
+    _ready_banner(state)
     loop = asyncio.new_event_loop()
     try:
         if resume is not None:
@@ -375,7 +474,11 @@ def run_repl(
 @click.command(name="chat", help="Chat with tau in the terminal.")
 @help_option()
 @click.option(
-    "--role", default="brain", show_default=True, metavar="ROLE", help="Model role to use."
+    "--role",
+    default=None,
+    metavar="ROLE",
+    help=f"Model role to use (default: {DEFAULT_ROLE}, or the role a resumed session "
+    "remembers from /model).",
 )
 @click.option(
     "--resume",
@@ -387,15 +490,18 @@ def run_repl(
 )
 @click.option("--session", "session_id", metavar="ID", help="Start with this session id.")
 @click.pass_context
-def chat(ctx: click.Context, role: str, resume: str | None, session_id: str | None) -> None:
+def chat(ctx: click.Context, role: str | None, resume: str | None, session_id: str | None) -> None:
     obj = ctx.find_object(dict) or {}
     console = Console(markup=False, emoji=False, highlight=False, soft_wrap=True)
+    role_pinned = role is not None
     try:
         config = Config.load(obj.get("home"))
         if obj.get("profile"):
             config = config.with_overrides(profile=obj["profile"])
         configure_logging(config.logs_dir, verbose=bool(obj.get("verbose")))
         store = open_session_store(config)
+        if not role_pinned:
+            role = stored_role(store, session_id, config) or DEFAULT_ROLE
         approver = TerminalApprover(language=config.ui.language)
         agent = build_agent(
             config=config,
@@ -421,6 +527,7 @@ def chat(ctx: click.Context, role: str, resume: str | None, session_id: str | No
         agent=agent,
         console=console,
         role=role,
+        role_pinned=role_pinned,
         language=config.ui.language,
     )
     run_repl(state, resume=resume)

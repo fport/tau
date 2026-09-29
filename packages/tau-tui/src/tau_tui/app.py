@@ -10,6 +10,7 @@ public API: ``TauAgent.stream()`` turn events feed the current :class:`Turn`; th
 from __future__ import annotations
 
 import logging
+import threading
 from collections import deque
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, tzinfo
@@ -18,8 +19,12 @@ from typing import Any
 from tau_core import (
     STOP_REASONS,
     AgentEvent,
+    CompactionCancelled,
+    CompactionError,
     Config,
+    ConfigError,
     EventBus,
+    MissingCredentials,
     Notice,
     ReasoningDelta,
     SessionStore,
@@ -32,7 +37,13 @@ from tau_core import (
     TurnEnd,
     build_agent,
     command_hint,
+    compaction_title,
+    describe_model,
+    record_compaction,
     resolve_command,
+    seed_messages,
+    stored_role,
+    summarize,
     t,
 )
 from tau_core import __version__ as core_version
@@ -54,12 +65,15 @@ from tau_tui.history import build_history
 from tau_tui.keys import app_bindings
 from tau_tui.sessions import SessionPicker, SessionSidebar, recent_sessions
 from tau_tui.theme import ASCII_CSS, TAU_ANSI_THEME, TAU_THEME, mark_ascii
-from tau_tui.transcript import STREAM_MODES, Transcript, Turn, WelcomeFacts
+from tau_tui.transcript import STREAM_MODES, BusyRow, Transcript, Turn, WelcomeFacts
 
 logger = logging.getLogger(__name__)
 
 EVENT_BUFFER = 500
-AgentFactory = Callable[[str | None], TauAgent]
+DEFAULT_ROLE = "brain"
+AgentFactory = Callable[..., TauAgent]
+"""``factory(session_id, *, role=None, seed_messages=None) -> TauAgent``: every later agent
+(``/new``, ``/resume``, ``/compact``, ``/model``) on the app's bus, store and approver."""
 
 
 class SessionNotFound(Exception):
@@ -160,6 +174,7 @@ class TauApp(App[None]):
         show_durations: bool = True,
         stream_mode: str = "auto",
         language: str | None = None,
+        role_pinned: bool = False,
     ) -> None:
         super().__init__()
         self.agent = agent
@@ -169,6 +184,8 @@ class TauApp(App[None]):
         self.bus = bus or agent.events
         self.agent_factory = agent_factory
         self.store = store
+        self.role_pinned = role_pinned
+        """``build_app(role=...)`` was explicit: a resumed session's stored role never wins."""
         self.notice = notice
         self.clock = clock or (lambda: datetime.now(UTC))
         self.tz = tz
@@ -183,6 +200,9 @@ class TauApp(App[None]):
         self._unsubscribe: Callable[[], None] | None = None
         self._cancelling = False
         self._current_turn: Turn | None = None
+        self._compaction_cancel: threading.Event | None = None
+        """Set while ``/compact`` is summarizing; Esc sets it to cancel the summarizer."""
+        self._compaction_row: BusyRow | None = None
         self.register_theme(TAU_THEME)
         self.register_theme(TAU_ANSI_THEME)
         self.theme = TAU_THEME.name
@@ -227,9 +247,14 @@ class TauApp(App[None]):
     def config(self) -> Config:
         return self.agent.config
 
+    @property
+    def role(self) -> str:
+        """The model role of the current agent (``/model`` switches it)."""
+        return self.agent.role
+
     def _provider(self) -> str:
-        role = self.config.roles.get("brain")
-        return role.provider if role is not None else "?"
+        """The provider actually serving the role, read off the model instance."""
+        return describe_model(self.agent).provider
 
     def _tool_counts(self) -> tuple[int, int]:
         catalog = self.agent.catalog
@@ -243,7 +268,7 @@ class TauApp(App[None]):
             version=core_version,
             profile=self.config.profile,
             session_id=self.agent.session_id,
-            role="brain",
+            role=self.role,
             provider=self._provider(),
             tools=total,
             approval_tools=approval,
@@ -264,7 +289,7 @@ class TauApp(App[None]):
         yield HeaderBar(
             profile=self.config.profile,
             session_id=self.agent.session_id,
-            role="brain",
+            role=self.role,
             provider=self._provider(),
             tool_count=total,
             language=self.language,
@@ -566,22 +591,50 @@ class TauApp(App[None]):
         except Exception:
             logger.exception("could not refresh the session sidebar")
 
-    async def switch_session(self, session_id: str | None) -> None:
+    async def _build(
+        self, session_id: str | None, *, role: str | None = None, seed: list | None = None
+    ) -> TauAgent | None:
+        """A new agent from the factory, or ``None`` after showing why it could not be built.
+
+        ``MissingCredentials`` and ``ConfigError`` are shown in full (they name the variables or
+        the setting to fix); anything else becomes ``session.open_failed``.
+        """
+        lang = self.language
+        if self.agent_factory is None:
+            await self.transcript.add_notice(t("session.open_failed", lang, error="no factory"))
+            return None
+        try:
+            return self.agent_factory(session_id, role=role or self.role, seed_messages=seed)
+        except (MissingCredentials, ConfigError) as exc:
+            logger.warning("could not build the agent: %s", exc)
+            await self.transcript.add_notice(str(exc))
+        except Exception as exc:
+            logger.exception("could not open session %s", session_id)
+            await self.transcript.add_notice(t("session.open_failed", lang, error=short(exc)))
+        return None
+
+    def _adopt(self, new: TauAgent) -> None:
+        """Make ``new`` the app's agent and close the previous one (a rebuild on the same
+        session takes over its pending repair notice first)."""
+        old, self.agent = self.agent, new
+        new.carry_over(old)
+        old.close()
+        self.header.set_role(new.role, describe_model(new).provider)
+
+    async def switch_session(self, session_id: str | None, *, role: str | None = None) -> None:
+        """``/new`` (``None``) or ``/resume`` (an id). A resumed session comes back on the role
+        its metadata remembers from ``/model`` unless ``build_app(role=...)`` pinned one; ``role``
+        overrides both."""
         lang = self.language
         if self.busy:
             self.notify(t("tui.busy_switch", lang), severity="warning")
             return
-        if self.agent_factory is None:
-            await self.transcript.add_notice(t("session.open_failed", lang, error="no factory"))
+        if role is None and session_id is not None and not self.role_pinned:
+            role = stored_role(self.store, session_id, self.config)
+        new = await self._build(session_id, role=role)
+        if new is None:
             return
-        try:
-            new = self.agent_factory(session_id)
-        except Exception as exc:
-            logger.exception("could not open session %s", session_id)
-            await self.transcript.add_notice(t("session.open_failed", lang, error=short(exc)))
-            return
-        old, self.agent = self.agent, new
-        old.close()
+        self._adopt(new)
         self.event_buffer.clear()
         self.last_listing = []
         with self.batch_update():
@@ -591,6 +644,131 @@ class TauApp(App[None]):
         self.refresh_sessions()
         if session_id is None:
             await self.transcript.add_notice(t("session.new", lang, session=new.session_id))
+        self.header.glyph.state = self._idle_glyph_state()
+
+    async def switch_model(self, role: str) -> None:
+        """``/model <role>``: the same session on another role. The agent is rebuilt on the
+        stored history; the role is written to the session's metadata so ``/resume`` and
+        ``--resume`` come back on it. Refused while a turn is busy; a failed build (missing
+        credentials, an unknown provider) leaves the current agent working."""
+        lang = self.language
+        if self.busy:
+            self.notify(t("tui.busy_model", lang), severity="warning")
+            return
+        if role not in self.config.roles:
+            await self.transcript.add_notice(
+                t("model.unknown", lang, role=role, roles=", ".join(self.config.roles))
+            )
+            return
+        session_id = self.agent.session_id
+        if role != self.role:
+            new = await self._build(session_id, role=role)
+            if new is None:
+                return
+            self._adopt(new)
+        if self.store is not None:
+            try:
+                self.store.write_meta(session_id, role=role)
+            except Exception:
+                logger.exception("could not store the role of session %s", session_id)
+        if self.transcript.query("#welcome"):
+            await self.transcript.show_welcome(self.welcome_facts())
+        await self.transcript.add_notice(
+            t("model.current", lang, role=role, provider=self._provider())
+        )
+
+    async def compact_session(self, focus: str | None = None) -> None:
+        """``/compact [focus]``: summarize the session with its own model, open a new session
+        seeded with the summary and continue there. The old session stays in the store; the two
+        are linked in their metadata.
+
+        The summary is written in a worker, never on the message pump, so the app stays
+        responsive meanwhile: the chrome is busy (``✻ Summarizing…``), read-only commands run,
+        turns and session switches are refused, and Esc cancels the summarizer through the
+        SDK's cancel signal; the current session goes on untouched.
+        """
+        if self.busy:
+            self.notify(t("tui.busy_switch", self.language), severity="warning")
+            return
+        self.busy = True  # before the worker starts, so no turn slips in between
+        self.run_worker(
+            self._run_compaction(focus), group="compact", exclusive=True, exit_on_error=False
+        )
+
+    async def _run_compaction(self, focus: str | None) -> None:
+        lang = self.language
+        old = self.agent
+        n = len(old.messages)
+        cancel = threading.Event()
+        self._compaction_cancel = cancel
+        row = BusyRow("tui.busy.summarizing", lang)
+        self._compaction_row = row
+        try:
+            if n:
+                await self.transcript.add_notice(t("compact.started", lang, n=n))
+            await self.transcript.mount(row)
+            try:
+                summary = await summarize(old, focus=focus, cancel_signal=cancel)
+            except CompactionCancelled:
+                await self.transcript.add_notice(t("compact.cancelled", lang))
+                return
+            except CompactionError as exc:
+                await self.transcript.add_notice(t("compact.failed", lang, error=exc))
+                return
+            title = compaction_title(old)
+            seed = seed_messages(summary, old.session_id)
+            new = await self._build(None, role=self.role, seed=seed)
+            if new is None:
+                return
+            self._adopt(new)
+            record_compaction(
+                self.store,
+                previous=old.session_id,
+                new=new.session_id,
+                title=title,
+                role=new.role,
+            )
+            self.event_buffer.clear()
+            self.last_listing = []
+            with self.batch_update():
+                await self.transcript.reset()  # takes the busy row with it
+                self.events_pane.clear_all()
+                self.events_pane.replay(
+                    self.store.read_events(new.session_id) if self.store else []
+                )
+                await self.transcript.add_info([seed[0]["content"][0]["text"]])
+                await self.transcript.add_notice(
+                    t(
+                        "compact.done",
+                        lang,
+                        n=n,
+                        session=new.session_id,
+                        previous=old.session_id,
+                    )
+                )
+            self.header.set_session(new.session_id)
+            self.refresh_sessions()
+        except Exception as exc:
+            logger.exception("compaction failed in session %s", old.session_id)
+            await self.transcript.add_notice(t("tui.unexpected_error", lang, detail=short(exc)))
+        finally:
+            self._compaction_cancel = None
+            self._compaction_row = None
+            if row.is_mounted:
+                await row.remove()
+            self.busy = False
+
+    async def clear_screen(self) -> None:
+        """``/clear``: empty the transcript (turns, welcome card, info cards, the fold) and
+        reset its bookkeeping. The session and the agent are untouched: ``/resume`` and
+        ``--resume`` show the history again. Refused while a turn is still mounting widgets."""
+        lang = self.language
+        if self.busy:
+            self.notify(t("tui.busy_clear", lang), severity="warning")
+            return
+        with self.batch_update():
+            await self.transcript.reset()
+            await self.transcript.add_notice(t("clear.done", lang, n=len(self.agent.messages)))
         self.header.glyph.state = self._idle_glyph_state()
 
     def on_session_sidebar_picked(self, message: SessionSidebar.Picked) -> None:
@@ -608,6 +786,13 @@ class TauApp(App[None]):
         if self.busy:
             if not self._cancelling:
                 self._cancelling = True
+                if self._compaction_cancel is not None:
+                    # ``/compact`` is summarizing: stop the throwaway summarizer, not the agent.
+                    self._compaction_cancel.set()
+                    row = self._compaction_row
+                    if row is not None and row.is_mounted:
+                        row.set_verb("tui.busy.cancelling")
+                    return
                 self.agent.cancel()
                 turn = self._current_turn
                 if turn is not None and turn.running:
@@ -698,7 +883,7 @@ def build_app(
     config: Config | None = None,
     *,
     profile: str | None = None,
-    role: str = "brain",
+    role: str | None = None,
     session_id: str | None = None,
     session_store: SessionStore | None = None,
     model: Any = None,
@@ -714,8 +899,10 @@ def build_app(
     """Build the agent for the ``tui`` channel with a :class:`TuiApprover` and wrap it.
 
     One ``EventBus`` and one approver serve the app for its lifetime; ``agent_factory`` builds
-    every later agent (``/new``, ``/resume``) on the same bus, store and approver. ``model``
-    and ``tools`` are passed to ``build_agent`` (tests use ``FakeModel`` and test-local tools).
+    every later agent (``/new``, ``/resume``, ``/compact``, ``/model``) on the same bus, store
+    and approver. ``model`` and ``tools`` are passed to ``build_agent`` (tests use ``FakeModel``
+    and test-local tools). ``role=None`` means ``brain``, or the role a resumed ``session_id``
+    remembers from ``/model``; an explicit ``role`` pins it for the app's lifetime.
     """
     config = config or Config.load()
     if profile:
@@ -723,11 +910,15 @@ def build_app(
     bus = EventBus()
     approver = TuiApprover(approve_delay=approve_delay)
     tool_list = list(tools) if tools is not None else None
+    role_pinned = role is not None
+    default_role = role or stored_role(session_store, session_id, config) or DEFAULT_ROLE
 
-    def agent_factory(target: str | None) -> TauAgent:
+    def agent_factory(
+        target: str | None, *, role: str | None = None, seed_messages: list | None = None
+    ) -> TauAgent:
         return build_agent(
             config=config,
-            role=role,
+            role=role or default_role,
             model=model,
             tools=tool_list,
             approver=approver,
@@ -736,6 +927,7 @@ def build_app(
             events=bus,
             channel="tui",
             clock=clock,
+            seed_messages=seed_messages,
         )
 
     agent = agent_factory(session_id)
@@ -751,4 +943,5 @@ def build_app(
         motion=motion,
         show_durations=show_durations,
         stream_mode=stream_mode,
+        role_pinned=role_pinned,
     )

@@ -107,10 +107,14 @@ project:
     | Workflow name | `release.yml` |
     | Environment name | `pypi` |
 
-3. Repeat with the project name `tau-tui`.
-4. On GitHub, **Settings → Environments → New environment** → `pypi`. Optional: add
-   yourself as a required reviewer, so every tag waits for a click before anything is
-   uploaded. The first run creates the environment when it is missing; the reviewer rule is
+3. Repeat with the project name `tau-tui` and the environment name `pypi-tui`. PyPI accepts
+   only one pending publisher per (repository, workflow, environment) tuple, so each package
+   publishes from its own GitHub environment; the workflow's matrix already maps
+   `tau-core → pypi` and `tau-tui → pypi-tui`.
+4. On GitHub, **Settings → Environments → New environment** → `pypi`, then `pypi-tui`
+   (or `gh api -X PUT repos/fport/tau/environments/pypi` and the same for `pypi-tui`).
+   Optional: add yourself as a required reviewer, so every tag waits for a click before
+   anything is uploaded. The first run creates a missing environment; the reviewer rule is
    the reason to create it by hand.
 
 !!! warning "Names must match exactly"

@@ -1,11 +1,13 @@
 //! TauBar: tau's macOS menu bar app.
 //!
-//! Tray only (no Dock icon): a native menu with the sleep modes and "Launch at login", plus a
-//! small settings window (React) opened from the menu. See `apps/taubar/README.md`.
+//! Tray only (no Dock icon): a native menu with the hub switch and its status, the sleep modes
+//! and "Launch at login", plus a small settings window (React) opened from the menu. See
+//! `apps/taubar/README.md`.
 
 mod commands;
 pub mod core;
 pub mod eventlog;
+pub mod hub;
 pub mod login;
 pub mod settings;
 mod signals;
@@ -13,21 +15,25 @@ pub mod sleep;
 pub mod tray;
 
 use crate::core::{Core, Dirs};
+use crate::hub::supervisor::SystemProbe;
 use crate::settings::SleepMode;
 use crate::sleep::SystemPower;
 use crate::tray::{ids, TrayMenu};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, Wry};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
-pub type AppCore = Core<SystemPower>;
+pub type AppCore = Core<SystemPower, SystemProbe>;
 
 /// Emitted to the settings window after every change.
 pub const SNAPSHOT_EVENT: &str = "taubar://snapshot";
 const SETTINGS_WINDOW: &str = "settings";
+/// Login item and sudoers rule checks.
 const TICK: Duration = Duration::from_secs(5);
+/// The hub supervisor's step.
+const HUB_TICK: Duration = Duration::from_secs(1);
 
 pub fn run() {
     let app = tauri::Builder::default()
@@ -41,18 +47,26 @@ pub fn run() {
             commands::log_tail,
             commands::open_log,
             commands::quit,
+            commands::set_run_hub,
+            commands::save_hub_settings,
+            commands::open_hub_log,
         ])
         .setup(|app| {
             // Tray only: no Dock icon, no app menu (Info.plist also sets LSUIElement).
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let dirs = resolve_dirs(app.handle())?;
-            app.manage(AppCore::start(dirs, SystemPower::new()));
+            let user_home = app.path().home_dir()?;
+            let probe = SystemProbe {
+                user_home: user_home.clone(),
+            };
+            app.manage(AppCore::start(dirs, SystemPower::new(), probe, user_home));
             let menu = TrayMenu::build(app.handle(), on_menu)?;
             app.manage(menu);
             refresh(app.handle());
             signals::install(app.handle().clone());
             spawn_ticker(app.handle().clone());
+            spawn_hub_thread(app.handle().clone());
             if app.state::<AppCore>().first_run {
                 open_settings(app.handle());
             }
@@ -100,9 +114,32 @@ pub fn refresh(app: &AppHandle) {
     let _ = app.emit(SNAPSHOT_EVENT, &snapshot);
 }
 
+/// Turn "Run the hub" on or off, off the main thread (it can wait on the hub supervisor), and
+/// explain when TauBar cannot do what the switch says.
+pub fn toggle_hub(app: &AppHandle, on: bool) {
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("taubar-hub-switch".into())
+        .spawn(move || {
+            let message = app.state::<AppCore>().set_run_hub(on);
+            refresh(&app);
+            if let Some(message) = message {
+                info_dialog(&app, "Run the hub", &message);
+            }
+        });
+    if let Err(err) = spawned {
+        eprintln!("taubar: hub switch thread could not start: {err}");
+    }
+}
+
 fn on_menu(app: &AppHandle, id: &str) {
     let core = app.state::<AppCore>();
     match id {
+        ids::HUB_RUN => {
+            toggle_hub(app, !core.hub_switch());
+            return;
+        }
+        ids::HUB_LOG => open_hub_log(app),
         ids::SLEEP_NORMAL => {
             core.set_sleep_mode(SleepMode::Normal);
         }
@@ -158,6 +195,32 @@ fn spawn_ticker(app: AppHandle) {
     }
 }
 
+/// Every second: one hub supervisor step (reap, restart, poll `/health` and `/status`), then
+/// refresh the menu and the window. A panic in a step is logged and the loop goes on, so
+/// supervision never silently stops.
+fn spawn_hub_thread(app: AppHandle) {
+    let hub = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("taubar-hub".into())
+        .spawn(move || loop {
+            std::thread::sleep(HUB_TICK);
+            let step = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                hub.state::<AppCore>().hub_tick();
+            }));
+            if step.is_err() {
+                hub.state::<AppCore>()
+                    .log
+                    .write("hub: a supervisor step panicked; continuing");
+            }
+            refresh(&hub);
+        });
+    if let Err(err) = spawned {
+        app.state::<AppCore>()
+            .log
+            .write(format!("hub thread could not start: {err}"));
+    }
+}
+
 pub fn open_settings(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW) {
         let _ = window.unminimize();
@@ -176,6 +239,15 @@ pub fn open_settings(app: &AppHandle) {
     match built {
         Ok(window) => {
             let _ = window.set_focus();
+            let handle = app.clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    handle
+                        .state::<AppCore>()
+                        .log
+                        .write("settings window closed");
+                }
+            });
         }
         Err(err) => app
             .state::<AppCore>()
@@ -190,12 +262,34 @@ pub fn open_log(app: &AppHandle) {
     if !path.exists() {
         core.log.write("log opened");
     }
+    open_file(app, &path);
+}
+
+/// The hub's own log (`<TAU_DATA_DIR>/logs/tau.log`).
+pub fn open_hub_log(app: &AppHandle) {
+    match app.state::<AppCore>().hub_log() {
+        Some(path) if path.exists() => open_file(app, &path),
+        Some(path) => info_dialog(
+            app,
+            "Hub log",
+            &format!("The hub has not written its log yet: {}", path.display()),
+        ),
+        None => info_dialog(
+            app,
+            "Hub log",
+            "The hub is not set up yet: pick the tau checkout in TauBar's window.",
+        ),
+    }
+}
+
+fn open_file(app: &AppHandle, path: &Path) {
     if let Err(err) = app
         .opener()
         .open_path(path.display().to_string(), None::<&str>)
     {
-        core.log
-            .write(format!("the log could not be opened: {err}"));
+        app.state::<AppCore>()
+            .log
+            .write(format!("{} could not be opened: {err}", path.display()));
     }
 }
 
@@ -204,5 +298,13 @@ fn error_dialog(app: &AppHandle, title: &str, message: &str) {
         .message(message)
         .title(title)
         .kind(MessageDialogKind::Error)
+        .show(|_| {});
+}
+
+fn info_dialog(app: &AppHandle, title: &str, message: &str) {
+    app.dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Info)
         .show(|_| {});
 }

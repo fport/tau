@@ -1,6 +1,106 @@
 // Pure display helpers for the settings window (tested in format.test.ts).
 
-import type { LoginItemStatus, SleepMode, SleepStatus } from "./api";
+import type { HubSettings, HubState, LoginItemStatus, SleepMode, SleepStatus } from "./api";
+
+/** The colour class of the hub's status line (brand state colours, no green or red). */
+export function hubTone(state: HubState): "ok" | "pending" | "attention" | "error" {
+  switch (state) {
+    case "up":
+    case "elsewhere":
+      return "ok";
+    case "starting":
+    case "stopping":
+    case "off":
+    case "stopped":
+      return "pending";
+    case "restarting":
+    case "launchd_idle":
+    case "not_configured":
+      return "attention";
+    case "error":
+      return "error";
+  }
+}
+
+/** The hub form as the user types it (every field a string). */
+export interface HubForm {
+  python: string;
+  tau_home: string;
+  data_dir: string;
+  port: string;
+  path: string;
+  env: string;
+}
+
+export function formFromSettings(settings: HubSettings): HubForm {
+  return {
+    python: settings.python ?? "",
+    tau_home: settings.tau_home ?? "",
+    data_dir: settings.data_dir ?? "",
+    port: settings.port == null ? "" : String(settings.port),
+    path: settings.path ?? "",
+    env: formatEnv(settings.env),
+  };
+}
+
+/** Settings from the form, or the problems that keep it from being saved. */
+export function settingsFromForm(form: HubForm): { settings: HubSettings; errors: string[] } {
+  const errors: string[] = [];
+  const text = (value: string) => (value.trim() === "" ? null : value.trim());
+  let port: number | null = null;
+  if (form.port.trim() !== "") {
+    const parsed = Number(form.port.trim());
+    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535) {
+      port = parsed;
+    } else {
+      errors.push(`Control port must be a number from 1 to 65535, not "${form.port.trim()}".`);
+    }
+  }
+  const env = parseEnv(form.env);
+  errors.push(...env.errors);
+  return {
+    settings: {
+      python: text(form.python),
+      tau_home: text(form.tau_home),
+      data_dir: text(form.data_dir),
+      port,
+      path: text(form.path),
+      env: env.env,
+    },
+    errors,
+  };
+}
+
+/** `KEY=value` lines (blank lines and `#` comments ignored; an empty value is allowed). */
+export function parseEnv(text: string): { env: Record<string, string>; errors: string[] } {
+  const env: Record<string, string> = {};
+  const errors: string[] = [];
+  text.split("\n").forEach((raw, index) => {
+    const line = raw.trim();
+    if (line === "" || line.startsWith("#")) return;
+    const eq = line.indexOf("=");
+    const key = eq < 0 ? line : line.slice(0, eq).trim();
+    if (eq < 0 || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      errors.push(`Environment line ${index + 1} is not KEY=value: "${line}".`);
+      return;
+    }
+    env[key] = line.slice(eq + 1).trim();
+  });
+  return { env, errors };
+}
+
+export function formatEnv(env: Record<string, string>): string {
+  return Object.keys(env)
+    .sort()
+    .map((key) => `${key}=${env[key]}`)
+    .join("\n");
+}
+
+/** Python and TAU_HOME for a tau checkout (its uv virtualenv). */
+export function checkoutSettings(dir: string): { python: string; tau_home: string } {
+  const home = dir.replace(/\/+$/, "");
+  return { python: `${home}/.venv/bin/python`, tau_home: home };
+}
 
 export interface SleepChoice {
   mode: SleepMode;

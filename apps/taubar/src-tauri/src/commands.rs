@@ -1,9 +1,41 @@
-//! Commands the settings window calls (`invoke` from `src/api.ts`).
+//! Commands the settings window calls (`invoke` from `src/api.ts`). The hub commands are
+//! `async` so they run off the main thread (they can wait on the hub supervisor).
 
 use crate::core::Snapshot;
-use crate::settings::SleepMode;
+use crate::settings::{HubSettings, SleepMode};
 use crate::{refresh, AppCore};
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+
+#[derive(Serialize)]
+pub struct HubSwitchResult {
+    pub snapshot: Snapshot,
+    /// Why the switch could not do what it says (a hub TauBar did not start).
+    pub message: Option<String>,
+}
+
+#[tauri::command]
+pub async fn set_run_hub(app: AppHandle, on: bool) -> HubSwitchResult {
+    let message = app.state::<AppCore>().set_run_hub(on);
+    refresh(&app);
+    HubSwitchResult {
+        snapshot: app.state::<AppCore>().snapshot(),
+        message,
+    }
+}
+
+/// Save the hub settings; `Err` names what is wrong with them (they are saved anyway).
+#[tauri::command]
+pub async fn save_hub_settings(app: AppHandle, hub: HubSettings) -> Result<Snapshot, String> {
+    let result = app.state::<AppCore>().save_hub_settings(hub);
+    refresh(&app);
+    result.map(|()| app.state::<AppCore>().snapshot())
+}
+
+#[tauri::command]
+pub fn open_hub_log(app: AppHandle) {
+    crate::open_hub_log(&app);
+}
 
 #[tauri::command]
 pub fn snapshot(core: State<'_, AppCore>) -> Snapshot {

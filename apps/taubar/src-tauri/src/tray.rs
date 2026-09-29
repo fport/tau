@@ -16,6 +16,8 @@ use tauri::{AppHandle, Runtime};
 pub const TRAY_ID: &str = "taubar";
 
 pub mod ids {
+    pub const HUB_RUN: &str = "hub.run";
+    pub const HUB_LOG: &str = "hub.log";
     pub const SLEEP_NORMAL: &str = "sleep.normal";
     pub const SLEEP_AC: &str = "sleep.ac";
     pub const SLEEP_LID: &str = "sleep.lid";
@@ -26,6 +28,8 @@ pub mod ids {
 }
 
 pub struct TrayMenu<R: Runtime> {
+    hub_lines: [MenuItem<R>; 3],
+    hub_run: CheckMenuItem<R>,
     sleep_header: MenuItem<R>,
     sleep_normal: CheckMenuItem<R>,
     sleep_ac: CheckMenuItem<R>,
@@ -40,6 +44,13 @@ impl<R: Runtime> TrayMenu<R> {
         F: Fn(&AppHandle<R>, &str) + Send + Sync + 'static,
     {
         let none = None::<&str>;
+        let hub_lines = [
+            MenuItem::with_id(app, "hub.status", "Hub", false, none)?,
+            MenuItem::with_id(app, "hub.detail", "Telegram: –", false, none)?,
+            MenuItem::with_id(app, "hub.crash", "Last crash: none", false, none)?,
+        ];
+        let hub_run = CheckMenuItem::with_id(app, ids::HUB_RUN, "Run the hub", true, false, none)?;
+        let hub_log = MenuItem::with_id(app, ids::HUB_LOG, "Open Hub Log", true, none)?;
         let sleep_header = MenuItem::with_id(app, "sleep.header", "Sleep", false, none)?;
         let sleep_normal = CheckMenuItem::with_id(
             app,
@@ -68,6 +79,12 @@ impl<R: Runtime> TrayMenu<R> {
         let menu = Menu::with_items(
             app,
             &[
+                &hub_lines[0],
+                &hub_lines[1],
+                &hub_lines[2],
+                &hub_run,
+                &hub_log,
+                &PredefinedMenuItem::separator(app)?,
                 &sleep_header,
                 &sleep_normal,
                 &sleep_ac,
@@ -93,6 +110,8 @@ impl<R: Runtime> TrayMenu<R> {
             .build(app)?;
 
         Ok(Self {
+            hub_lines,
+            hub_run,
             sleep_header,
             sleep_normal,
             sleep_ac,
@@ -102,6 +121,10 @@ impl<R: Runtime> TrayMenu<R> {
     }
 
     pub fn update(&self, app: &AppHandle<R>, snapshot: &Snapshot) {
+        for (item, line) in self.hub_lines.iter().zip(&snapshot.hub.lines) {
+            let _ = item.set_text(line);
+        }
+        let _ = self.hub_run.set_checked(snapshot.hub.view.switch_on);
         let sleep = &snapshot.sleep;
         let header = sleep_header(sleep);
         let _ = self.sleep_header.set_text(&header);
@@ -119,7 +142,10 @@ impl<R: Runtime> TrayMenu<R> {
         let _ = self.login.set_checked(snapshot.login.status.checked());
         let _ = self.login.set_text(login_label(snapshot.login.status));
         if let Some(tray) = app.tray_by_id(TRAY_ID) {
-            let _ = tray.set_tooltip(Some(format!("TauBar · {header}")));
+            let _ = tray.set_tooltip(Some(format!(
+                "TauBar · {} · {header}",
+                snapshot.hub.lines[0]
+            )));
         }
     }
 }

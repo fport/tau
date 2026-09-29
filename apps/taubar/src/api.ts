@@ -21,8 +21,52 @@ export interface SleepStatus {
   problem: string | null;
 }
 
+export type HubState =
+  | "not_configured"
+  | "off"
+  | "starting"
+  | "up"
+  | "stopping"
+  | "restarting"
+  | "stopped"
+  | "elsewhere"
+  | "launchd_idle"
+  | "error";
+
+/** How TauBar starts the hub (Rust `HubSettings`). */
+export interface HubSettings {
+  python: string | null;
+  tau_home: string | null;
+  data_dir: string | null;
+  port: number | null;
+  path: string | null;
+  env: Record<string, string>;
+}
+
+export interface HubSnapshot {
+  switch_on: boolean;
+  state: HubState;
+  pid: number | null;
+  by_taubar: boolean;
+  launchd: boolean;
+  uptime_s: number | null;
+  restart_in_s: number | null;
+  restarts: number;
+  last_exit: { at: string; pid: number; reason: string } | null;
+  control_url: string | null;
+  hub_log: string | null;
+  command: string | null;
+  problem: string | null;
+  /** The menu's hub lines: status, Telegram (or a problem), last crash. */
+  lines: [string, string, string];
+  /** The saved switch: what TauBar does at its next start. */
+  run_at_start: boolean;
+  settings: HubSettings;
+}
+
 export interface Snapshot {
   version: string;
+  hub: HubSnapshot;
   sleep: SleepStatus;
   sleep_summary: string;
   login: { status: LoginItemStatus; problem: string | null };
@@ -39,6 +83,10 @@ export const api = {
   logTail: (lines = 40) => invoke<string[]>("log_tail", { lines }),
   openLog: () => invoke<void>("open_log"),
   quit: () => invoke<void>("quit"),
+  setRunHub: (on: boolean) =>
+    invoke<{ snapshot: Snapshot; message: string | null }>("set_run_hub", { on }),
+  saveHubSettings: (hub: HubSettings) => invoke<Snapshot>("save_hub_settings", { hub }),
+  openHubLog: () => invoke<void>("open_hub_log"),
 };
 
 export function onSnapshot(handler: (snapshot: Snapshot) => void): Promise<UnlistenFn> {

@@ -101,4 +101,5 @@ nav:
       - Development setup: contributing/development.md
       - Write a plugin: contributing/plugins.md
       - Roadmap and issues: contributing/roadmap.md
+      - Releasing: contributing/release.md
   - Brand: brand.md

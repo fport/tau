@@ -33,6 +33,7 @@ dev = [
     "tau-example-provider",
     "tau-example-service",
 ]
+docs = ["mkdocs-material>=9.5"]
 
 [tool.ruff]
 line-length = 100

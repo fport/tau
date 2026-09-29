@@ -1,11 +1,11 @@
 [project]
 name = "tau-tui"
-version = "0.3.0"
+version = "0.3.1"
 description = "Textual terminal UI for tau: streamed markdown replies, tool cards, live events and in-TUI approvals."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = ["click>=8.1", "rich>=13", "tau-core>=0.3.0", "textual>=8.2,<9"]
+dependencies = ["click>=8.1", "rich>=13", "tau-core>=0.3.1", "textual>=8.2,<9"]
 keywords = ["tau", "agent", "assistant", "tui", "textual", "terminal", "cli"]
 classifiers = [
     "Development Status :: 3 - Alpha",

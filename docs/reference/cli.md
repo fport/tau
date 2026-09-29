@@ -241,8 +241,8 @@ Options:
 ```
 
 ```text
-tau-core 0.3.0
-tau-tui 0.3.0
+tau-core 0.3.1
+tau-tui 0.3.1
 ```
 
 One line per installed `tau-*` distribution. It never imports a provider SDK, so it is safe to run on a broken installation.

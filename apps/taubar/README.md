@@ -5,20 +5,29 @@ only, no Dock icon.
 
 What it does today:
 
+- **Runs the hub:** with "Run the hub" ticked, TauBar starts `tau hub run`, restarts it after a
+  crash, leaves it stopped after `tau hub stop`, stops it when TauBar quits, and never starts a
+  second hub. The menu shows whether the hub is up, its Telegram poller and its last crash.
 - **Sleep modes:** Normal, Keep awake on AC power (default), Keep awake with the lid closed.
 - **Launch at login:** a checkbox that registers TauBar as a login item.
-- A **window** (Settings…) with the same switches and TauBar's own log.
+- A **window** (Settings…) with the same switches, the hub's settings and TauBar's own log.
 
 The status panel, approvals and voice come with later roadmap issues (025, 031).
 
 ```text
 τ
+├─ Hub: up 2 h 5 min · pid 1234
+├─ Telegram: polling as @your_bot
+├─ Last crash: none
+├─ ✓ Run the hub
+├─   Open Hub Log
+├─ ──────────
 ├─ Sleep: kept awake on AC power
 ├─   Normal
 ├─ ✓ Keep awake on AC power
 ├─   Keep awake with the lid closed (needs setup)
 ├─ ──────────
-├─   Launch at login
+├─ ✓ Launch at login
 ├─   Settings…                              ⌘,
 ├─   Open TauBar Log
 ├─ ──────────
@@ -67,12 +76,61 @@ The first start opens TauBar's window; after that it lives in the menu bar as **
 3. Run `infra/remote/setup.sh` once: with TauBar.app in `/Applications` it removes the
    `com.tau.keepawake` agent, whose job TauBar now does. `infra/remote/doctor.sh` accepts
    either one.
+4. Let TauBar run the hub (next section).
 
 **No τ in the menu bar?** On a MacBook with a notch, macOS hides menu bar icons that do not fit
 next to the notch; new ones go first. Open TauBar again (Spotlight, Finder or
 `open -a TauBar`) and its window appears, with every switch and a Quit button. To bring the icon
 back, make room: quit other menu bar apps, or switch some off under System Settings → Menu Bar →
 Allow in the Menu Bar (and check that TauBar is allowed there).
+
+## The hub
+
+With **Run the hub** ticked, TauBar is the hub's supervisor on this Mac (the job the
+`com.tau.hub` launchd agent did; see [`infra/services/README.md`](../../infra/services/README.md)
+for why TauBar is now the default):
+
+| When | TauBar |
+|---|---|
+| You tick the switch, or TauBar starts with it ticked | starts `<python> -m tau_core hub run` in `TAU_HOME` as its own child; the menu shows `Hub: starting…`, then `Hub: up …` once `GET /health` answers (about a second) |
+| The hub crashes or is killed (`kill -9`) | restarts it after 1 s; while it keeps failing the wait doubles up to 60 s, and goes back to 1 s after a run of a minute. The new hub reports the crash (`Last crash: unexpected exit (no clean shutdown)`) |
+| `tau hub stop` (exit 0 without TauBar asking) | leaves it stopped; the switch shows off until you tick it again or TauBar starts again |
+| You untick the switch | stops it (SIGTERM; SIGKILL after 15 s) |
+| TauBar quits | stops the hub it started (SIGKILL after 10 s) |
+| A hub TauBar did not start is running (by hand, or launchd) | shows it (`started outside TauBar`, `run by launchd`) and never starts a second one; unticking the switch tells you how to stop it. With the switch ticked, TauBar starts its own hub as soon as that one is gone, unless a loaded `com.tau.hub` launchd agent owns the same data dir |
+| TauBar itself crashed and is started again | takes over the hub it had started (its pid is in `state.json` and still holds the hub lock) |
+
+How the hub is started comes from the window (**How TauBar starts the hub**):
+
+| Field | Default |
+|---|---|
+| Python | none: a Python with tau-core, normally `<checkout>/.venv/bin/python` |
+| `TAU_HOME` | none: the directory with `tau.toml`; also the working directory |
+| `TAU_DATA_DIR` | empty: what `tau.toml` / `.env` say (`~/.local/share/tau`) |
+| Control port (`TAU_HUB_PORT`) | empty: `[hub] control_port` (7877) |
+| `PATH` | `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin` |
+| More environment | `KEY=value` lines; they win over `.env` |
+
+**Use a tau checkout…** fills in the first two from a folder. On its first start TauBar copies
+Python, `TAU_HOME`, `TAU_DATA_DIR` and `PATH` from an installed `com.tau.hub` launchd agent, so a
+Mac that ran the hub under launchd needs no typing. The hub inherits only `HOME`, `USER`,
+`LOGNAME`, `TMPDIR`, `SHELL` and the locale from TauBar; `.env` in `TAU_HOME` is read by the hub
+itself, as always.
+
+Before every start TauBar runs `tau hub status --json` to learn which lock and port the
+configuration resolves to, and probes that lock. Hub output: `<TAU_DATA_DIR>/hub/logs/taubar.{out,err}.log`;
+the hub's log: `<TAU_DATA_DIR>/logs/tau.log` (**Open Hub Log**); every start, exit and restart
+also lands in TauBar's own log.
+
+Moving from the launchd agent to TauBar:
+
+```sh
+cd /path/to/tau
+uv run tau hub uninstall      # stops the launchd hub and removes the agent
+```
+
+Then tick **Run the hub** (with it already ticked, TauBar starts its hub once the launchd one is
+gone). To go back: untick the switch, then `uv run tau hub install`.
 
 ## Sleep modes
 
@@ -131,7 +189,7 @@ the Mac it was built on, launchd pended every automatic spawn of user agents (ro
 item.
 
 The registration points at the app where it is when you tick the box, so install TauBar.app in
-`/Applications` first.
+`/Applications` first. With **Run the hub** ticked, this is also how the hub starts at login.
 
 Verified on macOS 26.3.1: ticking the box registers TauBar (status `Enabled`), unticking removes
 it (`NotRegistered`). Not verified yet: that it actually starts at the next login, because
@@ -141,9 +199,10 @@ nobody logged out while this was built; check it after your next login.
 
 | Path | What |
 |---|---|
-| `~/Library/Application Support/com.tau.taubar/settings.json` | your choices (sleep mode) |
-| `~/Library/Application Support/com.tau.taubar/state.json` | what TauBar changed and must undo (`lid_engaged`) |
+| `~/Library/Application Support/com.tau.taubar/settings.json` | your choices: `sleep_mode`, `run_hub`, `hub` (how the hub is started) |
+| `~/Library/Application Support/com.tau.taubar/state.json` | what TauBar changed and must undo or take over: `lid_engaged`, `hub_pid` |
 | `~/Library/Logs/com.tau.taubar/taubar.log` | TauBar's short log (rotated once at 256 KB) |
+| `<TAU_DATA_DIR>/hub/logs/taubar.{out,err}.log` | the hub's stdout and stderr while TauBar runs it |
 
 `TAUBAR_HOME=/some/dir` keeps everything in one directory instead (`settings.json`,
 `state.json`, `logs/taubar.log`): for tests or a second copy.
@@ -151,7 +210,8 @@ nobody logged out while this was built; check it after your next login.
 ## Uninstall
 
 1. Untick **Launch at login** (or remove TauBar in System Settings → Login Items).
-2. Quit TauBar: it restores normal sleep.
+2. Quit TauBar: it restores normal sleep and stops the hub it started. If the hub should keep
+   running without TauBar, install the launchd agent: `uv run tau hub install`.
 3. If you installed the sudoers rule: `apps/taubar/sudoers/uninstall-sudoers.sh`.
 4. Delete `/Applications/TauBar.app` and the files above.
 5. Run `infra/remote/setup.sh` if the Mac should still stay awake on AC power without TauBar:
@@ -160,15 +220,22 @@ nobody logged out while this was built; check it after your next login.
 ## Development
 
 ```sh
-pnpm test                          # vitest: the window's display logic
+pnpm test                          # vitest: the window's display and form logic
 pnpm build                         # tsc + vite
-(cd src-tauri && cargo test)       # Rust: sleep modes, settings, log, menu labels
+(cd src-tauri && cargo test)       # Rust: supervisor, restart policy, sleep modes, settings, …
 ```
+
+The supervisor tests run real `/bin/sh` children as stand-in hubs (crash, `kill -9`, clean
+exit, a SIGTERM-deaf hub, a foreign lock holder, an orphan to adopt) against a fake probe, so
+they need no tau checkout and never touch a real hub.
 
 | File | Job |
 |---|---|
-| `src-tauri/src/lib.rs` | app setup (tray only), menu actions, window, ticker |
+| `src-tauri/src/lib.rs` | app setup (tray only), menu actions, window, ticker and hub threads |
 | `src-tauri/src/core.rs` | state shared by the menu and the window |
+| `src-tauri/src/hub/supervisor.rs` | the hub supervisor (start, reap, restart, stop, adopt, never a second hub) |
+| `src-tauri/src/hub/policy.rs` | which exits are restarted, and the backoff |
+| `src-tauri/src/hub/probe.rs`, `launch.rs`, `display.rs` | lock/control API/launchd probes, the command and environment, the menu lines |
 | `src-tauri/src/sleep.rs` | the three modes behind a `Power` trait (a fake in tests) |
 | `src-tauri/src/login.rs` | `SMAppService.mainApp` |
 | `src-tauri/src/tray.rs` | the native menu |

@@ -26,7 +26,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Compaction** — `/compact`: summarizing the current session with the agent's own model and continuing in a *new* session whose history starts with that summary (the **seed**). The old session is kept untouched and the two point at each other in their metadata (`compacted_from`, `compacted_to`). Never a rewrite of an existing session. *Avoid: truncate, prune.*
 - **UI language** — the language of the UI chrome (slash-command hints, labels, pane titles, key hints, notices, approval dialog, CLI help): `en` (default) or `tr`, set by `[ui] language` in `tau.toml`, `TAU_LANG`, `tau --lang` or `/lang` for one run. Looked up through `tau_core.i18n` (`t(key, language)`). Distinct from the persona's language. *Avoid: locale.*
 - **Status report** — the message the hub sends to Telegram when it starts or restarts.
-- **TauBar** — the macOS tray app (Tauri): sleep modes, status, approvals, voice.
+- **TauBar** — the macOS tray app (Tauri): runs and supervises the hub ("Run the hub"), sleep modes, launch at login; later status, approvals, voice.
 
 ## Models and cost
 

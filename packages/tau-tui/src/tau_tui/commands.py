@@ -2,8 +2,8 @@
 
 Each handler is ``async (app, argument) -> None``. Read-only commands (``/help``, ``/tools``,
 ``/sessions``, ``/session``, ``/status``, ``/model`` without an argument, ``/lang``) run while
-a turn is busy; ``/new``, ``/resume``, ``/compact``, ``/clear`` and ``/model <role>`` are
-refused with a toast until the turn ends.
+a turn is busy; ``/new``, ``/resume``, ``/compact``, ``/clear``, ``/model <role>`` and
+``/settings`` are refused with a toast until the turn ends.
 """
 
 from __future__ import annotations
@@ -158,6 +158,11 @@ async def cmd_lang(app: TauApp, argument: str) -> None:
     app.notify(t("lang.switched", argument, language=argument))
 
 
+async def cmd_settings(app: TauApp, argument: str) -> None:
+    """``/settings [section]``: the settings screen, on a section when one is named."""
+    app.open_settings(argument.strip().casefold() or None)
+
+
 async def cmd_quit(app: TauApp, argument: str) -> None:
     app.exit()
 
@@ -174,9 +179,14 @@ HANDLERS: dict[str, CommandHandler] = {
     "status": cmd_status,
     "model": cmd_model,
     "lang": cmd_lang,
+    "settings": cmd_settings,
     "quit": cmd_quit,
 }
 
 SWITCHING = frozenset({"new", "resume", "compact"})
 """Commands refused with the session-switch toast while a turn is busy; ``/clear`` and
 ``/model <role>`` check inside their flows, each with its own wording."""
+
+AGENTLESS = frozenset({"help", "lang", "settings", "quit"})
+"""Commands that work before there is an agent (the no-credentials start); the others are
+answered with the ``settings.no_credentials`` toast."""

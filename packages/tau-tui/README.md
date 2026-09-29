@@ -17,10 +17,13 @@ tau --home /path/to/tau --lang tr tui --profile travel
 ```
 
 Configuration comes from `tau.toml` and `.env` like every other channel (`TAU_HOME`,
-`TAU_DATA_DIR`, `TAU_PROFILE`, `TAU_LANG`). Missing credentials, a broken config or an unknown
-session end the command with a plain English message and exit code 2 before the interface opens.
-The chrome (hints, labels, notices, the approval dialog) follows `[ui] language` (`en` or `tr`);
-`/lang` switches it for one run.
+`TAU_DATA_DIR`, `TAU_PROFILE`, `TAU_LANG`). A broken config or an unknown session end the
+command with a plain English message and exit code 2 before the interface opens. With no
+`tau.toml` anywhere a setup screen creates one first (home directory, provider, UI language;
+the same code as `tau init`); with a config whose role has no credentials the interface opens on
+its settings screen and the chat starts once a key is saved. `/settings` or F10 opens that
+screen at any time (see [Settings](#settings)). The chrome (hints, labels, notices, the
+approval dialog) follows `[ui] language` (`en` or `tr`); `/lang` switches it for one run.
 
 ## Layout
 
@@ -108,6 +111,7 @@ the UI moves. The composer border is Ember, Signal while busy and Flare while an
 | ctrl+o / F6 | expand or collapse the cards of the last turn: the arguments as JSON and the full result (a click toggles any card) |
 | PageUp / PageDown, F7 / F8 | scroll the transcript; PageUp at the top of a folded history loads 20 older turns |
 | F9 | back to the bottom |
+| F10 | the settings screen (`/settings`); inside it `ctrl+s` or F2 saves and Esc closes |
 | ↑ / ↓ | recall sent prompts (single-line composer); navigate the menu while it is open |
 | `?` or F1 | help (only in an empty composer; `?x` is sent as a message) |
 | ctrl+q | quit (ctrl+c copies a selection in the composer; without one it only says how to quit) |
@@ -126,13 +130,78 @@ the same wording as `tau chat`:
 | `/clear` | empty the transcript (turns, welcome card, info cards, the fold); the session and the agent go on, `/resume` or `--resume` show the history again |
 | `/status` | an info card: profile, session, model, context, tools, language, versions, hub |
 | `/model [role]` | list the roles of `tau.toml`, or switch this session to one; the header follows |
+| `/settings [section]` | the settings screen, on a section when one is named (`roles`, `credentials`, `interface`, `agent`, `doctor`, `files`) |
 | `/quit` (alias `/exit`) | leave |
 
-The Turkish aliases (`/devam`, `/çık`, `/özet`, `/temizle`, `/durum`, `/rol`, …) keep working
-but are never listed; the menu shows the twelve canonical names and every row is on screen at
-80x24 (in the `-short` band it scrolls). `/new`, `/resume`, `/compact`, `/clear` and
-`/model <role>` wait for the current turn (a toast says so); `/status` and `/model` without an
-argument run any time.
+The Turkish aliases (`/devam`, `/çık`, `/özet`, `/temizle`, `/durum`, `/rol`, `/ayarlar`, …)
+keep working but are never listed; the menu shows the thirteen canonical names and every row is
+on screen at 80x24 (in the `-short` band it scrolls). `/new`, `/resume`, `/compact`, `/clear`,
+`/model <role>` and `/settings` wait for the current turn (a toast says so); `/status` and
+`/model` without an argument run any time.
+
+## Settings
+
+`SettingsScreen` (`/settings`, `/ayarlar`, F10) edits `tau.toml` and `.env` without leaving the
+TUI, through `tau_core.settings`. It is a keyboard-only modal in the family of the approval
+dialog: a list of sections on the left, the section's form on the right, a status line and a
+hint row; the header stays visible above it. `↑↓` picks a section, Enter or Tab moves into its
+fields, `shift+tab` comes back, `ctrl+s` or F2 (the mosh-safe mirror; the app's own F2 picker is
+switched off while the screen is up) saves, Esc closes without writing.
+
+```text
+ τ tau  home · 20260929-120000-abcd                                  brain · en
+ ╭────────────────────────────────────────────────────────────────────────────╮
+ │ ◆ Settings                                                                 │
+ │                                                                            │
+ │ Model roles        brain                                                   │
+ │ Credentials        provider     fake                                   ▼   │
+ │ Interface          model id     fake-brain                                 │
+ │ Agent              max tokens                                              │
+ │ Doctor             fallback     (none)                                 ▼   │
+ │ Files              fallback id                                             │
+ │                    ✓ no credentials needed                                 │
+ │ ↑↓ section · tab fields · ctrl+s / F2 save · esc close                     │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+```
+
+- **Model roles**: per role a provider `Select` over every installed provider (planned ones
+  marked), the model id, max tokens, an optional fallback provider and model id, and the
+  role's credential status (`✓ credentials ok`, `✗ missing AWS_REGION, AWS_PROFILE`,
+  `◆ missing … · fallback anthropic in use`, `✓ no credentials needed`).
+- **Credentials**: the variables of the configured providers first (`needed by brain, fast`),
+  then every other provider's, then every name in `.env.example` and `.env`. Each row shows
+  `set · sk-…abcd` or `not set`, a password `Input` for a new value and a **clear** button
+  (press again to keep). The names a start without credentials was missing are marked
+  `◆ needed` and the first of them has the focus.
+- **Interface**: the UI language (`[ui] language`, applied live on save) and the profile
+  (`TAU_PROFILE` in `.env`).
+- **Agent**: `context`, `window_size`, `max_turns`, `max_total_tokens` (empty = none).
+- **Doctor**: the `tau doctor` checks, run in a thread when the section is first shown.
+- **Files**: the paths of `tau.toml`, `.env`, `.env.example`, `persona/persona.md` and
+  `persona/user.md` with a mark for the ones that exist (`build_app(show_paths=False)` prints
+  `<home>/…` instead, which the snapshot test uses).
+
+A save first validates (a bad value stays in the dialog with the reason in the status line and
+nothing is written), then writes `tau.toml` through tomlkit (comments kept) and `.env` through
+python-dotenv (mode `0600`, the changed names also exported to the process), then validates the
+saved files and, when a role, an agent option, a credential or the profile changed, rebuilds the
+agent on the same session through the app's factory, like `/model` (`Settings saved; model
+reloaded.`, else `Settings saved.`). A language-only change relabels the chrome and rebuilds
+nothing. A credential value lives only in its `Input` until the save: it never reaches a
+`Static`, a notice, the `text` oracle, a screenshot or the log.
+
+Two start-up paths use the same family of screens. `tau tui` without any `tau.toml` runs
+`SetupScreen` (`run_setup`): the home directory (`~/.tau`, editable), the provider for the
+`brain` and `fast` roles (detected from the environment and `<home>/.env` like `tau init`, with
+`fake` for a credential-free try) and the UI language; **Create** (Enter, `ctrl+s`, F2) runs
+`tau_core.builder.init_home` and the command continues into the normal app on that home, Esc
+leaves with exit code 2. A config whose role has no credentials opens the app **without an
+agent**: the header shows `—` for the session, the composer reads *Add credentials in
+/settings* and takes only `/settings`, `/help`, `/lang` and `/quit`, the settings screen opens
+on Credentials with the missing names marked, and the first agent is built as soon as a save
+gives the provider its key. A role that runs on its fallback provider is announced with one
+notice (`brain: using the fallback provider anthropic (bedrock has no credentials). Add them in
+/settings.`) instead of the terminal warning `tau chat` prints.
 
 ## Approvals
 
@@ -206,6 +275,7 @@ instead of a traceback.
 ```python
 from tau_tui import TauApp, build_app, resolve_resume, SessionNotFound
 from tau_tui import TuiApprover, ApprovalScreen, Transcript, EventLog, rasterise
+from tau_tui import SettingsScreen, SetupScreen, SetupResult, run_setup
 
 app = build_app(config, session_store=store, session_id=None)  # builds the agent (channel "tui")
 app.run()
@@ -213,11 +283,17 @@ app.run()
 
 `build_app` creates one `EventBus` and one `TuiApprover`, builds the first agent with
 `tau_core.build_agent(..., channel="tui")` and gives `TauApp` a factory
-`agent_factory(session_id, *, role=None, seed_messages=None)` that builds every later agent
-(`/new`, `/resume`, `/compact`, `/model`) on the same bus, store and approver. `role=None`
+`agent_factory(session_id, *, role=None, seed_messages=None, config=None)` that builds every
+later agent (`/new`, `/resume`, `/compact`, `/model`, a settings save) on the same bus, store
+and approver; a `config` handed to it becomes the config of every later build. `role=None`
 means `brain`, or the role a resumed `session_id` remembers from `/model`; an explicit `role`
-is pinned for the run. Tests pass `model=FakeModel([...])`, `tools=[...]`, a fixed `clock`,
-`tz=UTC`, `motion=False` and `show_durations=False`.
+is pinned for the run. When the first agent cannot be built for lack of credentials,
+`build_app` returns the app without an agent (`app.agent is None`,
+`app.missing_credentials` names the variables) instead of raising. Tests pass
+`model=FakeModel([...])`, `tools=[...]`, a fixed `clock`, `tz=UTC`, `motion=False`,
+`show_durations=False` and `show_paths=False`. `run_setup(default_home=..., language=...)`
+runs the setup app and returns a `SetupResult` (`home`, `provider`, `language`, `created`) or
+`None`.
 `resolve_resume(store, resume, language=...)` turns `--resume [ID]` into a session id and an
 optional notice (`SessionNotFound` for an unknown id). `rasterise(cols)` is the τ mark as
 half-block cells (`docs/brand/README.md`, "Terminal").
@@ -231,13 +307,15 @@ uv run pytest packages/tau-tui --snapshot-update       # after an intended visua
 
 Snapshots live under `tests/__snapshots__/test_snapshots/` as `.raw` files: pytest-textual-snapshot
 1.0 with syrupy 6 writes SVG under that extension, and the extension is pinned in
-`test_snapshots.py` (exactly one file per snapshot test, no glob). There are twelve: welcome at
-80x24, 50x24 and in Turkish, chat (a markdown list, a one-line fence and a rejected tier-2 card),
-busy, approval, menu (all twelve rows) and picker at 80x24, wide 100x30 (busy chrome), ultra
-160x45 (a fence and the last turn's cards expanded), the events view at 50x24 and short 80x18. Every snapshot uses the fixed session id
-`20260929-120000-abcd` (checked in every file), a fixed clock, UTC event times, no motion and no
-durations, and is taken after the streams stopped; review a regenerated file before committing it
-(it must never contain a local path, which the test also checks). The pilot tests read the widgets
+`test_snapshots.py` (exactly one file per snapshot test, no glob). There are fourteen: welcome
+at 80x24, 50x24 and in Turkish, chat (a markdown list, a one-line fence and a rejected tier-2
+card), busy, approval, menu (all thirteen rows) and picker at 80x24, wide 100x30 (busy chrome),
+ultra 160x45 (a fence and the last turn's cards expanded), the events view at 50x24, short 80x18,
+the settings screen on Model roles at 80x24 (`show_paths=False`) and the setup screen at 80x24.
+Every snapshot uses the fixed session id `20260929-120000-abcd` (checked in every file except the
+setup screen, which has no session), a fixed clock, UTC event times, no motion and no durations,
+and is taken after the streams stopped; review a regenerated file before committing it (it must
+never contain a local path, which the test also checks). The pilot tests read the widgets
 through text oracles (`Transcript.text`, `EventLog.text`, `HintBar.text`, `HeaderBar.text`,
 `ToolCard.text`) so behaviour changes do not churn the snapshots. The mark fixtures under
 `tests/fixtures/` are the text previews of `rasterise(24)` and `rasterise(16)`; regenerate them

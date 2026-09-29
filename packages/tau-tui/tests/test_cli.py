@@ -1,4 +1,4 @@
-"""``tau tui`` startup: help, config and credential errors before any UI, logging, entry point."""
+"""``tau tui`` startup: help, the setup and no-credentials starts, exit 2 paths, logging."""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ from typing import Any
 
 from click.testing import CliRunner
 from tau_core import Config, t
+from tau_core.builder import init_home
 from tau_core.logs import LOG_FILE
 from tau_core.testing import FakeModel
-from tau_tui import build_app
+from tau_tui import SetupResult, build_app
 from tau_tui.cli import tui
 
 UNSET = {
@@ -92,17 +93,76 @@ def test_help_is_english(tmp_path: Path) -> None:
     assert "Show this help and exit." in result.output
 
 
-def test_missing_config_exits_2(tmp_path: Path) -> None:
+def test_broken_config_exits_2(tmp_path: Path) -> None:
+    home = make_home(tmp_path, "[agent]\nmax_turns = 0\n")
+    result = run([], home, tmp_path)
+    assert result.exit_code == 2
+    assert "tau.toml: [agent] 'max_turns' must be an integer of 1 or more." in result.output
+    assert "Traceback" not in result.output
+
+
+def test_missing_config_runs_the_setup_screen_then_the_app(tmp_path: Path, monkeypatch) -> None:
+    """No ``tau.toml`` anywhere: the setup screen (stubbed here, it is a Textual app of its
+    own) creates the home with ``init_home`` and the command continues on it."""
+    seen: dict[str, Any] = {}
+
+    def fake_setup(*, default_home: str, language: str, **kw: Any) -> SetupResult:
+        seen.update(default_home=default_home, language=language)
+        home = tmp_path / "created"
+        result = init_home(home, provider="fake", language="tr")
+        return SetupResult(result.home, "fake", "tr", created=True)
+
+    monkeypatch.setattr("tau_tui.cli.run_setup", fake_setup)
+    monkeypatch.setattr("tau_tui.cli.build_app", stub_build_app)
+    StubApp.instances.clear()
+    result = run([], tmp_path / "missing", tmp_path, TAU_LANG="tr")
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "Goodbye."
+    assert seen == {"default_home": str(tmp_path / "missing"), "language": "tr"}
+    (app,) = StubApp.instances
+    assert app.ran and app.closed
+    assert app.kwargs["config"].home == (tmp_path / "created").resolve()
+    assert app.kwargs["config"].ui.language == "tr"
+    assert (tmp_path / "data" / "logs" / LOG_FILE).is_file()
+
+
+def test_setup_cancelled_exits_2(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("tau_tui.cli.run_setup", lambda **kw: None)
     result = run([], tmp_path / "missing", tmp_path)
     assert result.exit_code == 2
     assert "Configuration file not found" in result.output
+    assert "Setup cancelled." in result.output
 
 
-def test_missing_credentials_exit_2_before_the_ui(tmp_path: Path) -> None:
+def test_missing_credentials_open_the_app_without_an_agent(tmp_path: Path, monkeypatch) -> None:
+    """Credentials missing for the role: no exit 2 any more, the app opens on the settings
+    screen (``build_app`` swallows ``MissingCredentials``; the UI itself is stubbed here)."""
+    monkeypatch.setattr("tau_tui.cli.build_app", stub_build_app)
+    StubApp.instances.clear()
     result = run([], make_home(tmp_path, BEDROCK_TOML), tmp_path)
-    assert result.exit_code == 2
-    assert "Missing model credentials for role 'brain' (bedrock)." in result.output
-    assert "Traceback" not in result.output
+    assert result.exit_code == 0, result.output
+    assert "Missing model credentials" not in result.output
+    (app,) = StubApp.instances
+    assert app.ran and app.kwargs["config"].roles["brain"].provider == "bedrock"
+
+    config = Config.load(make_home(tmp_path / "b", BEDROCK_TOML), env={})
+    app = build_app(config, tools=[], motion=False)
+    assert app.agent is None
+    assert app.missing_credentials is not None
+    assert app.missing_credentials.variables == ["AWS_REGION", "AWS_PROFILE"]
+    assert app.config is config
+
+
+def test_agentless_app_is_closed_cleanly(tmp_path: Path, monkeypatch) -> None:
+    class Agentless:
+        agent = None
+
+        def run(self) -> None:
+            pass
+
+    monkeypatch.setattr("tau_tui.cli.build_app", lambda *a, **kw: Agentless())
+    result = run([], make_home(tmp_path, FAKE_TOML), tmp_path)
+    assert result.exit_code == 0, result.output
 
 
 def test_resume_unknown_session_exits_2(tmp_path: Path) -> None:

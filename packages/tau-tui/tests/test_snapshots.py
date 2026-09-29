@@ -36,8 +36,9 @@ from helpers import (
 )
 from tau_core import AgentEvent, MemorySessionStore, Tier, tau_tool
 from tau_core.testing import ToolCall, test_config
-from tau_tui import ApprovalScreen
+from tau_tui import ApprovalScreen, SettingsScreen
 from tau_tui.sessions import SessionPicker
+from tau_tui.setup import SetupApp
 from textual.pilot import Pilot
 
 SNAPSHOT_DIR = Path(__file__).parent / "__snapshots__" / Path(__file__).stem
@@ -240,3 +241,33 @@ def test_short_80x18(tmp_path: Path, snap_compare) -> None:
 
     assert snap_compare(app, terminal_size=(80, 18), run_before=chat)
     _check("test_short_80x18")
+
+
+def test_settings_80x24(tmp_path: Path, snap_compare) -> None:
+    """The settings screen on Model roles: the fake provider, no path anywhere (``show_paths``
+    is off, the title never carries the home)."""
+    app = make_app(tmp_path, [], tools=light_tools(), show_paths=False)
+
+    async def open_settings(pilot: Pilot) -> None:
+        await steady(pilot)
+        await send(pilot, "/settings")
+        await wait_until(pilot, lambda: isinstance(app.screen, SettingsScreen))
+        await pilot.pause()
+
+    assert snap_compare(app, terminal_size=(80, 24), run_before=open_settings)
+    _check("test_settings_80x24")
+
+
+def test_setup_80x24(tmp_path: Path, snap_compare) -> None:
+    """The first-run screen with the default home shown as ``~/.tau`` and nothing detected."""
+    app = SetupApp(default_home="~/.tau", env={}, language="en")
+
+    async def settle(pilot: Pilot) -> None:
+        await pilot.pause()
+
+    assert snap_compare(app, terminal_size=(80, 24), run_before=settle)
+    path = SNAPSHOT_DIR / f"test_setup_80x24{EXTENSION}"
+    assert path.is_file()
+    svg = path.read_text(encoding="utf-8")
+    for fragment in PATH_FRAGMENTS + ("/private/",):
+        assert fragment not in svg

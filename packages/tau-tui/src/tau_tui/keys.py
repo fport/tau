@@ -44,9 +44,11 @@ BINDINGS: tuple[KeyBinding, ...] = (
     KeyBinding("pageup", "scroll_transcript_up", "tui.key.scroll", "f7", "PageUp / F7"),
     KeyBinding("pagedown", "scroll_transcript_down", "tui.key.scroll", "f8", "PageDown / F8"),
     KeyBinding("f9", "scroll_bottom", "tui.key.bottom", None, "F9"),
+    KeyBinding("f10", "settings", "tui.key.settings", None, "F10"),
     KeyBinding("f1", "help", "tui.key.help", None, "? / F1"),
 )
-"""The app's own bindings; ``ctrl+q`` (quit) is Textual's default priority binding."""
+"""The app's own bindings; ``ctrl+q`` (quit) is Textual's default priority binding. F10 opens
+the settings (``ctrl+,`` is unreliable over mosh, so there is no ctrl mirror)."""
 
 HELP_KEYS: tuple[tuple[str, str], ...] = (
     ("enter", "tui.key.send"),
@@ -59,6 +61,7 @@ HELP_KEYS: tuple[tuple[str, str], ...] = (
     ("ctrl+o / F6", "tui.key.expand"),
     ("PageUp / PageDown", "tui.key.scroll"),
     ("F9", "tui.key.bottom"),
+    ("F10", "tui.key.settings"),
     ("? / F1", "tui.key.help"),
     ("ctrl+q", "tui.key.quit"),
 )

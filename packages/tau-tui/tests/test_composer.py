@@ -62,7 +62,7 @@ async def test_slash_opens_the_menu_tab_completes_enter_runs(tmp_path: Path) -> 
         menu = app.query_one(CommandMenu)
         await pilot.press("slash")
         await pilot.pause()
-        assert menu.open and menu.option_count == 12
+        assert menu.open and menu.option_count == 13
         assert app.hint.text.startswith("↑↓ pick · tab complete · enter run · esc close")
         for char in "re":
             await pilot.press(char)

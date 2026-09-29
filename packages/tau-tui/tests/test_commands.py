@@ -1,4 +1,4 @@
-"""``/clear``, ``/compact``, ``/status``, ``/model`` and the twelve-row command menu (issue 072)."""
+"""``/clear``, ``/compact``, ``/status``, ``/model`` and the thirteen-row menu (072, 081)."""
 
 from __future__ import annotations
 
@@ -357,7 +357,7 @@ async def test_model_failure_keeps_the_current_agent(tmp_path: Path) -> None:
 # -- the command menu ----------------------------------------------------------------------------
 
 
-async def test_menu_shows_twelve_rows_and_completes_compact(tmp_path: Path) -> None:
+async def test_menu_shows_thirteen_rows_and_completes_compact(tmp_path: Path) -> None:
     app = make_app(tmp_path, ["Merhaba."])
     async with app.run_test(size=(80, 24)) as pilot:
         await send(pilot, "Merhaba tau")
@@ -365,13 +365,13 @@ async def test_menu_shows_twelve_rows_and_completes_compact(tmp_path: Path) -> N
         menu = app.query_one(CommandMenu)
         await pilot.press("slash")
         await pilot.pause()
-        assert menu.open and menu.option_count == 12
-        assert menu.region.height == 14 and menu.max_scroll_y == 0  # every row on screen
+        assert menu.open and menu.option_count == 13
+        assert menu.region.height == 15 and menu.max_scroll_y == 0  # every row on screen
         assert [cmd.name for cmd in menu.commands] == [
             "help", "tools", "sessions", "resume", "new", "session",
-            "compact", "clear", "status", "model", "lang", "quit",
+            "compact", "clear", "status", "model", "lang", "settings", "quit",
         ]  # fmt: skip
-        assert app.transcript.region.height == 24 - 1 - 14 - 3 - 1
+        assert app.transcript.region.height == 24 - 1 - 15 - 3 - 1
         assert app.transcript.is_vertical_scroll_end  # the transcript keeps its bottom
         for char in "co":
             await pilot.press(char)
@@ -397,9 +397,9 @@ async def test_menu_scrolls_in_the_short_band(tmp_path: Path) -> None:
         await pilot.press("slash")
         await pilot.pause()
         menu = app.query_one(CommandMenu)
-        assert menu.open and menu.option_count == 12
+        assert menu.open and menu.option_count == 13
         assert menu.region.height == 8 and menu.max_scroll_y > 0
-        for _ in range(11):
+        for _ in range(12):
             await pilot.press("down")
         await pilot.pause()
         assert menu.highlighted_command is not None and menu.highlighted_command.name == "quit"

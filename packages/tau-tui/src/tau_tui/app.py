@@ -17,6 +17,7 @@ from datetime import UTC, datetime, tzinfo
 from typing import Any
 
 from tau_core import (
+    LANGUAGES,
     STOP_REASONS,
     AgentEvent,
     CompactionCancelled,
@@ -57,13 +58,14 @@ from textual.widget import Widget
 
 import tau_tui.strings  # noqa: F401  (registers the tui.* message keys)
 from tau_tui.approval import APPROVE_DELAY, ApprovalDone, ApprovalPending, TuiApprover
-from tau_tui.commands import HANDLERS, SWITCHING
+from tau_tui.commands import AGENTLESS, HANDLERS, SWITCHING
 from tau_tui.composer import CommandMenu, Composer, HintBar
 from tau_tui.events import EventsPane
 from tau_tui.header import HeaderBar
 from tau_tui.history import build_history
 from tau_tui.keys import app_bindings
 from tau_tui.sessions import SessionPicker, SessionSidebar, recent_sessions
+from tau_tui.settings import SECTIONS, SettingsOutcome, SettingsScreen
 from tau_tui.theme import ASCII_CSS, TAU_ANSI_THEME, TAU_THEME, mark_ascii
 from tau_tui.transcript import STREAM_MODES, BusyRow, Transcript, Turn, WelcomeFacts
 
@@ -71,9 +73,25 @@ logger = logging.getLogger(__name__)
 
 EVENT_BUFFER = 500
 DEFAULT_ROLE = "brain"
+NO_SESSION = "—"
+"""What the header shows for the session while there is no agent (no credentials yet)."""
 AgentFactory = Callable[..., TauAgent]
-"""``factory(session_id, *, role=None, seed_messages=None) -> TauAgent``: every later agent
-(``/new``, ``/resume``, ``/compact``, ``/model``) on the app's bus, store and approver."""
+"""``factory(session_id, *, role=None, seed_messages=None, config=None) -> TauAgent``: every
+later agent (``/new``, ``/resume``, ``/compact``, ``/model``, a settings save) on the app's
+bus, store and approver; ``config`` replaces the config every later build uses."""
+MODAL_BLOCKED_ACTIONS = frozenset(
+    {
+        "pick_session",
+        "new_session",
+        "show_tools",
+        "toggle_events",
+        "toggle_cards",
+        "help",
+        "settings",
+    }
+)
+"""App actions that stay out of the way while the settings screen is on top (its own F2 saves;
+the app's priority F2 would otherwise open the session picker over it)."""
 
 
 class SessionNotFound(Exception):
@@ -161,8 +179,9 @@ class TauApp(App[None]):
 
     def __init__(
         self,
-        agent: TauAgent,
+        agent: TauAgent | None,
         *,
+        config: Config | None = None,
         approver: TuiApprover | None = None,
         bus: EventBus | None = None,
         agent_factory: AgentFactory | None = None,
@@ -175,13 +194,29 @@ class TauApp(App[None]):
         stream_mode: str = "auto",
         language: str | None = None,
         role_pinned: bool = False,
+        role: str = DEFAULT_ROLE,
+        session_id: str | None = None,
+        missing_credentials: MissingCredentials | None = None,
+        show_paths: bool = True,
     ) -> None:
+        """``agent=None`` is the no-credentials start (``missing_credentials`` says what is
+        missing): the app opens on ``config`` with the settings screen on the Credentials
+        section, the composer takes only ``/settings``, ``/help``, ``/lang`` and ``/quit``, and
+        the first agent is built for ``session_id`` (``--resume``) on ``role`` once a save gives
+        the provider its credentials."""
         super().__init__()
+        if agent is None and config is None:
+            raise ValueError("TauApp needs an agent or a config")
         self.agent = agent
+        self._config: Config = config if config is not None else agent.config  # type: ignore[union-attr]
+        self._default_role = role
+        self._session_id = session_id
+        self.missing_credentials = missing_credentials
+        self.show_paths = show_paths
         self.approver = approver
         if approver is not None:
             approver.attach(self)
-        self.bus = bus or agent.events
+        self.bus = bus or (agent.events if agent is not None else EventBus())
         self.agent_factory = agent_factory
         self.store = store
         self.role_pinned = role_pinned
@@ -194,7 +229,7 @@ class TauApp(App[None]):
         if stream_mode not in STREAM_MODES:
             raise ValueError(f"stream_mode must be one of {STREAM_MODES}, not {stream_mode!r}")
         self.stream_mode = stream_mode
-        self.set_reactive(TauApp.language, language or agent.config.ui.language)
+        self.set_reactive(TauApp.language, language or self._config.ui.language)
         self.event_buffer: deque[AgentEvent] = deque(maxlen=EVENT_BUFFER)
         self.last_listing: list[str] = []
         self._unsubscribe: Callable[[], None] | None = None
@@ -245,29 +280,45 @@ class TauApp(App[None]):
 
     @property
     def config(self) -> Config:
-        return self.agent.config
+        """The config of the current agent, or the one the app opened on without an agent."""
+        return self.agent.config if self.agent is not None else self._config
 
     @property
     def role(self) -> str:
         """The model role of the current agent (``/model`` switches it)."""
-        return self.agent.role
+        return self.agent.role if self.agent is not None else self._default_role
+
+    @property
+    def session_id(self) -> str:
+        return self.agent.session_id if self.agent is not None else NO_SESSION
 
     def _provider(self) -> str:
         """The provider actually serving the role, read off the model instance."""
+        if self.agent is None:
+            role_cfg = self.config.roles.get(self.role)
+            return role_cfg.provider if role_cfg is not None else "?"
         return describe_model(self.agent).provider
 
     def _tool_counts(self) -> tuple[int, int]:
+        if self.agent is None:
+            return 0, 0
         catalog = self.agent.catalog
         tools = catalog.tools()
         approval = sum(1 for tool in tools if catalog.tier(tool.tool_name) == 2)
         return len(tools), approval
+
+    def _require_agent(self) -> TauAgent | None:
+        """The agent, or ``None`` after telling the user that credentials come first."""
+        if self.agent is None:
+            self.notify(t("settings.no_credentials", self.language), severity="warning")
+        return self.agent
 
     def welcome_facts(self) -> WelcomeFacts:
         total, approval = self._tool_counts()
         return WelcomeFacts(
             version=core_version,
             profile=self.config.profile,
-            session_id=self.agent.session_id,
+            session_id=self.session_id,
             role=self.role,
             provider=self._provider(),
             tools=total,
@@ -288,7 +339,7 @@ class TauApp(App[None]):
         total, _ = self._tool_counts()
         yield HeaderBar(
             profile=self.config.profile,
-            session_id=self.agent.session_id,
+            session_id=self.session_id,
             role=self.role,
             provider=self._provider(),
             tool_count=total,
@@ -319,11 +370,21 @@ class TauApp(App[None]):
         log.show_durations = self.show_durations
         log.language = self.language
         self._unsubscribe = self.bus.subscribe(self._relay)
-        await self._present_session(resumed=bool(self.agent.messages))
+        if self.agent is not None:
+            await self._present_session(resumed=bool(self.agent.messages))
+            await self._notice_fallback()
+        else:
+            await transcript.show_welcome(self.welcome_facts())
+            self.header.glyph.state = "attention"
+            if self.missing_credentials is not None:
+                await transcript.add_notice(str(self.missing_credentials))
+            await transcript.add_notice(t("settings.no_credentials", self.language))
         if self.notice:
             await transcript.add_notice(self.notice)
         self.refresh_chrome()
         self.call_after_refresh(self.refresh_sessions)
+        if self.agent is None:
+            self.call_after_refresh(self.open_settings)
 
     def on_unmount(self) -> None:
         if self._unsubscribe is not None:
@@ -334,17 +395,41 @@ class TauApp(App[None]):
         self.post_message(AgentEventReceived(event))
 
     def _history_items(self) -> list:
+        if self.agent is None:
+            return []
         events_ = self.store.read_events(self.agent.session_id) if self.store else []
         return build_history(self.agent.messages, events_, tier_of=self._tier_of)
 
     def _tier_of(self, name: str) -> int | None:
+        if self.agent is None:
+            return None
         try:
             tier = self.agent.catalog.tier(name)
         except Exception:
             return None
         return int(tier) if tier is not None else None
 
+    async def _notice_fallback(self) -> None:
+        """One line when the role runs on its fallback provider (the start-up warning of
+        ``tau chat`` goes to the log only while the TUI owns the terminal)."""
+        if self.agent is None:
+            return
+        info = describe_model(self.agent)
+        if info.fallback_of is None:
+            return
+        await self.transcript.add_notice(
+            t(
+                "settings.fallback_notice",
+                self.language,
+                role=self.agent.role,
+                provider=info.provider,
+                primary=info.fallback_of,
+            )
+        )
+
     async def _present_session(self, *, resumed: bool) -> None:
+        if self.agent is None:
+            return
         transcript = self.transcript
         events_ = self.store.read_events(self.agent.session_id) if (self.store and resumed) else []
         if self.agent.messages:
@@ -411,12 +496,26 @@ class TauApp(App[None]):
             state = "idle"
         hint.set_state(state, phone=phone, wide=wide)
         header.set_events_view(self.events_view_active())
-        composer.state = "attention" if self.attention else ("busy" if self.busy else "idle")
+        if self.attention:
+            composer.state = "attention"
+        elif self.busy:
+            composer.state = "busy"
+        elif self.agent is None:
+            composer.state = "disabled"
+        else:
+            composer.state = "idle"
         rows = 2 if self.chrome_screen.has_class("-short") else (3 if phone else 5)
         composer.set_max_rows(rows)
 
     def get_default_screen(self) -> Screen:
         return TauScreen(id="_default")
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Keep the app's priority keys (F2 picker, ctrl+n, F1, …) out of the settings screen:
+        its own F2 saves. The scroll actions stay, they know about modal targets."""
+        if action in MODAL_BLOCKED_ACTIONS and isinstance(self.screen, SettingsScreen):
+            return False
+        return True
 
     def on_composer_changed(self, message: Composer.Changed) -> None:
         self.refresh_chrome()
@@ -471,6 +570,8 @@ class TauApp(App[None]):
         if self.busy:
             self.notify(t("tui.busy", self.language), severity="warning")
             return  # keep the typed text
+        if self._require_agent() is None:
+            return  # no credentials yet: keep the typed text, the toast says what to do
         self.composer.clear()
         self.composer.push_history(text)
         self.run_turn(text)
@@ -495,6 +596,8 @@ class TauApp(App[None]):
         if name in SWITCHING and self.busy:
             self.notify(t("tui.busy_switch", self.language), severity="warning")
             return
+        if name not in AGENTLESS and self._require_agent() is None:
+            return
         await HANDLERS[name](self, argument)
 
     # -- turns -------------------------------------------------------------------------------
@@ -503,6 +606,8 @@ class TauApp(App[None]):
     async def run_turn(self, prompt: str) -> None:
         """One user turn: the stream drives the current :class:`Turn`."""
         lang = self.language
+        if self.agent is None:
+            return
         turn = await self.transcript.begin_turn(prompt)
         self._current_turn = turn
         self.busy = True
@@ -575,7 +680,7 @@ class TauApp(App[None]):
     async def on_agent_event_received(self, message: AgentEventReceived) -> None:
         message.stop()
         event = message.event
-        if event.session_id not in (None, self.agent.session_id):
+        if self.agent is None or event.session_id not in (None, self.agent.session_id):
             return
         self.event_buffer.append(event)
         self.events_pane.add_event(event)
@@ -586,40 +691,134 @@ class TauApp(App[None]):
     def refresh_sessions(self) -> None:
         if not self.is_running:
             return
+        current = self.agent.session_id if self.agent is not None else None
         try:
-            self.sidebar.refresh_list(self.store, self.agent.session_id, self.clock(), tz=self.tz)
+            self.sidebar.refresh_list(self.store, current, self.clock(), tz=self.tz)
         except Exception:
             logger.exception("could not refresh the session sidebar")
+
+    def _try_build(
+        self,
+        session_id: str | None,
+        *,
+        role: str | None = None,
+        seed: list | None = None,
+        config: Config | None = None,
+    ) -> tuple[TauAgent | None, str | None]:
+        """``(agent, None)`` from the factory, or ``(None, why)``: ``MissingCredentials`` and
+        ``ConfigError`` in full (they name the variables or the setting to fix), anything else
+        as ``session.open_failed``. ``config`` makes this and every later build use it."""
+        lang = self.language
+        if self.agent_factory is None:
+            return None, t("session.open_failed", lang, error="no factory")
+        extra: dict[str, Any] = {} if config is None else {"config": config}
+        try:
+            agent = self.agent_factory(
+                session_id, role=role or self.role, seed_messages=seed, **extra
+            )
+        except (MissingCredentials, ConfigError) as exc:
+            logger.warning("could not build the agent: %s", exc)
+            return None, str(exc)
+        except Exception as exc:
+            logger.exception("could not open session %s", session_id)
+            return None, t("session.open_failed", lang, error=short(exc))
+        return agent, None
 
     async def _build(
         self, session_id: str | None, *, role: str | None = None, seed: list | None = None
     ) -> TauAgent | None:
-        """A new agent from the factory, or ``None`` after showing why it could not be built.
-
-        ``MissingCredentials`` and ``ConfigError`` are shown in full (they name the variables or
-        the setting to fix); anything else becomes ``session.open_failed``.
-        """
-        lang = self.language
-        if self.agent_factory is None:
-            await self.transcript.add_notice(t("session.open_failed", lang, error="no factory"))
-            return None
-        try:
-            return self.agent_factory(session_id, role=role or self.role, seed_messages=seed)
-        except (MissingCredentials, ConfigError) as exc:
-            logger.warning("could not build the agent: %s", exc)
-            await self.transcript.add_notice(str(exc))
-        except Exception as exc:
-            logger.exception("could not open session %s", session_id)
-            await self.transcript.add_notice(t("session.open_failed", lang, error=short(exc)))
-        return None
+        """A new agent from the factory, or ``None`` after showing why it could not be built."""
+        agent, error = self._try_build(session_id, role=role, seed=seed)
+        if error is not None:
+            await self.transcript.add_notice(error)
+        return agent
 
     def _adopt(self, new: TauAgent) -> None:
         """Make ``new`` the app's agent and close the previous one (a rebuild on the same
         session takes over its pending repair notice first)."""
         old, self.agent = self.agent, new
-        new.carry_over(old)
-        old.close()
+        if old is not None:
+            new.carry_over(old)
+            old.close()
+        self._config = new.config
         self.header.set_role(new.role, describe_model(new).provider)
+
+    # -- settings ----------------------------------------------------------------------------
+
+    def open_settings(self, section: str | None = None, missing: list[str] | None = None) -> None:
+        """``/settings [section]`` / F10: the settings screen on ``section`` (default: Model
+        roles, or Credentials with the missing names highlighted while there is no agent).
+        Refused while a turn is busy; a second call while it is open does nothing. A save is
+        applied by :meth:`apply_settings` after the screen closes."""
+        if self.busy:
+            self.notify(t("tui.busy_settings", self.language), severity="warning")
+            return
+        if isinstance(self.screen, SettingsScreen):
+            return
+        if self.agent is None and self.missing_credentials is not None:
+            section = section or "credentials"
+            missing = missing or list(self.missing_credentials.variables)
+        try:
+            screen = SettingsScreen(
+                self.config,
+                language=self.language,
+                section=section if section in SECTIONS else "roles",
+                missing=missing,
+                show_paths=self.show_paths,
+            )
+        except ConfigError as exc:  # tau.toml vanished or broke since the start
+            logger.warning("settings screen could not open: %s", exc)
+            self.notify(str(exc), severity="error")
+            return
+
+        def done(saved: bool | None) -> None:
+            if saved and screen.outcome is not None:
+                self.run_worker(
+                    self.apply_settings(screen.outcome), group="settings", exclusive=True
+                )
+
+        self.push_screen(screen, callback=done)
+
+    async def apply_settings(self, outcome: SettingsOutcome) -> None:
+        """After a save: the UI language live, then (when a role, an agent option, a credential
+        or the profile changed, or there was no agent yet) the agent rebuilt on the same
+        session with the validated config. A failed rebuild keeps the current agent."""
+        lang = outcome.language if outcome.language in LANGUAGES else self.language
+        if outcome.language and outcome.language != self.language:
+            self.language = outcome.language
+        transcript = self.transcript
+        if outcome.config is None:
+            await transcript.add_notice(
+                t("settings.saved_not_reloaded", lang, error=outcome.error or "?")
+            )
+            return
+        first = self.agent is None
+        if not (outcome.reload or first):
+            await transcript.add_notice(t("settings.saved", lang))
+            return
+        session_id = self.agent.session_id if self.agent is not None else self._session_id
+        new, error = self._try_build(session_id, role=self.role, config=outcome.config)
+        if new is None:
+            self._config = outcome.config
+            await transcript.add_notice(t("settings.saved_not_reloaded", lang, error=error))
+            return
+        self._adopt(new)
+        self.missing_credentials = None
+        if first:
+            self.header.set_session(new.session_id)
+            with self.batch_update():
+                await transcript.reset()
+                await self._present_session(resumed=bool(new.messages))
+            self.refresh_sessions()
+        elif transcript.query("#welcome"):
+            await transcript.show_welcome(self.welcome_facts())
+        self.header.glyph.state = self._idle_glyph_state()
+        self.refresh_chrome()
+        await transcript.add_notice(t("settings.saved_reloaded", lang))
+        await self._notice_fallback()
+
+    def action_settings(self) -> None:
+        self.open_settings()
 
     async def switch_session(self, session_id: str | None, *, role: str | None = None) -> None:
         """``/new`` (``None``) or ``/resume`` (an id). A resumed session comes back on the role
@@ -628,6 +827,8 @@ class TauApp(App[None]):
         lang = self.language
         if self.busy:
             self.notify(t("tui.busy_switch", lang), severity="warning")
+            return
+        if self._require_agent() is None:
             return
         if role is None and session_id is not None and not self.role_pinned:
             role = stored_role(self.store, session_id, self.config)
@@ -655,6 +856,8 @@ class TauApp(App[None]):
         if self.busy:
             self.notify(t("tui.busy_model", lang), severity="warning")
             return
+        if self._require_agent() is None:
+            return
         if role not in self.config.roles:
             await self.transcript.add_notice(
                 t("model.unknown", lang, role=role, roles=", ".join(self.config.roles))
@@ -676,6 +879,7 @@ class TauApp(App[None]):
         await self.transcript.add_notice(
             t("model.current", lang, role=role, provider=self._provider())
         )
+        await self._notice_fallback()
 
     async def compact_session(self, focus: str | None = None) -> None:
         """``/compact [focus]``: summarize the session with its own model, open a new session
@@ -690,6 +894,8 @@ class TauApp(App[None]):
         if self.busy:
             self.notify(t("tui.busy_switch", self.language), severity="warning")
             return
+        if self._require_agent() is None:
+            return
         self.busy = True  # before the worker starts, so no turn slips in between
         self.run_worker(
             self._run_compaction(focus), group="compact", exclusive=True, exit_on_error=False
@@ -698,6 +904,9 @@ class TauApp(App[None]):
     async def _run_compaction(self, focus: str | None) -> None:
         lang = self.language
         old = self.agent
+        if old is None:
+            self.busy = False
+            return
         n = len(old.messages)
         cancel = threading.Event()
         self._compaction_cancel = cancel
@@ -766,6 +975,8 @@ class TauApp(App[None]):
         if self.busy:
             self.notify(t("tui.busy_clear", lang), severity="warning")
             return
+        if self._require_agent() is None:
+            return
         with self.batch_update():
             await self.transcript.reset()
             await self.transcript.add_notice(t("clear.done", lang, n=len(self.agent.messages)))
@@ -773,7 +984,7 @@ class TauApp(App[None]):
 
     def on_session_sidebar_picked(self, message: SessionSidebar.Picked) -> None:
         message.stop()
-        if message.session_id != self.agent.session_id:
+        if message.session_id != self.session_id:
             self.run_worker(self.switch_session(message.session_id), group="switch")
 
     # -- actions -----------------------------------------------------------------------------
@@ -793,7 +1004,8 @@ class TauApp(App[None]):
                     if row is not None and row.is_mounted:
                         row.set_verb("tui.busy.cancelling")
                     return
-                self.agent.cancel()
+                if self.agent is not None:
+                    self.agent.cancel()
                 turn = self._current_turn
                 if turn is not None and turn.running:
                     await turn.set_busy("tui.busy.cancelling")
@@ -820,7 +1032,9 @@ class TauApp(App[None]):
         if self.busy:
             self.notify(t("tui.busy_switch", self.language), severity="warning")
             return
-        sessions = recent_sessions(self.store, self.agent.session_id)
+        if self._require_agent() is None:
+            return
+        sessions = recent_sessions(self.store, self.session_id)
         self.last_listing = [s.session_id for s in sessions]
 
         def picked(result: str | None) -> None:
@@ -840,6 +1054,8 @@ class TauApp(App[None]):
         await self.switch_session(None)
 
     async def action_show_tools(self) -> None:
+        if self._require_agent() is None:
+            return
         await HANDLERS["tools"](self, "")
 
     async def action_help(self) -> None:
@@ -895,14 +1111,21 @@ def build_app(
     motion: bool = True,
     show_durations: bool = True,
     stream_mode: str = "auto",
+    show_paths: bool = True,
 ) -> TauApp:
     """Build the agent for the ``tui`` channel with a :class:`TuiApprover` and wrap it.
 
     One ``EventBus`` and one approver serve the app for its lifetime; ``agent_factory`` builds
-    every later agent (``/new``, ``/resume``, ``/compact``, ``/model``) on the same bus, store
-    and approver. ``model`` and ``tools`` are passed to ``build_agent`` (tests use ``FakeModel``
-    and test-local tools). ``role=None`` means ``brain``, or the role a resumed ``session_id``
+    every later agent (``/new``, ``/resume``, ``/compact``, ``/model``, a settings save) on the
+    same bus, store and approver, on the config a settings save last handed it (``config=``).
+    ``model`` and ``tools`` are passed to ``build_agent`` (tests use ``FakeModel`` and
+    test-local tools). ``role=None`` means ``brain``, or the role a resumed ``session_id``
     remembers from ``/model``; an explicit ``role`` pins it for the app's lifetime.
+
+    When the first agent cannot be built for lack of credentials the app still opens, without
+    an agent, on the settings screen's Credentials section (see :class:`TauApp`); every other
+    failure propagates. ``show_paths=False`` keeps real paths out of the settings screen
+    (snapshots).
     """
     config = config or Config.load()
     if profile:
@@ -912,12 +1135,19 @@ def build_app(
     tool_list = list(tools) if tools is not None else None
     role_pinned = role is not None
     default_role = role or stored_role(session_store, session_id, config) or DEFAULT_ROLE
+    current: dict[str, Config] = {"config": config}
 
     def agent_factory(
-        target: str | None, *, role: str | None = None, seed_messages: list | None = None
+        target: str | None,
+        *,
+        role: str | None = None,
+        seed_messages: list | None = None,
+        config: Config | None = None,
     ) -> TauAgent:
+        if config is not None:
+            current["config"] = config.with_overrides(profile=profile) if profile else config
         return build_agent(
-            config=config,
+            config=current["config"],
             role=role or default_role,
             model=model,
             tools=tool_list,
@@ -930,9 +1160,15 @@ def build_app(
             seed_messages=seed_messages,
         )
 
-    agent = agent_factory(session_id)
+    missing: MissingCredentials | None = None
+    try:
+        agent: TauAgent | None = agent_factory(session_id)
+    except MissingCredentials as exc:
+        logger.warning("opening without an agent: %s", exc)
+        agent, missing = None, exc
     return TauApp(
         agent,
+        config=current["config"],
         approver=approver,
         bus=bus,
         agent_factory=agent_factory,
@@ -944,4 +1180,8 @@ def build_app(
         show_durations=show_durations,
         stream_mode=stream_mode,
         role_pinned=role_pinned,
+        role=default_role,
+        session_id=session_id,
+        missing_credentials=missing,
+        show_paths=show_paths,
     )

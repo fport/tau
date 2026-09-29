@@ -3,15 +3,17 @@
 The reply streams under ``tau>``; tool calls show as indented lines; tier-2 calls ask on stdin
 through :class:`TerminalApprover`. Slash commands are the shared spec in
 :mod:`tau_core.commands` (``/help``, ``/tools``, ``/sessions``, ``/resume``, ``/new``,
-``/session``, ``/compact``, ``/clear``, ``/status``, ``/model``, ``/lang``, ``/quit`` plus
-their aliases), one handler each in :data:`HANDLERS`. The REPL runs one thing at a time, so a
-command can never overlap a turn; the TUI's "busy" refusals have no counterpart here.
+``/session``, ``/compact``, ``/clear``, ``/status``, ``/model``, ``/lang``, ``/settings``,
+``/quit`` plus their aliases), one handler each in :data:`HANDLERS`. The REPL runs one thing
+at a time, so a command can never overlap a turn; the TUI's "busy" refusals have no
+counterpart here.
 Every string a person reads comes from :func:`tau_core.i18n.t` in ``ReplState.language``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import getpass
 import os
 import sys
 from collections.abc import Awaitable, Callable
@@ -46,6 +48,17 @@ from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES, t
 from tau_core.logs import configure_logging
 from tau_core.models import MissingCredentials
 from tau_core.sessions import SessionStore, open_session_store
+from tau_core.settings import (
+    KEEP,
+    clear_credential,
+    load_document,
+    report_lines,
+    save_document,
+    set_credential,
+    set_role,
+    set_ui_language,
+    validate,
+)
 from tau_core.status import describe_model, role_lines, status_report, stored_role
 from tau_core.tiers import tier_of
 
@@ -365,6 +378,75 @@ async def cmd_lang(state: ReplState, arg: str) -> None:
     state.say("lang.switched", language=arg)
 
 
+def _reload_after_save(state: ReplState, *, rebuild: bool) -> None:
+    """Re-read the saved files; with ``rebuild``, replace the agent on the same session so a
+    changed role, credential or profile takes effect. A file that no longer loads, or an agent
+    that cannot be built, is reported and the current agent keeps running."""
+    try:
+        state.config = validate(state.config.home)
+    except ConfigError as exc:
+        state.say("settings.saved_not_reloaded", error=exc)
+        return
+    if not rebuild:
+        state.say("settings.saved")
+        return
+    if _switch_to(state, state.agent.session_id):
+        state.say("settings.saved_reloaded")
+
+
+async def cmd_settings(state: ReplState, arg: str) -> None:
+    """``/settings``: the bootstrap config (roles, credential status, language, profile,
+    context, files) and how to change it; ``/settings language|profile|model|set|clear …``
+    write ``tau.toml`` or ``.env`` through :mod:`tau_core.settings` and rebuild the agent.
+    A credential value is read with ``getpass`` and never echoed or printed."""
+    home = state.config.home
+    words = arg.split()
+    if not words:
+        for line in report_lines(state.config, language=state.language):
+            state.console.print(line)
+        return
+    key, values = words[0].casefold(), words[1:]
+    try:
+        if key == "language" and len(values) == 1:
+            doc = load_document(home)
+            set_ui_language(doc, values[0])
+            save_document(home, doc)
+            _reload_after_save(state, rebuild=False)
+            state.language = values[0]
+            if isinstance(state.approver, TerminalApprover):
+                state.approver.language = values[0]
+            state.say("lang.switched", language=values[0])
+        elif key == "profile" and len(values) == 1:
+            set_credential(home, "TAU_PROFILE", values[0], export=True)
+            _reload_after_save(state, rebuild=True)
+        elif key == "model" and len(values) == 3:
+            role, provider, model_id = values
+            doc = load_document(home)
+            set_role(doc, role, provider, model_id, max_tokens=KEEP, fallback=KEEP)
+            save_document(home, doc)
+            _reload_after_save(state, rebuild=True)
+        elif key == "set" and len(values) == 1:
+            name = values[0]
+            value = getpass.getpass(t("settings.enter_value", state.language, name=name))
+            if not value.strip():
+                state.say("settings.credential_empty", name=name)
+                return
+            set_credential(home, name, value, export=True)
+            state.say("settings.credential_set", name=name)
+            _reload_after_save(state, rebuild=True)
+        elif key == "clear" and len(values) == 1:
+            name = values[0]
+            if clear_credential(home, name, export=True):
+                state.say("settings.credential_cleared", name=name)
+                _reload_after_save(state, rebuild=True)
+            else:
+                state.say("settings.credential_absent", name=name)
+        else:
+            state.say("settings.usage")
+    except (ConfigError, ValueError, OSError) as exc:
+        state.say("settings.invalid", error=exc)
+
+
 async def cmd_quit(state: ReplState, arg: str) -> None:
     """``/quit``: leave the REPL."""
     state.running = False
@@ -382,6 +464,7 @@ HANDLERS: dict[str, CommandHandler] = {
     "status": cmd_status,
     "model": cmd_model,
     "lang": cmd_lang,
+    "settings": cmd_settings,
     "quit": cmd_quit,
 }
 

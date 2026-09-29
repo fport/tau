@@ -77,6 +77,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "switch the UI language for this run",
         "tr": "bu çalıştırma için arayüz dilini değiştirir",
     },
+    "command.settings": {
+        "en": "show the settings, or change one (language, profile, model, set NAME)",
+        "tr": "ayarları gösterir ya da birini değiştirir (language, profile, model, set AD)",
+    },
     "command.quit": {
         "en": "leave",
         "tr": "çıkar",
@@ -200,6 +204,87 @@ MESSAGES: dict[str, dict[str, str]] = {
     "lang.unknown": {
         "en": "Unknown language: {language}. Choose one of: {choices}.",
         "tr": "Bilinmeyen dil: {language}. Seçenekler: {choices}.",
+    },
+    # -- settings (the bootstrap config, tau_core.settings; shared by both channels) -------------
+    "settings.header": {"en": "Settings · {home}", "tr": "Ayarlar · {home}"},
+    "settings.roles_header": {"en": "Model roles:", "tr": "Model rolleri:"},
+    "settings.cred.ok": {"en": "credentials ok", "tr": "kimlik bilgileri tamam"},
+    "settings.cred.none": {"en": "no credentials needed", "tr": "kimlik bilgisi gerekmez"},
+    "settings.cred.missing": {"en": "missing {names}", "tr": "eksik: {names}"},
+    "settings.cred.fallback": {
+        "en": "missing {names} · fallback {provider} in use",
+        "tr": "eksik: {names} · yedek {provider} kullanılıyor",
+    },
+    "settings.cred.unavailable": {
+        "en": "provider not available: {detail}",
+        "tr": "sağlayıcı kullanılamıyor: {detail}",
+    },
+    "settings.interface": {
+        "en": "UI language: {language} · profile: {profile}",
+        "tr": "Arayüz dili: {language} · profil: {profile}",
+    },
+    "settings.agent": {
+        "en": "Context: {mode}, window {window} · max_turns {turns} · max_total_tokens {tokens}",
+        "tr": "Bağlam: {mode}, pencere {window} · max_turns {turns} · max_total_tokens {tokens}",
+    },
+    "settings.none": {"en": "none", "tr": "yok"},
+    "settings.files_header": {"en": "Files:", "tr": "Dosyalar:"},
+    "settings.file_present": {"en": "present", "tr": "var"},
+    "settings.file_missing": {"en": "missing", "tr": "yok"},
+    "settings.hint": {
+        "en": "Change: /settings language en|tr · /settings profile NAME · /settings model ROLE "
+        "PROVIDER MODEL_ID · /settings set NAME · /settings clear NAME. The TUI (`tau tui`) "
+        "has an editor: /settings or F10. `tau init --force` rewrites tau.toml from the template.",
+        "tr": "Değiştirmek için: /settings language en|tr · /settings profile AD · /settings model "
+        "ROL SAĞLAYICI MODEL_ID · /settings set AD · /settings clear AD. TUI'de (`tau tui`) bir "
+        "düzenleyici var: /settings ya da F10. `tau init --force` tau.toml'u şablondan yeniden "
+        "yazar.",
+    },
+    "settings.usage": {
+        "en": "Usage: /settings [language en|tr | profile NAME | model ROLE PROVIDER MODEL_ID | "
+        "set NAME | clear NAME]",
+        "tr": "Kullanım: /settings [language en|tr | profile AD | model ROL SAĞLAYICI MODEL_ID | "
+        "set AD | clear AD]",
+    },
+    "settings.saved": {"en": "Settings saved.", "tr": "Ayarlar kaydedildi."},
+    "settings.saved_reloaded": {
+        "en": "Settings saved; model reloaded.",
+        "tr": "Ayarlar kaydedildi; model yeniden yüklendi.",
+    },
+    "settings.saved_not_reloaded": {
+        "en": "Settings saved, but the agent could not be rebuilt: {error}",
+        "tr": "Ayarlar kaydedildi ama ajan yeniden kurulamadı: {error}",
+    },
+    "settings.invalid": {"en": "Not saved: {error}", "tr": "Kaydedilmedi: {error}"},
+    "settings.credential_set": {
+        "en": "{name} set in .env.",
+        "tr": "{name} .env dosyasına yazıldı.",
+    },
+    "settings.credential_cleared": {
+        "en": "{name} removed from .env.",
+        "tr": "{name} .env dosyasından silindi.",
+    },
+    "settings.credential_absent": {
+        "en": "{name} is not in .env.",
+        "tr": "{name} .env dosyasında yok.",
+    },
+    "settings.credential_empty": {
+        "en": "Nothing entered; {name} is unchanged.",
+        "tr": "Bir şey girilmedi; {name} değişmedi.",
+    },
+    "settings.enter_value": {
+        "en": "Value for {name} (not echoed): ",
+        "tr": "{name} değeri (görünmez): ",
+    },
+    "settings.fallback_notice": {
+        "en": "{role}: using the fallback provider {provider} ({primary} has no credentials). "
+        "Add them in /settings.",
+        "tr": "{role}: yedek sağlayıcı {provider} kullanılıyor ({primary} için kimlik bilgisi "
+        "yok). /settings ile ekleyin.",
+    },
+    "settings.no_credentials": {
+        "en": "Add credentials in /settings",
+        "tr": "/settings ile kimlik bilgisi ekleyin",
     },
     # -- approval prompt (terminal and TUI share the labels) ------------------------------------
     "approval.title": {

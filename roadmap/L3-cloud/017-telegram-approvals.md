@@ -1,6 +1,6 @@
 # 017 · Tier-2 approvals with Telegram inline buttons
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L3 · Access and data
 Packages: tau-core

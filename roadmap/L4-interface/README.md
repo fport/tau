@@ -20,5 +20,7 @@
 | 084 | [TauBar runs the hub: on/off switch, restart after a crash, launch at login](084-taubar-runs-the-hub.md) | AFK | 024 |
 | 085 | [Start or restart the hub TauBar supervises from the phone](085-start-taubar-hub-from-the-phone.md) | AFK | 084 |
 | 086 | [TauBar follows the UI language setting](086-taubar-ui-language.md) | AFK | 024 |
+| 088 | [Opening TauBar again does not show its window](088-taubar-reopen-shows-no-window.md) | AFK | – |
+| 089 | [A nicer TauBar menu and settings window](089-taubar-ui-polish.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py --layer L4`

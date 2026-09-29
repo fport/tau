@@ -45,6 +45,8 @@ TauBar's window; after that it lives in the menu bar.
     the newest go first. Open TauBar again (Spotlight, Finder or `open -a TauBar`): its window
     appears with every switch and a Quit button. Make room by quitting other menu bar apps or
     switching some off under **System Settings → Menu Bar → Allow in the Menu Bar**.
+    A menu bar manager such as Hidden Bar hides everything left of its separator: expand it and
+    Cmd-drag the τ to the right of the separator.
 
 Then tick **Launch at login** and run `infra/remote/setup.sh` once: with TauBar in
 `/Applications` it removes the `com.tau.keepawake` agent from the

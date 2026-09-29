@@ -2,7 +2,7 @@
 
 Public API (other tau packages import only these names and ``tau_core.testing``)::
 
-    Config, ConfigError, MissingCredentials
+    Config, ConfigError, ConfigNotFound, MissingCredentials
     build_agent, TauAgent, TurnEvent, TextDelta, ReasoningDelta, ToolUseStarted, ToolProgress,
     ToolFinished, Throttled, Notice, TurnEnd, STOP_REASONS, to_turn_event
     SessionStore, MemorySessionStore, open_session_store, SESSION_BACKENDS,
@@ -19,6 +19,8 @@ Public API (other tau packages import only these names and ``tau_core.testing``)
     CompactionError, CompactionCancelled, summarize, seed_messages, compaction_title,
     record_compaction, SessionContextMismatch
     ModelInfo, describe_model, status_lines, status_report, role_lines, stored_role
+
+The bootstrap-config editor behind ``/settings`` is ``tau_core.settings`` (imported by name).
 """
 
 from __future__ import annotations
@@ -58,7 +60,7 @@ from tau_core.compaction import (
     seed_messages,
     summarize,
 )
-from tau_core.config import Config, ConfigError, UiConfig
+from tau_core.config import Config, ConfigError, ConfigNotFound, UiConfig
 from tau_core.events import AgentEvent, EventBus
 from tau_core.hub.daemon import HubService
 from tau_core.i18n import LANGUAGES, Language, t
@@ -96,6 +98,7 @@ __all__ = [
     "CompactionError",
     "Config",
     "ConfigError",
+    "ConfigNotFound",
     "ContextSource",
     "Decision",
     "EventBus",

@@ -5,7 +5,8 @@ serve each role, the loop guard, the session backend, the hub ports and the two 
 (``TAU_HOME`` for configuration, ``TAU_DATA_DIR`` for mutable state), plus the UI language
 (``[ui] language``, overridden by ``TAU_LANG``) and the component switches (``[components]``,
 free ``[component.<name>]`` tables). Runtime settings that change while tau runs are a
-different thing (*Settings*, stored in D1, issue 019).
+different thing (*Settings*, a file under ``TAU_DATA_DIR``, issue 019); editing the two
+bootstrap files from a channel is :mod:`tau_core.settings`.
 
 Every ``ConfigError`` message is plain English: it is raised before any channel exists.
 """
@@ -51,6 +52,18 @@ _warned_tables: set[tuple[str, str]] = set()
 
 class ConfigError(Exception):
     """Invalid or missing configuration; the message is meant for the user."""
+
+
+class ConfigNotFound(ConfigError):
+    """No ``tau.toml`` in the resolved home: nothing is configured yet (``tau init`` or the
+    TUI's setup screen create one). ``home`` is the directory that was looked in."""
+
+    def __init__(self, home: Path) -> None:
+        self.home = home
+        super().__init__(
+            f"Configuration file not found: {home / CONFIG_FILE}. "
+            "Set TAU_HOME or run from the repository root."
+        )
 
 
 @dataclass(frozen=True)
@@ -182,10 +195,7 @@ class Config:
 
         config_path = root / CONFIG_FILE
         if not config_path.is_file():
-            raise ConfigError(
-                f"Configuration file not found: {config_path}. "
-                "Set TAU_HOME or run from the repository root."
-            )
+            raise ConfigNotFound(root)
         try:
             raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
         except (OSError, tomllib.TOMLDecodeError) as exc:
@@ -227,6 +237,12 @@ class Config:
     def with_overrides(self, **kw: Any) -> Config:
         """Return a copy with the given fields replaced (``dataclasses.replace``)."""
         return replace(self, **kw)
+
+
+def resolve_home(home: Path | str | None = None, env: Mapping[str, str] | None = None) -> Path:
+    """The configuration root ``Config.load`` would use: ``home``, else ``TAU_HOME``, else the
+    current directory when it holds a ``tau.toml``, else ``~/.tau``."""
+    return _resolve_home(home, os.environ if env is None else env)
 
 
 def _resolve_home(home: Path | str | None, env: Mapping[str, str]) -> Path:

@@ -87,6 +87,7 @@ def test_command_names_and_aliases() -> None:
         "status",
         "model",
         "lang",
+        "settings",
         "quit",
     ]
     by_name = {c.name: c for c in SLASH_COMMANDS}
@@ -97,6 +98,7 @@ def test_command_names_and_aliases() -> None:
     assert by_name["clear"].aliases == ("temizle", "cls")
     assert by_name["status"].aliases == ("durum",)
     assert by_name["model"].aliases == ("rol",)
+    assert by_name["settings"].aliases == ("ayarlar", "ayar")
     assert by_name["resume"].argument == "[n|id]" and by_name["lang"].argument == "en|tr"
     assert by_name["compact"].argument == "[focus]" and by_name["model"].argument == "[role]"
     assert by_name["clear"].argument is None and by_name["status"].argument is None
@@ -138,7 +140,7 @@ def test_hint_and_help_lines() -> None:
     hint = command_hint()
     assert hint == (
         "/help, /tools, /sessions, /resume, /new, /session, /compact, /clear, /status, /model, "
-        "/lang, /quit"
+        "/lang, /settings, /quit"
     )
     assert command_hint("tr") == hint  # canonical names only, never aliases
     assert "devam" not in hint and "araçlar" not in hint and "özet" not in hint
@@ -150,7 +152,7 @@ def test_hint_and_help_lines() -> None:
     assert tr[-1].rstrip().endswith("çıkar")
     listed = {line.split()[0] for line in en}
     assert {"/compact", "/clear", "/status", "/model"} <= listed
-    assert any(line.startswith("  /compact [focus]  summarize") for line in en)
+    assert any(line.startswith("  /compact [focus]") and "summarize" in line for line in en)
     assert any(line.startswith("  /model [role]") and "roles" in line for line in en)
 
 

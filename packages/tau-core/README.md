@@ -35,7 +35,8 @@ state, default `~/.local/share/tau`), `TAU_PROFILE` (`home` | `travel` | `sport`
 `home`), `TAU_ROLE` (`hub`|`node`), `TAU_HUB_PORT`, `TAU_LANG` (see below). Built-in providers:
 `bedrock`, `anthropic` (with an optional per-role `fallback`) and `fake`; a `tau.providers`
 component adds more (see [Components](#components)). A missing credential stops `tau chat` with
-a message naming the variables; `tau doctor` reports it without starting anything.
+a message naming the variables; `tau doctor` reports it without starting anything, and `tau tui`
+opens its settings screen so the key can be added in place.
 
 ```toml
 [models.roles.brain]
@@ -50,6 +51,48 @@ context = "sliding"       # sliding | summarize: the model's window on a long se
 window_size = 60          # sliding: messages kept; summarize: recent messages never summarized
 max_total_tokens = 200000 # optional per-turn token budget (Limits(total_tokens=...))
 ```
+
+### Editing the two files: `tau_core.settings`
+
+Both channels edit the bootstrap config in place: `/settings` in `tau chat` (a report plus
+`language`, `profile`, `model`, `set NAME` and `clear NAME` setters; the value of `set` is read
+with `getpass` and never echoed) and the settings screen of the TUI. The shared editor is
+`tau_core.settings`, small and testable:
+
+```python
+from tau_core.settings import (
+    load_document,
+    set_role,
+    set_ui_language,
+    set_agent_option,
+    save_document,
+    validate,
+    set_credential,
+    clear_credential,
+    credential_status,
+    known_env_names,
+    mask,
+    describe_home,
+)
+
+doc = load_document(home)  # tomlkit: comments and layout survive
+set_role(doc, "brain", "anthropic", "claude-…", max_tokens=4096, fallback=None)  # None removes,
+set_agent_option(doc, "max_total_tokens", None)  # KEEP (the default) leaves a key as it is
+set_ui_language(doc, "tr")
+save_document(home, doc)  # check_document() first, then temp file + rename
+set_credential(home, "ANTHROPIC_API_KEY", value, export=True)  # .env at mode 0600; os.environ too
+credential_status(home, config.roles["brain"])  # ok | none | missing | fallback | unavailable
+validate(home)  # Config.load on the saved files
+```
+
+`save_document` refuses a document `Config` would not load (nothing is written), keeps the
+file's mode, and `.env` is created private and kept private. No function returns, logs or
+prints a credential value; the UI shows `mask(value)` (`sk-…abcd`, or only dots for a short
+value) or a `set` / `not set` flag. `known_env_names(home)` lists what a credentials editor
+should offer: the variables of the configured providers, then every other provider's, then the
+names in `.env.example` and `.env`. `report_lines(config, language=…)` is the `/settings`
+listing both channels print. `Config.load` raises `ConfigNotFound` (a `ConfigError`) when there
+is no `tau.toml`, which is what the TUI's setup screen keys on.
 
 `context` picks Strands' `SlidingWindowConversationManager` or `SummarizingConversationManager`;
 the session store still keeps every message, only what the model sees is windowed. A session
@@ -96,6 +139,7 @@ are accepted forever but never shown in hints:
 | `/status` | `/durum` | profile, session, model, context, tools, UI language, versions, hub |
 | `/model [role]` | `/rol` | list the model roles, or switch this session to one (remembered by `/resume`) |
 | `/lang en\|tr` | `/dil` | switch the UI language for this run |
+| `/settings [key value]` | `/ayarlar`, `/ayar` | show the bootstrap config (roles, credential status, language, profile, context, files); `language en\|tr`, `profile NAME`, `model ROLE PROVIDER MODEL_ID`, `set NAME` (hidden prompt), `clear NAME` change one and reload; the TUI opens its settings screen |
 | `/quit` | `/çık`, `/cik`, `/exit` | leave (`/exit` is an alias, `/quit` is the name the hints show) |
 
 Matching is `str.casefold()` on the typed name (`/ARAÇLAR` works). In code:

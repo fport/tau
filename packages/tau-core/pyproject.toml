@@ -10,6 +10,7 @@ dependencies = [
     "click>=8.1",
     "rich>=13",
     "python-dotenv>=1.0",
+    "tomlkit>=0.13",
 ]
 keywords = ["tau", "agent", "assistant", "llm", "strands", "cli", "home-automation", "robot"]
 classifiers = [

@@ -47,6 +47,7 @@ SLASH_COMMANDS: tuple[SlashCommand, ...] = (
     SlashCommand("status", ("durum",), None, "command.status"),
     SlashCommand("model", ("rol",), "[role]", "command.model"),
     SlashCommand("lang", ("dil",), "en|tr", "command.lang"),
+    SlashCommand("settings", ("ayarlar", "ayar"), "[key value]", "command.settings"),
     SlashCommand("quit", ("çık", "cik", "exit"), None, "command.quit"),
 )
 

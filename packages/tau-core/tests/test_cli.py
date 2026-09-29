@@ -104,7 +104,7 @@ def test_chat_scripted_conversation(tmp_path: Path) -> None:
     assert "example_echo  tier 0" in out
     assert (
         "Unknown command: /bilinmeyen. Commands: /help, /tools, /sessions, /resume, /new, "
-        "/session, /compact, /clear, /status, /model, /lang, /quit"
+        "/session, /compact, /clear, /status, /model, /lang, /settings, /quit"
     ) in out
     assert out.rstrip().endswith("Goodbye.")
     assert (tmp_path / "data" / "logs" / "tau.log").is_file()
@@ -183,11 +183,11 @@ def test_help_command_and_lang_switch(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     out = result.output
     assert "Commands:\n  /help " in out
-    assert "  /resume [n|id]    resume the most recent earlier session" in out
+    assert "  /resume [n|id]" + " " * 9 + "resume the most recent earlier session" in out
     assert "Usage: /lang en|tr (current: en)." in out
     assert "Unknown language: xx. Choose one of: en|tr." in out
     assert "Arayüz dili: tr." in out
-    assert "Komutlar:\n  /help " in out and "  /quit             çıkar" in out
+    assert "Komutlar:\n  /help " in out and "  /quit" + " " * 18 + "çıkar" in out
     assert "UI language: en." in out
 
 

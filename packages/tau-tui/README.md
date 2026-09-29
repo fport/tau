@@ -291,7 +291,7 @@ is pinned for the run. When the first agent cannot be built for lack of credenti
 `build_app` returns the app without an agent (`app.agent is None`,
 `app.missing_credentials` names the variables) instead of raising. Tests pass
 `model=FakeModel([...])`, `tools=[...]`, a fixed `clock`, `tz=UTC`, `motion=False`,
-`show_durations=False` and `show_paths=False`. `run_setup(default_home=..., language=...)`
+`show_durations=False`, `show_paths=False` and a pinned `version`. `run_setup(default_home=..., language=...)`
 runs the setup app and returns a `SetupResult` (`home`, `provider`, `language`, `created`) or
 `None`.
 `resolve_resume(store, resume, language=...)` turns `--resume [ID]` into a session id and an

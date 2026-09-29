@@ -550,6 +550,7 @@ and its own table in `tau.toml`:
 [component.telegram]
 poll_timeout_seconds = 50    # server-side long-poll timeout
 backoff_max_seconds = 60     # cap of the exponential backoff after network errors
+approval_timeout_seconds = 300   # an unanswered tier-2 approval counts as not approved
 ```
 
 Without a token, or without an allowed chat, the service starts idle, logs one line and reports
@@ -561,10 +562,13 @@ token or a chat id; `tau doctor` prints the same as its `telegram` line. On star
 exponentially (1 s, 2 s, 4 s, … up to `backoff_max_seconds`) and the hub stays up; a token the
 Bot API rejects (401) stops the poller until the next hub start.
 
+Each allowed chat has a worker that handles its messages in order, so the poller keeps polling
+while a turn runs (and while it waits for an approval); messages that arrive meanwhile queue up.
 State lives under `TAU_DATA_DIR/telegram/`: `offset` is the next `update_id` to ask for, written
-after each update is handled, so a restart neither re-processes nor skips an update (one whose
-turn a stop interrupted runs again); `chats.json` maps each chat to its current session, so a
-chat keeps its conversation across restarts.
+once an update is routed; `inflight.json` holds the messages a worker has not finished, and a
+start runs them again, so a restart neither re-processes nor skips a message (one whose turn a
+stop interrupted runs again); `chats.json` maps each chat to its current session, so a chat
+keeps its conversation across restarts.
 
 The slash commands `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`,
 `/model`, `/compact` and `/lang` resolve through `tau_core.commands` with the terminal's wording
@@ -576,14 +580,23 @@ are sent as HTML converted from the model's Markdown and fall back to plain text
 rejects the markup; longer than 4096 characters they are split. "typing…" shows while a turn
 runs.
 
-Tier 2: until inline-button approvals land (issue 017), `RefusingApprover` rejects every tier-2
-call made from Telegram. The refusal the model reads carries the approver's `refusal_note`
-(the gate appends it), which points the user at a trusted channel (the TUI or `tau chat`).
-Nothing is ever auto-approved.
+Tier 2 (issue 017): `TelegramApprover` sends the tool, its arguments and its effect to the chat
+the call came from, with **Approve** / **Reject** inline buttons labelled in the UI language.
+The press comes back as a `callback_query` through the same poll loop; nothing sits between
+Telegram and the hub, so it is a first-party approval (ADR 0006). It counts only when the user
+who pressed is in `TELEGRAM_ALLOWED_CHAT_IDS` (in a private chat that is the chat id) and the
+request id, chat and message match a pending request; any other press is answered with
+`answerCallbackQuery`, logged and has no effect. No answer within `approval_timeout_seconds` is a
+timeout. The message is then edited to show the outcome and loses its buttons (also when the
+hub stops while it waits). Every decision is an `approval` agent event in the session, like a
+terminal approval, and `/status` shows `approvals_pending`. A pending approval does not survive
+a hub restart (068 moves it onto Strands interrupts): its message runs again after the restart
+and asks again. Nothing is ever auto-approved.
 
 Tests use `tau_core.testing.FakeBotApi`, an offline Bot API: `push_message(chat_id, text)`
-queues an update, `sent` / `texts()` show what the bot sent, `fail(method, *errors)` scripts
-network losses and refusals.
+queues an update, `sent` / `texts()` show what the bot sent, `buttons(chat_id)` and
+`press(chat_id, index)` work the inline buttons, `edits` and `answers` record message edits and
+callback answers, `fail(method, *errors)` scripts network losses and refusals.
 
 ## Components
 

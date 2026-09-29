@@ -292,6 +292,10 @@ class FakeBotApi:
         """The parameters of every ``sendMessage`` that went through."""
         self.commands: dict[str, list[dict[str, str]]] = {}
         """Command menus by ``setMyCommands`` scope (JSON); read one with :meth:`menu`."""
+        self.edits: list[dict[str, Any]] = []
+        """The parameters of every ``editMessageText``."""
+        self.answers: list[dict[str, Any]] = []
+        """The parameters of every ``answerCallbackQuery``."""
         self._failures: dict[str, list[BaseException]] = {}
         self._next_update_id = 1
         self._next_message_id = 1
@@ -327,18 +331,50 @@ class FakeBotApi:
         self._next_message_id += 1
         return self.push({"message": message})
 
-    def push_callback(self, chat_id: int, data: str = "approve") -> dict[str, Any]:
-        """Queue an inline-button press in ``chat_id``."""
+    def push_callback(
+        self,
+        chat_id: int,
+        data: str = "approve",
+        *,
+        message_id: int = 1,
+        from_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Queue an inline-button press in ``chat_id`` on ``message_id``; ``from_id`` is the
+        user who pressed (the chat itself by default, as in a private chat)."""
+        presser = chat_id if from_id is None else from_id
         return self.push(
             {
                 "callback_query": {
                     "id": f"cb{self._next_update_id}",
-                    "from": {"id": chat_id, "is_bot": False, "first_name": "Test"},
-                    "message": {"message_id": 1, "date": 0, "chat": {"id": chat_id}},
+                    "from": {"id": presser, "is_bot": False, "first_name": "Test"},
+                    "message": {"message_id": message_id, "date": 0, "chat": {"id": chat_id}},
                     "data": data,
                 }
             }
         )
+
+    def buttons(self, chat_id: int) -> list[dict[str, str]]:
+        """The inline buttons of the latest message sent to ``chat_id`` that had any."""
+        for sent in reversed(self.sent):
+            keyboard = (sent.get("reply_markup") or {}).get("inline_keyboard")
+            if sent["chat_id"] == chat_id and keyboard:
+                return [button for row in keyboard for button in row]
+        return []
+
+    def press(self, chat_id: int, index: int, *, from_id: int | None = None) -> dict[str, Any]:
+        """Press button ``index`` (0 = the first) of the latest message with buttons in
+        ``chat_id``, as the user ``from_id`` (the chat itself by default)."""
+        for sent in reversed(self.sent):
+            keyboard = (sent.get("reply_markup") or {}).get("inline_keyboard")
+            if sent["chat_id"] == chat_id and keyboard:
+                button = [b for row in keyboard for b in row][index]
+                return self.push_callback(
+                    chat_id,
+                    button["callback_data"],
+                    message_id=sent["message_id"],
+                    from_id=from_id,
+                )
+        raise AssertionError(f"no message with buttons was sent to chat {chat_id}")
 
     def fail(self, method: str, *errors: BaseException) -> None:
         """The next ``len(errors)`` calls of ``method`` raise these, in order."""
@@ -417,10 +453,17 @@ class FakeBotApi:
             raise TelegramError("sendMessage", 400, "Bad Request: message is too long", None)
         if not text.strip():
             raise TelegramError("sendMessage", 400, "Bad Request: message text is empty", None)
-        record = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode, **params}
-        self.sent.append(record)
+        message_id = self._next_message_id
         self._next_message_id += 1
-        return {"message_id": self._next_message_id, "chat": {"id": chat_id}, "text": text}
+        record = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": parse_mode,
+            "message_id": message_id,
+            **params,
+        }
+        self.sent.append(record)
+        return {"message_id": message_id, "chat": {"id": chat_id}, "text": text}
 
     async def _api_sendChatAction(self, chat_id: int, action: str, **params: Any) -> bool:
         return True
@@ -437,4 +480,11 @@ class FakeBotApi:
         return self.commands.get(json.dumps({"chat_id": chat_id, "type": "chat"}, sort_keys=True))
 
     async def _api_answerCallbackQuery(self, callback_query_id: str, **params: Any) -> bool:
+        self.answers.append({"callback_query_id": callback_query_id, **params})
         return True
+
+    async def _api_editMessageText(
+        self, chat_id: int, message_id: int, text: str, **params: Any
+    ) -> dict[str, Any]:
+        self.edits.append({"chat_id": chat_id, "message_id": message_id, "text": text, **params})
+        return {"message_id": message_id, "chat": {"id": chat_id}, "text": text}

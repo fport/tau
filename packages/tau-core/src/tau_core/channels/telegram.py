@@ -18,9 +18,14 @@ written after each update is handled, so a restart neither re-processes nor skip
 update whose turn a stop interrupted runs again after the restart) and ``chats.json`` (chat id
 → current session id, so a chat keeps its session across restarts).
 
-Tier 2 is refused on this channel until inline-button approvals land (issue 017):
-:class:`RefusingApprover` rejects every request, and the refusal the model reads points the
-user at a trusted channel. Nothing is ever auto-approved.
+Tier-2 calls are approved with inline buttons (issue 017): :class:`TelegramApprover` sends the
+tool, its arguments and its effect with **Approve** / **Reject**, and the button press comes back
+as a ``callback_query`` through the same ``getUpdates`` loop, checked against the allowlist.
+No answer within ``approval_timeout_seconds`` is a timeout (not approved). Nothing is ever
+auto-approved. Each allowed chat has its own worker, so the poller keeps polling (and receives
+the press) while a turn waits for its approval; messages that arrive meanwhile queue up.
+``inflight.json`` keeps the messages a worker has not finished, so a stop in the middle of a
+turn runs that message again after the restart.
 
 The token never reaches a log line, an exception message or ``/status``.
 """
@@ -45,7 +50,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from tau_core.agent import Notice, TauAgent, TextDelta, ToolFinished, build_agent
-from tau_core.approval import ApprovalRequest, Decision
+from tau_core.approval import ApprovalRequest, Decision, _printable
 from tau_core.commands import SLASH_COMMANDS, SlashCommand, resolve_command, usage
 from tau_core.compaction import (
     CompactionError,
@@ -71,7 +76,7 @@ __all__ = [
     "TOKEN_ENV",
     "BotApi",
     "HttpBotApi",
-    "RefusingApprover",
+    "TelegramApprover",
     "TelegramError",
     "TelegramService",
     "doctor_check",
@@ -97,6 +102,11 @@ DEFAULT_BACKOFF_MAX = 60.0
 BACKOFF_START = 1.0
 TYPING_INTERVAL = 4.5
 """``sendChatAction`` shows "typing…" for about five seconds; refresh it a little earlier."""
+DEFAULT_APPROVAL_TIMEOUT = 300.0
+"""Seconds an approval waits for a button press before it counts as not approved."""
+APPROVAL_PREFIX = "ap:"
+"""``callback_data`` of the approval buttons: ``ap:<request id>:y`` or ``ap:<request id>:n``."""
+ARGUMENTS_LIMIT = 1500
 DEFAULT_ROLE = "brain"
 LIST_LIMIT = 10
 SCAN_LIMIT = 100
@@ -302,20 +312,110 @@ class HttpBotApi:
 # -- approvals -------------------------------------------------------------------------------
 
 
-class RefusingApprover:
-    """Rejects every tier-2 request made from Telegram until approvals with inline buttons
-    land (issue 017). ``refusal_note`` is appended to the refusal the model reads (fixed
-    English), so the reply tells the user where the action can be approved."""
+@dataclass
+class PendingApproval:
+    """One tier-2 request waiting for a button press. Request id, tool, arguments, effect,
+    expiry and the Telegram message are kept together, so 068 can persist the same record and
+    resume the agent from it after a restart."""
+
+    request_id: str
+    chat_id: int
+    tool: str
+    arguments: dict[str, Any]
+    effect: str
+    expires_at: str
+    future: asyncio.Future[Decision]
+    message_id: int | None = None
+
+
+def approval_text(request: ApprovalRequest, language: str) -> str:
+    """The approval message: title, tool, arguments and effect in the UI language, with
+    control and bidi characters escaped so the arguments cannot disguise themselves."""
+    arguments = json.dumps(request.arguments, ensure_ascii=False, sort_keys=True, default=str)
+    if len(arguments) > ARGUMENTS_LIMIT:
+        arguments = arguments[:ARGUMENTS_LIMIT] + "…"
+    effect = " ".join(str(request.effect).split())
+    return (
+        f"⚠️ {t('approval.title', language, tier=int(request.tier))}\n"
+        f"{t('approval.tool', language)}: {_printable(request.tool)}\n"
+        f"{t('approval.arguments', language)}: {_printable(arguments)}\n"
+        f"{t('approval.effect', language)}: {_printable(effect)}"
+    )
+
+
+class TelegramApprover:
+    """Asks about one tier-2 call in the chat it came from, with inline buttons.
+
+    The press arrives through the service's poll loop (:meth:`TelegramService.handle_callback`),
+    which resolves the pending future. The approver keeps its own timeout (the gate gets
+    ``timeout_seconds = None``) so it can edit the message to show the outcome and drop the
+    buttons in every case: approved, rejected, timed out, or cancelled by a hub stop. A message
+    that cannot be sent raises, and the gate rejects the call (fail closed).
+    """
 
     name = "telegram"
     timeout_seconds: float | None = None
-    refusal_note = (
-        "Tier-2 actions cannot be approved from Telegram yet; the user can ask for it again "
-        "from a trusted channel on the hub (the TUI or tau chat)."
-    )
+
+    def __init__(self, service: TelegramService, chat: ChatState):
+        self.service = service
+        self.chat = chat
 
     async def decide(self, request: ApprovalRequest) -> Decision:
-        return Decision.REJECTED
+        service, chat = self.service, self.chat
+        language = chat.language
+        loop = asyncio.get_running_loop()
+        expires = datetime.now(UTC).timestamp() + service.approval_timeout
+        pending = PendingApproval(
+            request_id=request.request_id,
+            chat_id=chat.chat_id,
+            tool=request.tool,
+            arguments=dict(request.arguments),
+            effect=str(request.effect),
+            expires_at=datetime.fromtimestamp(expires, UTC).isoformat(timespec="seconds"),
+            future=loop.create_future(),
+        )
+        text = approval_text(request, language)
+        buttons = [
+            {
+                "text": t("approval.approve", language),
+                "callback_data": f"{APPROVAL_PREFIX}{request.request_id}:y",
+            },
+            {
+                "text": t("approval.reject", language),
+                "callback_data": f"{APPROVAL_PREFIX}{request.request_id}:n",
+            },
+        ]
+        sent = await service._send_one(
+            chat.chat_id, text, reply_markup={"inline_keyboard": [buttons]}
+        )
+        pending.message_id = sent.get("message_id") if isinstance(sent, dict) else None
+        service.approvals[request.request_id] = pending
+        chat.awaiting_approval = True
+        outcome = "telegram.approval.cancelled"
+        try:
+            try:
+                decision = await asyncio.wait_for(
+                    asyncio.shield(pending.future), service.approval_timeout
+                )
+            except TimeoutError:
+                decision = Decision.TIMEOUT
+            outcome = {
+                Decision.APPROVED: "telegram.approval.approved",
+                Decision.REJECTED: "telegram.approval.rejected",
+            }.get(decision, "telegram.approval.timeout")
+            logger.info(
+                "telegram: approval %s for %s (request_id=%s)",
+                decision.value,
+                request.tool,
+                request.request_id,
+            )
+            return decision
+        finally:
+            service.approvals.pop(request.request_id, None)
+            chat.awaiting_approval = False
+            if not pending.future.done():
+                pending.future.cancel()
+            await service._close_approval(pending, text, t(outcome, language))
 
 
 # -- state on disk ---------------------------------------------------------------------------
@@ -342,6 +442,7 @@ class TelegramFiles:
         self.root = root
         self.offset_path = root / "offset"
         self.chats_path = root / "chats.json"
+        self.inflight_path = root / "inflight.json"
 
     def read_offset(self) -> int | None:
         try:
@@ -375,6 +476,27 @@ class TelegramFiles:
         payload = {str(chat): session for chat, session in sorted(chats.items())}
         _write_atomic(self.chats_path, json.dumps(payload, indent=2) + "\n")
 
+    def read_inflight(self) -> dict[int, dict[str, Any]]:
+        """Updates a worker took but did not finish before the last stop."""
+        try:
+            raw = json.loads(self.inflight_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as exc:
+            logger.warning("telegram: ignoring unreadable %s: %s", self.inflight_path, exc)
+            return {}
+        if not isinstance(raw, list):
+            return {}
+        return {
+            u["update_id"]: u
+            for u in raw
+            if isinstance(u, dict) and isinstance(u.get("update_id"), int)
+        }
+
+    def write_inflight(self, updates: Mapping[int, dict[str, Any]]) -> None:
+        payload = [updates[key] for key in sorted(updates)]
+        _write_atomic(self.inflight_path, json.dumps(payload, ensure_ascii=False) + "\n")
+
 
 # -- one chat --------------------------------------------------------------------------------
 
@@ -391,6 +513,11 @@ class ChatState:
     last_listing: list[str] = field(default_factory=list)
     lines: list[str] = field(default_factory=list)
     """The reply being assembled by a command handler; sent as one message (or several)."""
+    queue: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
+    """Updates for this chat, handled one at a time by :attr:`worker`."""
+    worker: asyncio.Task[None] | None = None
+    approver: TelegramApprover | None = None
+    awaiting_approval: bool = False
 
     def say(self, key: str, **kwargs: object) -> None:
         self.lines.append(t(key, self.language, **kwargs))
@@ -450,10 +577,15 @@ class TelegramService:
             _positive(settings.get("poll_timeout_seconds"), DEFAULT_POLL_TIMEOUT)
         )
         self.backoff_max = _positive(settings.get("backoff_max_seconds"), DEFAULT_BACKOFF_MAX)
+        self.approval_timeout = _positive(
+            settings.get("approval_timeout_seconds"), DEFAULT_APPROVAL_TIMEOUT
+        )
         self.api: BotApi | None = api
         self.store = store
         self.files = TelegramFiles(config.data_dir / "telegram")
-        self.approver = RefusingApprover()
+        self.approvals: dict[str, PendingApproval] = {}
+        """Tier-2 requests waiting for a button press, by request id."""
+        self._inflight: dict[int, dict[str, Any]] = {}
         self._sleep = sleep
         self._task: asyncio.Task[None] | None = None
         self._chats: dict[int, ChatState] = {}
@@ -488,6 +620,7 @@ class TelegramService:
         if self.store is None:
             self.store = open_session_store(self.config)
         self.offset = self.files.read_offset()
+        self._inflight = self.files.read_inflight()
         self._sessions = {
             chat: session
             for chat, session in self.files.read_chats().items()
@@ -502,7 +635,16 @@ class TelegramService:
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
+        # A worker in the middle of a turn keeps its update in inflight.json: it runs again
+        # after the restart. A pending approval is closed as "the hub stopped".
+        workers = [chat.worker for chat in self._chats.values() if chat.worker is not None]
+        for worker in workers:
+            worker.cancel()
+        for worker in workers:
+            with suppress(asyncio.CancelledError):
+                await worker
         for chat in self._chats.values():
+            chat.worker = None
             if chat.agent is not None:
                 chat.agent.close()
         if self.configured:
@@ -523,6 +665,7 @@ class TelegramService:
             "retry_in_s": self.retry_in_s,
             "handled": self.handled,
             "dropped": self.dropped,
+            "approvals_pending": len(self.approvals),
         }
 
     # -- the poll loop ------------------------------------------------------------------------
@@ -591,6 +734,10 @@ class TelegramService:
         assert self.api is not None
         if not await self._prepare():
             return
+        for update_id in sorted(self._inflight):
+            update = self._inflight[update_id]
+            logger.info("telegram: running update %s again (a stop interrupted it)", update_id)
+            self._dispatch(update)
         failures = 0
         while True:
             params: dict[str, Any] = {
@@ -626,54 +773,142 @@ class TelegramService:
                 await self._take(update)
 
     async def _take(self, update: Any) -> None:
-        """Handle one update, then move the offset past it (even when handling failed, so one
-        bad update cannot wedge the poller)."""
+        """Route one update, then move the offset past it. A callback is handled right here,
+        so a button press reaches a turn that is waiting for it; a message goes to its chat's
+        worker and into ``inflight.json`` until the worker has finished it."""
         if not isinstance(update, dict) or not isinstance(update.get("update_id"), int):
             logger.warning("telegram: ignoring a malformed update")
             return
+        update_id = update["update_id"]
         try:
-            await self.handle_update(update)
+            callback = update.get("callback_query")
+            message = update.get("message")
+            if isinstance(callback, dict):
+                await self.handle_callback(callback)
+            elif isinstance(message, dict) and update_id not in self._inflight:
+                chat_id = (message.get("chat") or {}).get("id")
+                if chat_id not in self.allowed:
+                    self._drop(chat_id, "message")
+                else:
+                    self._inflight[update_id] = update
+                    self._write_inflight()
+                    self._dispatch(update)
         except asyncio.CancelledError:
-            raise  # a stop: the offset stays, the update runs again after the restart
+            raise
         except Exception:
-            logger.exception("telegram: update %s failed", update["update_id"])
-        self.offset = update["update_id"] + 1
+            logger.exception("telegram: update %s failed", update_id)
+        self.offset = update_id + 1
         try:
             self.files.write_offset(self.offset)
         except OSError as exc:
             logger.warning("telegram: could not write %s: %s", self.files.offset_path, exc)
 
+    def _write_inflight(self) -> None:
+        try:
+            self.files.write_inflight(self._inflight)
+        except OSError as exc:
+            logger.warning("telegram: could not write %s: %s", self.files.inflight_path, exc)
+
+    def _dispatch(self, update: dict[str, Any]) -> None:
+        chat = self._chat(update["message"]["chat"]["id"])
+        chat.queue.put_nowait(update)
+        if chat.worker is None or chat.worker.done():
+            chat.worker = asyncio.create_task(
+                self._work(chat), name=f"tau-telegram-chat-{chat.chat_id}"
+            )
+
+    async def _work(self, chat: ChatState) -> None:
+        """Handle the chat's updates in order, one at a time."""
+        while True:
+            update = await chat.queue.get()
+            try:
+                await self.handle_message(chat, update["message"])
+            except asyncio.CancelledError:
+                raise  # a stop: the update stays in inflight.json
+            except Exception:
+                logger.exception("telegram: update %s failed", update["update_id"])
+            self._inflight.pop(update["update_id"], None)
+            self._write_inflight()
+
     # -- one update ---------------------------------------------------------------------------
 
-    async def handle_update(self, update: dict[str, Any]) -> None:
-        callback = update.get("callback_query")
-        if isinstance(callback, dict):
-            chat_id = ((callback.get("message") or {}).get("chat") or {}).get("id")
-            if chat_id not in self.allowed:
-                self._drop(chat_id, "callback query")
-                return
-            # Approval buttons arrive with issue 017; until then, only stop the spinner.
-            with suppress(Exception):
-                await self._api().call("answerCallbackQuery", callback_query_id=callback["id"])
-            return
-        message = update.get("message")
-        if not isinstance(message, dict):
-            return
-        chat_id = (message.get("chat") or {}).get("id")
-        if chat_id not in self.allowed:
-            self._drop(chat_id, "message")
-            return
+    async def handle_message(self, chat: ChatState, message: dict[str, Any]) -> None:
         self.handled += 1
-        chat = self._chat(chat_id)
         text = message.get("text")
         if not isinstance(text, str) or not text.strip():
-            await self.send(chat_id, t("telegram.text_only", chat.language))
+            await self.send(chat.chat_id, t("telegram.text_only", chat.language))
             return
         text = text.strip()
         if text.startswith("/"):
             await self.run_command(chat, text)
         else:
             await self.run_turn(chat, text)
+
+    async def handle_callback(self, callback: dict[str, Any]) -> None:
+        """A button press. It resolves a pending approval only when the presser and the chat
+        are allowlisted and the request id, chat and message match a pending request; anything
+        else is acknowledged (so the button stops spinning), logged and has no effect."""
+        callback_id = callback.get("id")
+        message = callback.get("message") or {}
+        chat_id = (message.get("chat") or {}).get("id")
+        from_id = (callback.get("from") or {}).get("id")
+        if chat_id not in self.allowed or from_id not in self.allowed:
+            self.dropped += 1
+            logger.info(
+                "telegram: ignored a button press from user %s in chat %s (not allowlisted)",
+                from_id,
+                chat_id,
+            )
+            await self._answer(callback_id)
+            return
+        language = self._chat(chat_id).language
+        data = callback.get("data")
+        request_id, _, choice = (
+            data[len(APPROVAL_PREFIX) :].partition(":")
+            if isinstance(data, str) and data.startswith(APPROVAL_PREFIX)
+            else ("", "", "")
+        )
+        pending = self.approvals.get(request_id)
+        if (
+            pending is None
+            or choice not in ("y", "n")
+            or pending.chat_id != chat_id
+            or pending.message_id != message.get("message_id")
+            or pending.future.done()
+        ):
+            logger.info("telegram: button press for an unknown or expired request %r", data)
+            await self._answer(callback_id, t("telegram.approval.expired", language))
+            return
+        decision = Decision.APPROVED if choice == "y" else Decision.REJECTED
+        pending.future.set_result(decision)
+        key = "telegram.approval.approved" if choice == "y" else "telegram.approval.rejected"
+        await self._answer(callback_id, t(key, language))
+
+    async def _answer(self, callback_id: Any, text: str | None = None) -> None:
+        if not isinstance(callback_id, str):
+            return
+        params: dict[str, Any] = {"callback_query_id": callback_id}
+        if text:
+            params["text"] = text
+        with suppress(Exception):
+            await self._api().call("answerCallbackQuery", **params)
+
+    async def _close_approval(self, pending: PendingApproval, text: str, outcome: str) -> None:
+        """Edit the approval message to show the outcome and drop its buttons (best effort,
+        also while the turn is being cancelled by a hub stop)."""
+        if pending.message_id is None:
+            return
+        with suppress(Exception):
+            await asyncio.wait_for(
+                self._api().call(
+                    "editMessageText",
+                    chat_id=pending.chat_id,
+                    message_id=pending.message_id,
+                    text=f"{text}\n\n{outcome}",
+                    reply_markup={"inline_keyboard": []},
+                ),
+                5,
+            )
 
     def _drop(self, chat_id: Any, what: str) -> None:
         self.dropped += 1
@@ -691,6 +926,7 @@ class TelegramService:
                 language=self.config.ui.language,
                 session_id=self._sessions.get(chat_id),
             )
+            chat.approver = TelegramApprover(self, chat)
             self._chats[chat_id] = chat
         return chat
 
@@ -710,20 +946,19 @@ class TelegramService:
                     logger.info("telegram: markup rejected (%s); sending plain text", exc)
             await self._send_one(chat_id, piece)
 
-    async def _send_one(self, chat_id: int, text: str, **params: Any) -> None:
-        """One ``sendMessage``, retried with backoff on network errors and flood control
-        (429); any other refusal of the Bot API is raised at once."""
+    async def _send_one(self, chat_id: int, text: str, **params: Any) -> Any:
+        """One ``sendMessage`` (its result, the sent message), retried with backoff on network
+        errors and flood control (429); any other refusal of the Bot API is raised at once."""
         failures = 0
         while True:
             try:
-                await self._api().call(
+                return await self._api().call(
                     "sendMessage",
                     chat_id=chat_id,
                     text=text,
                     link_preview_options={"is_disabled": True},
                     **params,
                 )
-                return
             except TelegramError as exc:
                 failures += 1
                 if exc.code != 429 or failures >= SEND_ATTEMPTS:
@@ -740,10 +975,11 @@ class TelegramService:
         with suppress(Exception):
             await self._api().call("sendChatAction", chat_id=chat_id, action="typing")
 
-    async def _keep_typing(self, chat_id: int) -> None:
+    async def _keep_typing(self, chat: ChatState) -> None:
         while True:
             await asyncio.sleep(TYPING_INTERVAL)
-            await self._typing(chat_id)
+            if not chat.awaiting_approval:  # no "typing…" while the user decides
+                await self._typing(chat.chat_id)
 
     # -- agents and sessions ----------------------------------------------------------------
 
@@ -765,7 +1001,7 @@ class TelegramService:
             agent = build_agent(
                 config=self.config,
                 role=role,
-                approver=self.approver,
+                approver=chat.approver,
                 session_store=self.store,
                 session_id=session_id,
                 channel=CHANNEL,
@@ -807,7 +1043,7 @@ class TelegramService:
             await self._flush(chat)
             return
         await self._typing(chat.chat_id)
-        typing = asyncio.create_task(self._keep_typing(chat.chat_id), name="tau-telegram-typing")
+        typing = asyncio.create_task(self._keep_typing(chat), name="tau-telegram-typing")
         parts: list[str] = []
         extra: list[str] = []
         try:

@@ -2,8 +2,6 @@
 
 Telegram is tau's channel for when you are away from the terminal: you write from your phone and the hub replies. The channel is a hub service in tau-core, so it runs whenever `tau hub run` (or the launchd/systemd service) runs. This page covers creating the bot, finding your chat id, starting the channel and what it does.
 
-!!! info "Approvals come later (issue 017)"
-    Tier-2 actions cannot be approved from Telegram yet: they are refused, and the reply tells you to ask again from the TUI or `tau chat`. Issue 017 adds **Approve** / **Reject** inline buttons.
 
 ## Why the hub polls, and no server sits in between
 
@@ -12,7 +10,7 @@ The first design routed Telegram through a Cloudflare Worker and a Durable Objec
 Instead the hub calls Telegram's `getUpdates` itself, outbound, in a loop. Consequences:
 
 - **No webhook, no public URL, no inbound port.** The hub only makes outgoing HTTPS requests to `api.telegram.org`. It deletes any webhook on start, since Telegram refuses `getUpdates` while one is set.
-- **Nothing between Telegram and the hub can forge an approval.** A button press arrives as a callback from your chat, and the hub checks the chat id before it does anything.
+- **Nothing between Telegram and the hub can forge an approval.** A button press arrives as a callback through the same poll, and the hub checks who pressed, in which chat, and that the request is still waiting before it does anything.
 - **Offline is fine.** While the hub is down, Telegram keeps updates for about a day; the hub catches up when it starts. There is no "tau is offline" auto-reply.
 - **A chat id allowlist on the hub** drops every message from anyone but you before the agent sees it. Strangers get no answer at all, so the bot does not even confirm it is alive.
 
@@ -59,6 +57,7 @@ Optional knobs live in `tau.toml`:
 [component.telegram]
 poll_timeout_seconds = 50    # how long one getUpdates waits on Telegram's side
 backoff_max_seconds = 60     # cap of the backoff after network errors
+approval_timeout_seconds = 300   # an unanswered approval counts as "not approved"
 ```
 
 ## 4. Start it
@@ -75,14 +74,12 @@ Without a token, or without an allowed chat, the channel starts idle and logs on
 ## 5. What the channel does
 
 - **Text in, text out.** Your message becomes a turn in a session tagged `channel = "telegram"`; the reply is sent back to the same chat, formatted from the model's Markdown (bold, code, links) and split when it is longer than Telegram's 4096 characters. "typing…" shows while tau thinks. Photos, voice notes and stickers get a short "text only for now" note.
-- **Your conversation survives restarts.** Each chat keeps its current session across hub restarts (`TAU_DATA_DIR/telegram/chats.json`), and the poll offset (`TAU_DATA_DIR/telegram/offset`) is saved after every update, so a restart neither answers a message twice nor skips one.
+- **Your conversation survives restarts.** Each chat keeps its current session across hub restarts (`TAU_DATA_DIR/telegram/chats.json`). The poll offset (`offset`) and the messages still being worked on (`inflight.json`) are saved as they change, so a restart neither answers a message twice nor skips one; a message whose turn was cut off by a stop runs again.
 - **Slash commands.** `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`, `/model`, `/compact` and `/lang` work as in the terminal, with the same wording and the Turkish aliases. The hub registers them as the bot's command menu (`setMyCommands`) when it starts, so typing `/` in Telegram lists them with their help text in the UI language; the menu is set for your chat only, so strangers who open the bot see none. See [Slash commands](../reference/slash-commands.md#on-telegram).
 - **Network trouble.** When the connection drops, the poller backs off (1 s, 2 s, 4 s, … up to a minute) and reconnects; the hub stays up. A token the Bot API rejects stops the poller until the next hub start (`tau doctor` shows `fail`).
-- **Tier 2** is refused for now, with a pointer to a trusted channel (see the box at the top).
+- **Approvals with inline buttons.** A tier-2 call (a physical action, or activating a tool tau wrote) sends a message with the tool, its arguments and its effect, and two buttons, **Approve** and **Reject**, labelled in the UI language. Approve runs the tool once; Reject, or no answer within five minutes (`approval_timeout_seconds`), is "not approved" and tau tells you so. The message is then edited to show the outcome and loses its buttons. Only a press by you (your id in `TELEGRAM_ALLOWED_CHAT_IDS`) on a request that is still waiting counts; everything else is ignored and logged. Messages you send while an approval waits are answered after it. If the hub restarts while an approval waits, the request is cancelled and asked again after the restart.
 
 Planned:
-
-- **Approvals with inline buttons** (issue 017). A tier-2 call sends a message with the tool, its arguments and its effect, and two buttons: **Approve** and **Reject**, labelled in the UI language.
 - **Startup status report** (issue 015). When the hub starts or restarts it sends one short message: version, profile, last crash if any.
 - **Voice notes** (issue 026), transcribed **on the hub**, not by a cloud speech API. See [Voice](voice.md).
 

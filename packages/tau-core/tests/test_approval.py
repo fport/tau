@@ -631,3 +631,13 @@ def test_record_log_levels(tool: str, level: int, caplog: pytest.LogCaptureFixtu
     assert message.startswith(f"tool_call {tool} ")
     assert 'args={"text": "süt"}' in message
     assert "summary=onaylanmadı" in message and "approval=rejected" in message
+
+
+async def test_an_approvers_refusal_note_is_appended_to_the_refusal() -> None:
+    class Noting(ScriptedApprover):
+        refusal_note = "Ask again from the TUI."
+
+    gate, _ = make_gate(Noting([Decision.REJECTED]))
+    result = await gate.check("move_arm", {"x": 1}, tool_use_id="t1")
+    assert result == (False, f"{refusal_text('move_arm')} Ask again from the TUI.", "rejected")
+    assert refusal_text("move_arm", None) == refusal_text("move_arm")

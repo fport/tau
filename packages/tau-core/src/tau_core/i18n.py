@@ -364,6 +364,20 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "(no reply)",
         "tr": "(yanıt yok)",
     },
+    "telegram.approval.approved": {"en": "✓ Approved.", "tr": "✓ Onaylandı."},
+    "telegram.approval.rejected": {"en": "✗ Rejected.", "tr": "✗ Reddedildi."},
+    "telegram.approval.timeout": {
+        "en": "⏱ No answer in time; not approved.",
+        "tr": "⏱ Zamanında cevap gelmedi; onaylanmadı.",
+    },
+    "telegram.approval.cancelled": {
+        "en": "The hub stopped before an answer; not approved.",
+        "tr": "Hub cevaptan önce durdu; onaylanmadı.",
+    },
+    "telegram.approval.expired": {
+        "en": "This request is no longer waiting for an answer.",
+        "tr": "Bu istek artık cevap beklemiyor.",
+    },
     # -- TUI (consumed by tau-tui; kept here so both channels share one table) --------------------
     "tui.placeholder": {
         "en": "Type a message · /help · /quit",

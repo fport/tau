@@ -111,6 +111,7 @@ Free tables for a component's own settings, returned as a fresh dict by `Config.
 [component.telegram]
 poll_timeout_seconds = 50    # Telegram long-poll timeout (default 50)
 backoff_max_seconds = 60     # cap of the backoff after network errors (default 60)
+approval_timeout_seconds = 300   # an unanswered tier-2 approval is a timeout (default 300)
 
 [component.example]
 nodes = ["mac", "arm"]

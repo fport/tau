@@ -10,10 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tau_core.approval import Decision
 from tau_core.channels.telegram import (
     MAX_MESSAGE_LENGTH,
-    RefusingApprover,
     TelegramError,
     TelegramService,
     doctor_check,
@@ -503,45 +501,195 @@ def test_compact_moves_the_chat_to_the_summary_session(tmp_path: Path) -> None:
     assert chats[str(ME)] == run.service._chats[ME].session_id
 
 
-# -- tier 2 ----------------------------------------------------------------------------------
+# -- tier 2: approvals with inline buttons ----------------------------------------------------
+
+LAMP = {"tool": "demo_physical_action", "input": {"action": "lamp on"}}
+SIMULATED = "Demo action simulated: lamp on. No real device moved."
 
 
-def test_tier2_is_refused_with_a_pointer_to_a_trusted_channel(tmp_path: Path) -> None:
-    config = make_config(
-        tmp_path,
-        replies=[{"tool": "demo_physical_action", "input": {"action": "lamp on"}}, "Not done."],
-    )
+def lamp_config(tmp_path: Path, **telegram: Any) -> Config:
+    config = make_config(tmp_path, replies=[LAMP, "Done."])
+    if telegram:
+        config = config.with_overrides(component_tables={"telegram": telegram})
+    return config
 
-    async def body(run: Run) -> None:
-        run.api.push_message(ME, "turn on the lamp")
-        await run.until(replies_to(run, 2))
 
-    run = serve(config, body)
-    assert run.api.texts() == [
-        "Not done.",
-        f"✗ {t('tool.rejected', 'en', tool='demo_physical_action')}",
-    ]
+def tool_results(run: Run) -> list[str]:
     agent = run.service._chats[ME].agent
     assert agent is not None
-    results = [
-        block["toolResult"]
+    return [
+        block["toolResult"]["content"][0]["text"]
         for message in agent.messages
         for block in message["content"]
         if "toolResult" in block
     ]
-    [result] = results
-    text = result["content"][0]["text"]
-    assert text.startswith("The user did not approve this action: demo_physical_action.")
-    assert text.endswith(RefusingApprover.refusal_note)
-    assert "(the TUI or tau chat)" in text
 
 
-def test_the_refusing_approver_never_approves() -> None:
-    from tau_core.approval import ApprovalRequest
-    from tau_core.tiers import Tier
+def approval_events(run: Run) -> list[dict[str, Any]]:
+    assert run.service.store is not None
+    session_id = run.service._chats[ME].session_id
+    assert session_id is not None
+    return [e.data for e in run.service.store.read_events(session_id) if e.kind == "approval"]
 
-    request = ApprovalRequest("r", "demo_physical_action", Tier.PHYSICAL, {}, "", None, "telegram")
-    assert asyncio.run(RefusingApprover().decide(request)) is Decision.REJECTED
+
+async def wait_for_buttons(run: Run) -> None:
+    await run.until(lambda: bool(run.api.buttons(ME)) and bool(run.service.approvals))
+
+
+def test_a_tier2_call_shows_buttons_with_tool_arguments_and_effect(tmp_path: Path) -> None:
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "turn on the lamp")
+        await wait_for_buttons(run)
+        run.api.press(ME, 0)
+        await run.until(lambda: "Done." in run.api.texts())
+
+    run = serve(lamp_config(tmp_path), body)
+    ask = next(p for p in run.api.sent if p.get("reply_markup"))
+    assert ask["text"].splitlines() == [
+        f"⚠️ {t('approval.title', 'en', tier=2)}",
+        "Tool: demo_physical_action",
+        'Arguments: {"action": "lamp on"}',
+        "Effect: Demo: simulates a physical action; no real device moves.",
+    ]
+    assert [b["text"] for b in run.api.buttons(ME)] == ["Approve", "Reject"]
+    assert all(b["callback_data"].startswith("ap:") for b in run.api.buttons(ME))
+
+
+def test_approve_runs_the_tool_once_and_edits_the_message(tmp_path: Path) -> None:
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "turn on the lamp")
+        await wait_for_buttons(run)
+        run.api.press(ME, 0)
+        run.api.press(ME, 0)  # a second press finds nothing pending
+        await run.until(lambda: "Done." in run.api.texts() and len(run.api.answers) == 2)
+
+    run = serve(lamp_config(tmp_path), body)
+    assert tool_results(run) == [SIMULATED]
+    [edit] = run.api.edits
+    ask = next(p for p in run.api.sent if p.get("reply_markup"))
+    assert edit["message_id"] == ask["message_id"]
+    assert edit["text"].endswith("\n\n✓ Approved.")
+    assert edit["reply_markup"] == {"inline_keyboard": []}
+    assert [a.get("text") for a in run.api.answers] == [
+        "✓ Approved.",
+        t("telegram.approval.expired", "en"),
+    ]
+    [event] = approval_events(run)
+    assert event["decision"] == "approved" and event["channel"] == "telegram"
+    assert run.service.approvals == {}
+
+
+def test_reject_returns_the_refusal_and_edits_the_message(tmp_path: Path) -> None:
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "turn on the lamp")
+        await wait_for_buttons(run)
+        run.api.press(ME, 1)
+        await run.until(lambda: "Done." in run.api.texts())
+
+    run = serve(lamp_config(tmp_path), body)
+    [result] = tool_results(run)
+    assert result.startswith("The user did not approve this action: demo_physical_action.")
+    assert run.api.edits[0]["text"].endswith("✗ Rejected.")
+    assert f"✗ {t('tool.rejected', 'en', tool='demo_physical_action')}" in run.api.texts()
+    assert [e["decision"] for e in approval_events(run)] == ["rejected"]
+
+
+def test_no_answer_times_out_as_not_approved(tmp_path: Path) -> None:
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "turn on the lamp")
+        await run.until(lambda: "Done." in run.api.texts())
+
+    run = serve(lamp_config(tmp_path, approval_timeout_seconds=0.05), body)
+    [result] = tool_results(run)
+    assert result.startswith("The user did not approve this action")
+    assert run.api.edits[0]["text"].endswith(t("telegram.approval.timeout", "en"))
+    assert [e["decision"] for e in approval_events(run)] == ["timeout"]
+
+
+def test_presses_from_strangers_or_for_other_requests_have_no_effect(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "turn on the lamp")
+        await wait_for_buttons(run)
+        [approve, _] = run.api.buttons(ME)
+        message_id = next(p for p in run.api.sent if p.get("reply_markup"))["message_id"]
+        run.api.push_callback(ME, approve["callback_data"], message_id=message_id, from_id=STRANGER)
+        run.api.push_callback(STRANGER, approve["callback_data"], message_id=message_id)
+        run.api.push_callback(ME, approve["callback_data"], message_id=message_id + 99)
+        run.api.push_callback(ME, "ap:0000deadbeef:y", message_id=message_id)
+        run.api.push_callback(ME, "something-else", message_id=message_id)
+        await run.until(lambda: len(run.api.answers) == 5)
+        assert run.service.approvals  # still pending: none of those counted
+        run.api.press(ME, 1)
+        await run.until(lambda: "Done." in run.api.texts())
+
+    with caplog.at_level(logging.INFO, logger="tau_core.channels.telegram"):
+        run = serve(lamp_config(tmp_path), body)
+    assert [e["decision"] for e in approval_events(run)] == ["rejected"]
+    expired = t("telegram.approval.expired", "en")
+    assert [a.get("text") for a in run.api.answers[:5]] == [None, None, expired, expired, expired]
+    assert f"ignored a button press from user {STRANGER}" in caplog.text
+    assert "unknown or expired request" in caplog.text
+
+
+def test_the_poller_keeps_polling_while_an_approval_waits_and_queues_messages(
+    tmp_path: Path,
+) -> None:
+    config = make_config(tmp_path, replies=[LAMP, "Done.", "Second reply."])
+
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "turn on the lamp")
+        await wait_for_buttons(run)
+        run.api.push_message(ME, "and another thing")  # queued behind the waiting turn
+        await run.until(lambda: run.service.offset == 3)  # the poller took it meanwhile
+        assert run.api.texts()[-1] != "Second reply."
+        run.api.press(ME, 0)
+        await run.until(lambda: "Second reply." in run.api.texts())
+
+    run = serve(config, body)
+    texts = run.api.texts()
+    assert texts.index("Done.") < texts.index("Second reply.")
+
+
+def test_a_stop_while_waiting_closes_the_approval_and_the_message_runs_again(
+    tmp_path: Path,
+) -> None:
+    config = lamp_config(tmp_path)
+
+    async def first(run: Run) -> None:
+        run.api.push_message(ME, "turn on the lamp")
+        await wait_for_buttons(run)
+
+    run = serve(config, first)
+    assert run.api.edits[-1]["text"].endswith(t("telegram.approval.cancelled", "en"))
+    inflight = json.loads((config.data_dir / "telegram" / "inflight.json").read_text())
+    assert [u["message"]["text"] for u in inflight] == ["turn on the lamp"]
+
+    async def second(run: Run) -> None:  # Telegram has nothing new; the message runs again
+        await wait_for_buttons(run)
+        run.api.press(ME, 0)
+        await run.until(lambda: "Done." in run.api.texts())
+
+    run = serve(config, second)
+    assert SIMULATED in tool_results(run)
+    assert json.loads((config.data_dir / "telegram" / "inflight.json").read_text()) == []
+
+
+def test_an_approval_that_cannot_be_sent_is_refused(tmp_path: Path) -> None:
+    api = FakeBotApi()
+
+    async def body(run: Run) -> None:
+        run.api.fail(
+            "sendMessage", TelegramError("sendMessage", 400, "Bad Request: chat not found", None)
+        )
+        run.api.push_message(ME, "turn on the lamp")
+        await run.until(lambda: "Done." in run.api.texts())
+
+    run = serve(lamp_config(tmp_path), body, api=api)
+    [result] = tool_results(run)
+    assert result.startswith("The user did not approve this action")
+    assert [e["decision"] for e in approval_events(run)] == ["rejected"]
 
 
 # -- tau doctor ------------------------------------------------------------------------------

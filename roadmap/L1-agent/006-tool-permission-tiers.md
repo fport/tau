@@ -1,6 +1,6 @@
 # 006 · Tool permission tiers with approval and a loop guard
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-core

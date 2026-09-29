@@ -29,3 +29,4 @@ Found 2026-09-28 while closing #001, on AC power: `launchctl print gui/<uid>/com
 ## Comments
 
 - 2026-09-29: triaged → ready-for-agent. Real bug (on AC the Mac can sleep and the phone loses the hub). Confirm the cause from the Notes first; keep the fix minimal because TauBar (024) replaces this agent later. The launchd behaviour is verified by asking the user to run `launchctl print gui/<uid>/com.tau.keepawake` afterwards.
+- 2026-09-30: probed while working on 057. `ProcessType Background` is not the cause: plain `/bin/sleep` agents without it are pended the same way in this login session (`RunAtLoad` speculative, `KeepAlive` inefficient, `StartInterval` interval), and `launchctl kickstart` runs them. So `setup.sh` needs a `kickstart` after `bootstrap`; whether launchd resumes automatic spawns after a fresh login is still to be checked (see 057).

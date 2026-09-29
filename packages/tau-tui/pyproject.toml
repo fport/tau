@@ -5,7 +5,7 @@ description = "Textual terminal UI for tau: chat pane, live event pane and in-TU
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = ["tau-core>=0.1.0", "textual>=8"]
+dependencies = ["click>=8.1", "rich>=13", "tau-core>=0.1.0", "textual>=8"]
 
 [project.entry-points."tau.commands"]
 tui = "tau_tui.cli:tui"

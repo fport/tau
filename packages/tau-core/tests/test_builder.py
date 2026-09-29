@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import sys
 from importlib import metadata
 from pathlib import Path
@@ -153,7 +154,11 @@ def statuses(checks: list[Check]) -> dict[str, list[str]]:
 
 def test_doctor_all_green_on_the_test_config(tmp_path: Path) -> None:
     config = test_config(tmp_path)
-    result = run(["doctor"], tmp_path, home=config.home)
+    # A port nothing listens on: a real hub on the default 7877 must not answer this test.
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        free_port = probe.getsockname()[1]
+    result = run(["doctor"], tmp_path, home=config.home, env={"TAU_HUB_PORT": str(free_port)})
     assert result.exit_code == 0, result.output
     out = result.output
     assert "ok   config:" in out

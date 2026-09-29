@@ -86,14 +86,14 @@ def _handler_class(api: ControlApi) -> type[BaseHTTPRequestHandler]:
 
         def _dispatch(self, method: str) -> None:
             if not _host_allowed(self.headers.get("Host")):
-                self._send(403, {"error": "yalnızca yerel erişim"})
+                self._send(403, {"error": "local access only"})
                 return
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 length = -1
             if length < 0 or length > MAX_BODY_BYTES:
-                self._send(413, {"error": "istek gövdesi çok büyük"})
+                self._send(413, {"error": "request body too large"})
                 return
             body = self.rfile.read(length) if length else b""
             url = urlsplit(self.path)
@@ -212,13 +212,13 @@ class ControlApi:
         handler = self.routes.get((request.method, request.path))
         if handler is None:
             if any(path == request.path for _, path in self.routes):
-                return 405, {"error": "bu yöntem desteklenmiyor"}
-            return 404, {"error": "bulunamadı"}
+                return 405, {"error": "method not allowed"}
+            return 404, {"error": "not found"}
         try:
             return handler(request)
         except Exception:
             logger.exception("control api handler failed: %s %s", request.method, request.path)
-            return 500, {"error": "iç hata; ayrıntı günlükte"}
+            return 500, {"error": "internal error; details are in the log"}
 
     def _health(self, request: ControlRequest) -> tuple[int, Any]:
         uptime = round(time.monotonic() - self._started, 1)

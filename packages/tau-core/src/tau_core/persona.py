@@ -7,23 +7,24 @@ only when its ``(st_mtime_ns, st_size)`` stamp changed, so an edit takes effect 
 model call without a restart. HTML comments (``<!-- ... -->``) in either file are notes for
 humans and never reach the model.
 
-The prompt layout is fixed::
+The prompt layout is fixed, and its scaffolding is English because the model reads it (the
+persona itself decides the reply language)::
 
     <persona.md>
 
-    ## Kullanıcı
+    ## User
     <user.md, or NO_USER_FILE when it is missing or empty>
 
-    ## Şu an
+    ## Now
     <DynamicContext.render()>
 
 The dynamic block carries the time (always Europe/Istanbul), the profile, the host role and
 the values later layers fill through :data:`ContextSource` callables (live nodes, today's
-budget). A value nobody provides renders as ``bilinmiyor``, so the model never has to guess.
+budget). A value nobody provides renders as ``unknown``, so the model never has to guess.
 
 Failure rules: a missing, empty or unreadable ``persona.md`` raises :class:`ConfigError` on the
 first read (``build_agent`` reads eagerly, so tau fails at startup); later it keeps the last
-good version. A missing or empty ``user.md`` means "no facts, address the user as siz"; an
+good version. A missing or empty ``user.md`` means "no facts, address the user formally"; an
 unreadable one keeps the last good version. A failing context source is skipped. Each problem
 is logged once until it clears, so a broken file or source never floods the terminal.
 """
@@ -45,8 +46,10 @@ from tau_core.config import Config, ConfigError
 
 __all__ = [
     "NO_USER_FILE",
+    "NOW_HEADING",
     "TIMEZONE",
     "UNKNOWN",
+    "USER_HEADING",
     "ContextSource",
     "DynamicContext",
     "Persona",
@@ -66,11 +69,13 @@ def _istanbul() -> tzinfo:
 
 
 TIMEZONE = _istanbul()
-UNKNOWN = "bilinmiyor"
-NONE_LIVE = "yok"
-NO_USER_FILE = "Kullanıcı dosyası yok (persona/user.md). Hitap: siz."
+UNKNOWN = "unknown"
+NONE_LIVE = "none"
+NO_USER_FILE = "No user file (persona/user.md). Address the user formally."
+USER_HEADING = "## User"
+NOW_HEADING = "## Now"
 
-_WEEKDAYS = ("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
+_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _BLANK_RUNS = re.compile(r"\n{3,}")
 
@@ -92,7 +97,7 @@ def _in_timezone(now: datetime) -> datetime:
 
 @dataclass(frozen=True)
 class DynamicContext:
-    """The live facts appended to the system prompt under ``## Şu an``."""
+    """The live facts appended to the system prompt under ``## Now``."""
 
     now: datetime
     profile: str
@@ -105,12 +110,12 @@ class DynamicContext:
         nodes = UNKNOWN if self.nodes is None else (", ".join(self.nodes) or NONE_LIVE)
         return "\n".join(
             [
-                f"- Tarih ve saat: {now:%d.%m.%Y %H:%M}, {_WEEKDAYS[now.weekday()]} "
+                f"- Date and time: {now:%d.%m.%Y %H:%M}, {_WEEKDAYS[now.weekday()]} "
                 "(Europe/Istanbul)",
-                f"- Profil: {self.profile}",
-                f"- Rol: {self.role}",
-                f"- Canlı node'lar: {nodes}",
-                f"- Bugünkü bütçe: {self.budget or UNKNOWN}",
+                f"- Profile: {self.profile}",
+                f"- Host role: {self.role}",
+                f"- Live nodes: {nodes}",
+                f"- Budget today: {self.budget or UNKNOWN}",
             ]
         )
 
@@ -212,7 +217,7 @@ class PersonaLoader:
             text = self._persona.read()
         except (OSError, UnicodeDecodeError) as exc:
             if self._last is None:
-                raise ConfigError(f"Persona dosyası okunamadı: {path} ({exc})") from exc
+                raise ConfigError(f"Persona file could not be read: {path} ({exc})") from exc
             self._problems.report(
                 str(path), "cannot read %s (%s); keeping the last version", path, exc
             )
@@ -220,8 +225,8 @@ class PersonaLoader:
         if not text:
             if self._last is None:
                 if text is None:
-                    raise ConfigError(f"Persona dosyası bulunamadı: {path}")
-                raise ConfigError(f"Persona dosyası boş: {path}")
+                    raise ConfigError(f"Persona file not found: {path}")
+                raise ConfigError(f"Persona file is empty: {path}")
             state = "is missing" if text is None else "is empty"
             self._problems.report(str(path), "%s %s; keeping the last version", path, state)
             return self._last.persona
@@ -238,12 +243,12 @@ class PersonaLoader:
             )
             return self._last.user if self._last is not None else None
         self._problems.clear(str(path))
-        return text or None  # missing or empty: no facts, default address "siz"
+        return text or None  # missing or empty: no facts, address the user formally
 
     def build_system_prompt(self, context: DynamicContext) -> str:
         current = self.read()
         user = current.user or NO_USER_FILE
-        return f"{current.persona}\n\n## Kullanıcı\n{user}\n\n## Şu an\n{context.render()}"
+        return f"{current.persona}\n\n{USER_HEADING}\n{user}\n\n{NOW_HEADING}\n{context.render()}"
 
 
 class PersonaHook(HookProvider):

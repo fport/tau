@@ -123,7 +123,7 @@ def test_fallback_used_with_warning(cfg: Config, caplog: pytest.LogCaptureFixtur
     assert "fallback" in caplog.text
 
 
-def test_missing_credentials_error_is_turkish(cfg: Config) -> None:
+def test_missing_credentials_error_names_the_variables(cfg: Config) -> None:
     with pytest.raises(MissingCredentials) as info:
         resolve_model("brain", cfg, env={})
     exc = info.value
@@ -133,16 +133,16 @@ def test_missing_credentials_error_is_turkish(cfg: Config) -> None:
         ["AWS_REGION", "AWS_PROFILE"],
     )
     assert str(exc).startswith(
-        "Model kimlik bilgileri eksik (brain rolü, bedrock). "
-        "Şu değişkenleri .env dosyasına ekleyin: AWS_REGION, AWS_PROFILE"
+        "Missing model credentials for role 'brain' (bedrock). "
+        "Add these variables to .env: AWS_REGION, AWS_PROFILE"
     )
-    assert "Örnek isimler .env.example dosyasında." in str(exc)
+    assert "Example names are in .env.example." in str(exc)
 
 
 def test_planned_and_unknown(cfg: Config) -> None:
     with pytest.raises(ConfigError, match="issue 012"):
         resolve_model("local", cfg, env={})
-    with pytest.raises(ConfigError, match="rolü tau.toml içinde tanımlı değil"):
+    with pytest.raises(ConfigError, match="is not defined in tau.toml"):
         resolve_model("nope", cfg, env={})
 
 

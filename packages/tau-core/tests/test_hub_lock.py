@@ -51,7 +51,7 @@ def test_second_acquisition_in_a_subprocess_fails(tmp_path: Path) -> None:
         result = _acquire_in_subprocess(path)
         assert result.returncode == 3, result.stderr
         assert result.stdout.strip() == (
-            f"tau hub zaten çalışıyor (pid {os.getpid()}). Aynı makinede tek hub çalışabilir."
+            f"tau hub is already running (pid {os.getpid()}). Only one hub can run per machine."
         )
     finally:
         lock.release()
@@ -119,7 +119,7 @@ def test_tau_hub_run_refuses_a_second_hub(config: Config, tmp_path: Path) -> Non
         result = CliRunner().invoke(cli, ["hub", "run"], env=env)
     assert result.exit_code == 1
     assert (
-        f"tau hub zaten çalışıyor (pid {os.getpid()}). Aynı makinede tek hub çalışabilir."
+        f"tau hub is already running (pid {os.getpid()}). Only one hub can run per machine."
         in result.output
     )
     assert "Traceback" not in result.output

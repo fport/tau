@@ -61,7 +61,7 @@ class FakeModel(Model):
     callable receives ``(messages, system_prompt)`` and returns one of those.
     """
 
-    def __init__(self, replies: Sequence[Reply] | None = None, *, default: str = "Tamam efendim."):
+    def __init__(self, replies: Sequence[Reply] | None = None, *, default: str = "Okay."):
         self.replies: list[Reply] = list(replies or [])
         self.default = default
         self.calls: list[FakeCall] = []
@@ -166,10 +166,13 @@ backend = "memory"
 [hub]
 control_port = 7877
 heartbeat_seconds = 5
+
+[ui]
+language = "en"
 """
 
-_TEST_PERSONA = "Sen tau'sun: kibar, kısa konuşan, Türkçe yanıt veren bir asistansın.\n"
-_TEST_USER = "Kullanıcıya 'siz' diye hitap et.\n"
+_TEST_PERSONA = "You are tau: a polite assistant who keeps replies short.\n"
+_TEST_USER = "Address the user formally.\n"
 
 
 def test_config(tmp_path: Path, **overrides: Any) -> Config:

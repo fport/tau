@@ -57,7 +57,7 @@ def _stale_state(pid: int = 4242) -> HubState:
         heartbeat_at="2026-09-29T11:59:55+00:00",
         version="0.1.0",
         role="hub",
-        profile="ev",
+        profile="home",
         last_crash=None,
     )
 
@@ -77,7 +77,7 @@ def test_run_writes_state_and_stops_cleanly(config: Config) -> None:
         "heartbeat_at": "2026-09-29T12:00:02+00:00",
         "version": __version__,
         "role": "hub",
-        "profile": "ev",
+        "profile": "home",
         "last_crash": None,
         "stopped_at": None,
     }

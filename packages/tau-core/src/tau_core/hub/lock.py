@@ -13,11 +13,11 @@ from contextlib import suppress
 from pathlib import Path
 from types import TracebackType
 
-ALREADY_RUNNING = "tau hub zaten çalışıyor (pid {pid}). Aynı makinede tek hub çalışabilir."
+ALREADY_RUNNING = "tau hub is already running (pid {pid}). Only one hub can run per machine."
 
 
 class AlreadyRunning(Exception):
-    """Another process holds the hub lock. The message is Turkish and meant for the user."""
+    """Another process holds the hub lock; the message is meant for the user."""
 
     def __init__(self, pid: int | None):
         self.pid = pid

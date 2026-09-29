@@ -24,7 +24,7 @@ LAUNCHCTL = "/bin/launchctl"
 
 
 class LaunchctlError(Exception):
-    """A launchctl call failed. The message is Turkish and meant for the user."""
+    """A launchctl call failed; the message is meant for the user."""
 
 
 class Launchctl(Protocol):
@@ -58,12 +58,12 @@ class SystemLaunchctl:
                 [self.executable, *args], capture_output=True, text=True, timeout=30
             )
         except (OSError, subprocess.SubprocessError) as exc:
-            raise LaunchctlError(f"launchctl çalıştırılamadı: {exc}") from exc
+            raise LaunchctlError(f"launchctl could not be run: {exc}") from exc
 
     def _check(self, result: subprocess.CompletedProcess[str], action: str) -> None:
         if result.returncode != 0:
-            detail = (result.stderr or result.stdout).strip() or f"çıkış kodu {result.returncode}"
-            raise LaunchctlError(f"launchctl {action} başarısız: {detail}")
+            detail = (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
+            raise LaunchctlError(f"launchctl {action} failed: {detail}")
 
     def bootstrap(self, domain: str, plist: Path) -> None:
         self._check(self._run("bootstrap", domain, str(plist)), "bootstrap")
@@ -95,13 +95,13 @@ class FakeLaunchctl:
         label = plistlib.loads(Path(plist).read_bytes())["Label"]
         target = f"{domain}/{label}"
         if target in self.loaded:
-            raise LaunchctlError(f"launchctl bootstrap başarısız: {target} zaten yüklü")
+            raise LaunchctlError(f"launchctl bootstrap failed: {target} is already loaded")
         self.loaded[target] = Path(plist)
 
     def bootout(self, domain: str, label: str) -> None:
         self.calls.append(("bootout", domain, label))
         if self.loaded.pop(f"{domain}/{label}", None) is None:
-            raise LaunchctlError(f"launchctl bootout başarısız: {domain}/{label} yüklü değil")
+            raise LaunchctlError(f"launchctl bootout failed: {domain}/{label} is not loaded")
 
     def is_loaded(self, domain: str, label: str) -> bool:
         return f"{domain}/{label}" in self.loaded

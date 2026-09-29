@@ -31,3 +31,7 @@ backend = "file"                          # memory | file (under TAU_DATA_DIR/se
 [hub]
 control_port = 7877
 heartbeat_seconds = 5
+
+[ui]
+language = "en"                           # en | tr: chrome of the terminal and the TUI (commands, notices, approval prompt).
+                                          # TAU_LANG or `tau --lang` override it; /lang switches it for one run.

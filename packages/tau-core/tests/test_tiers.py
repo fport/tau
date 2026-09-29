@@ -19,6 +19,7 @@ from tau_core import (
     build_agent,
     tau_tool,
 )
+from tau_core.approval import refusal_text, unknown_tool_text
 from tau_core.testing import (
     FakeModel,
     ScriptedApprover,
@@ -28,7 +29,7 @@ from tau_core.testing import (
 )
 from tau_core.tiers import UntieredToolError, effect_of, tier_of
 
-UNTIERED = "'{}' aracı tier bildirmiyor; kaydedilemez. @tau_tool(tier=...) kullanın."
+UNTIERED = "Tool '{}' declares no tier and cannot be registered. Use @tau_tool(tier=...)."
 
 ran: list[str] = []
 
@@ -286,7 +287,7 @@ async def test_tier2_not_approved_refusal_reaches_model(config: Config, decision
     assert ran == []
     assert tool_result_text(model) == (
         "error",
-        "Kullanıcı bu eylemi onaylamadı: open_door. Eylemi yapma, kullanıcıya kısaca bildir.",
+        refusal_text("open_door"),
     )
     assert [e.kind for e in seen] == ["approval", "tool_call"]
     assert seen[0].data["decision"] == decision.value
@@ -302,7 +303,7 @@ async def test_tier2_default_approver_rejects(config: Config) -> None:
     agent = build_agent(config=config, model=model, tools=TOOLS)
     await run_turn(agent)
     assert ran == []
-    assert tool_result_text(model)[1].startswith("Kullanıcı bu eylemi onaylamadı: open_door.")
+    assert tool_result_text(model)[1] == refusal_text("open_door")
 
 
 async def test_tier2_timeout_through_approver_attribute(config: Config) -> None:
@@ -319,7 +320,7 @@ async def test_tier2_timeout_through_approver_attribute(config: Config) -> None:
     assert [e.data.get("decision", e.data.get("approval")) for e in seen] == ["timeout", "timeout"]
     [finished] = [e for e in turn if isinstance(e, ToolFinished)]
     assert (finished.status, finished.approval) == ("rejected", "timeout")
-    assert tool_result_text(model)[1].startswith("Kullanıcı bu eylemi onaylamadı: open_door.")
+    assert tool_result_text(model)[1] == refusal_text("open_door")
 
 
 async def test_tier2_exempt_runs_without_prompt(config: Config) -> None:
@@ -374,11 +375,11 @@ async def test_unknown_tool_fails_closed_even_if_exempt(config: Config) -> None:
     assert approver.requests == [] and approver.decisions == [Decision.APPROVED]
     assert tool_result_text(model) == (
         "error",
-        "'launch_rocket' aracı kayıtlı değil; çalıştırılmadı.",
+        unknown_tool_text("launch_rocket"),
     )
     assert [e.kind for e in seen] == ["error", "tool_call"]
     assert seen[0].data == {
-        "message": "'launch_rocket' aracı kayıtlı değil; çalıştırılmadı.",
+        "message": "Tool 'launch_rocket' is not registered; it was not run.",
         "where": "tier_gate",
         "tool": "launch_rocket",
     }
@@ -393,7 +394,7 @@ async def test_tool_removed_from_catalog_is_refused(config: Config) -> None:
     agent.catalog.remove("read_note")
     await run_turn(agent)
     assert ran == []
-    assert tool_result_text(model)[1] == "'read_note' aracı kayıtlı değil; çalıştırılmadı."
+    assert tool_result_text(model)[1] == unknown_tool_text("read_note")
 
 
 async def test_tool_error_is_recorded(config: Config) -> None:
@@ -456,4 +457,4 @@ async def test_gate_failure_fails_closed(config: Config, monkeypatch: pytest.Mon
     monkeypatch.setattr(agent.gate, "check", explode)
     await run_turn(agent)
     assert ran == []
-    assert tool_result_text(model)[1].startswith("Kullanıcı bu eylemi onaylamadı: read_note.")
+    assert tool_result_text(model)[1] == refusal_text("read_note")

@@ -8,14 +8,15 @@ It is built on [Strands Agents](https://strandsagents.com/) and is published on 
 ```sh
 pip install tau-core        # or, inside the tau repo: uv sync --all-packages --group dev
 tau --help                  # chat, hub, version, plus any plugin commands (tui, ...)
-tau chat                    # talk to tau in the terminal (Turkish)
+tau chat                    # talk to tau in the terminal
+tau --lang tr chat          # same, with Turkish UI chrome
 ```
 
 ```python
 import asyncio
 from tau_core import build_agent
 
-agent = build_agent("ev")  # config from tau.toml + .env, model from the "brain" role
+agent = build_agent("home")  # config from tau.toml + .env, model from the "brain" role
 print(asyncio.run(agent.ask("Merhaba!")))
 ```
 
@@ -28,9 +29,56 @@ print(asyncio.run(agent.ask("Merhaba!")))
 asks for a role (`brain`, `fast`, `local`). Credentials and roots come from the environment or
 `TAU_HOME/.env` (never overriding variables that are already set): `TAU_HOME` (config root,
 default: the current directory if it has a `tau.toml`, else `~/.tau`), `TAU_DATA_DIR` (mutable
-state, default `~/.local/share/tau`), `TAU_PROFILE` (default `ev`), `TAU_ROLE` (`hub`|`node`),
-`TAU_HUB_PORT`. Providers today: `bedrock`, `anthropic` (with an optional per-role `fallback`)
-and `fake`; a missing credential stops `tau chat` with a Turkish message naming the variables.
+state, default `~/.local/share/tau`), `TAU_PROFILE` (`home` | `travel` | `sport`, default
+`home`), `TAU_ROLE` (`hub`|`node`), `TAU_HUB_PORT`, `TAU_LANG` (see below). Providers today:
+`bedrock`, `anthropic` (with an optional per-role `fallback`) and `fake`; a missing credential
+stops `tau chat` with a message naming the variables.
+
+## UI language and commands
+
+Everything a person reads in a channel's chrome (commands, notices, the approval prompt, tier
+labels, the TUI's titles and key hints) comes from one message table, `tau_core.i18n`, so the
+terminal and the TUI never drift. The language is per installation:
+
+```toml
+[ui]
+language = "en"   # en | tr
+```
+
+`TAU_LANG` overrides the file, `tau --lang tr ...` overrides both (it is exported as `TAU_LANG`,
+like `--profile`), and `/lang en|tr` switches it for one run. `Config.ui.language` is what a
+channel reads. What the *model* reads (system-prompt scaffolding, tool descriptions, the gate's
+refusal texts) is fixed English; errors raised before a `Config` exists (`ConfigError`,
+`MissingCredentials`, hub messages, `tau hub status`) are plain English too. The persona itself
+is Turkish by default and answers in the language the user writes.
+
+Slash commands are shared by `tau chat` and `tau tui` (`tau_core.commands`); the Turkish aliases
+are accepted forever but never shown in hints:
+
+| command | aliases | meaning |
+|---|---|---|
+| `/help` | `/yardım`, `/yardim`, `/?` | list the commands with one-line help |
+| `/tools` | `/araçlar`, `/araclar` | registered tools with tier and description |
+| `/sessions` | `/oturumlar` | the 10 most recent earlier sessions, numbered |
+| `/resume [n\|id]` | `/devam` | resume the most recent earlier session, the n-th of the last listing, or an id |
+| `/new` | `/yeni` | start a fresh session |
+| `/session` | `/oturum` | current session id, title, message count, store |
+| `/lang en\|tr` | `/dil` | switch the UI language for this run |
+| `/quit` | `/çık`, `/cik`, `/exit` | leave |
+
+Matching is `str.casefold()` on the typed name (`/ARAÇLAR` works). In code:
+
+```python
+from tau_core import LANGUAGES, SLASH_COMMANDS, command_hint, resolve_command, t
+
+resolve_command("/Devam 2")  # ("resume", "2"); None for "/x" or plain text
+command_hint()  # "/help, /tools, /sessions, /resume, /new, ..."
+t("session.not_found", "tr", session="x")  # "Oturum bulunamadı: x."
+```
+
+`t(key, language, **kwargs)` formats with `str.format`, raises `KeyError` for an unknown key and
+falls back to English for a language that lacks the key. Plugins add their own keys with
+`tau_core.i18n.register_messages({"mine.hello": {"en": "...", "tr": "..."}})`.
 
 ## Persona
 
@@ -41,30 +89,34 @@ loop. Its layout is fixed:
 ```text
 <persona/persona.md>
 
-## Kullanıcı
-<persona/user.md, or: Kullanıcı dosyası yok (persona/user.md). Hitap: siz.>
+## User
+<persona/user.md, or: No user file (persona/user.md). Address the user formally.>
 
-## Şu an
-- Tarih ve saat: 29.09.2026 15:30, Salı (Europe/Istanbul)
-- Profil: ev
-- Rol: hub
-- Canlı node'lar: bilinmiyor
-- Bugünkü bütçe: bilinmiyor
+## Now
+- Date and time: 29.09.2026 15:30, Tuesday (Europe/Istanbul)
+- Profile: home
+- Host role: hub
+- Live nodes: unknown
+- Budget today: unknown
 ```
 
-- `persona.md` is tau's character: Jarvis-style, Turkish, polite, dry humor, at most two
-  sentences for notifications and voice, no jokes in approval requests, never inventing facts
-  about the user. It is tracked, so it holds nothing personal.
+The scaffolding (headings, labels, `unknown`) is English because the model reads it; the
+persona decides the reply language.
+
+- `persona.md` is tau's character: Jarvis-style, Turkish by default and mirroring the language
+  the user writes in, polite, dry humor, at most two sentences for notifications and voice, no
+  jokes in approval requests, never inventing facts about the user. It is tracked, so it holds
+  nothing personal.
 - `user.md` holds the facts about the user and how to address them. It is gitignored; start
   from the made-up template with `cp persona/user.example.md persona/user.md`. Without it (or
-  when it is empty) tau addresses the user as "siz" and knows nothing about them.
+  when it is empty) tau addresses the user formally ("siz") and knows nothing about them.
 - A file is re-read only when its `(st_mtime_ns, st_size)` changes. HTML comments
   (`<!-- ... -->`) are notes for humans and never reach the model.
 - A missing, empty or unreadable `persona.md` makes `build_agent` raise `ConfigError`. If the
   file breaks later (deleted, truncated mid-save, not UTF-8), the last good version stays in
   use until it is fixed; each such problem is logged once.
-- Time is always Europe/Istanbul. A value no layer provides yet reads `bilinmiyor` (an empty
-  node list reads `yok`), and the persona tells the model never to guess it.
+- Time is always Europe/Istanbul. A value no layer provides yet reads `unknown` (an empty
+  node list reads `none`), and the persona tells the model never to guess it.
 
 Later layers fill the dynamic block through context sources: zero-argument callables that
 return partial overrides (`nodes`, `budget`), merged in order. They run before every model
@@ -94,29 +146,30 @@ Every tool declares a tier; a tool without one cannot be registered.
 from tau_core import Tier, tau_tool
 
 
-@tau_tool(tier=Tier.PHYSICAL, effect="Masa lambasını açar veya kapatır.")
+@tau_tool(tier=Tier.PHYSICAL, effect="Switches the desk lamp on or off.")
 def desk_lamp(state: str) -> str:
-    """Masa lambasını açar veya kapatır.
+    """Switches the desk lamp on or off.
 
     Args:
-        state: "on" ya da "off".
+        state: "on" or "off".
     """
 ```
 
-`effect` is the Turkish sentence approval prompts show (default: the tool description). A plain
+`effect` is the sentence approval prompts show (default: the tool description); write
+descriptions and effects in English, the model reads them. A plain
 Strands `@tool` has no tier: `ToolCatalog.add` raises `UntieredToolError`, `build_agent` refuses
 it when passed in `tools=` and skips it with a warning when a plugin ships it.
 
 Every call passes `TierGate` (`build_agent` wires it in through `TierHook`):
 
 - **Unknown tool** (not in the catalog, looked up live): refused with
-  `'{tool}' aracı kayıtlı değil; çalıştırılmadı.` and an `error` agent event.
+  `Tool '{tool}' is not registered; it was not run.` and an `error` agent event.
 - **Tier 0 and 1**: allowed.
 - **Tier 2**: allowed when an exemption matches, otherwise the channel's `Approver` decides.
   Anything but `Decision.APPROVED` (a rejection, a timeout, an approver that raises or answers
   something invalid) refuses the call, and the model reads
-  `Kullanıcı bu eylemi onaylamadı: {tool}. Eylemi yapma, kullanıcıya kısaca bildir.` as the
-  tool result. Prompts are asked one at a time.
+  `The user did not approve this action: {tool}. Do not perform it; tell the user briefly.` as
+  the tool result. Prompts are asked one at a time.
 - **Every call of every tier** emits a `tool_call` agent event (`tool`, `tier`, `arguments`,
   `status`, `result_summary`, `approval`, `duration_ms`, `tool_use_id`); every tier-2 question
   emits an `approval` event. The log gets tier 0 at `DEBUG`, tiers 1 and 2 at `INFO` (with
@@ -144,9 +197,10 @@ agent = build_agent(approver=ButtonApprover(), channel="telegram")
 - Without an approver, `AutoRejectApprover` rejects every tier-2 call. No approver approves on
   its own; tests script decisions with `tau_core.testing.ScriptedApprover([Decision.APPROVED])`
   and use `UnansweredApprover` for timeouts.
-- `TerminalApprover` (`tau chat`) prints the tool, its arguments as JSON and the effect, and
-  approves only on `e` or `evet`; anything else, Ctrl-D included, rejects. It has no timeout:
-  a blocked `input()` cannot be cancelled.
+- `TerminalApprover` (`tau chat`) prints the tool, its arguments as JSON and the effect in the
+  UI language (`format_approval_prompt(request, language)`), and approves only on `y`, `yes`,
+  `e` or `evet` whatever the language; anything else, Ctrl-D included, rejects. It has no
+  timeout: a blocked `input()` cannot be cancelled.
 - **Timeouts:** `TierGate(timeout_seconds=...)`, else the approver's own `timeout_seconds`, else
   none. When it runs out the question is cancelled and the decision is `timeout`; silence never
   approves.
@@ -161,10 +215,10 @@ can use the same policy.
 
 **Loop guard.** `[agent] max_turns` in `tau.toml` (default 12) caps the model calls of one user
 turn (Strands `Limits(turns=...)`); the tools the last allowed call asked for still run. When it
-trips, the turn ends with
-`Bu turda araç çağrısı sınırına ulaştım ({n} tur). Durdum; devam etmemi isterseniz söyleyin.`,
+trips, the turn ends with a notice in the UI language (`notice.turn_limit`: "I reached the
+tool-call limit for this turn ({n} turns). I stopped; tell me if you want me to continue."),
 a `turn_limit` event and `TurnEnd(stop_reason="limit_turns")`. The next user turn starts with a
-fresh budget.
+fresh budget. A failed model call ends the same way with `notice.model_error`.
 
 ## Sessions
 
@@ -184,7 +238,7 @@ and `event_sink`. `[sessions].backend` in `tau.toml` picks the backend and
 The `file` layout, one directory per session (ids look like `20260929-153012-3f9a`, UTC):
 
 ```
-session.json                         Strands session record; updated_at orders /devam
+session.json                         Strands session record; updated_at orders /sessions
 meta.json                            channel, profile, title
 events.jsonl                         one agent event per line, append-only
 agents/tau/agent.json                Strands agent state
@@ -198,10 +252,13 @@ everything".
 
 In `tau chat`:
 
-- `/devam` lists the last 10 earlier sessions that have messages
-  (`n. id  date  channel  title (N mesaj)`) and resumes the most recent one.
-- `/devam <n|id>` resumes that one; `tau chat --resume [ID]` does the same at start-up.
-- `/yeni` starts a fresh session; `/oturum` shows the current id, title, message count and
+- `/sessions` lists the last 10 earlier sessions that have messages
+  (`n. id  date  channel  title (N messages)`).
+- `/resume` resumes the most recent earlier session and says which one; `/resume <n>` resumes
+  the n-th of the last `/sessions` listing (without a listing, of the one `/sessions` would
+  print now); `/resume <id>` resumes that session. `tau chat --resume [ID]` does the same at
+  start-up.
+- `/new` starts a fresh session; `/session` shows the current id, title, message count and
   backend.
 
 Resuming rebuilds the agent on the stored session (`build_agent(session_id=...,
@@ -212,8 +269,8 @@ five extras and registers a factory in `tau_core.sessions.SESSION_BACKENDS`.
 ## Hub
 
 `tau hub run` runs tau as a long-lived process in the hub role. Only one hub runs per machine
-(`flock` on `<TAU_DATA_DIR>/hub/hub.lock`; a second start exits 1 with `tau hub zaten çalışıyor
-(pid N)…`). While it runs it refreshes `hub/state.json` every `[hub].heartbeat_seconds`; SIGTERM
+(`flock` on `<TAU_DATA_DIR>/hub/hub.lock`; a second start exits 1 with `tau hub is already
+running (pid N)…`). While it runs it refreshes `hub/state.json` every `[hub].heartbeat_seconds`; SIGTERM
 or SIGINT stops it cleanly and writes `stopped_at`. A start that finds a `state.json` without
 `stopped_at` records a crash report (`crash_reports.jsonl`, `last_crash.json`); the reason comes
 from `crash.json` when the dying hub could write one, else `unexpected exit (no clean shutdown)`.

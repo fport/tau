@@ -124,7 +124,7 @@ def test_hub_in_a_thread_serves_health_and_status(config: Config) -> None:
         code, status = get_json(f"{api.url}/status")
         assert code == 200
         assert status["pid"] == os.getpid()
-        assert status["profile"] == "ev" and status["role"] == "hub"
+        assert status["profile"] == "home" and status["role"] == "hub"
         assert status["started_at"] == hub.state.started_at
     finally:
         hub.request_stop()
@@ -193,8 +193,8 @@ def test_sigterm_stops_the_hub_cleanly(config: Config, spawn: Any) -> None:
     proc.send_signal(signal.SIGTERM)
     out, _ = proc.communicate(timeout=30)
     assert proc.returncode == 0, out
-    assert f"tau hub çalışıyor (pid {proc.pid}, profil ev)" in out
-    assert out.rstrip().endswith("tau hub durdu.")
+    assert f"tau hub is running (pid {proc.pid}, profile home)" in out
+    assert out.rstrip().endswith("tau hub stopped.")
     files = HubFiles(config.hub_dir)
     state = files.read_state()
     assert state is not None and state.pid == proc.pid and state.stopped_at is not None
@@ -222,14 +222,14 @@ def test_kill_9_then_restart_reports_the_crash(config: Config, spawn: Any, tmp_p
     }
     result = CliRunner().invoke(cli, ["hub", "status"], env=env, obj={"launchctl": FakeLaunchctl()})
     assert result.exit_code == 0, result.output
-    assert f"tau hub çalışıyor (pid {second.pid})." in result.output
-    assert f"  Son çökme: pid {first.pid}, son nabız " in result.output
+    assert f"tau hub is running (pid {second.pid})." in result.output
+    assert f"  Last crash: pid {first.pid}, last heartbeat " in result.output
     assert UNCLEAN_EXIT in result.output
 
     result = CliRunner().invoke(cli, ["hub", "stop"], env=env)
     assert result.exit_code == 0, result.output
-    assert f"Durdurma sinyali gönderildi (pid {second.pid})." in result.output
-    assert "tau hub durdu." in result.output
+    assert f"Stop signal sent (pid {second.pid})." in result.output
+    assert "tau hub stopped." in result.output
     second.wait(timeout=30)
     assert second.returncode == 0
     reports = HubFiles(config.hub_dir).read_crash_reports()

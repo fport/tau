@@ -255,7 +255,7 @@ async def test_model_error_becomes_notice_and_error_event(tmp_path: Path) -> Non
     async with app.run_test(size=(80, 24)) as pilot:
         await send(pilot, "merhaba")
         await wait_until(pilot, lambda: not app.busy and "hata" in app.event_pane.text)
-        assert "Model çağrısı başarısız oldu" in app.chat.text
+        assert "Model call failed" in app.chat.text
         assert "hata [model]" in app.event_pane.text
 
 
@@ -282,7 +282,7 @@ async def test_header_shows_profile_and_session_id_only(tmp_path: Path) -> None:
     app = make_app(tmp_path, [])
     async with app.run_test(size=(80, 24)):
         header = str(app.query_one("#header", Static).content)
-        assert header.split() == ["tau", "profil:", "ev", "oturum:", SESSION_ID]
+        assert header.split() == ["tau", "profil:", "home", "oturum:", SESSION_ID]
         assert str(tmp_path) not in header
 
 

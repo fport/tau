@@ -2,8 +2,11 @@
 
 ``Config`` is what the hub or a channel reads once at startup: which provider and model id
 serve each role, the loop guard, the session backend, the hub ports and the two roots
-(``TAU_HOME`` for configuration, ``TAU_DATA_DIR`` for mutable state). Runtime settings that
-change while tau runs are a different thing (*Settings*, stored in D1, issue 019).
+(``TAU_HOME`` for configuration, ``TAU_DATA_DIR`` for mutable state), plus the UI language
+(``[ui] language``, overridden by ``TAU_LANG``). Runtime settings that change while tau runs
+are a different thing (*Settings*, stored in D1, issue 019).
+
+Every ``ConfigError`` message is plain English: it is raised before any channel exists.
 """
 
 from __future__ import annotations
@@ -17,10 +20,13 @@ from typing import Any
 
 from dotenv import dotenv_values, load_dotenv
 
+from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES
+
 CONFIG_FILE = "tau.toml"
 DEFAULT_HOME = "~/.tau"
 DEFAULT_DATA_DIR = "~/.local/share/tau"
-DEFAULT_PROFILE = "ev"
+DEFAULT_PROFILE = "home"
+PROFILES = ("home", "travel", "sport")
 DEFAULT_ROLE = "hub"
 HOST_ROLES = ("hub", "node")
 
@@ -28,7 +34,7 @@ _ROLE_KEYS = {"provider", "model_id", "region", "max_tokens", "params", "fallbac
 
 
 class ConfigError(Exception):
-    """Invalid or missing configuration. The message is Turkish and meant for the user."""
+    """Invalid or missing configuration; the message is meant for the user."""
 
 
 @dataclass(frozen=True)
@@ -60,6 +66,13 @@ class HubConfig:
 
 
 @dataclass(frozen=True)
+class UiConfig:
+    """Chrome language of the channels (``en`` or ``tr``); see :mod:`tau_core.i18n`."""
+
+    language: str = DEFAULT_LANGUAGE
+
+
+@dataclass(frozen=True)
 class Config:
     """Everything tau needs to start. Build it with :meth:`Config.load`."""
 
@@ -71,6 +84,7 @@ class Config:
     agent: AgentConfig
     sessions: SessionsConfig
     hub: HubConfig
+    ui: UiConfig = field(default_factory=UiConfig)
 
     @property
     def persona_dir(self) -> Path:
@@ -118,24 +132,27 @@ class Config:
         config_path = root / CONFIG_FILE
         if not config_path.is_file():
             raise ConfigError(
-                f"Yapılandırma dosyası bulunamadı: {config_path}. "
-                "TAU_HOME değişkenini ayarlayın veya repo kökünde çalıştırın."
+                f"Configuration file not found: {config_path}. "
+                "Set TAU_HOME or run from the repository root."
             )
         try:
             raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
         except (OSError, tomllib.TOMLDecodeError) as exc:
-            raise ConfigError(f"Yapılandırma dosyası okunamadı: {config_path}: {exc}") from exc
+            raise ConfigError(
+                f"Configuration file could not be read: {config_path}: {exc}"
+            ) from exc
 
         roles = _parse_roles(raw.get("models", {}).get("roles", {}))
         agent = _parse_agent(raw.get("agent", {}))
         sessions = _parse_sessions(raw.get("sessions", {}))
         hub = _parse_hub(raw.get("hub", {}), merged)
+        ui = _parse_ui(raw.get("ui", {}), merged)
 
         data_dir = Path(merged.get("TAU_DATA_DIR") or DEFAULT_DATA_DIR).expanduser()
         profile = merged.get("TAU_PROFILE") or DEFAULT_PROFILE
         host_role = merged.get("TAU_ROLE") or DEFAULT_ROLE
         if host_role not in HOST_ROLES:
-            raise ConfigError(f"TAU_ROLE geçersiz: '{host_role}'. Geçerli değerler: hub, node.")
+            raise ConfigError(f"Invalid TAU_ROLE: '{host_role}'. Valid values: hub, node.")
 
         config = cls(
             home=root,
@@ -146,6 +163,7 @@ class Config:
             agent=agent,
             sessions=sessions,
             hub=hub,
+            ui=ui,
         )
         _validate_names(config)
         return config
@@ -168,36 +186,36 @@ def _resolve_home(home: Path | str | None, env: Mapping[str, str]) -> Path:
 
 def _parse_roles(raw: Any) -> dict[str, RoleConfig]:
     if not isinstance(raw, dict):
-        raise ConfigError("tau.toml: [models.roles] bir tablo olmalı.")
+        raise ConfigError("tau.toml: [models.roles] must be a table.")
     return {name: _parse_role(name, value) for name, value in raw.items()}
 
 
 def _parse_role(name: str, raw: Any, *, allow_fallback: bool = True) -> RoleConfig:
     where = f"[models.roles.{name}]"
     if not isinstance(raw, dict):
-        raise ConfigError(f"tau.toml: {where} bir tablo olmalı.")
+        raise ConfigError(f"tau.toml: {where} must be a table.")
     unknown = sorted(set(raw) - _ROLE_KEYS)
     if unknown:
-        raise ConfigError(f"tau.toml: {where} içinde bilinmeyen anahtar: {', '.join(unknown)}.")
+        raise ConfigError(f"tau.toml: {where} has unknown keys: {', '.join(unknown)}.")
     provider = raw.get("provider")
     model_id = raw.get("model_id")
     if not isinstance(provider, str) or not provider:
-        raise ConfigError(f"tau.toml: {where} için 'provider' gerekli.")
+        raise ConfigError(f"tau.toml: {where} needs a 'provider'.")
     if not isinstance(model_id, str) or not model_id:
-        raise ConfigError(f"tau.toml: {where} için 'model_id' gerekli.")
+        raise ConfigError(f"tau.toml: {where} needs a 'model_id'.")
     region = raw.get("region")
     if region is not None and not isinstance(region, str):
-        raise ConfigError(f"tau.toml: {where} 'region' metin olmalı.")
+        raise ConfigError(f"tau.toml: {where} 'region' must be a string.")
     max_tokens = raw.get("max_tokens")
     if max_tokens is not None and (not isinstance(max_tokens, int) or max_tokens <= 0):
-        raise ConfigError(f"tau.toml: {where} 'max_tokens' pozitif bir tam sayı olmalı.")
+        raise ConfigError(f"tau.toml: {where} 'max_tokens' must be a positive integer.")
     params = raw.get("params", {})
     if not isinstance(params, dict):
-        raise ConfigError(f"tau.toml: {where} 'params' bir tablo olmalı.")
+        raise ConfigError(f"tau.toml: {where} 'params' must be a table.")
     fallback = None
     if "fallback" in raw:
         if not allow_fallback:
-            raise ConfigError(f"tau.toml: {where} içinde iç içe 'fallback' desteklenmiyor.")
+            raise ConfigError(f"tau.toml: {where} cannot nest another 'fallback'.")
         fallback = _parse_role(f"{name}.fallback", raw["fallback"], allow_fallback=False)
     return RoleConfig(
         provider=provider,
@@ -211,25 +229,25 @@ def _parse_role(name: str, raw: Any, *, allow_fallback: bool = True) -> RoleConf
 
 def _parse_agent(raw: Any) -> AgentConfig:
     if not isinstance(raw, dict):
-        raise ConfigError("tau.toml: [agent] bir tablo olmalı.")
+        raise ConfigError("tau.toml: [agent] must be a table.")
     max_turns = raw.get("max_turns", AgentConfig.max_turns)
     if isinstance(max_turns, bool) or not isinstance(max_turns, int) or max_turns < 1:
-        raise ConfigError("tau.toml: [agent] 'max_turns' 1 veya daha büyük bir tam sayı olmalı.")
+        raise ConfigError("tau.toml: [agent] 'max_turns' must be an integer of 1 or more.")
     return AgentConfig(max_turns=max_turns)
 
 
 def _parse_sessions(raw: Any) -> SessionsConfig:
     if not isinstance(raw, dict):
-        raise ConfigError("tau.toml: [sessions] bir tablo olmalı.")
+        raise ConfigError("tau.toml: [sessions] must be a table.")
     backend = raw.get("backend", SessionsConfig.backend)
     if not isinstance(backend, str) or not backend:
-        raise ConfigError("tau.toml: [sessions] 'backend' metin olmalı.")
+        raise ConfigError("tau.toml: [sessions] 'backend' must be a string.")
     return SessionsConfig(backend=backend)
 
 
 def _parse_hub(raw: Any, env: Mapping[str, str]) -> HubConfig:
     if not isinstance(raw, dict):
-        raise ConfigError("tau.toml: [hub] bir tablo olmalı.")
+        raise ConfigError("tau.toml: [hub] must be a table.")
     port = raw.get("control_port", HubConfig.control_port)
     heartbeat = raw.get("heartbeat_seconds", HubConfig.heartbeat_seconds)
     if env.get("TAU_HUB_PORT"):
@@ -237,13 +255,27 @@ def _parse_hub(raw: Any, env: Mapping[str, str]) -> HubConfig:
             port = int(env["TAU_HUB_PORT"])
         except ValueError as exc:
             raise ConfigError(
-                f"TAU_HUB_PORT geçersiz: '{env['TAU_HUB_PORT']}'. Bir port numarası girin."
+                f"Invalid TAU_HUB_PORT: '{env['TAU_HUB_PORT']}'. Enter a port number."
             ) from exc
     if not isinstance(port, int) or not 0 < port < 65536:
-        raise ConfigError("tau.toml: [hub] 'control_port' 1-65535 arasında olmalı.")
+        raise ConfigError("tau.toml: [hub] 'control_port' must be between 1 and 65535.")
     if not isinstance(heartbeat, int) or heartbeat < 1:
-        raise ConfigError("tau.toml: [hub] 'heartbeat_seconds' pozitif bir tam sayı olmalı.")
+        raise ConfigError("tau.toml: [hub] 'heartbeat_seconds' must be a positive integer.")
     return HubConfig(control_port=port, heartbeat_seconds=heartbeat)
+
+
+def _parse_ui(raw: Any, env: Mapping[str, str]) -> UiConfig:
+    """``[ui] language`` from the file, overridden by ``TAU_LANG``; both must be known languages."""
+    if not isinstance(raw, dict):
+        raise ConfigError("tau.toml: [ui] must be a table.")
+    language = raw.get("language", UiConfig.language)
+    source = "tau.toml: [ui] 'language'"
+    if env.get("TAU_LANG"):
+        language = env["TAU_LANG"]
+        source = "TAU_LANG"
+    if not isinstance(language, str) or language not in LANGUAGES:
+        raise ConfigError(f"{source} must be one of {', '.join(LANGUAGES)}, not {language!r}.")
+    return UiConfig(language=language)
 
 
 def _validate_names(config: Config) -> None:
@@ -261,12 +293,12 @@ def _validate_names(config: Config) -> None:
         for cfg in (role, role.fallback):
             if cfg is not None and cfg.provider not in known_providers:
                 raise ConfigError(
-                    f"tau.toml: '{name}' rolü için bilinmeyen sağlayıcı: '{cfg.provider}'. "
-                    f"Geçerli değerler: {', '.join(sorted(known_providers))}."
+                    f"tau.toml: unknown provider for role '{name}': '{cfg.provider}'. "
+                    f"Valid values: {', '.join(sorted(known_providers))}."
                 )
     known_backends = set(SESSION_BACKENDS) | set(PLANNED_BACKENDS)
     if config.sessions.backend not in known_backends:
         raise ConfigError(
-            f"tau.toml: bilinmeyen oturum deposu: '{config.sessions.backend}'. "
-            f"Geçerli değerler: {', '.join(sorted(known_backends))}."
+            f"tau.toml: unknown session backend: '{config.sessions.backend}'. "
+            f"Valid values: {', '.join(sorted(known_backends))}."
         )

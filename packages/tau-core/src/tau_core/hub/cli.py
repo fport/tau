@@ -35,11 +35,11 @@ from tau_core.hub.state import HubFiles, parse_timestamp, timestamp, utc_now
 from tau_core.hub.units import LABEL, PLIST_NAME, ServicePaths, render_systemd_unit
 from tau_core.logs import configure_logging
 
-NOT_RUNNING = "tau hub çalışmıyor."
-NO_LAUNCHD = "launchd yalnızca macOS'ta var. Linux'ta systemd için: tau hub systemd-unit"
+NOT_RUNNING = "tau hub is not running."
+NO_LAUNCHD = "launchd exists only on macOS. For systemd on Linux: tau hub systemd-unit"
 
 
-@click.group(name="hub", help="tau'yu hub rolünde uzun süre çalışan bir servis olarak yönetir.")
+@click.group(name="hub", help="Run and manage tau as a long-lived service in the hub role.")
 @help_option()
 def hub() -> None:
     pass
@@ -87,12 +87,12 @@ class _Banner:
 
     async def start(self, hub: Hub) -> None:
         click.echo(
-            f"tau hub çalışıyor (pid {os.getpid()}, profil {hub.config.profile}). "
-            f"Kontrol API: {self.api.url}"
+            f"tau hub is running (pid {os.getpid()}, profile {hub.config.profile}). "
+            f"Control API: {self.api.url}"
         )
         if hub.crash_report is not None:
-            click.echo(f"Önceki hub temiz kapanmamıştı: {hub.crash_report.reason}")
-        click.echo("Durdurmak için Ctrl-C veya: tau hub stop")
+            click.echo(f"The previous hub did not stop cleanly: {hub.crash_report.reason}")
+        click.echo("To stop: Ctrl-C or `tau hub stop`")
         sys.stdout.flush()
 
     async def stop(self) -> None:
@@ -101,8 +101,8 @@ class _Banner:
 
 @hub.command(
     name="run",
-    help="Hub'ı ön planda çalıştırır (launchd ve systemd de bunu çalıştırır).",
-    short_help="Hub'ı ön planda çalıştırır.",
+    help="Run the hub in the foreground (launchd and systemd run this too).",
+    short_help="Run the hub in the foreground.",
 )
 @help_option()
 @click.pass_context
@@ -119,10 +119,10 @@ def run_command(ctx: click.Context) -> None:
         click.echo(str(exc), err=True)
         ctx.exit(1)
     if code == 0:
-        click.echo("tau hub durdu.")
+        click.echo("tau hub stopped.")
     else:
         click.echo(
-            f"tau hub beklenmedik şekilde durdu: {daemon.crash_reason}. Ayrıntı günlükte.",
+            f"tau hub stopped unexpectedly: {daemon.crash_reason}. Details are in the log.",
             err=True,
         )
     ctx.exit(code)
@@ -165,74 +165,75 @@ def collect_status(
 def _ago(seconds: float) -> str:
     s = int(max(0, seconds))
     if s < 60:
-        return f"{s} sn önce"
+        return f"{s} s ago"
     if s < 3600:
-        return f"{s // 60} dk önce"
+        return f"{s // 60} min ago"
     if s < 86400:
-        return f"{s // 3600} sa {s % 3600 // 60} dk önce"
-    return f"{s // 86400} gün önce"
+        return f"{s // 3600} h {s % 3600 // 60} min ago"
+    return f"{s // 86400} d ago"
 
 
 def _when(value: str | None, now: datetime) -> str:
     moment = parse_timestamp(value)
     if moment is None:
-        return "bilinmiyor"
+        return "unknown"
     local = moment.astimezone().strftime("%d.%m.%Y %H:%M:%S")
     return f"{local} ({_ago((now - moment).total_seconds())})"
 
 
 def format_status(info: dict[str, Any]) -> list[str]:
-    """Turkish lines for :func:`collect_status` output."""
+    """The lines ``tau hub status`` prints for :func:`collect_status` output (English)."""
     now = parse_timestamp(info["checked_at"]) or utc_now()
     state = info.get("state") or None
     lines = []
     if info["running"]:
-        lines.append(f"tau hub çalışıyor (pid {info['pid'] if info['pid'] else '?'}).")
+        lines.append(f"tau hub is running (pid {info['pid'] if info['pid'] else '?'}).")
         if state:
             lines.append(
-                f"  Profil: {state['profile']} · Rol: {state['role']} · Sürüm: {state['version']}"
+                f"  Profile: {state['profile']} · Role: {state['role']} · "
+                f"Version: {state['version']}"
             )
-            lines.append(f"  Başlangıç: {_when(state['started_at'], now)}")
-            beat = f"  Son nabız: {_when(state['heartbeat_at'], now)}"
+            lines.append(f"  Started: {_when(state['started_at'], now)}")
+            beat = f"  Last heartbeat: {_when(state['heartbeat_at'], now)}"
             last_beat = parse_timestamp(state["heartbeat_at"])
             if last_beat and (now - last_beat).total_seconds() > 3 * info["heartbeat_seconds"]:
-                beat += " — gecikmiş; hub yanıt vermiyor olabilir"
+                beat += " — overdue; the hub may not be responding"
             lines.append(beat)
-        lines.append(f"  Kontrol API: {info['control_url']}")
+        lines.append(f"  Control API: {info['control_url']}")
     else:
         lines.append(NOT_RUNNING)
         if state and state.get("stopped_at"):
             lines.append(
-                f"  Son çalışma: pid {state['pid']}, {_when(state['stopped_at'], now)} temiz durdu."
+                f"  Last run: pid {state['pid']}, stopped cleanly "
+                f"{_when(state['stopped_at'], now)}."
             )
         elif state:
             lines.append(
-                f"  Son çalışma temiz kapanmadı (pid {state['pid']}, son nabız "
-                f"{_when(state['heartbeat_at'], now)}); bir sonraki başlatma bunu çökme olarak "
-                "kaydeder."
+                f"  Last run did not stop cleanly (pid {state['pid']}, last heartbeat "
+                f"{_when(state['heartbeat_at'], now)}); the next start records it as a crash."
             )
     crash = info.get("last_crash")
     if crash:
         lines.append(
-            f"  Son çökme: pid {crash.get('pid', '?')}, son nabız "
+            f"  Last crash: pid {crash.get('pid', '?')}, last heartbeat "
             f"{_when(crash.get('last_heartbeat_at'), now)}: {crash.get('reason', '?')}"
         )
     else:
-        lines.append("  Son çökme: yok")
+        lines.append("  Last crash: none")
     launchd = info.get("launchd")
     if launchd is not None:
         if launchd["loaded"]:
-            lines.append(f"  launchd: kurulu ve yüklü ({launchd['label']})")
+            lines.append(f"  launchd: installed and loaded ({launchd['label']})")
         elif launchd["installed"]:
-            lines.append("  launchd: plist var ama yüklü değil (yüklemek için: tau hub install)")
+            lines.append("  launchd: plist present but not loaded (to load: tau hub install)")
         else:
-            lines.append("  launchd: kurulu değil (kurmak için: tau hub install)")
+            lines.append("  launchd: not installed (to install: tau hub install)")
     return lines
 
 
-@hub.command(name="status", help="Hub'ın durumunu ve son çökme nedenini gösterir.")
+@hub.command(name="status", help="Show the hub's status and the reason of its last crash.")
 @help_option()
-@click.option("--json", "as_json", is_flag=True, help="Durumu JSON olarak yazdırır.")
+@click.option("--json", "as_json", is_flag=True, help="Print the status as JSON.")
 @click.pass_context
 def status_command(ctx: click.Context, as_json: bool) -> None:
     config = _load_config(ctx)
@@ -247,15 +248,15 @@ def status_command(ctx: click.Context, as_json: bool) -> None:
 # -- stop ----------------------------------------------------------------------------------
 
 
-@hub.command(name="stop", help="Çalışan hub'ı durdurur (SIGTERM, temiz kapanış).")
+@hub.command(name="stop", help="Stop the running hub (SIGTERM, clean shutdown).")
 @help_option()
 @click.option(
     "--timeout",
     type=float,
     default=15.0,
     show_default=True,
-    metavar="SANİYE",
-    help="Hub'ın durmasını en fazla bu kadar bekler.",
+    metavar="SECONDS",
+    help="Wait at most this long for the hub to stop.",
 )
 @click.pass_context
 def stop_command(ctx: click.Context, timeout: float) -> None:
@@ -269,7 +270,7 @@ def stop_command(ctx: click.Context, timeout: float) -> None:
     # The lock holder wrote lock_pid; state.json can still be the previous run's for a moment.
     pid = lock_pid if lock_pid is not None else (state.pid if state else None)
     if pid is None:
-        click.echo(f"Hub çalışıyor ama pid okunamadı ({files.lock}).", err=True)
+        click.echo(f"The hub is running but its pid could not be read ({files.lock}).", err=True)
         ctx.exit(1)
     launchctl = _obj(ctx).get("launchctl") or SystemLaunchctl()
     try:
@@ -278,16 +279,16 @@ def stop_command(ctx: click.Context, timeout: float) -> None:
         click.echo(NOT_RUNNING)
         return
     except PermissionError:
-        click.echo(f"pid {pid} durdurulamadı: izin yok.", err=True)
+        click.echo(f"Could not stop pid {pid}: permission denied.", err=True)
         ctx.exit(1)
-    click.echo(f"Durdurma sinyali gönderildi (pid {pid}).")
+    click.echo(f"Stop signal sent (pid {pid}).")
     deadline = time.monotonic() + max(0.0, timeout)
     while HubLock.probe(files.lock)[0]:
         if time.monotonic() >= deadline:
-            click.echo(f"tau hub {timeout:g} sn içinde durmadı.", err=True)
+            click.echo(f"tau hub did not stop within {timeout:g} s.", err=True)
             ctx.exit(1)
         time.sleep(0.1)
-    click.echo("tau hub durdu.")
+    click.echo("tau hub stopped.")
 
 
 # -- service management --------------------------------------------------------------------
@@ -295,8 +296,8 @@ def stop_command(ctx: click.Context, timeout: float) -> None:
 
 @hub.command(
     name="install",
-    help="Hub'ı launchd kullanıcı ajanı olarak kurar ve başlatır (macOS).",
-    short_help="launchd ajanını kurar ve başlatır (macOS).",
+    help="Install and start the hub as a launchd user agent (macOS).",
+    short_help="Install and start the launchd agent (macOS).",
 )
 @help_option()
 @click.pass_context
@@ -309,25 +310,25 @@ def install_command(ctx: click.Context) -> None:
     try:
         result = install_launch_agent(config, launchctl)
     except (LaunchctlError, OSError) as exc:
-        click.echo(f"launchd ajanı kurulamadı: {exc}", err=True)
+        click.echo(f"launchd agent could not be installed: {exc}", err=True)
         ctx.exit(1)
-    verb = "yeniden kuruldu" if result.replaced else "kuruldu"
-    click.echo(f"launchd ajanı {verb}: {result.plist}")
-    click.echo("  Hub oturum açılınca başlar; çökerse ya da öldürülürse birkaç saniyede yeniden")
-    click.echo("  başlatılır. Temiz durdurma (tau hub stop) sonrası yeniden başlatılmaz.")
-    click.echo(f"  launchd günlükleri: {HubFiles(config.hub_dir).logs}")
+    verb = "reinstalled" if result.replaced else "installed"
+    click.echo(f"launchd agent {verb}: {result.plist}")
+    click.echo("  The hub starts at login; after a crash or a kill it is restarted within a few")
+    click.echo("  seconds. It is not restarted after a clean stop (tau hub stop).")
+    click.echo(f"  launchd logs: {HubFiles(config.hub_dir).logs}")
     if running and not was_loaded:
         click.echo(
-            f"  Uyarı: elle başlatılmış bir hub çalışıyor (pid {pid}); launchd'nin hub'ı o "
-            "durana kadar başlayamaz. Durdurmak için: tau hub stop"
+            f"  Warning: a hub started by hand is running (pid {pid}); launchd's hub cannot "
+            "start until it stops. To stop it: tau hub stop"
         )
-    click.echo("  Durum için: tau hub status")
+    click.echo("  For the status: tau hub status")
 
 
 @hub.command(
     name="uninstall",
-    help="launchd kullanıcı ajanını durdurur ve kaldırır (macOS).",
-    short_help="launchd ajanını kaldırır (macOS).",
+    help="Stop and remove the launchd user agent (macOS).",
+    short_help="Remove the launchd agent (macOS).",
 )
 @help_option()
 @click.pass_context
@@ -337,18 +338,18 @@ def uninstall_command(ctx: click.Context) -> None:
     try:
         removed = uninstall_launch_agent(launchctl)
     except (LaunchctlError, OSError) as exc:
-        click.echo(f"launchd ajanı kaldırılamadı: {exc}", err=True)
+        click.echo(f"launchd agent could not be removed: {exc}", err=True)
         ctx.exit(1)
-    click.echo("launchd ajanı kaldırıldı." if removed else "launchd ajanı kurulu değildi.")
+    click.echo("launchd agent removed." if removed else "launchd agent was not installed.")
 
 
-@hub.command(name="systemd-unit", help="systemd unit dosyasını yazdırır (RPi5 hub'ı için).")
+@hub.command(name="systemd-unit", help="Print the systemd unit file (for the RPi5 hub).")
 @help_option()
 @click.option(
     "--python",
     "python",
-    metavar="YOL",
-    help="Servisin çalıştıracağı Python (varsayılan: şu anki yorumlayıcı).",
+    metavar="PATH",
+    help="The Python the service runs (default: the current interpreter).",
 )
 @click.pass_context
 def systemd_unit_command(ctx: click.Context, python: str | None) -> None:

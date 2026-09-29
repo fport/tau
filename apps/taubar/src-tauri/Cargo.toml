@@ -1,0 +1,40 @@
+[package]
+name = "taubar"
+version = "0.1.0"
+description = "TauBar: tau's macOS menu bar app (sleep modes, the hub switch, launch at login)"
+license = "MIT"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the library name distinct from the binary name.
+name = "taubar_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["image-png", "tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+plist = "1"
+signal-hook = "0.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keepawake = "0.6"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-service-management = "0.3"
+
+# Size guideline: https://tauri.app/concept/size/#cargo-configuration
+# No `panic = "abort"`: TauBar must still stop its hub and restore sleep when a thread panics.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true

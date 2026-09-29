@@ -1,0 +1,304 @@
+/* TauBar settings window. Palette and state colours from docs/brand/README.md:
+   ok = Flare, error = Signal, pending = Core at 55 %, attention = Flare; no green or red. */
+
+:root {
+  --void: #05071a;
+  --void-2: #12061a;
+  --panel: #0c0e26;
+  --line: #24223d;
+  --signal: #ff2e63;
+  --ember: #ff7a3d;
+  --flare: #ffb25c;
+  --core: #fff4e0;
+  --muted: rgba(255, 244, 224, 0.55);
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--core);
+  background: var(--void);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(180deg, var(--void), var(--void-2));
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 20px 28px;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.mark {
+  width: 40px;
+  height: 40px;
+  color: var(--ember);
+  flex: none;
+}
+
+.mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--flare);
+}
+
+section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.row h2 {
+  margin: 0;
+}
+
+.status {
+  font-weight: 550;
+}
+
+.status.ok {
+  color: var(--flare);
+}
+
+.status.attention {
+  color: var(--flare);
+}
+
+.status.pending {
+  color: var(--muted);
+}
+
+.status.error,
+.banner.error {
+  color: var(--signal);
+}
+
+.banner {
+  padding: 8px 10px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
+
+.choices {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.choice.active {
+  border-color: var(--ember);
+  background: rgba(255, 122, 61, 0.08);
+}
+
+.choice.disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.choice input {
+  margin-top: 3px;
+  accent-color: var(--ember);
+}
+
+.choice span {
+  display: grid;
+  gap: 2px;
+}
+
+.choice em {
+  font-style: normal;
+  color: var(--flare);
+}
+
+.choice small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.check input {
+  accent-color: var(--ember);
+}
+
+label.field {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+label.field > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+input[type="text"],
+input[type="number"],
+textarea {
+  width: 100%;
+  font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--core);
+  background: var(--void);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+input:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 1px;
+}
+
+button {
+  font: inherit;
+  color: var(--core);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--ember);
+}
+
+button.primary {
+  background: var(--ember);
+  border-color: var(--ember);
+  color: var(--void);
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+pre,
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+pre.log,
+pre.code {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 11px;
+  background: var(--void);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+pre.code {
+  margin: 6px 0 8px;
+}
+
+details summary {
+  cursor: pointer;
+  color: var(--flare);
+  margin: 4px 0 6px;
+}
+
+dl.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+dl.facts dt {
+  color: var(--muted);
+}
+
+dl.facts dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+footer {
+  display: grid;
+  gap: 2px;
+  word-break: break-all;
+}

@@ -18,6 +18,10 @@ provider = "bedrock"
 model_id = "global.anthropic.claude-haiku-4-5"
 max_tokens = 1024
 
+[models.roles.fast.fallback]              # same rule as brain: used only when Bedrock has no credentials
+provider = "anthropic"
+model_id = "claude-haiku-4-5-20251001"
+
 [models.roles.local]
 provider = "ollama"                       # arrives in issue 012; resolving it now raises a clear error
 model_id = "qwen3:8b"

@@ -40,7 +40,10 @@ def tau_tool(
     """Strands ``@tool`` plus a tier and an optional effect text (shown in approvals).
 
     ``tool_kwargs`` go to ``strands.tool`` (``name``, ``description``, ``inputSchema``, ...).
+    An invalid tier (not 0, 1 or 2, or a bool) raises ``ValueError`` at decoration time.
     """
+    if isinstance(tier, bool):
+        raise ValueError(f"tier must be a Tier (0, 1 or 2), not {tier!r}")
     declared = Tier(tier)
 
     def decorate(func: Callable[..., Any]) -> AgentTool:
@@ -53,10 +56,10 @@ def tau_tool(
 
 
 def tier_of(tool: AgentTool) -> Tier:
-    """The tool's declared tier; :class:`UntieredToolError` when it has none."""
+    """The tool's declared tier; :class:`UntieredToolError` when it has none or an invalid one."""
     value = getattr(tool, "tau_tier", None)
     name = getattr(tool, "tool_name", repr(tool))
-    if value is None:
+    if value is None or isinstance(value, bool):
         raise UntieredToolError(name)
     try:
         return Tier(value)
@@ -88,6 +91,10 @@ class ToolCatalog:
         self._tools[name] = tool
 
     def extend(self, tools: Iterable[AgentTool]) -> None:
+        """Add all tools, or none of them when one is untiered."""
+        tools = list(tools)
+        for tool in tools:
+            tier_of(tool)  # raises UntieredToolError before anything is registered
         for tool in tools:
             self.add(tool)
 

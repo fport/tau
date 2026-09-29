@@ -51,8 +51,35 @@ listing, agent events and metadata); `[sessions].backend` picks the backend (`me
 
 ## Hub
 
-`tau hub` will run tau as a long-lived hub process with a launchd service (issue 009); the
-command group exists and prints a placeholder until then.
+`tau hub run` runs tau as a long-lived process in the hub role. Only one hub runs per machine
+(`flock` on `<TAU_DATA_DIR>/hub/hub.lock`; a second start exits 1 with `tau hub zaten çalışıyor
+(pid N)…`). While it runs it refreshes `hub/state.json` every `[hub].heartbeat_seconds`; SIGTERM
+or SIGINT stops it cleanly and writes `stopped_at`. A start that finds a `state.json` without
+`stopped_at` records a crash report (`crash_reports.jsonl`, `last_crash.json`); the reason comes
+from `crash.json` when the dying hub could write one, else `unexpected exit (no clean shutdown)`.
+
+```sh
+tau hub run            # foreground; Ctrl-C or `tau hub stop` stops it
+tau hub status         # running or not, heartbeat, last crash, launchd state (--json for scripts)
+tau hub stop           # SIGTERM to the running hub; waits until it is gone
+tau hub install        # macOS: launchd user agent, restarted after a crash or kill
+tau hub uninstall
+tau hub systemd-unit   # prints the systemd user unit (RPi5 hub)
+```
+
+The control API listens on `127.0.0.1:<control_port>` only (default 7877, `TAU_HUB_PORT`
+overrides) and speaks JSON: `GET /health` → `{"ok": true, "pid", "uptime_s"}`, `GET /status` →
+`role`, `profile`, `version`, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`,
+`approvals_pending`, `nodes`. Requests with a non-loopback `Host` header get 403.
+
+Extending the hub: a `HubService` has a `name`, `async start(hub)` and `async stop()`; services
+passed to `Hub(config, services=...)` start in order after the crash check and stop in reverse.
+`ControlApi.add_route(method, path, handler)` adds routes (handlers run in the server thread; reach
+the event loop with `asyncio.run_coroutine_threadsafe(..., hub.loop)`) and
+`hub.add_status_source(fn)` adds keys to `/status`. launchd is driven through the `Launchctl`
+protocol; tests pass `FakeLaunchctl` to the CLI as `obj={"launchctl": fake}`. The launchd plist
+and systemd unit are package templates; `infra/services/` in the tau repo has rendered examples
+and the install notes.
 
 ## Plugins
 

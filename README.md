@@ -96,7 +96,7 @@ Bu repo merkez. İçindeki her şey, ileride yayınlanabilecek ya da ayrı bir r
 
 | Yol | Tür | Dağıtım · import | Görevi | Durum |
 |---|---|---|---|---|
-| `packages/tau-core` | Python | `tau-core` · `tau_core` | `build_agent`, persona, tier'lar, roller, oturumlar, `tau` CLI, `tau hub` | [#004](roadmap/L1-agent/004-tau-chat-tracer-bullet.md) ile başlıyor |
+| `packages/tau-core` | Python | `tau-core` · `tau_core` | `build_agent`, persona, tier'lar, roller, oturumlar, `tau` CLI, `tau hub` | [#004](roadmap/L1-agent/004-tau-chat-tracer-bullet.md) ile başladı, L1 sürüyor |
 | `packages/tau-tui` | Python | `tau-tui` · `tau_tui` | Textual ile sohbet ve canlı olay paneli | [#008](roadmap/L1-agent/008-textual-tui.md) |
 | `packages/tau-mesh` | Python | `tau-mesh` · `tau_mesh` | Zenoh, MCP yetenek keşfi, MQTT köprüsü | [#032](roadmap/L5-mesh/032-zenoh-router-and-liveliness.md) |
 | `packages/tau-robot` | Python | `tau-robot` · `tau_robot` | SO-101 node; strands-robots, önce simülasyon | [#039](roadmap/L6-robot/039-so101-sim-node.md) |
@@ -148,7 +148,17 @@ infra/remote/setup-sudo.sh         # Tailscale, sshd sertleştirmesi, Remote Log
 infra/remote/doctor.sh             # zincirin tamamını kontrol eder
 ```
 
-Ayrıntılar [`infra/remote/README.md`](infra/remote/README.md)'de. İlk ajan dilimiyle ([#004](roadmap/L1-agent/004-tau-chat-tracer-bullet.md)) birlikte `uv run tau chat` geliyor.
+Ayrıntılar [`infra/remote/README.md`](infra/remote/README.md)'de.
+
+Ajan katmanının ilk dilimi ([#004](roadmap/L1-agent/004-tau-chat-tracer-bullet.md)) terminalde çalışıyor:
+
+```sh
+uv sync --all-packages --group dev # Python 3.12 ortamı ve tüm paketler
+uv run tau chat                    # terminalde tau ile sohbet
+uv run pytest -q                   # testler; kimlik bilgisi gerekmez
+```
+
+Hangi rolün hangi modeli kullandığı `tau.toml`'da, kimlik bilgileri `.env`'de durur (isimler `.env.example`'da). Eksik bir değişken varsa `tau chat` hangisi olduğunu söyleyip çıkar.
 
 ## Güvenlik
 

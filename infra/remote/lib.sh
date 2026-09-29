@@ -52,3 +52,18 @@ tailscale_cli() {
 ssh_port_open() {
   nc -z -G 2 127.0.0.1 22 >/dev/null 2>&1
 }
+
+# Prints the path of an installed TauBar.app (TAU_TAUBAR_APP, /Applications, ~/Applications).
+taubar_app() {
+  local app
+  for app in "$TAU_TAUBAR_APP" /Applications/TauBar.app "$HOME/Applications/TauBar.app"; do
+    if [[ -n "$app" && -d "$app" ]]; then
+      echo "$app"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# The name TauBar gives its PreventSystemSleep assertion (apps/taubar/src-tauri/src/sleep.rs).
+TAUBAR_ASSERTION="TauBar keeps the Mac awake for tau"

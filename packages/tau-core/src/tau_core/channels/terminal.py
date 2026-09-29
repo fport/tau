@@ -27,6 +27,7 @@ from tau_core.agent import (
     build_agent,
 )
 from tau_core.approval import Approver, TerminalApprover
+from tau_core.cli import help_option
 from tau_core.config import Config, ConfigError
 from tau_core.logs import configure_logging
 from tau_core.models import MissingCredentials
@@ -216,7 +217,10 @@ def run_repl(
 
 
 @click.command(name="chat", help="Terminalde tau ile sohbet eder.")
-@click.option("--role", default="brain", show_default=True, help="Kullanılacak model rolü.")
+@help_option()
+@click.option(
+    "--role", default="brain", show_default=True, metavar="ROL", help="Kullanılacak model rolü."
+)
 @click.option(
     "--resume",
     is_flag=False,

@@ -95,6 +95,26 @@ def test_resolve_anthropic(cfg: Config) -> None:
     assert model.get_config()["model_id"] == "anthropic-fast"
 
 
+def test_resolve_anthropic_workspace_header(cfg: Config) -> None:
+    """An org-level key needs the workspace header; tau reads it from the env or params."""
+    plain = resolve_model("fast", cfg, env={"ANTHROPIC_API_KEY": "k"})
+    assert "anthropic-workspace-id" not in plain.client.default_headers
+
+    from_env = resolve_model(
+        "fast", cfg, env={"ANTHROPIC_API_KEY": "k", "ANTHROPIC_WORKSPACE_ID": "wrksp_env"}
+    )
+    assert from_env.client.default_headers["anthropic-workspace-id"] == "wrksp_env"
+
+    role = RoleConfig(provider="anthropic", model_id="m", params={"workspace_id": "wrksp_toml"})
+    from_params = resolve_model(
+        "fast",
+        cfg.with_overrides(roles={**cfg.roles, "fast": role}),
+        env={"ANTHROPIC_API_KEY": "k"},
+    )
+    assert from_params.client.default_headers["anthropic-workspace-id"] == "wrksp_toml"
+    assert "workspace_id" not in (from_params.get_config().get("params") or {})
+
+
 def test_fallback_used_with_warning(cfg: Config, caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING, logger="tau_core.models"):
         model = resolve_model("brain", cfg, env={"ANTHROPIC_API_KEY": "k"})

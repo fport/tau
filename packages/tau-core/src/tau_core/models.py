@@ -19,7 +19,12 @@ from tau_core.config import Config, ConfigError, RoleConfig
 logger = logging.getLogger(__name__)
 
 # Keys in ``RoleConfig.params`` that tau reads itself; they are not forwarded to the provider.
-_TAU_PARAM_KEYS = frozenset({"api_key_env", "base_url"})
+_TAU_PARAM_KEYS = frozenset({"api_key_env", "base_url", "workspace_id"})
+
+# An Anthropic key that is not scoped to a workspace must name the workspace on every
+# request; the API rejects it otherwise (400, "not scoped to a workspace").
+ANTHROPIC_WORKSPACE_HEADER = "anthropic-workspace-id"
+ANTHROPIC_WORKSPACE_ENV = "ANTHROPIC_WORKSPACE_ID"
 
 # Providers named in tau.toml that a later issue implements. Loading such a config works;
 # resolving the role fails with a clear message.
@@ -166,6 +171,9 @@ def _anthropic(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
     client_args: dict[str, Any] = {"api_key": env.get(key_env)}
     if role_cfg.params.get("base_url"):
         client_args["base_url"] = role_cfg.params["base_url"]
+    workspace_id = role_cfg.params.get("workspace_id") or env.get(ANTHROPIC_WORKSPACE_ENV)
+    if workspace_id:
+        client_args["default_headers"] = {ANTHROPIC_WORKSPACE_HEADER: str(workspace_id)}
     return AnthropicModel(
         client_args=client_args,
         model_id=role_cfg.model_id,

@@ -213,7 +213,7 @@ def _parse_agent(raw: Any) -> AgentConfig:
     if not isinstance(raw, dict):
         raise ConfigError("tau.toml: [agent] bir tablo olmalı.")
     max_turns = raw.get("max_turns", AgentConfig.max_turns)
-    if not isinstance(max_turns, int) or max_turns < 1:
+    if isinstance(max_turns, bool) or not isinstance(max_turns, int) or max_turns < 1:
         raise ConfigError("tau.toml: [agent] 'max_turns' 1 veya daha büyük bir tam sayı olmalı.")
     return AgentConfig(max_turns=max_turns)
 

@@ -202,7 +202,9 @@ class TauAgent:
                 stop_reason = "error"
             if stop_reason == "limit_turns":
                 self._emit("turn_limit", {"max_turns": max_turns})
-                yield Notice(text=turn_limit_text(max_turns))
+                text = turn_limit_text(max_turns)
+                await self._close_dangling_turn(text)
+                yield Notice(text=text)
             yield TurnEnd(stop_reason=stop_reason)
         finally:
             unsubscribe()

@@ -55,7 +55,7 @@ tau is a personal "smart body" that automates life: an agent platform you talk t
 
 ## Roadmap (layer order)
 
-Each layer sits on the previous one and the next starts once the current one is useful on its own. Issues live under [`roadmap/`](../roadmap/README.md), one folder per layer; `python3 roadmap/board.py` shows the state.
+Each layer sits on the previous one and the next starts once the current one is useful on its own. Issues live under [`roadmap/`](https://github.com/fport/tau/blob/main/roadmap/README.md), one folder per layer; `python3 roadmap/board.py` shows the state.
 
 | # | Layer | Scope |
 |---|---|---|
@@ -108,12 +108,12 @@ tau/
 
 Each one is tracked as a `ready-for-human` issue.
 
-1. **SO-101 motion generation:** keyframe scripts / leader teleop + policy / live LLM guidance → [038](../roadmap/L6-robot/038-decide-so101-motion-method.md)
-2. **Domain:** the full name (TLD) and the NS move → [022](../roadmap/L3-cloud/022-move-dns-to-cloudflare.md)
-3. **Necklace workout alerts:** alert channel, exercises, mistakes → [042](../roadmap/L6-robot/042-decide-workout-alert-channel.md)
-4. **Hey tau:** the wake phrase → [030](../roadmap/L4-interface/030-pick-wake-phrase.md)
-5. **Drone:** model choice, SHGM rules → [050](../roadmap/backlog/050-drone-model-and-rules.md)
-6. **Shopping list (TR):** RPi5, XIAO, Nicla, ESP32 + LD2410 + sensors → [049](../roadmap/backlog/049-hardware-shopping-list.md)
+1. **SO-101 motion generation:** keyframe scripts / leader teleop + policy / live LLM guidance → [038](https://github.com/fport/tau/blob/main/roadmap/L6-robot/038-decide-so101-motion-method.md)
+2. **Domain:** the full name (TLD) and the NS move → [022](https://github.com/fport/tau/blob/main/roadmap/L3-cloud/022-move-dns-to-cloudflare.md)
+3. **Necklace workout alerts:** alert channel, exercises, mistakes → [042](https://github.com/fport/tau/blob/main/roadmap/L6-robot/042-decide-workout-alert-channel.md)
+4. **Hey tau:** the wake phrase → [030](https://github.com/fport/tau/blob/main/roadmap/L4-interface/030-pick-wake-phrase.md)
+5. **Drone:** model choice, SHGM rules → [050](https://github.com/fport/tau/blob/main/roadmap/backlog/050-drone-model-and-rules.md)
+6. **Shopping list (TR):** RPi5, XIAO, Nicla, ESP32 + LD2410 + sensors → [049](https://github.com/fport/tau/blob/main/roadmap/backlog/049-hardware-shopping-list.md)
 
 ## Changes
 

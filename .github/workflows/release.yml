@@ -1,0 +1,167 @@
+name: release
+
+# Publishes tau-core and tau-tui to PyPI when a version tag is pushed, and creates the
+# matching GitHub release with the built files attached.
+#
+# Tag rule: the tag is `v<version>`, where <version> is the version in
+# packages/tau-core/pyproject.toml. tau-tui is released in lockstep and must carry the same
+# version. The `check` step fails the run before anything is built when they disagree.
+#
+# One-time setup by the owner (details in docs/contributing/release.md):
+#   PyPI, once per project (tau-core and tau-tui):
+#     https://pypi.org/manage/account/publishing/ -> "Add a new pending publisher" for a
+#     project that does not exist yet, or Manage -> Publishing on an existing project, with
+#       PyPI project name: tau-core (then again for tau-tui)
+#       Owner:             fport
+#       Repository:        tau
+#       Workflow name:     release.yml
+#       Environment name:  pypi
+#   GitHub: an environment called `pypi` (Settings -> Environments); the first run creates it
+#     if it is missing. Optional: required reviewers, so a tag waits for a click before upload.
+# No API token is stored anywhere: the publish job exchanges its GitHub OIDC token for a
+# short-lived PyPI token (trusted publishing), which is why it needs `id-token: write`.
+#
+# A manual run (workflow_dispatch) is a dry run by default: build, smoke-test, upload the
+# artifacts, publish nothing. To publish by hand, pick the tag under "Use workflow from" and
+# untick "dry run".
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and smoke-test only; do not publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and smoke-test the wheels
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0 # same pin as ci.yml (no floating v10 tag is published)
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Check that the tag matches the package versions
+        id: check
+        env:
+          PUBLISH: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        run: |
+          core="$(uv version --package tau-core --short)"
+          tui="$(uv version --package tau-tui --short)"
+          echo "tau-core $core, tau-tui $tui, ref $GITHUB_REF_TYPE $GITHUB_REF_NAME, publish=$PUBLISH"
+          if [ "$tui" != "$core" ]; then
+            echo "::error::tau-tui is $tui but tau-core is $core; both packages are released with the same version"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [ "$GITHUB_REF_NAME" != "v$core" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match packages/tau-core/pyproject.toml (version $core, expected tag v$core)"
+              exit 1
+            fi
+          elif [ "$PUBLISH" = "true" ]; then
+            echo "::error::publishing needs a v<version> tag, not $GITHUB_REF_TYPE $GITHUB_REF_NAME; run again as a dry run or push a tag"
+            exit 1
+          fi
+          echo "version=$core" >> "$GITHUB_OUTPUT"
+
+      - name: Build the sdists and wheels
+        run: |
+          uv build --package tau-core --out-dir dist/tau-core
+          uv build --package tau-tui --out-dir dist/tau-tui
+          ls -l dist/*
+
+      # The same commands "install it yourself" relies on, against the files that will be
+      # uploaded: a fresh virtualenv, both wheels, then the CLI end to end with the offline
+      # `fake` provider (it answers "Okay.").
+      - name: Smoke-test the wheels in a fresh virtualenv
+        env:
+          TAU_HOME: ${{ runner.temp }}/tau-home
+          TAU_DATA_DIR: ${{ runner.temp }}/tau-data
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/smoke"
+          uv pip install --python "$RUNNER_TEMP/smoke/bin/python" dist/tau-core/*.whl dist/tau-tui/*.whl
+          tau="$RUNNER_TEMP/smoke/bin/tau"
+          "$tau" --help
+          "$tau" version
+          "$tau" init --yes --home "$TAU_HOME" --provider fake --language en
+          "$tau" doctor
+          "$tau" components
+          printf '/help\n/status\nhello\n/quit\n' | "$tau" chat
+          "$tau" tui --help
+
+      - name: Smoke-test the documented install (uv tool install)
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/uv-tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/uv-bin
+        run: |
+          uv tool install --python 3.12 --from dist/tau-core/*.whl tau-core --with dist/tau-tui/*.whl
+          "$UV_TOOL_BIN_DIR/tau" version
+          "$UV_TOOL_BIN_DIR/tau" tui --help
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish ${{ matrix.package }} to PyPI
+    needs: build
+    if: github.event_name == 'push' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/${{ matrix.package }}/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write # trusted publishing: the OIDC token is exchanged for a short-lived PyPI token
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [tau-core, tau-tui]
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1 # the reference PyPI documents; tracks v1.x
+        with:
+          packages-dir: dist/${{ matrix.package }}
+          skip-existing: true # a rerun after a partial failure does not trip over files PyPI already has
+          print-hash: true
+
+  github-release:
+    name: GitHub release
+    needs: [build, publish]
+    if: github.event_name == 'push' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and attach the files
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+      - name: Create or update the release for the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          prerelease=""
+          case "$VERSION" in *[a-zA-Z]*) prerelease="--prerelease" ;; esac # 0.3.0a1, 0.3.0rc1, ...
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*/* --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" --generate-notes $prerelease
+          fi

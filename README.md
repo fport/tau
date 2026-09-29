@@ -139,7 +139,33 @@ python3 roadmap/board.py --human   # what needs your decision or your hands
 
 ## Getting started
 
-Layer 0 works today: uninterrupted access from the phone to Claude Code on the Mac.
+Two ways to run tau. Both end with `tau init`, which writes `tau.toml` and the persona files, and `tau doctor`, which checks the installation.
+
+**From PyPI**, on a machine that will run tau. [uv](https://docs.astral.sh/uv/) installs the right Python for you. Available once the first release is tagged; see [Releasing](docs/contributing/release.md).
+
+```sh
+uv tool install tau-core --with tau-tui   # the tau command, with the Textual UI plugged in
+tau init                                  # ~/.tau/tau.toml and the persona files from the templates
+tau doctor                                # config, credentials, session store, persona files
+tau tui                                   # talk to tau (or `tau chat` for the plain REPL)
+```
+
+**From the repo**, to develop tau:
+
+```sh
+git clone https://github.com/fport/tau && cd tau
+uv sync --all-packages --group dev        # Python 3.12 environment and every package
+uv run tau init                           # write tau.toml and persona/user.md from the templates
+uv run tau doctor                         # config, credentials, session store, persona files
+uv run tau chat                           # talk to tau in the terminal
+uv run tau tui                            # the Textual UI
+uv run tau components                     # every registered tool, provider, backend and service
+uv run pytest -q                          # tests; no credentials needed
+```
+
+Which role uses which model lives in `tau.toml`; credentials live in `.env` (names in `.env.example`). If a variable is missing, `tau chat` says which one and exits. The UI language is `[ui] language` in `tau.toml` (`en` by default, `tr` available), overridable with `TAU_LANG`, `tau --lang tr ...` or `/lang` inside a session.
+
+Remote access from the phone (Layer 0: Tailscale, SSH, mosh, tmux) is set up with the scripts in [`infra/remote/`](infra/remote/README.md):
 
 ```sh
 cp .env.example .env               # local values; .env is never committed
@@ -147,22 +173,6 @@ infra/remote/setup.sh              # tmux, mosh and shell setup (no sudo)
 infra/remote/setup-sudo.sh         # Tailscale, sshd hardening, Remote Login
 infra/remote/doctor.sh             # checks the whole chain
 ```
-
-Details are in [`infra/remote/README.md`](infra/remote/README.md).
-
-Layer 1, the agent, runs in the terminal:
-
-```sh
-uv sync --all-packages --group dev # Python 3.12 environment and every package
-uv run tau init                    # write tau.toml and persona/user.md from the templates
-uv run tau doctor                  # config, credentials, session store, persona files
-uv run tau chat                    # talk to tau in the terminal
-uv run tau tui                     # the Textual UI
-uv run tau components              # every registered tool, provider, backend and service
-uv run pytest -q                   # tests; no credentials needed
-```
-
-Which role uses which model lives in `tau.toml`; credentials live in `.env` (names in `.env.example`). If a variable is missing, `tau chat` says which one and exits. The UI language is `[ui] language` in `tau.toml` (`en` by default, `tr` available), overridable with `TAU_LANG`, `tau --lang tr ...` or `/lang` inside a session.
 
 ## Safety
 

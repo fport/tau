@@ -7,6 +7,7 @@ Read before non-trivial work:
 - `docs/ARCHITECTURE.md` — every decision, the principles and the layer roadmap
 - `CONTEXT.md` — glossary; use its terms exactly
 - `roadmap/README.md` — how issues are tracked and worked
+- `docs/adr/0006-private-first-topology.md` — the threat model and the private-first rules every new channel, store or deployment step must respect
 
 ## Language
 
@@ -28,6 +29,7 @@ packages/              publishable Python packages (tau-core, tau-tui, tau-mesh,
 apps/taubar/           Tauri v2 + React tray app — from #024 on
 cloud/tau-cloud/       Cloudflare Worker (TypeScript) — from #014 on
 persona/  tools/       persona files; hot-reloaded tools (+ tools/_pending/)
+mkdocs.yml + docs/     the docs site (MkDocs Material); guides under docs/getting-started, guides, reference, contributing
 ```
 
 Directories that don't exist yet are created by the issue that introduces them; follow the layout in `docs/ARCHITECTURE.md`.
@@ -84,6 +86,8 @@ uv run pytest -q                                               # all tests, offl
 uv run ruff check .                                            # lint
 uv run ruff format .                                           # format (CI runs --check)
 uv build --package tau-core                                    # standalone wheel in dist/
+uv run --group docs mkdocs serve                               # docs site at http://127.0.0.1:8000
+uv run --group docs mkdocs build --strict                      # what CI runs for the docs
 ```
 
 `tau chat` and `tau tui` share the slash commands `/help /tools /sessions /resume /new /session /lang /quit` (Turkish aliases are accepted, never shown).

@@ -11,12 +11,24 @@ dependencies = [
     "rich>=13",
     "python-dotenv>=1.0",
 ]
+keywords = ["tau", "agent", "assistant", "llm", "strands", "cli", "home-automation", "robot"]
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
 ]
+
+[project.urls]
+Homepage = "https://github.com/fport/tau"
+Documentation = "https://docs.tau.getporti.com"
+Issues = "https://github.com/fport/tau/issues"
+Changelog = "https://github.com/fport/tau/releases"
 
 [project.scripts]
 tau = "tau_core.cli:main"

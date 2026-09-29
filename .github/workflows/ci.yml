@@ -23,3 +23,14 @@ jobs:
       - run: uv run pytest -q
       - run: uv build --package tau-core
       - run: uv build --package tau-tui
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0 # no floating v10 tag is published
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --only-group docs
+      - run: uv run --no-sync mkdocs build --strict

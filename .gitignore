@@ -20,3 +20,6 @@ persona/user.md
 # Tools tau wrote itself, waiting for approval
 tools/_pending/*
 !tools/_pending/.gitkeep
+
+# MkDocs build output
+site/

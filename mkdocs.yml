@@ -1,0 +1,104 @@
+site_name: tau
+site_description: A private-first personal "smart body" agent — install it, talk to it, let it touch the physical world under your approval.
+site_url: https://docs.tau.getporti.com
+repo_url: https://github.com/fport/tau
+repo_name: tau
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+copyright: MIT
+
+theme:
+  name: material
+  language: en
+  logo: brand/tau-app-icon.svg
+  favicon: brand/tau-coin.svg
+  palette:
+    scheme: slate
+    primary: custom
+    accent: custom
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+
+extra_css:
+  - stylesheets/brand.css
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: [".", "docs"]
+      check_paths: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+exclude_docs: |
+  agents/
+  brand/render.py
+  brand/README.md
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Install: getting-started/install.md
+      - First run: getting-started/first-run.md
+      - Configure: getting-started/configure.md
+      - Talk to tau: getting-started/talk.md
+  - Guides:
+      - Reach tau from your phone (Tailscale + Termius): guides/phone-tailscale-termius.md
+      - Private deployment (Cloudflare Tunnel + Access): guides/private-deployment.md
+      - Telegram: guides/telegram.md
+      - Voice: guides/voice.md
+      - Backups (encrypted, R2): guides/backups.md
+      - Run tau as a service: guides/hub-service.md
+      - Move the hub to a Raspberry Pi: guides/raspberry-pi.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Slash commands: reference/slash-commands.md
+      - tau.toml: reference/tau-toml.md
+      - Environment variables: reference/environment.md
+      - Components and plugins: reference/components.md
+      - Tiers and approvals: reference/tiers.md
+      - Sessions and compaction: reference/sessions.md
+  - Architecture:
+      - Decisions: ARCHITECTURE.md
+      - Threat model: architecture/threat-model.md
+      - ADRs:
+          - 0001 Approval through Strands hooks: adr/0001-approval-through-strands-hooks.md
+          - 0002 tau.commands entry point: adr/0002-tau-commands-entry-point-for-cli.md
+          - 0003 Session store: adr/0003-session-store-extends-strands-repository.md
+          - 0004 Config roots and persona privacy: adr/0004-config-roots-and-persona-privacy.md
+          - 0005 Components and entry-point groups: adr/0005-components-and-entry-point-groups.md
+          - 0006 Private-first topology: adr/0006-private-first-topology.md
+  - Contributing:
+      - Development setup: contributing/development.md
+      - Write a plugin: contributing/plugins.md
+      - Roadmap and issues: contributing/roadmap.md
+  - Brand: brand.md

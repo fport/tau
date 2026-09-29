@@ -24,5 +24,6 @@ The directory keeps its old name `L3-cloud`, and rewritten issues keep their fil
 | 071 | [Decide `SessionRepository` vs Strands `Storage`/`SnapshotSessionManager` before the D1 backend](071-storage-vs-snapshot-session-manager.md) *(wontfix)* | AFK | – |
 | 076 | [`tau setup tunnel` and `infra/tunnel`: cloudflared, Access policy, Tailscale Serve, doctor checks](076-tau-setup-tunnel.md) | AFK | 022, 081 |
 | 081 | [Create a Cloudflare token scoped to Tunnel, Access and R2, and the private backup bucket](081-cloudflare-token-and-backup-bucket.md) | HITL | – |
+| 090 | [The Telegram poller sometimes needs 30 s to start after a hub restart](090-telegram-poller-slow-start.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py --layer L3`

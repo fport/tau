@@ -1,6 +1,6 @@
 # 007 · Session persistence and `/devam` resume
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-core

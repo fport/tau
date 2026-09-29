@@ -1,6 +1,6 @@
 # 005 · Live persona files and dynamic context in the system prompt
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-core

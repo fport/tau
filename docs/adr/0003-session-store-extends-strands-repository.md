@@ -1,6 +1,6 @@
 # 0003 · The session store extends the Strands session repository
 
-- Status: accepted (first version, issue 004; refined by issue 007 and issue 018)
+- Status: accepted (first version, issue 004; refined by issue 007; issue 018 adds the cloud backend)
 - Date: 2026-09-29
 
 ## Context
@@ -32,3 +32,35 @@ sessions in D1 behind the tau-cloud Worker.
 
 - Any Strands feature built on `SessionRepository` keeps working with every tau backend.
 - A new backend implements the nine repository methods plus the five tau extras.
+
+## Refinement (issue 007, 2026-09-29)
+
+- **File backend.** `FileSessionStore` keeps one directory per session under
+  `TAU_DATA_DIR/sessions/`: `session.json` (the Strands session record, whose `updated_at` is
+  refreshed on every write and orders the listing), `meta.json`, an append-only
+  `events.jsonl` and `agents/<agent_id>/{agent.json, messages/000000.json, ...}`. It is the
+  default in the repo's `tau.toml`; tests keep `memory`.
+- **Why not Strands' `FileSessionManager`.** It is a session manager and repository in one,
+  has `delete_session`, and offers no listing, events or metadata. tau keeps its own store
+  behind `SessionStore` and mirrors only its write discipline: temp file in the same
+  directory, fsync, `os.replace`; no reading or writing through symlinks.
+- **Keep everything, enforced.** The store has no delete method, `create_message` refuses to
+  overwrite an existing message (two writers on one session fail loudly instead of losing a
+  message), and a crash-truncated event line is skipped on read but left on disk. A session
+  that was opened and closed without a message stays on disk; `/devam` does not list it.
+- **Private by default.** Directories are `0700`, files `0600`. Session and agent ids must be
+  plain names (letters, digits, `.`, `_`, `-`, starting with a letter or digit); anything else
+  raises `InvalidSessionId`, a `ConfigError`, so `tau chat --session ../x` ends with a Turkish
+  message instead of a traceback.
+- **Listing cost.** `list_sessions` reads every session directory (two small JSON files and a
+  directory listing each). That is fine at personal scale; if it ever is not, an index file
+  can be added inside the store without touching callers.
+- **Resume semantics.** `/devam` lists earlier sessions that have messages, newest first, and
+  never the current one; resuming rebuilds the agent with `build_agent(session_id=...)`, so
+  Strands restores `agent.messages`. Rebuilding writes the channel and profile again, so a
+  resumed session moves to the top of the list and its `channel` is the last one used.
+- **Cloud backend (issue 018).** It is an HTTP client of the tau-cloud Worker API, registered
+  as `cloud` in `SESSION_BACKENDS` and implementing the same interface. The hub authenticates
+  to the Worker only; it never holds D1 credentials and never calls the D1 REST API.
+  Endpoints, pagination and offline behaviour are decided in 018 and stay behind
+  `SessionStore`.

@@ -30,7 +30,7 @@ The first external channel, end to end and without a middleman (ADR 0006 §2). A
 
 ## Blocked by
 
-- [013 · Create the Telegram bot and a Cloudflare token scoped to Tunnel, Access and R2](013-telegram-bot-and-cloudflare-token.md)
+- [013 · Create the Telegram bot and record the allowed chat id](013-telegram-bot-and-cloudflare-token.md)
 
 ## Comments
 

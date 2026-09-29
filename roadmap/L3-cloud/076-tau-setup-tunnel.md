@@ -4,13 +4,13 @@ Status: ready-for-agent
 Type: AFK
 Layer: L3 · Access and data
 Packages: tau-core, infra/tunnel
-Blocked by: 022
+Blocked by: 022, 081
 
 ## What to build
 
 The safe-to-script part of the private deployment (ADR 0006 §1 and §8) as a `tau setup` command group in tau-core (a `tau.commands` entry point `setup`) plus `infra/tunnel/`:
 
-- `tau setup tunnel`: checks for `cloudflared` and, if missing, prints the install command for the platform (Homebrew on macOS, apt on the RPi5) and asks before running it; creates the tunnel (`cloudflared tunnel create tau`) using the token from 013, writes `<home>/tunnel/config.yml` from a template (ingress: `tau.<domain>` → `http://127.0.0.1:<web port>` from `[component.web]`, catch-all 404), creates the DNS route for the hostname, creates the Access application for it with one policy (allow the owner's email through one-time PIN, optional device rule) through the Cloudflare API, and installs `cloudflared` as a launchd or systemd service (templates in `infra/services/`). Idempotent: re-running updates in place and never duplicates; `--dry-run` prints every call with example values; `--remove` tears everything down.
+- `tau setup tunnel`: checks for `cloudflared` and, if missing, prints the install command for the platform (Homebrew on macOS, apt on the RPi5) and asks before running it; creates the tunnel (`cloudflared tunnel create tau`) using the token from 081, writes `<home>/tunnel/config.yml` from a template (ingress: `tau.<domain>` → `http://127.0.0.1:<web port>` from `[component.web]`, catch-all 404), creates the DNS route for the hostname, creates the Access application for it with one policy (allow the owner's email through one-time PIN, optional device rule) through the Cloudflare API, and installs `cloudflared` as a launchd or systemd service (templates in `infra/services/`). Idempotent: re-running updates in place and never duplicates; `--dry-run` prints every call with example values; `--remove` tears everything down.
 - `tau setup serve`: the no-domain alternative: `tailscale serve` for the same loopback port in the background, prints the tailnet URL; `--off` removes it.
 - `tau doctor` gains checks: `cloudflared` installed and its service running, tunnel connector healthy, Access application present for the hostname, `tailscale serve` status when used, and no listening socket outside loopback and the tailnet (a non-loopback bind of the web service is a failure).
 - `infra/tunnel/README.md`: what the command does, the Access policy in words, how to revoke access, and the manual dashboard path for people who prefer clicking. Example values only; ids and hostnames go to `.env` (`TAU_PUBLIC_HOSTNAME`, `CLOUDFLARE_TUNNEL_ID`, `CLOUDFLARE_ACCESS_AUD`), names in `.env.example`.
@@ -27,6 +27,7 @@ The safe-to-script part of the private deployment (ADR 0006 §1 and §8) as a `t
 ## Blocked by
 
 - [022 · Move the getporti domain's DNS to Cloudflare](022-move-dns-to-cloudflare.md)
+- [081 · Create a Cloudflare token scoped to Tunnel, Access and R2, and the private backup bucket](081-cloudflare-token-and-backup-bucket.md)
 
 ## Comments
 

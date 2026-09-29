@@ -30,15 +30,15 @@ with a response.
   approver that approves everything, not even in tests; tests script decisions with
   `ScriptedApprover([Decision.APPROVED])` and assert the recorded requests.
 - **Fail closed:** a tool name the catalog does not know (hallucinated, or registered with
-  Strands behind tau's back) is refused with `'{tool}' aracı kayıtlı değil; çalıştırılmadı.`
+  Strands behind tau's back) is refused with `Tool '{tool}' is not registered; it was not run.`
   and an `error` event. A failing approver or exemption also rejects (full list below).
 - Refusals reach the model as the tool result:
-  `Kullanıcı bu eylemi onaylamadı: {tool}. Eylemi yapma, kullanıcıya kısaca bildir.`
+  `The user did not approve this action: {tool}. Do not perform it; tell the user briefly.`
 - **Exemptions** (`(tool, arguments) -> bool`) let registered routines (037) skip per-call
   approval; the exempt call is still recorded with `approval: "exempt"`.
 - Approval prompts are serialized per gate, so parallel tool calls never ask at the same time.
 - A per-turn loop guard uses Strands `Limits(turns=agent.max_turns)`; hitting it ends the turn
-  with a Turkish notice and a `turn_limit` event.
+  with a notice in the UI language and a `turn_limit` event.
 
 ## Refinements (issue 006)
 
@@ -67,8 +67,8 @@ with a response.
   it after the persona hook).
 - **The terminal prompt** shows the tool, the arguments as JSON with sorted keys, and the effect
   on one line; control, C1 and bidi/format characters coming from the model are escaped so they
-  cannot rewrite or hide the prompt. Only `e`/`evet` (any case, surrounding spaces ignored)
-  approves.
+  cannot rewrite or hide the prompt. Only `y`/`yes`/`e`/`evet` (any case, surrounding spaces
+  ignored) approves, whatever the UI language.
 - **Serialization** is one prompt at a time per gate, with the lock created per event loop so a
   gate outlives the loop it was first used in.
 - **Logging:** `tool_call` records log tier 0 at `DEBUG`, tiers 1 and 2 at `INFO` (arguments,
@@ -95,3 +95,22 @@ outlive the process.
   wait (`timeout_seconds` on its approver) and must keep `decide()` cancellable.
 - Tool calls are observed authoritatively through `AfterToolCallEvent`; the Strands stream has no
   tool-result event, so UIs read `tool_call` agent events instead.
+
+## Amended (2026-09-29, issues 062 and 064)
+
+- The gate texts the model reads are fixed English: `refusal_text` is "The user did not
+  approve this action: {tool}. Do not perform it; tell the user briefly." and
+  `unknown_tool_text` is "Tool '{tool}' is not registered; it was not run." The user-facing
+  notices (turn limit, model error, max tokens, cancelled, throttled, overflow) come from the
+  `tau_core.i18n` message table in the UI language (`Config.ui.language`).
+- "What is approved is what runs" no longer relies on registration order. `TierHook`
+  registers both callbacks with `order=HookOrder.SDK_LAST`, so the `tool_use` the gate sees is
+  the one Strands runs, whatever hooks a plugin or `build_agent(hooks=...)` adds. A hook that
+  mutates `tool_use["input"]` at any lower order is observed by the approval request; a test
+  pins this.
+- Plugin-provided tools that are not in the `ToolCatalog` stay refused (fail closed); a
+  component that wants its tools to run registers them through `tau.tools`.
+- The last consequence above is outdated: tool calls are still observed authoritatively
+  through `AfterToolCallEvent` and UIs read `tool_call` agent events, but the claim that the
+  Strands stream has no tool-result event is dropped (`tool_stream_event` is mapped to a
+  `ToolProgress` turn event).

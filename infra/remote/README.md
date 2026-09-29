@@ -1,59 +1,59 @@
-# infra/remote — Uzaktan erişim
+# infra/remote — Remote access
 
-Telefon (Termius) → Tailscale → MacBook'ta OpenSSH → tmux → Claude Code.
+Phone (Termius) → Tailscale → OpenSSH on the MacBook → tmux → Claude Code.
 
-| Parça | Görevi |
+| Part | Job |
 |---|---|
-| **Tailscale** | Telefon ve Mac'i, port açmadan aynı özel ağa (tailnet) koyar |
-| **OpenSSH** (macOS Remote Login) | Sadece anahtarla, sadece senin kullanıcınla, sadece tailnet'ten giriş |
-| **mosh** | Ağ değişse ya da telefon kilitlense bile bağlantı kopmaz |
-| **tmux** | Bağlantı kopsa bile oturum (ve içindeki Claude Code) çalışmaya devam eder |
-| **com.tau.keepawake** | Şarjdayken Mac uyumaz (`caffeinate -s`). TauBar gelince bu görevi o devralacak |
+| **Tailscale** | Puts the phone and the Mac on the same private network (tailnet) without opening ports |
+| **OpenSSH** (macOS Remote Login) | Login by key only, only as your user, only from the tailnet |
+| **mosh** | The connection survives network changes and a locked phone |
+| **tmux** | The session (and the Claude Code inside it) keeps running when the connection drops |
+| **com.tau.keepawake** | The Mac does not sleep while on AC power (`caffeinate -s`). TauBar takes over this job when it arrives |
 
-## Kurulum
+## Setup
 
-1. **tmux, mosh ve kullanıcı ayarları** (sudo gerekmez):
+1. **tmux, mosh and user settings** (no sudo needed):
    ```sh
    ./infra/remote/setup.sh
    ```
-2. **Tailscale, sshd ve Remote Login.** sudo şifre soracağı için bu adımı kendi terminalinde çalıştır:
+2. **Tailscale, sshd and Remote Login.** This step asks for the sudo password, so run it in your own terminal:
    ```sh
    ./infra/remote/setup-sudo.sh
    ```
-3. **Tailscale'e giriş:** Mac'te Tailscale.app'i aç, Gizlilik ve Güvenlik'te sistem uzantısına izin ver, sonra giriş yap. iPhone'a da Tailscale'i kur ve **aynı hesapla** giriş yap.
-4. **Termius anahtarı:** Keychain → **+** → Generate Key → Type **ED25519** → isim olarak `iphone` ver → anahtarı açıp public key'i kopyala. Mac'te Universal Clipboard ile yapıştır:
+3. **Sign in to Tailscale:** open Tailscale.app on the Mac, allow the system extension under Privacy & Security, then sign in. Install Tailscale on the iPhone too and sign in with the **same account**.
+4. **Termius key:** Keychain → **+** → Generate Key → Type **ED25519** → name it `iphone` → open the key and copy the public key. Paste it on the Mac with Universal Clipboard:
    ```sh
    ./infra/remote/add-key.sh
    ```
-5. **Termius host ayarları:**
-   - Address: `doctor.sh`'ın yazdığı MagicDNS adı
-   - Username: Mac kullanıcı adın
+5. **Termius host settings:**
+   - Address: the MagicDNS name that `doctor.sh` prints
+   - Username: your Mac user name
    - Key: `iphone`
-   - **Mosh: açık**
+   - **Mosh: on**
    - **Startup Snippet:** `tau-attach`
-6. **Kontrol:**
+6. **Check:**
    ```sh
    ./infra/remote/doctor.sh
    ```
 
-## Günlük kullanım
+## Daily use
 
-- **Termius'tan bağlandığında** doğrudan `tau` tmux oturumuna düşersin. `claude` yazarak başlarsın. Bağlantı koparsa yeniden bağlan, kaldığın yerden devam edersin.
-- **Mac başındayken aynı oturuma** bağlanmak için `tau-attach` yeter. Telefondaki ile aynı ekranı görürsün.
-- **Dev server'ı telefonda görmek** için sunucuyu `--host 0.0.0.0` ile başlat, Safari'de `http://<magicdns-adı>:3000` adresini aç. Bu trafik sadece tailnet içinde kalır.
-- **tmux kısayolları:** Prefix `Ctrl-b`. Bölme için `|` ve `-`, ayarları yenilemek için `r`. Kaydırma parmakla yapılır.
+- **When you connect from Termius** you land directly in the `tau` tmux session. Type `claude` to start. If the connection drops, reconnect and continue where you left off.
+- **At the Mac, to join the same session** run `tau-attach`. You see the same screen as on the phone.
+- **To see a dev server on the phone**, start the server with `--host 0.0.0.0` and open `http://<magicdns-name>:3000` in Safari. This traffic never leaves the tailnet.
+- **tmux shortcuts:** prefix `Ctrl-b`. `|` and `-` split, `r` reloads the settings. Scroll with a finger.
 
-## Sorun giderme
+## Troubleshooting
 
-**`mosh-server not found`:** `./setup.sh` komutunu tekrar çalıştır. Etkileşimsiz SSH oturumları sadece `~/.zshenv` dosyasını okur.
+**`mosh-server not found`:** run `./setup.sh` again. Non-interactive SSH sessions read only `~/.zshenv`.
 
-**Claude Code SSH'ta tekrar giriş istiyor:** SSH oturumunda macOS login keychain'i kilitli görünebilir. İki çözüm var:
+**Claude Code asks to sign in again over SSH:** in an SSH session the macOS login keychain can appear locked. Two fixes:
 
-- Her oturumda kilidi aç (şifre sorar):
+- Unlock it in every session (asks for the password):
   ```sh
   security unlock-keychain ~/Library/Keychains/login.keychain-db
   ```
-- Ya da kalıcı bir token oluştur:
+- Or create a long-lived token:
   ```sh
   claude setup-token
   mkdir -p ~/.config/tau && chmod 700 ~/.config/tau
@@ -61,22 +61,22 @@ Telefon (Termius) → Tailscale → MacBook'ta OpenSSH → tmux → Claude Code.
   chmod 600 ~/.config/tau/remote.env
   ```
 
-`~/.zshenv` bu dosyayı **sadece SSH oturumlarında** yükler. `gh` için `GH_TOKEN`'ı, `wrangler` için de `CLOUDFLARE_API_TOKEN`'ı aynı dosyaya ekleyebilirsin.
+`~/.zshenv` loads this file **only in SSH sessions**. You can add `GH_TOKEN` for `gh` and `CLOUDFLARE_API_TOKEN` for `wrangler` to the same file.
 
-**Mac'e ulaşamıyorum:** Sırayla kontrol et: iPhone'da Tailscale açık mı, Mac uyuyor mu, `doctor.sh` ne diyor. Kapak kapalıyken Mac uyur. Şarja takıp kapağı açık bırakabilir ya da harici ekranla clamshell modunda kullanabilirsin. "Kapak kapalıyken bile uyanık kal" modu TauBar ile gelecek.
+**I cannot reach the Mac:** check in order: is Tailscale on on the iPhone, is the Mac asleep, what does `doctor.sh` say. The Mac sleeps with the lid closed. Plug it in and leave the lid open, or use it in clamshell mode with an external display. The "stay awake even with the lid closed" mode arrives with TauBar.
 
-## Güvenlik modeli
+## Security model
 
-- **Sadece anahtarla giriş:** Şifre ve keyboard-interactive (PAM) girişleri kapalı.
-- **Sadece senin kullanıcın, sadece tailnet ve localhost'tan:** `100.64.0.0/10`, `fd7a:115c:a1e0::/48`, `127.0.0.1` ve `::1`. macOS'ta sshd tüm arayüzlerde dinler, ama aynı kafedeki biri port 22'ye ulaşsa bile `AllowUsers` onu içeri almaz.
-- **Kısıtlı yönlendirme:** Agent forwarding kapalı. TCP yönlendirmede sadece yerel (`-L`) açık.
-- **Telefon kaybolursa:** O cihazın satırını `~/.ssh/authorized_keys`'ten sil, cihazı Tailscale admin panelinden kaldır.
+- **Key-only login:** password and keyboard-interactive (PAM) logins are off.
+- **Only your user, only from the tailnet and localhost:** `100.64.0.0/10`, `fd7a:115c:a1e0::/48`, `127.0.0.1` and `::1`. On macOS sshd listens on every interface, but even if someone in the same cafe reaches port 22, `AllowUsers` does not let them in.
+- **Restricted forwarding:** agent forwarding is off. Only local (`-L`) TCP forwarding is allowed.
+- **If the phone is lost:** delete that device's line from `~/.ssh/authorized_keys` and remove the device from the Tailscale admin console.
 
-## Ayarlar
+## Settings
 
-Varsayılanlar `config.env` dosyasında. Makineye özel değişiklikleri `config.local.env` dosyasına yaz (gitignored). Örneğin uyku ajanını kapatmak için `TAU_KEEPAWAKE=0` yazıp `./setup.sh`'ı tekrar çalıştırırsın.
+Defaults are in `config.env`. Put machine-specific overrides in `config.local.env` (gitignored). For example, to disable the keep-awake agent, set `TAU_KEEPAWAKE=0` and run `./setup.sh` again.
 
-## Geri alma
+## Rollback
 
 ```sh
 sudo rm /etc/ssh/sshd_config.d/010-tau.conf
@@ -84,6 +84,6 @@ launchctl bootout gui/$(id -u)/com.tau.keepawake
 rm ~/Library/LaunchAgents/com.tau.keepawake.plist ~/.local/bin/tau-attach
 ```
 
-Bunlara ek olarak:
-- `~/.zshenv` ve `~/.tmux.conf` içindeki `# >>> tau:remote >>>` bloklarını sil.
-- Remote Login'i kapat: Sistem Ayarları → Genel → Paylaşma.
+In addition:
+- Delete the `# >>> tau:remote >>>` blocks from `~/.zshenv` and `~/.tmux.conf`.
+- Turn off Remote Login: System Settings → General → Sharing.

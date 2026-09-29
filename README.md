@@ -15,7 +15,7 @@
 [![Strands Agents](https://img.shields.io/badge/agent-Strands_Agents-FF9900)](https://strandsagents.com/)
 [![MCP](https://img.shields.io/badge/control-MCP-1C1B1A?logo=modelcontextprotocol&logoColor=white)](https://modelcontextprotocol.io/)
 [![Zenoh](https://img.shields.io/badge/data-Zenoh-0A5E8C)](https://zenoh.io/)
-[![Cloudflare Workers](https://img.shields.io/badge/cloud-Cloudflare_Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+[![Cloudflare Zero Trust](https://img.shields.io/badge/access-Cloudflare_Tunnel_%2B_Access-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/zero-trust/)
 [![Tailscale](https://img.shields.io/badge/network-Tailscale-242424?logo=tailscale&logoColor=white)](https://tailscale.com/)
 [![Tauri v2](https://img.shields.io/badge/tray-Tauri_v2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
 
@@ -42,17 +42,20 @@ flowchart LR
   subgraph channels["Channels"]
     tg["Telegram"]
     tui["TUI"]
+    web["Web UI · phone browser"]
     bar["TauBar"]
-    voice["Hey tau"]
+    voice["tau-voice · Hey tau"]
   end
 
-  subgraph cloud["Cloudflare · tau-cloud"]
-    worker["Worker + Durable Object<br/>relay · API"]
-    state[("D1 · R2 · Vectorize<br/>AI Search")]
+  subgraph edge["Cloudflare · identity at the edge"]
+    access["Access policy<br/>your identity only"]
+    tunnel["Tunnel<br/>outbound from the hub"]
+    r2[("R2<br/>encrypted backups only")]
   end
 
   subgraph hub["Hub · MacBook → RPi5"]
     agent["Strands agent<br/>persona · tiers"]
+    data[("TAU_DATA_DIR<br/>sessions · settings · memory · KB")]
     reflex["Reflex engine<br/>no LLM"]
     proxy["LiteLLM proxy<br/>brain · fast · local"]
   end
@@ -63,12 +66,13 @@ flowchart LR
     esp["ESPHome devices"]
   end
 
-  tg --> worker
-  worker <-->|"outbound WebSocket"| agent
-  worker --> state
+  agent -->|"getUpdates · outbound"| tg
+  web --> access --> tunnel <-->|"outbound only"| agent
   tui --> agent
   bar --> agent
   voice --> agent
+  agent --> data
+  data -->|"age-encrypted"| r2
   agent --> proxy
   agent <-->|"MCP · control"| macnode
   agent <-->|"MCP · control"| robot
@@ -77,16 +81,16 @@ flowchart LR
 ```
 
 - **Control plane is MCP, data plane is Zenoh.** The hub calls node capabilities over MCP. Events and telemetry flow over Zenoh.
-- **The hub reaches the cloud only through the `tau-cloud` Worker.** It never connects to D1, R2 or Vectorize directly. Raw telemetry never enters D1.
+- **Life data stays on the hub.** Sessions, settings, memory and the knowledge base live under `TAU_DATA_DIR`; Cloudflare only ever holds a client-side encrypted backup. One hostname behind Cloudflare Access reaches the hub through an outbound Tunnel, so the hub opens no port and no server can approve an action on your behalf ([ADR 0006](docs/adr/0006-private-first-topology.md)).
 - **Code asks for a role, not a model name.** The `brain`, `fast` and `local` roles are bound to providers in the LiteLLM proxy: Bedrock, Anthropic as the fallback, Ollama locally.
 
 Every decision and its reasoning is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Principles
 
-1. **The brain thinks in the cloud, reflexes run locally.** Posture alerts, house rules and the emergency stop never depend on an LLM or on Cloudflare.
+1. **The brain thinks in the cloud, reflexes run locally.** Posture alerts, house rules and the emergency stop never depend on an LLM or on any cloud service.
 2. **The same code runs on every machine.** The only difference between machines is the role: `TAU_ROLE=hub|node`. Only one hub is active at a time.
-3. **Settings are data, not code.** They come from the `settings` table in D1 and the hub hot-reloads them without a deploy.
+3. **Settings are data, not code.** A settings file on the hub, hot-reloaded without a deploy and never synced to a third party.
 4. **Everything that touches the physical world or tau's own code needs approval.** Those are tier-2 actions.
 5. **No hardware, no code.** A device that is not on hand only gets a reserved place in the mesh.
 
@@ -102,7 +106,10 @@ This repo is the centre. Everything in it is built so it can be published, or mo
 | `packages/tau-robot` | Python | `tau-robot` · `tau_robot` | SO-101 node; strands-robots, simulation first | [#039](roadmap/L6-robot/039-so101-sim-node.md) |
 | `packages/tau-vision` | Python | `tau-vision` · `tau_vision` | Workout coach: form tracking with pose estimation | [#043](roadmap/L6-robot/043-workout-coach-webcam.md) |
 | `apps/taubar` | Tauri v2 · React/TS | — | Tray app: sleep modes, status, approvals, voice | [#024](roadmap/L4-interface/024-taubar-sleep-modes.md) |
-| `cloud/tau-cloud` | TypeScript | — | Worker: relay, D1, R2, Vectorize, AI Search, Whisper | [#014](roadmap/L3-cloud/014-telegram-relay-tracer-bullet.md) |
+| `packages/tau-web` | Python | `tau-web` · `tau_web` | The TUI in the browser, served by the hub behind Tunnel + Access | [#074](roadmap/L4-interface/074-tau-web-textual-serve.md) |
+| `packages/tau-voice` | Python | `tau-voice` · `tau_voice` | Push-to-talk, local speech-to-text and text-to-speech | [#075](roadmap/L4-interface/075-tau-voice-push-to-talk.md) |
+| `infra/tunnel` | shell | — | Cloudflare Tunnel + Access in front of the hub; Tailscale Serve alternative | [#076](roadmap/L3-cloud/076-tau-setup-tunnel.md) |
+| `infra/backup` | shell | — | Encrypted backups of the data dir to R2 and the restore drill | [#018](roadmap/L3-cloud/018-session-recording-d1.md) |
 | `infra/litellm` | Docker | — | Model proxy; image pinned by digest | [#010](roadmap/L2-models/010-litellm-proxy-roles.md) |
 | [`infra/remote`](infra/remote/README.md) | shell | — | Remote access from the phone: Tailscale, SSH, mosh, tmux | ✅ in use |
 

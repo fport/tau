@@ -67,6 +67,7 @@ Each layer sits on the previous one and the next starts once the current one is 
 | **5** | **Mesh** | `zenohd` + MCP node discovery, hot-reloaded `tools/` + `_pending`, ESPHome/MQTT |
 | **6** | **Robot** | SO-101 (sim → real → a wave when you sit down at the desk), necklace (XIAO → Nicla) |
 | **7** | **Lab** | AgentCore, autonomous task queue |
+| **8** | **Distribution** | PyPI release path (trusted publishing on tags, `uv tool install tau-core --with tau-tui` verified from the wheels), docs site (MkDocs Material, strict build in CI, Cloudflare Pages at `docs.tau.<domain>`) |
 | — | **When the RPi5 arrives** | Hub migration through self-replication (independent of the layers) |
 | — | **Later** | Drone |
 

@@ -2,15 +2,15 @@
 
 Status: needs-triage
 Type: AFK
-Layer: L3 · Cloud
-Packages: tau-core, cloud/tau-cloud
+Layer: L3 · Access and data
+Packages: tau-core
 Blocked by: 017
 
 ## What to build
 
 Today a tier-2 approval blocks inside `TierHook` while an in-process `Approver` (terminal, TUI) answers. For channels where the answer arrives later and possibly from another process (Telegram buttons in 017, TauBar, a hub restart in between), the Strands SDK offers a cleaner mechanism: `BeforeToolCallEvent.interrupt(name, reason=...)` stops the event loop with `stop_reason == "interrupt"`, the pending interrupts are exposed on the result, and the next `stream_async([{"interruptResponse": {"interruptId": ..., "response": ...}}])` resumes exactly where the tool call was; the interrupt state is persisted by `RepositorySessionManager`, so it survives a hub restart.
 
-Move the out-of-process approval path onto this mechanism: `TierHook` raises an interrupt instead of awaiting when the active `Approver` declares itself asynchronous; the channel (Telegram relay, TauBar) stores the interrupt id with the pending request, and the button callback resumes the agent with the response. 064 already makes tau refuse unknown interrupts safely; this issue makes approvals use them on purpose. The in-process approvers keep their blocking behaviour.
+Move the out-of-process approval path onto this mechanism: `TierHook` raises an interrupt instead of awaiting when the active `Approver` declares itself asynchronous; the channel (the Telegram polling loop of 014, TauBar in 025, the web UI in 074) stores the interrupt id with the pending request, and the button callback resumes the agent with the response. 064 already makes tau refuse unknown interrupts safely; this issue makes approvals use them on purpose. The in-process approvers keep their blocking behaviour.
 
 ## Acceptance criteria
 
@@ -27,3 +27,4 @@ Move the out-of-process approval path onto this mechanism: `TierHook` raises an 
 ## Comments
 
 - 2026-09-29: filed as a follow-up of the Strands-correctness pass (064). SDK mechanism (strands-agents 1.57.1): `BeforeToolCallEvent.interrupt` + `interruptResponse` resume; state persisted by `RepositorySessionManager`.
+- 2026-09-29: rewritten for ADR 0006 (private-first): the out-of-process channels are the hub's own Telegram polling loop (014), TauBar (025) and the web UI (074); no relay or Worker holds a pending approval. Packages narrowed to tau-core; the spec is otherwise unchanged and still waits for triage.

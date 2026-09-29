@@ -7,11 +7,12 @@ tau is built in layers. Each layer becomes useful on its own before the next one
 | [L0 · Remote access](L0-remote/README.md) | Phone → Tailscale → mosh → tmux → Claude Code |
 | [L1 · Agent](L1-agent/README.md) | Strands agent, persona, tiers, sessions, hub daemon |
 | [L2 · Models](L2-models/README.md) | Role routing through a LiteLLM proxy with hard budgets |
-| [L3 · Cloud](L3-cloud/README.md) | Telegram relay, sessions, settings, memory and KB in Cloudflare |
-| [L4 · Interface](L4-interface/README.md) | TauBar, voice, Claude Code integration, ambient mode |
+| [L3 · Access and data](L3-cloud/README.md) | Tunnel + Access in front of the web UI, Telegram by direct polling, local settings/memory/KB, encrypted R2 backups (the directory keeps its old name) |
+| [L4 · Interface](L4-interface/README.md) | TauBar, web UI, tau-voice, Claude Code integration, ambient mode |
 | [L5 · Mesh](L5-mesh/README.md) | Zenoh + MCP nodes, MQTT bridge, reflex routines |
 | [L6 · Robot](L6-robot/README.md) | SO-101 and the workout coach |
 | [L7 · Lab](L7-lab/README.md) | AgentCore and other experiments |
+| [L8 · Distribution](L8-distribution/README.md) | PyPI releases and the docs site |
 | [Backlog](backlog/README.md) | Waiting on hardware or decisions |
 
 ```sh

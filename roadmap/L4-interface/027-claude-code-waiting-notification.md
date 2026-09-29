@@ -19,6 +19,7 @@ A Claude Code Notification hook posts an event to the hub's local API; the hub s
 
 ## Blocked by
 
-- [014 · Telegram relay tracer bullet: webhook → Worker → Durable Object → hub → reply](../L3-cloud/014-telegram-relay-tracer-bullet.md)
+- [014 · Telegram channel by direct polling: `getUpdates` loop on the hub → agent → reply](../L3-cloud/014-telegram-relay-tracer-bullet.md)
 
 ## Comments
+- 2026-09-29: rewritten for ADR 0006 (private-first): unchanged in substance; the message goes out through the hub's own Telegram polling channel (014), not a relay.

@@ -21,9 +21,10 @@ Ambient mode is off by default. The user switches it on or off, or picks a profi
 ## Blocked by
 
 - [011 · Hard budgets per role with graceful degradation](../L2-models/011-hard-budgets.md)
-- [019 · Settings as data with live reload and `/settings`](../L3-cloud/019-settings-as-data.md)
+- [019 · Settings as local data with live reload and `/settings`](../L3-cloud/019-settings-as-data.md)
 - [025 · TauBar status panel: hub, nodes, spend, approvals](025-taubar-status-panel.md)
 
 ## Comments
 
 - 2026-09-29: profile names are `home` / `travel` / `sport` (renamed by 062; the old `ev`/`seyahat`/`spor` values are not accepted).
+- 2026-09-29: rewritten for ADR 0006 (private-first): profiles are settings in the local settings file (019); no cloud copy.

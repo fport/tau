@@ -1,8 +1,8 @@
 # 070 · Long-term memory through Strands `MemoryManager` with a tau `MemoryStore` over the Worker
 
-Status: needs-triage
+Status: wontfix
 Type: AFK
-Layer: L3 · Cloud
+Layer: L3 · Access and data
 Packages: tau-core, cloud/tau-cloud
 Blocked by: 020
 
@@ -21,8 +21,9 @@ Evaluate the plugin against tau's rules: the tier gate must see any tool the plu
 
 ## Blocked by
 
-- [020 · Memory with Vectorize and a Self-RAG loop](020-memory-self-rag.md)
+- [020 · Local memory: Strands `MemoryManager` with a tau `MemoryStore` on SQLite + local embeddings](020-memory-self-rag.md)
 
 ## Comments
 
 - 2026-09-29: filed as a follow-up of the Strands-correctness pass (064); kept out of that wave because it depends on the Worker API from 014/020.
+- 2026-09-29: wontfix, folded into 020 under ADR 0006 (private-first). The question this issue was to answer (wire memory through `MemoryManager` with a tau `MemoryStore`) is decided by the Memory row of `docs/ARCHITECTURE.md`: adopted, with a local store on SQLite and local embeddings. 020 now carries the plugin wiring and every evaluation rule listed here (tier gate sees plugin tools, no retrieval for reflexes or without the embedder, budget counts the extra calls) as acceptance criteria, so a separate Strands-side issue would only duplicate it. Kept as history; the Worker-based store it describes no longer exists.

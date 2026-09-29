@@ -8,7 +8,7 @@ Blocked by: 003, 004
 
 ## What to build
 
-Deploy the same `build_agent` to AgentCore Runtime with a restricted tool set (no physical tools, no shell), invoke it from the CLI, measure cost, and tear it down with one command. Pure experiment; not wired into the relay.
+Deploy the same `build_agent` to AgentCore Runtime with a restricted tool set (no physical tools, no shell), invoke it from the CLI, measure cost, and tear it down with one command. Pure experiment; not wired into the hub or any channel.
 
 ## Acceptance criteria
 
@@ -23,3 +23,4 @@ Deploy the same `build_agent` to AgentCore Runtime with a restricted tool set (n
 - [004 · Tracer bullet: `tau chat` answers in the Jarvis persona](../L1-agent/004-tau-chat-tracer-bullet.md)
 
 ## Comments
+- 2026-09-29: rewritten for ADR 0006 (private-first): wording only (there is no relay any more); the experiment stays isolated from the hub and its data.

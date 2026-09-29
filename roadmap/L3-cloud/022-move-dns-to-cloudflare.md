@@ -2,7 +2,7 @@
 
 Status: ready-for-human
 Type: HITL
-Layer: L3 · Cloud
+Layer: L3 · Access and data
 Packages: -
 Blocked by: none
 
@@ -23,3 +23,5 @@ The domain is registered elsewhere; move its nameservers to Cloudflare (full set
 None - can start immediately
 
 ## Comments
+
+- 2026-09-29: unchanged under ADR 0006 (private-first) except the layer name; the zone is now needed for the Tunnel hostname `tau.<domain>` (023/076) and the docs site `docs.tau.<domain>` (079), not for a Worker route.

@@ -1,8 +1,8 @@
 # 071 · Decide `SessionRepository` vs Strands `Storage`/`SnapshotSessionManager` before the D1 backend
 
-Status: needs-triage
+Status: wontfix
 Type: AFK
-Layer: L3 · Cloud
+Layer: L3 · Access and data
 Packages: tau-core, cloud/tau-cloud
 Blocked by: none
 
@@ -25,3 +25,4 @@ None - must be decided before 018 starts.
 ## Comments
 
 - 2026-09-29: filed as a follow-up of the Strands-correctness pass (064) so 018 does not build on an undecided contract.
+- 2026-09-29: wontfix under ADR 0006 (private-first). The decision only mattered for a remote session backend, and there is none any more: the file session store on the hub (ADR 0003, per-message writes through `RepositorySessionManager`) is the record, not a cache, and 018 became the encrypted backup of the whole data dir, which archives files and does not care how they were written. Interrupt persistence (068) and the TUI replay (055/063) already work on the repository contract. If a second backend ever appears, the comparison is filed again as a new issue against that backend. Kept as history.

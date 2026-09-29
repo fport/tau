@@ -1,4 +1,4 @@
-"""``tau_core.settings`` (the bootstrap-config editor) and ``/settings`` in the terminal (081).
+"""``tau_core.settings`` (the bootstrap-config editor) and ``/settings`` in the terminal (083).
 
 Everything runs on a temp home with the fake provider; no credential value is real, and the
 tests check that none of them ever reaches the console output.
@@ -7,6 +7,7 @@ tests check that none of them ever reaches the console output.
 from __future__ import annotations
 
 import io
+import re
 import stat
 from collections.abc import Callable
 from pathlib import Path
@@ -21,13 +22,16 @@ from tau_core.config import ConfigNotFound, RoleConfig, resolve_home
 from tau_core.sessions import open_session_store
 from tau_core.settings import (
     KEEP,
+    check_document,
     clear_credential,
     configured_providers,
     credential_names_for,
     credential_present,
+    credential_source,
     credential_status,
     default_home,
     describe_home,
+    is_secret_name,
     known_env_names,
     known_providers,
     load_document,
@@ -40,6 +44,7 @@ from tau_core.settings import (
     set_role,
     set_ui_language,
     status_text,
+    tilde_path,
     validate,
 )
 from tau_core.testing import AutoRejectApprover, FakeModel, test_config
@@ -112,6 +117,45 @@ def test_set_role_adds_a_fallback_table_and_validates(template_home: Path) -> No
     with pytest.raises(ConfigError, match="invalid role name"):
         set_role(doc, "no spaces", "fake", "x")
     assert KEEP is not None
+
+
+PLANNED_REFUSED = (
+    "provider 'ollama' is not supported yet (issue 012); available: anthropic, bedrock, fake"
+)
+"""The refusal's text up to the built-in providers (an installed provider plugin adds to it)."""
+
+
+def refused(role: str) -> str:
+    return re.escape(f"[models.roles.{role}] {PLANNED_REFUSED}")
+
+
+def test_a_save_never_introduces_a_planned_provider(template_home: Path) -> None:
+    """``Config`` accepts ``ollama`` by name, but a role on it cannot start: ``set_role`` and
+    ``check_document`` refuse a *new* use, while the template's ``local`` role, which already
+    names it, never blocks an unrelated save."""
+    doc = load_document(template_home)
+    with pytest.raises(ConfigError, match=refused("brain")):
+        set_role(doc, "brain", "ollama", "qwen3:8b")
+    with pytest.raises(ConfigError, match=r"\[models\.roles\.fast\.fallback\] "):
+        set_role(doc, "fast", "bedrock", "x", fallback=("ollama", "qwen3:8b"))
+    assert doc["models"]["roles"]["brain"]["provider"] == "bedrock"  # nothing half-written
+    set_role(doc, "local", "ollama", "qwen3:14b")  # the role already sits on it: allowed
+    set_ui_language(doc, "tr")
+    save_document(template_home, doc)  # local = ollama was on disk already
+    assert validate(template_home, env={}).roles["local"].model_id == "qwen3:14b"
+    with pytest.raises(ConfigError, match=refused("local")):
+        check_document(doc)  # without a previous document every use is new
+    check_document(doc, previous=load_document(template_home))
+    fresh = tomlkit_document('[models.roles.brain]\nprovider = "ollama"\nmodel_id = "x"\n')
+    with pytest.raises(ConfigError, match=re.escape(PLANNED_REFUSED)):
+        save_document(template_home / "new", fresh)  # no file yet: strict
+    assert not (template_home / "new" / "tau.toml").exists()
+
+
+def tomlkit_document(text: str):
+    import tomlkit
+
+    return tomlkit.parse(text)
 
 
 def test_ui_language_and_agent_options(template_home: Path) -> None:
@@ -199,12 +243,67 @@ def test_set_and_clear_credential_keep_dotenv_private(tmp_path: Path, monkeypatc
         set_credential(home, "not a name", "x")
     with pytest.raises(ValueError):
         set_credential(home, "EXAMPLE_TOKEN", "  ")
+    with pytest.raises(ValueError):
+        set_credential(home, "EXAMPLE_TOKEN", "\n\t ")  # blank after stripping: still refused
 
 
-def test_mask_never_reveals_a_short_value() -> None:
+def test_set_credential_strips_the_value_and_creates_a_private_home(tmp_path: Path) -> None:
+    home = tmp_path / "new-home"  # no directory yet
+    path = set_credential(home, "EXAMPLE_TOKEN", f"  {SECRET}\n")
+    assert path.read_text(encoding="utf-8") == f"EXAMPLE_TOKEN='{SECRET}'\n"  # no whitespace
+    assert mode_of(path) == 0o600 and mode_of(home) == 0o700
+    assert masked_credential(home, "EXAMPLE_TOKEN", env={}) == "sk-…abcd"
+
+
+def test_credential_source_tells_the_shell_from_the_file(tmp_path: Path) -> None:
+    """``Config.load`` never lets ``.env`` override a variable the shell already set, so the
+    editor says where a value comes from (the value itself is never returned)."""
+    config = test_config(tmp_path)
+    home = config.home
+    assert credential_source(home, "EXAMPLE_TOKEN", env={}) is None
+    assert credential_source(home, "EXAMPLE_TOKEN", env={"EXAMPLE_TOKEN": "shell"}) == "environment"
+    set_credential(home, "EXAMPLE_TOKEN", SECRET)
+    assert credential_source(home, "EXAMPLE_TOKEN", env={}) == "dotenv"
+    assert credential_source(home, "EXAMPLE_TOKEN", env={"EXAMPLE_TOKEN": SECRET}) == "dotenv"
+    assert credential_source(home, "EXAMPLE_TOKEN", env={"EXAMPLE_TOKEN": "other"}) == "environment"
+    assert credential_source(home, "EXAMPLE_TOKEN", env={"EXAMPLE_TOKEN": ""}) == "dotenv"
+
+
+def test_is_secret_name() -> None:
+    for name in (
+        "ANTHROPIC_API_KEY",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_BEARER_TOKEN_BEDROCK",
+        "AWS_SESSION_TOKEN",
+        "TELEGRAM_BOT_TOKEN",
+        "DB_PASSWORD",
+        "TAU_HOST_FP",
+        "needy_key",
+    ):
+        assert is_secret_name(name), name
+    for name in (
+        "AWS_REGION",
+        "AWS_PROFILE",
+        "ANTHROPIC_WORKSPACE_ID",
+        "TAU_PROFILE",
+        "TAU_HOME",
+        "TAU_DATA_DIR",
+        "TELEGRAM_ALLOWED_CHAT_IDS",
+    ):
+        assert not is_secret_name(name), name
+
+
+def test_mask_shows_less_of_a_shorter_value() -> None:
+    """Below 12 characters only the last two, 12–19 two and two, from 20 on three and four:
+    a prefix like ``sk-`` is only shown when the rest still hides enough."""
     assert mask("") == ""
-    assert mask("short") == "••••"
-    assert mask("abcdefghijk") == "••••"  # 11 characters: still fully hidden
+    assert mask("a") == "…a"
+    assert mask("short") == "…rt"
+    assert mask("abcdefghijk") == "…jk"  # 11: the last boundary of the shortest form
+    assert mask("abcdefghijkl") == "ab…kl"  # 12
+    assert mask("abcdefghijklmnopqrs") == "ab…rs"  # 19
+    assert mask("abcdefghijklmnopqrst") == "abc…qrst"  # 20
     assert mask(SECRET) == "sk-…abcd"
 
 
@@ -285,7 +384,22 @@ def test_report_lines_hide_values_and_paths(tmp_path: Path) -> None:
     assert "/settings language en|tr" in lines[-1] and "F10" in lines[-1]
     assert SECRET not in text and "abcd" not in text and str(tmp_path) not in text
     with_paths = report_lines(config, env={})
-    assert str(config.home / "tau.toml") in "\n".join(with_paths)
+    assert str(config.home / "tau.toml") in "\n".join(with_paths)  # not under ~: as it is
+
+
+def test_report_lines_print_paths_relative_to_the_home_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The docs show ``Settings · ~/.tau`` and ``~/.tau/tau.toml``: the report shortens a path
+    under the user's home the way ``/session`` does."""
+    monkeypatch.setenv("HOME", str(tmp_path))  # Path.home() follows HOME
+    config = test_config(tmp_path)
+    assert tilde_path(config.home / "tau.toml") == "~/home/tau.toml"
+    assert tilde_path(Path("/elsewhere/tau.toml")) == "/elsewhere/tau.toml"
+    lines = report_lines(config, env={})
+    assert lines[0] == "Settings · ~/home"
+    assert "  tau.toml            ~/home/tau.toml · present" in lines
+    assert str(tmp_path) not in "\n".join(lines)
 
 
 # -- /settings in the terminal --------------------------------------------------------------------
@@ -374,6 +488,18 @@ def test_settings_model_setter_rebuilds_on_the_same_session(tmp_path: Path) -> N
     assert validate(config.home, env={}).roles["brain"].provider == "fake"
 
 
+def test_settings_model_refuses_a_planned_provider(tmp_path: Path) -> None:
+    """``ollama`` loads by name but cannot start; ``/settings model`` refuses it so the next
+    ``tau chat`` does not exit 2 (set_role, before anything is written)."""
+    config = test_config(tmp_path)
+    state = make_state(config)
+    before = (config.home / "tau.toml").read_text(encoding="utf-8")
+    out = run(state, ["/settings model brain ollama qwen3:8b"])
+    assert f"Not saved: tau.toml: [models.roles.brain] {PLANNED_REFUSED}" in out
+    assert (config.home / "tau.toml").read_text(encoding="utf-8") == before
+    assert state.config.roles["brain"].provider == "fake"
+
+
 def test_settings_set_reads_the_value_with_getpass(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     prompts: list[str] = []
@@ -406,6 +532,20 @@ def test_settings_set_reads_the_value_with_getpass(tmp_path: Path, monkeypatch) 
     assert "Usage: /settings [language en|tr | profile NAME" in out
     assert "ANTHROPIC_API_KEY" not in (config.home / ".env").read_text(encoding="utf-8")
     assert "ANTHROPIC_API_KEY" not in __import__("os").environ
+
+
+def test_settings_set_strips_the_typed_value(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("EXAMPLE_TOKEN", raising=False)
+    monkeypatch.setattr("getpass.getpass", lambda prompt="": f"  {SECRET}  ")
+    config = test_config(tmp_path)
+    state = make_state(config)
+    out = run(state, ["/settings set EXAMPLE_TOKEN"])
+    assert "EXAMPLE_TOKEN set in .env." in out and SECRET not in out
+    assert (config.home / ".env").read_text(encoding="utf-8") == f"EXAMPLE_TOKEN='{SECRET}'\n"
+    assert __import__("os").environ["EXAMPLE_TOKEN"] == SECRET
+    monkeypatch.setattr("getpass.getpass", lambda prompt="": " \t ")
+    out = run(state, ["/settings set EXAMPLE_TOKEN"])
+    assert "Nothing entered; EXAMPLE_TOKEN is unchanged." in out
 
 
 def test_settings_invalid_values_are_refused(tmp_path: Path) -> None:

@@ -427,8 +427,8 @@ async def cmd_settings(state: ReplState, arg: str) -> None:
             _reload_after_save(state, rebuild=True)
         elif key == "set" and len(values) == 1:
             name = values[0]
-            value = getpass.getpass(t("settings.enter_value", state.language, name=name))
-            if not value.strip():
+            value = getpass.getpass(t("settings.enter_value", state.language, name=name)).strip()
+            if not value:
                 state.say("settings.credential_empty", name=name)
                 return
             set_credential(home, name, value, export=True)

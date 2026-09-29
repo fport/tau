@@ -164,15 +164,18 @@ switched off while the screen is up) saves, Esc closes without writing.
  ╰────────────────────────────────────────────────────────────────────────────╯
 ```
 
-- **Model roles**: per role a provider `Select` over every installed provider (planned ones
-  marked), the model id, max tokens, an optional fallback provider and model id, and the
+- **Model roles**: per role a provider `Select` over every installed provider (a planned one
+  such as `ollama` is listed in a note and cannot be chosen; a role that already names it
+  keeps it, marked `(planned)`), the model id, max tokens, an optional fallback provider and model id, and the
   role's credential status (`✓ credentials ok`, `✗ missing AWS_REGION, AWS_PROFILE`,
   `◆ missing … · fallback anthropic in use`, `✓ no credentials needed`).
 - **Credentials**: the variables of the configured providers first (`needed by brain, fast`),
   then every other provider's, then every name in `.env.example` and `.env`. Each row shows
-  `set · sk-…abcd` or `not set`, a password `Input` for a new value and a **clear** button
-  (press again to keep). The names a start without credentials was missing are marked
-  `◆ needed` and the first of them has the focus.
+  `set · sk-…abcd` or `not set` (plus `(from the environment; .env does not override it)`
+  when the shell sets the variable), an `Input` for a new value — a password one for keys,
+  tokens, secrets and passwords, a plain one for `AWS_REGION`-like settings; the typed value
+  is stripped — and a **clear** button (press again to keep). The names a start without
+  credentials was missing are marked `◆ needed` and the first of them has the focus.
 - **Interface**: the UI language (`[ui] language`, applied live on save) and the profile
   (`TAU_PROFILE` in `.env`).
 - **Agent**: `context`, `window_size`, `max_turns`, `max_total_tokens` (empty = none).

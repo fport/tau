@@ -87,8 +87,12 @@ validate(home)  # Config.load on the saved files
 
 `save_document` refuses a document `Config` would not load (nothing is written), keeps the
 file's mode, and `.env` is created private and kept private. No function returns, logs or
-prints a credential value; the UI shows `mask(value)` (`sk-…abcd`, or only dots for a short
-value) or a `set` / `not set` flag. `known_env_names(home)` lists what a credentials editor
+prints a credential value; the UI shows `mask(value)` (`sk-…abcd` from 20 characters on,
+`ab…yz` for 12 to 19, only `…` and the last two below that) or a `set` / `not set` flag, and
+`credential_source` says whether the shell environment or `.env` supplies a value (the shell
+always wins). `set_role` and `check_document` refuse a planned provider a save would newly
+introduce (`ollama` until issue 012), since a role on it cannot start; one that is already in
+the file is left alone. `known_env_names(home)` lists what a credentials editor
 should offer: the variables of the configured providers, then every other provider's, then the
 names in `.env.example` and `.env`. `report_lines(config, language=…)` is the `/settings`
 listing both channels print. `Config.load` raises `ConfigNotFound` (a `ConfigError`) when there

@@ -1,4 +1,4 @@
-"""``/clear``, ``/compact``, ``/status``, ``/model`` and the thirteen-row menu (072, 081)."""
+"""``/clear``, ``/compact``, ``/status``, ``/model`` and the thirteen-row menu (072, 083)."""
 
 from __future__ import annotations
 

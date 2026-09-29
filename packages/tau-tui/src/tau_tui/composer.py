@@ -320,6 +320,8 @@ class Composer(Vertical):
     def __init__(self, language: str = "en", *, id: str | None = "composer") -> None:
         super().__init__(id=id)
         self.language = language
+        self.disabled_key = "settings.no_credentials"
+        """The placeholder's message key in the ``disabled`` state (no agent yet)."""
 
     def compose(self):
         with HorizontalGroup(classes="row"):
@@ -348,8 +350,15 @@ class Composer(Vertical):
 
     def relabel(self, language: str) -> None:
         self.language = language
-        key = "settings.no_credentials" if self.state == "disabled" else "tui.composer.placeholder"
+        key = self.disabled_key if self.state == "disabled" else "tui.composer.placeholder"
         self.prompt.placeholder = t(key, language)
+
+    def set_disabled_key(self, key: str) -> None:
+        """The message key the placeholder shows while there is no agent (what blocks it:
+        missing credentials, or a provider that is not built yet)."""
+        if key != self.disabled_key:
+            self.disabled_key = key
+            self.relabel(self.language)
 
     def set_max_rows(self, rows: int) -> None:
         self.prompt.max_rows = rows

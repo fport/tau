@@ -125,7 +125,7 @@ Roles in tau.toml:
 
 ### `/lang en|tr`
 
-`UI language: tr.` / `Arayüz dili: tr.` Without an argument: `Usage: /lang en|tr (current: en).` The persona's reply language is unaffected.
+The confirmation is already in the new language: `/lang tr` answers `Arayüz dili: tr.` and `/lang en` answers `UI language: en.`. Without an argument: `Usage: /lang en|tr (current: en).` The persona's reply language is unaffected.
 
 ### `/settings [key value]`
 
@@ -154,10 +154,10 @@ In the terminal the setters write the files through `tau_core.settings` (comment
 
 | Form | Effect |
 |---|---|
-| `/settings language en\|tr` | `[ui] language` in `tau.toml`; the chrome switches at once (`Settings saved.` then `UI language: tr.`) |
+| `/settings language en\|tr` | `[ui] language` in `tau.toml`; the chrome switches at once (`Settings saved.` then, already in the new language, `Arayüz dili: tr.`) |
 | `/settings profile NAME` | `TAU_PROFILE` in `.env`; the agent is rebuilt on the same session (`Settings saved; model reloaded.`) |
-| `/settings model ROLE PROVIDER MODEL_ID` | provider and model id of a role (its `max_tokens` and `fallback` are kept); rebuilds |
-| `/settings set NAME` | asks `Value for NAME (not echoed): ` with a hidden prompt, writes `NAME` to `.env`, exports it to the running process and rebuilds (`NAME set in .env.`); an empty value changes nothing |
+| `/settings model ROLE PROVIDER MODEL_ID` | provider and model id of a role (its `max_tokens` and `fallback` are kept); rebuilds. A planned provider (`ollama` until issue 012) is refused unless the role already names it: `Not saved: tau.toml: [models.roles.brain] provider 'ollama' is not supported yet (issue 012); available: anthropic, bedrock, fake.` |
+| `/settings set NAME` | asks `Value for NAME (not echoed): ` with a hidden prompt, writes `NAME` to `.env` (surrounding whitespace stripped), exports it to the running process and rebuilds (`NAME set in .env.`); an empty or blank value changes nothing |
 | `/settings clear NAME` | removes `NAME` from `.env` and the process (`NAME removed from .env.` / `NAME is not in .env.`) |
 
 A value the config refuses is answered with `Not saved: <reason>` and nothing is written (`tau.toml` is checked before the write); a file that saved but whose agent cannot be rebuilt says `Settings saved, but the agent could not be rebuilt: <reason>` and the current agent goes on. Anything else prints the usage line.

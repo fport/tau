@@ -2,7 +2,7 @@
 
 Public API (other tau packages import only these names and ``tau_core.testing``)::
 
-    Config, ConfigError, ConfigNotFound, MissingCredentials
+    Config, ConfigError, ConfigNotFound, MissingCredentials, ProviderNotSupported
     build_agent, TauAgent, TurnEvent, TextDelta, ReasoningDelta, ToolUseStarted, ToolProgress,
     ToolFinished, Throttled, Notice, TurnEnd, STOP_REASONS, to_turn_event
     SessionStore, MemorySessionStore, open_session_store, SESSION_BACKENDS,
@@ -65,7 +65,7 @@ from tau_core.events import AgentEvent, EventBus
 from tau_core.hub.daemon import HubService
 from tau_core.i18n import LANGUAGES, Language, t
 from tau_core.logs import configure_logging, reset_logging
-from tau_core.models import PROVIDERS, MissingCredentials
+from tau_core.models import PROVIDERS, MissingCredentials, ProviderNotSupported
 from tau_core.persona import ContextSource, PersonaLoader
 from tau_core.plugins import discover_tools
 from tau_core.registry import register_provider, register_session_backend
@@ -110,6 +110,7 @@ __all__ = [
     "ModelInfo",
     "Notice",
     "PersonaLoader",
+    "ProviderNotSupported",
     "ReasoningDelta",
     "SessionContextMismatch",
     "SessionStore",

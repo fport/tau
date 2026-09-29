@@ -259,8 +259,9 @@ def test_settings_80x24(tmp_path: Path, snap_compare) -> None:
 
 
 def test_setup_80x24(tmp_path: Path, snap_compare) -> None:
-    """The first-run screen with the default home shown as ``~/.tau`` and nothing detected."""
-    app = SetupApp(default_home="~/.tau", env={}, language="en")
+    """The first-run screen: the home field shows the canonical ``~/.tau`` (``show_paths``
+    is off; the detection reads a temp home, never the developer's) and nothing is detected."""
+    app = SetupApp(default_home=tmp_path / "fresh", env={}, language="en", show_paths=False)
 
     async def settle(pilot: Pilot) -> None:
         await pilot.pause()

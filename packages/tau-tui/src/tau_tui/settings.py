@@ -24,12 +24,15 @@ from rich.text import Text
 from tau_core import LANGUAGES, Config, ConfigError, t
 from tau_core.builder import Check, run_doctor
 from tau_core.config import CONTEXT_MODES, RoleConfig
+from tau_core.models import PLANNED_PROVIDERS
 from tau_core.settings import (
     KEEP,
     clear_credential,
     credential_names_for,
+    credential_source,
     credential_status,
     describe_home,
+    is_secret_name,
     known_env_names,
     known_providers,
     load_document,
@@ -41,6 +44,7 @@ from tau_core.settings import (
     set_role,
     set_ui_language,
     status_text,
+    tilde_path,
     validate,
 )
 from textual import events
@@ -57,6 +61,12 @@ logger = logging.getLogger(__name__)
 
 SECTIONS: tuple[str, ...] = ("roles", "credentials", "interface", "agent", "doctor", "files")
 """Section ids, in the order the list shows them."""
+SECTIONS_WIDTH = 18
+"""The section list's width from 60 columns on; also the cap for the phone band."""
+SECTIONS_WIDTH_PHONE = 12
+"""The section list's width below 60 columns, widened to fit the longest label (cap 18)."""
+SECTIONS_CHROME = 2
+"""Columns the list spends beside its labels: ``padding-right: 1`` and the right border."""
 PROFILE_VAR = "TAU_PROFILE"
 DOCTOR_GLYPHS = {"ok": "ok", "warn": "attention", "fail": "fail", "info": "notice"}
 """Doctor status → :func:`tau_tui.theme.glyph` name."""
@@ -98,15 +108,9 @@ def _int_or_none(raw: str, field_name: str, language: str) -> int | None:
         raise ConfigError(t("tui.settings.number_expected", language, field=field_name)) from exc
 
 
-def _tilde(path: Path) -> str:
-    try:
-        return f"~/{path.relative_to(Path.home())}"
-    except ValueError:
-        return str(path)
-
-
 class _Row(Horizontal):
-    """One ``label  widget`` row of a form."""
+    """One ``label  widget`` row of a form. The label column fits the longest label of either
+    language (``token budget`` / ``token sınırı``: 12) so no label is ever clipped."""
 
     DEFAULT_CSS = """
     _Row { height: 1; }
@@ -114,7 +118,7 @@ class _Row(Horizontal):
     _Row > Input { width: 1fr; }
     _Row > Select { width: 1fr; }
     _Row > Button { width: auto; margin-left: 1; }
-    SettingsScreen.-phone _Row > .label { width: 10; }
+    SettingsScreen.-phone _Row > .label { width: 12; }
     """
 
     def __init__(self, label: str, *widgets: Any, classes: str | None = None) -> None:
@@ -168,7 +172,9 @@ class SettingsScreen(ModalScreen[bool]):
     SettingsScreen Select { background: $surface; }
     SettingsScreen Select > SelectCurrent { background: $surface; }
     SettingsScreen Button { min-width: 7; }
-    SettingsScreen #status { height: 1; margin-top: 1; color: $error; }
+    SettingsScreen #status {
+        height: auto; min-height: 1; max-height: 3; margin-top: 1; color: $error;
+    }
     SettingsScreen #hint { height: 1; color: $text-muted; }
     SettingsScreen .doctor-line { height: auto; }
     SettingsScreen .file-row { height: auto; }
@@ -211,13 +217,23 @@ class SettingsScreen(ModalScreen[bool]):
         return t(key, self.language, **kwargs)
 
     def _provider_options(self, current: str | None) -> list[tuple[str, str]]:
-        options: list[tuple[str, str]] = []
-        for name, planned in known_providers():
-            label = self._t("tui.settings.planned", provider=name) if planned else name
-            options.append((label, name))
+        """The available providers only. A planned one (``ollama`` until issue 012) is never
+        offered — saving it would stop the next start — but a role that already sits on one
+        keeps it as its current value, labelled as planned, so the form can be left alone."""
+        providers = dict(known_providers())
+        options = [(name, name) for name, planned in providers.items() if not planned]
         if current and all(value != current for _, value in options):
-            options.append((current, current))
+            planned = providers.get(current, False)
+            label = self._t("tui.settings.planned", provider=current) if planned else current
+            options.append((label, current))
         return options
+
+    def _planned_note(self) -> str:
+        names = [name for name, planned in known_providers() if planned]
+        if not names:
+            return ""
+        listed = ", ".join(f"{name} (issue {PLANNED_PROVIDERS.get(name, '?')})" for name in names)
+        return self._t("tui.settings.planned_note", providers=listed)
 
     def _role_table(self, role: str) -> Any:
         return self._doc["models"]["roles"][role]
@@ -279,6 +295,9 @@ class SettingsScreen(ModalScreen[bool]):
                 Input(fb_model, compact=True, id=f"fbmodel-{role}"),
             )
             yield Static(self._role_status_text(role), classes="status-line", id=f"status-{role}")
+        note = self._planned_note()
+        if note:
+            yield Static(Text(note), classes="note -planned", id="planned-note", markup=False)
 
     def _role_status_text(self, role: str) -> Text:
         role_cfg = self.config.roles.get(role)
@@ -307,9 +326,13 @@ class SettingsScreen(ModalScreen[bool]):
         if name in self._cleared:
             return Text(self._t("tui.settings.will_clear"))
         masked = masked_credential(self.home, name, self.env)
-        if masked:
-            return Text(self._t("tui.settings.set", masked=masked))
-        return Text(self._t("tui.settings.not_set"))
+        if not masked:
+            return Text(self._t("tui.settings.not_set"))
+        state = self._t("tui.settings.set", masked=masked)
+        if credential_source(self.home, name, self.env) == "environment":
+            # ``Config.load`` never lets ``.env`` override a variable the shell already set.
+            state += f" {self._t('tui.settings.from_environment')}"
+        return Text(state)
 
     def _compose_credentials(self) -> ComposeResult:
         needed = self._needed_by()
@@ -329,13 +352,16 @@ class SettingsScreen(ModalScreen[bool]):
             classes = "cred-name" + (" -first" if n == 0 else "") + (" -missing" if missing else "")
             yield Static(head, classes=classes, markup=False, id=f"credname-{name}")
             yield Static(self._credential_state(name), classes="cred-state", id=f"credstate-{name}")
+            secret = is_secret_name(name)
             yield _Row(
                 "",
                 Input(
                     "",
-                    password=True,
+                    password=secret,
                     compact=True,
-                    placeholder=self._t("tui.settings.new_value"),
+                    placeholder=self._t(
+                        "tui.settings.new_value" if secret else "tui.settings.new_value_plain"
+                    ),
                     id=f"cred-{name}",
                 ),
                 Button(self._t("tui.settings.clear"), compact=True, id=f"clear-{name}"),
@@ -406,7 +432,7 @@ class SettingsScreen(ModalScreen[bool]):
     def _compose_files(self) -> ComposeResult:
         files = describe_home(self.home)
         for label, path, exists in files.rows():
-            shown = _tilde(path) if self.show_paths else f"<home>/{label}"
+            shown = tilde_path(path) if self.show_paths else f"<home>/{label}"
             state = t("settings.file_present" if exists else "settings.file_missing", self.language)
             mark = glyph("ok") if exists else glyph("fail")
             yield Static(
@@ -466,8 +492,19 @@ class SettingsScreen(ModalScreen[bool]):
         """What the app's PageUp/PageDown scroll while this screen is on top."""
         return self.query_one(f"#sec-{self.current}", VerticalScroll)
 
+    def _sections_width(self) -> int:
+        """Wide enough for the longest section label in the UI language (``Credentials``,
+        ``Kimlikler``), never narrower than the band's default nor wider than 18."""
+        longest = max(len(self._t(f"tui.settings.section.{name}")) for name in SECTIONS)
+        base = SECTIONS_WIDTH_PHONE if self.has_class("-phone") else SECTIONS_WIDTH
+        return min(max(longest + SECTIONS_CHROME, base), SECTIONS_WIDTH)
+
+    def _fit_sections(self) -> None:
+        self.sections.styles.width = self._sections_width()
+
     def on_mount(self) -> None:
         mark_ascii(self)
+        self._fit_sections()
         listing = self.sections
         listing.highlighted = SECTIONS.index(self.section)
         if self.section == "doctor":
@@ -564,6 +601,7 @@ class SettingsScreen(ModalScreen[bool]):
 
     def on_resize(self, event: events.Resize) -> None:
         if self.is_attached:
+            self._fit_sections()
             self.query_one("#hint", Static).update(self._hint_text())
 
     # -- save ---------------------------------------------------------------------------------
@@ -608,14 +646,16 @@ class SettingsScreen(ModalScreen[bool]):
         return context, window, turns, budget
 
     def _credential_edits(self) -> tuple[dict[str, str], set[str]]:
-        """``({name: new value}, {names to clear})`` from the Credentials form."""
+        """``({name: new value}, {names to clear})`` from the Credentials form; a value is
+        stripped of surrounding whitespace (a pasted key often carries a newline)."""
         new: dict[str, str] = {}
         for widget in self.query("#sec-credentials Input"):
             if not isinstance(widget, Input):
                 continue
             name = (widget.id or "").removeprefix("cred-")
-            if name and widget.value.strip() and name not in self._cleared:
-                new[name] = widget.value
+            value = widget.value.strip()
+            if name and value and name not in self._cleared:
+                new[name] = value
         return new, set(self._cleared)
 
     def action_save(self) -> None:
@@ -686,6 +726,7 @@ class SettingsScreen(ModalScreen[bool]):
 
     def relabel(self, language: str) -> None:
         self.language = language
+        self._fit_sections()
         self.query_one("#hint", Static).update(self._hint_text())
         self.query_one("#title", Static).update(
             Text(f"{glyph('attention')} {self._t('tui.settings.title')}")

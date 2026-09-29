@@ -1,6 +1,6 @@
 # 004 · Tracer bullet: `tau chat` answers in the Jarvis persona
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L1 · Agent
 Packages: tau-core

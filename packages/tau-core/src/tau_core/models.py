@@ -134,13 +134,30 @@ def _provider_params(role_cfg: RoleConfig) -> dict[str, Any]:
     return {k: v for k, v in role_cfg.params.items() if k not in _TAU_PARAM_KEYS}
 
 
+def _cache_kwargs(role_cfg: RoleConfig) -> dict[str, Any]:
+    """``{"cache_config": CacheConfig(...)}`` when the role has a ``cache`` table, else ``{}``.
+
+    Bedrock and Anthropic honour it (a cache point after the system prompt and, with
+    ``tools_ttl``, after the tool definitions); the fake provider ignores it.
+    """
+    if not role_cfg.cache:
+        return {}
+    from strands.models import CacheConfig
+
+    return {"cache_config": CacheConfig(**role_cfg.cache)}
+
+
 def _bedrock(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
     import boto3
     from botocore.exceptions import BotoCoreError
     from strands.models.bedrock import BedrockModel
 
     region = role_cfg.region or env.get("AWS_REGION")
-    kwargs: dict[str, Any] = {"model_id": role_cfg.model_id, **_provider_params(role_cfg)}
+    kwargs: dict[str, Any] = {
+        "model_id": role_cfg.model_id,
+        **_provider_params(role_cfg),
+        **_cache_kwargs(role_cfg),
+    }
     if role_cfg.max_tokens is not None:
         kwargs["max_tokens"] = role_cfg.max_tokens
     try:
@@ -177,6 +194,7 @@ def _anthropic(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
         model_id=role_cfg.model_id,
         max_tokens=role_cfg.max_tokens or 4096,
         params=_provider_params(role_cfg) or None,
+        **_cache_kwargs(role_cfg),
     )
 
 

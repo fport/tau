@@ -22,6 +22,7 @@ from tau_core.agent import (
     Notice,
     TauAgent,
     TextDelta,
+    Throttled,
     ToolFinished,
     ToolUseStarted,
     TurnEnd,
@@ -63,7 +64,10 @@ CommandHandler = Callable[[ReplState, str], Awaitable[None]]
 
 
 def render_turn_event(event: TurnEvent, language: str = DEFAULT_LANGUAGE) -> str | None:
-    """The terminal line for a tool or notice event; ``None`` for text and turn ends."""
+    """The terminal line for a tool, throttle or notice event; ``None`` for text, reasoning,
+    tool progress and turn ends."""
+    if isinstance(event, Throttled):
+        return f"  ⏳ {t('notice.throttled', language, seconds=f'{event.delay_seconds:g}')}"
     if isinstance(event, ToolUseStarted):
         tier = "?" if event.tier is None else str(event.tier)
         return f"  ⚙ {event.tool} (tier {tier})"

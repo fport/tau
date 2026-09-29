@@ -22,8 +22,16 @@ max_tokens = 1024
 provider = "ollama"                       # arrives in issue 012; resolving it now raises a clear error
 model_id = "qwen3:8b"
 
+# Optional per-role prompt caching (Bedrock and Anthropic; the fake provider ignores it):
+# [models.roles.brain.cache]
+# strategy = "auto"                       # auto | anthropic; Strands CacheConfig(strategy=...)
+# ttl = "1h"                              # optional cache TTL ("5m", "1h"); system_prompt_ttl / tools_ttl take a bool or a TTL
+
 [agent]
 max_turns = 12                            # per-turn loop guard, Strands Limits(turns=...)
+context = "sliding"                       # sliding | summarize: what the model sees of a long session (the store keeps everything)
+window_size = 60                          # sliding: messages kept; summarize: recent messages never summarized
+# max_total_tokens = 200000               # optional per-turn token budget, Strands Limits(total_tokens=...)
 
 [sessions]
 backend = "file"                          # memory | file (under TAU_DATA_DIR/sessions) | cloud (issue 018, via the tau-cloud Worker API)

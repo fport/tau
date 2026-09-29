@@ -3,7 +3,8 @@
 Public API (other tau packages import only these names and ``tau_core.testing``)::
 
     Config, ConfigError, MissingCredentials
-    build_agent, TauAgent, TurnEvent, TextDelta, ToolUseStarted, ToolFinished, Notice, TurnEnd
+    build_agent, TauAgent, TurnEvent, TextDelta, ReasoningDelta, ToolUseStarted, ToolProgress,
+    ToolFinished, Throttled, Notice, TurnEnd, STOP_REASONS, to_turn_event
     SessionStore, MemorySessionStore, open_session_store
     EventBus, AgentEvent
     Approver, Decision, ApprovalRequest, TerminalApprover, TierGate, TierHook, Exemption
@@ -16,14 +17,19 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 
 from tau_core.agent import (
+    STOP_REASONS,
     Notice,
+    ReasoningDelta,
     TauAgent,
     TextDelta,
+    Throttled,
     ToolFinished,
+    ToolProgress,
     ToolUseStarted,
     TurnEnd,
     TurnEvent,
     build_agent,
+    to_turn_event,
 )
 from tau_core.approval import (
     ApprovalRequest,
@@ -50,6 +56,7 @@ except PackageNotFoundError:  # running from a source tree without installation
 __all__ = [
     "LANGUAGES",
     "SLASH_COMMANDS",
+    "STOP_REASONS",
     "AgentEvent",
     "ApprovalRequest",
     "Approver",
@@ -62,16 +69,19 @@ __all__ = [
     "MemorySessionStore",
     "MissingCredentials",
     "Notice",
+    "ReasoningDelta",
     "SessionStore",
     "SlashCommand",
     "TauAgent",
     "TerminalApprover",
     "TextDelta",
+    "Throttled",
     "Tier",
     "TierGate",
     "TierHook",
     "ToolCatalog",
     "ToolFinished",
+    "ToolProgress",
     "ToolUseStarted",
     "TurnEnd",
     "TurnEvent",
@@ -86,4 +96,5 @@ __all__ = [
     "t",
     "tau_tool",
     "tier_of",
+    "to_turn_event",
 ]

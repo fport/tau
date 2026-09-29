@@ -341,8 +341,51 @@ def test_persona_hook_sets_system_prompt(tmp_path: Path, fixed_now: datetime) ->
         agent = FakeAgent()
 
     hook._before_model_call(FakeEvent())  # type: ignore[arg-type]
-    assert FakeEvent.agent.system_prompt.startswith("Sen tau'sun.\n\n## User\n")
-    assert FakeEvent.agent.system_prompt.endswith("- Budget today: 3 $")
+    blocks = FakeEvent.agent.system_prompt
+    assert isinstance(blocks, list) and len(blocks) == 3
+    assert blocks[0]["text"].startswith("Sen tau'sun.\n\n## User\n")
+    assert blocks[1] == {"cachePoint": {"type": "default"}}
+    assert blocks[2]["text"].startswith("## Now\n")
+    assert blocks[2]["text"].endswith("- Budget today: 3 $")
+
+
+def test_build_system_content_is_three_blocks_with_a_cache_point(
+    tmp_path: Path, fixed_now: datetime
+) -> None:
+    """Persona + user facts (stable) | cachePoint | ## Now (changes every minute)."""
+    persona_dir = make_persona_dir(tmp_path, "Sen tau'sun.\n", "- Address: efendim\n")
+    loader = PersonaLoader(persona_dir)
+    context = ctx(fixed_now, budget="3 $")
+
+    blocks = loader.build_system_content(context)
+
+    assert blocks[0] == {"text": "Sen tau'sun.\n\n## User\n- Address: efendim\n"}
+    assert blocks[1] == {"cachePoint": {"type": "default"}}
+    assert blocks[2] == {"text": "## Now\n" + context.render()}
+    # The SDK joins text blocks with one newline: the string form is the classic prompt.
+    joined = "\n".join(block["text"] for block in blocks if "text" in block)
+    assert joined == loader.build_system_prompt(context)
+
+
+async def test_model_receives_the_cache_point(config: Config, fixed_now: datetime) -> None:
+    model = FakeModel(["tamam"])
+    agent = build_agent(config=config, model=model, tools=[], clock=lambda: fixed_now)
+    await agent.ask("merhaba")
+
+    call = model.calls[0]
+    assert call.system_prompt_content is not None
+    assert [list(block) for block in call.system_prompt_content] == [
+        ["text"],
+        ["cachePoint"],
+        ["text"],
+    ]
+    assert call.system_prompt_content[1] == {"cachePoint": {"type": "default"}}
+    expected = PersonaLoader(config.persona_dir).build_system_prompt(
+        DynamicContext(now=fixed_now, profile="home", role="hub")
+    )
+    assert call.system_prompt == expected
+    assert agent.agent.system_prompt == expected
+    assert agent.agent.system_prompt_content == call.system_prompt_content
 
 
 # --- dynamic context -----------------------------------------------------------------------

@@ -167,3 +167,70 @@ def test_ui_language_from_file_env_and_overrides(tmp_path: Path) -> None:
 def test_ui_language_is_validated(tmp_path: Path, toml: str, env: dict, message: str) -> None:
     with pytest.raises(ConfigError, match=message):
         Config.load(write_home(tmp_path, toml), env=env)
+
+
+# --- [agent] context, window_size, max_total_tokens (issue 064) -------------------------------
+
+
+def test_agent_context_defaults(tmp_path: Path) -> None:
+    agent = Config.load(write_home(tmp_path), env={}).agent
+    assert agent == AgentConfig(
+        max_turns=12, context="sliding", window_size=60, max_total_tokens=None
+    )
+
+
+def test_agent_context_parsed(tmp_path: Path) -> None:
+    toml = MINIMAL + '\n[agent]\ncontext = "summarize"\nwindow_size = 5\nmax_total_tokens = 1000\n'
+    agent = Config.load(write_home(tmp_path, toml), env={}).agent
+    assert (agent.context, agent.window_size, agent.max_total_tokens) == ("summarize", 5, 1000)
+
+
+@pytest.mark.parametrize("value", ['"auto"', '"agentic"', '"window"', "3"])
+def test_agent_context_rejects_sdk_presets_and_junk(tmp_path: Path, value: str) -> None:
+    home = write_home(tmp_path, MINIMAL + f"\n[agent]\ncontext = {value}\n")
+    with pytest.raises(ConfigError, match="context"):
+        Config.load(home, env={})
+
+
+@pytest.mark.parametrize("key", ["window_size", "max_total_tokens"])
+@pytest.mark.parametrize("value", ["0", "-1", "true", '"9"', "2.5"])
+def test_agent_sizes_must_be_positive_integers(tmp_path: Path, key: str, value: str) -> None:
+    home = write_home(tmp_path, MINIMAL + f"\n[agent]\n{key} = {value}\n")
+    with pytest.raises(ConfigError, match=key):
+        Config.load(home, env={})
+
+
+# --- [models.roles.<role>] cache ----------------------------------------------------------------
+
+
+def test_role_cache_table_parsed(tmp_path: Path) -> None:
+    toml = (
+        MINIMAL + '\n[models.roles.brain.cache]\nstrategy = "auto"\nttl = "1h"\ntools_ttl = true\n'
+    )
+    brain = Config.load(write_home(tmp_path, toml), env={}).roles["brain"]
+    assert brain.cache == {"strategy": "auto", "ttl": "1h", "tools_ttl": True}
+    assert Config.load(write_home(tmp_path), env={}).roles["brain"].cache is None
+
+
+def test_role_cache_strategy_defaults_to_auto(tmp_path: Path) -> None:
+    toml = MINIMAL + '\n[models.roles.brain.cache]\nttl = "5m"\n'
+    assert Config.load(write_home(tmp_path, toml), env={}).roles["brain"].cache == {
+        "strategy": "auto",
+        "ttl": "5m",
+    }
+
+
+@pytest.mark.parametrize(
+    ("body", "match"),
+    [
+        ('cache = "auto"', "must be a table"),
+        ('[models.roles.brain.cache]\nstrategy = "magic"', "cache.strategy"),
+        ("[models.roles.brain.cache]\nttl = 5", "cache.ttl"),
+        ("[models.roles.brain.cache]\nsystem_prompt_ttl = 3", "cache.system_prompt_ttl"),
+        ("[models.roles.brain.cache]\nsize = 3", "unknown keys: size"),
+    ],
+)
+def test_role_cache_rejects_invalid_tables(tmp_path: Path, body: str, match: str) -> None:
+    home = write_home(tmp_path, MINIMAL + "\n" + body + "\n")
+    with pytest.raises(ConfigError, match=match):
+        Config.load(home, env={})

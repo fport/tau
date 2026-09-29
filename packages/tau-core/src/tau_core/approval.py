@@ -20,7 +20,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
-from strands.hooks import AfterToolCallEvent, BeforeToolCallEvent, HookProvider, HookRegistry
+from strands.hooks import (
+    AfterToolCallEvent,
+    BeforeToolCallEvent,
+    HookOrder,
+    HookProvider,
+    HookRegistry,
+)
 
 from tau_core.events import AgentEvent, EventBus
 from tau_core.i18n import DEFAULT_LANGUAGE, t
@@ -404,41 +410,82 @@ def _summary(result: dict[str, Any] | None) -> str:
     return " ".join(" ".join(parts).split())[:SUMMARY_LIMIT]
 
 
+@dataclass(frozen=True)
+class _Checked:
+    """What the gate decided for one ``tool_use_id``, kept until the call is recorded."""
+
+    approval: str | None
+    refusal: str | None
+    arguments: dict[str, Any]
+
+
+def overridden_text(tool: str, *, refused: bool) -> str:
+    """The error recorded when a hook behind the gate changed what the gate decided."""
+    if refused:
+        return f"The tier gate refused {tool} but a later hook let it run."
+    return f"{tool} ran with arguments the tier gate did not approve."
+
+
 class TierHook(HookProvider):
     """Strands adapter for :class:`TierGate`.
 
-    Register it after every other hook that may rewrite ``tool_use`` in
-    ``BeforeToolCallEvent``: Strands runs the tool with the ``tool_use`` left by the last
-    callback, and the gate must see exactly that.
+    Both callbacks register at ``HookOrder.SDK_LAST``: Strands runs the tool with the
+    ``tool_use`` and ``cancel_tool`` left by the last ``BeforeToolCallEvent`` callback, and the
+    gate must have the last word, whatever hooks, interventions (order 90) or plugins rewrite
+    before it. Registration order plays no part; ``build_agent`` refuses a component whose
+    callback would still run after the gate (``HookRegistry`` accepts any order). Should one
+    get behind it anyway (a hook added to the SDK agent after build), the ``After`` callback
+    notices that a refused call ran or an approved call ran with other arguments and records
+    it as an ``error`` with an ``error`` event; the call itself cannot be undone by then.
     """
 
     def __init__(self, gate: TierGate):
         self.gate = gate
-        self._approvals: dict[str, str | None] = {}
+        self._checked: dict[str, _Checked] = {}
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
-        registry.add_callback(BeforeToolCallEvent, self._before_tool_call)
-        registry.add_callback(AfterToolCallEvent, self._after_tool_call)
+        registry.add_callback(BeforeToolCallEvent, self._before_tool_call, order=HookOrder.SDK_LAST)
+        registry.add_callback(AfterToolCallEvent, self._after_tool_call, order=HookOrder.SDK_LAST)
 
     async def _before_tool_call(self, event: BeforeToolCallEvent) -> None:
         tool_use = event.tool_use
         tool_use_id = str(tool_use.get("toolUseId", ""))
         tool_name = str(tool_use.get("name", ""))
+        arguments = _arguments(tool_use)
         try:
             allowed, refusal, approval = await self.gate.check(
-                tool_name, _arguments(tool_use), tool_use_id=tool_use_id
+                tool_name, arguments, tool_use_id=tool_use_id
             )
         except Exception:
             # A bug in the gate must never let a call through.
             logger.exception("tier gate failed for %s; refusing the call", tool_name)
             allowed, refusal, approval = False, refusal_text(tool_name), None
-        self._approvals[tool_use_id] = approval
-        if not allowed:
-            event.cancel_tool = refusal or refusal_text(tool_name)
+        if allowed:
+            refusal = None
+        else:
+            refusal = refusal or refusal_text(tool_name)
+            event.cancel_tool = refusal
+        self._checked[tool_use_id] = _Checked(approval, refusal, _copy_arguments(arguments))
+
+    def _overridden(self, checked: _Checked | None, event: AfterToolCallEvent) -> str | None:
+        """The error text when what ran is not what the gate decided, else ``None``."""
+        if checked is None:
+            return None
+        tool_name = str(event.tool_use.get("name", ""))
+        if checked.refusal is not None:
+            if event.cancel_message != checked.refusal:
+                return overridden_text(tool_name, refused=True)
+            return None
+        if checked.approval in ("approved", "exempt"):
+            if _arguments(event.tool_use) != checked.arguments:
+                return overridden_text(tool_name, refused=False)
+        return None
 
     def _after_tool_call(self, event: AfterToolCallEvent) -> None:
         tool_use = event.tool_use
         tool_use_id = str(tool_use.get("toolUseId", ""))
+        tool_name = str(tool_use.get("name", ""))
+        checked = self._checked.pop(tool_use_id, None)
         result = event.result or {}
         if event.cancel_message:
             status = "rejected"
@@ -446,13 +493,21 @@ class TierHook(HookProvider):
             status = "ok"
         else:
             status = "error"
+        summary = event.cancel_message or _summary(result)
+        overridden = self._overridden(checked, event)
+        if overridden is not None:
+            logger.error("%s (tool_use_id=%s)", overridden, tool_use_id)
+            self.gate._emit(
+                "error", {"message": overridden, "where": "tier_gate", "tool": tool_name}
+            )
+            status, summary = "error", overridden
         duration = getattr(event, "duration", None)
         self.gate.record(
-            tool_name=str(tool_use.get("name", "")),
+            tool_name=tool_name,
             arguments=_arguments(tool_use),
             status=status,
-            summary=event.cancel_message or _summary(result),
-            approval=self._approvals.pop(tool_use_id, None),
+            summary=summary,
+            approval=checked.approval if checked is not None else None,
             duration_ms=int(duration * 1000) if duration is not None else None,
             tool_use_id=tool_use_id,
         )

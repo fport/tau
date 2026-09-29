@@ -212,15 +212,14 @@ async def test_loop_guard(config: Config) -> None:
 
 
 async def test_model_error_becomes_notice(config: Config, caplog: pytest.LogCaptureFixture) -> None:
-    class Broken(FakeModel):
-        async def stream(self, *args, **kwargs):
-            raise RuntimeError("bağlantı koptu")
-            yield  # pragma: no cover
+    def broken(messages, system_prompt):
+        raise RuntimeError("bağlantı koptu")
 
     bus = EventBus()
     seen = events_of(bus)
     store = MemorySessionStore()
-    agent = build_agent(config=config, model=Broken(), tools=[], events=bus, session_store=store)
+    model = FakeModel([broken, "Şimdi buradayım."])
+    agent = build_agent(config=config, model=model, tools=[], events=bus, session_store=store)
     with caplog.at_level(logging.ERROR):
         turn = await collect(agent, "merhaba")
     assert turn == [
@@ -229,10 +228,20 @@ async def test_model_error_becomes_notice(config: Config, caplog: pytest.LogCapt
     ]
     assert [e.kind for e in seen] == ["error"]
     assert seen[0].data["where"] == "model"
-    # History stays alternating (user, assistant) in memory and in the store.
-    assert [m["role"] for m in agent.messages] == ["user", "assistant"]
+    # Nothing is appended by hand: the history (and the store) end on the user message ...
+    assert [m["role"] for m in agent.messages] == ["user"]
+    assert [m.message["role"] for m in store.list_messages(agent.session_id, "tau")] == ["user"]
+
+    # ... and the next turn repairs it through the SDK: an assistant notice, then the prompt.
+    assert await agent.ask("tekrar") == "Şimdi buradayım."
+    sent = model.calls[1].messages
+    assert [m["role"] for m in sent] == ["user", "assistant", "user"]
+    assert sent[1]["content"] == [
+        {"text": "(Model call failed: bağlantı koptu. Details are in the log.)"}
+    ]
+    assert sent[2]["content"] == [{"text": "tekrar"}]
     stored = store.list_messages(agent.session_id, "tau")
-    assert [m.message["role"] for m in stored] == ["user", "assistant"]
+    assert [m.message["role"] for m in stored] == ["user", "assistant", "user", "assistant"]
 
 
 async def test_persona_hook_rereads_changed_file(config: Config, fixed_now: datetime) -> None:
@@ -338,3 +347,48 @@ def test_build_agent_is_self_contained(tmp_path: Path, config: Config) -> None:
     agent = build_agent(config=config, model=FakeModel(), tools=[])
     assert agent.store is None
     assert not config.data_dir.exists()
+
+
+def test_conversation_manager_follows_config(config: Config) -> None:
+    from strands.agent.conversation_manager import (
+        SlidingWindowConversationManager,
+        SummarizingConversationManager,
+    )
+
+    sliding = build_agent(
+        config=config.with_overrides(agent=AgentConfig(context="sliding", window_size=7)),
+        model=FakeModel(),
+        tools=[],
+    )
+    manager = sliding.agent.conversation_manager
+    assert isinstance(manager, SlidingWindowConversationManager) and manager.window_size == 7
+
+    summarizing = build_agent(
+        config=config.with_overrides(agent=AgentConfig(context="summarize", window_size=3)),
+        model=FakeModel(),
+        tools=[],
+    )
+    manager = summarizing.agent.conversation_manager
+    assert isinstance(manager, SummarizingConversationManager)
+    assert manager.preserve_recent_messages == 3
+    # No SDK context-manager preset: it would register untiered tools behind the gate's back.
+    assert summarizing.agent.context_manager is None
+    assert set(summarizing.agent.tool_names) == set()
+
+
+async def test_sliding_window_trims_the_model_view_not_the_store(config: Config) -> None:
+    store = MemorySessionStore()
+    model = FakeModel(["bir", "iki", "üç"])
+    agent = build_agent(
+        config=config.with_overrides(agent=AgentConfig(window_size=2)),
+        model=model,
+        tools=[],
+        session_store=store,
+    )
+    for prompt in ("1", "2", "3"):
+        await agent.ask(prompt)
+    # The window is applied after each turn: the third call saw the trimmed pair plus "3",
+    # and the history is trimmed again afterwards.
+    assert [m["content"][0]["text"] for m in model.calls[-1].messages] == ["2", "iki", "3"]
+    assert [m["content"][0]["text"] for m in agent.messages] == ["3", "üç"]
+    assert len(store.list_messages(agent.session_id, "tau")) == 6  # the store keeps everything

@@ -1,8 +1,12 @@
 """``tau cloud``: cloud mode from the owner's machine and inside the brain container.
 
-- ``push`` uploads ``tau.toml``, ``persona/persona.md`` and ``persona/net.md`` to the spine;
-  ``persona/user.md`` only with ``--include-user`` or a yes to its own question.
-- ``pull`` downloads them into ``TAU_HOME`` and never replaces a local file without ``--force``.
+- ``push`` uploads ``tau.toml``, ``persona/persona.md``, ``persona/net.md`` and the sub-tau
+  files (``persona/subs/*.md``) to the spine; ``persona/user.md`` only with ``--include-user``
+  or a yes to its own question. Other entries of ``persona/subs/`` are refused and named, and
+  the spine's sub-tau files that are gone here are removed from it (only when
+  ``persona/subs/`` exists here, so a machine without sub-taus never empties the spine's).
+- ``pull`` downloads them into ``TAU_HOME`` and never replaces a local file without ``--force``;
+  it never deletes a local file, and it skips any name the spine lists outside the file set.
 - ``status`` shows the spine's health, the files it holds and the brain's health.
 - ``run`` is the brain container's entrypoint (``CMD ["tau", "cloud", "run"]``).
 
@@ -43,13 +47,19 @@ from tau_cloud._version import __version__
 from tau_cloud.files import (
     CONFIG_FILE,
     FILE_NAMES,
+    SUBS_DIR,
     USER_FILE,
     FileError,
     LocalFile,
+    RemoteListing,
     cloud_config,
+    delete_remote,
     download,
+    is_sub_file,
     list_remote,
     read_local,
+    remote_listing,
+    scan_subs,
     upload,
     write_local,
 )
@@ -176,6 +186,18 @@ def _read(ctx: click.Context, home: Path, name: str) -> LocalFile | None:
         _fail(ctx, exc)
 
 
+def _listing(ctx: click.Context, spine: SpineClient) -> RemoteListing:
+    try:
+        return remote_listing(spine)
+    except SpineError as exc:
+        _fail(ctx, f"{spine.url}: {exc}")
+
+
+def _shown(name: str) -> str:
+    """A name a spine listed, safe to print: no control characters, at most 120 characters."""
+    return "".join(ch if ch.isprintable() else "?" for ch in name)[:120]
+
+
 @click.group(
     name="cloud",
     help="Cloud mode: your tau's hub runs as a container in your own Cloudflare account and "
@@ -192,10 +214,12 @@ def cloud() -> None:
 
 @cloud.command(
     name="push",
-    help="Upload tau.toml, persona/persona.md and persona/net.md to the spine, where the brain "
-    "container reads them at its next start. persona/user.md goes up only with "
-    "--include-user, or when you answer yes to its own question in a terminal: it is then "
-    "stored in your own Cloudflare account. .env is never uploaded.",
+    help="Upload tau.toml, persona/persona.md, persona/net.md and the sub-tau files "
+    "(persona/subs/*.md: definitions and public notes) to the spine, where the brain "
+    "container reads them at its next start. Other entries of persona/subs/ are skipped, and "
+    "sub-tau files you removed here are removed from the spine too. persona/user.md goes up "
+    "only with --include-user, or when you answer yes to its own question in a terminal: it "
+    "is then stored in your own Cloudflare account. .env is never uploaded.",
     short_help="Upload tau.toml and the persona files to the spine.",
 )
 @help_option()
@@ -233,12 +257,33 @@ def push_command(ctx: click.Context, include_user: bool, yes: bool) -> None:
             files.append(file)
         elif name != "persona/net.md":
             say("cloud.push.missing", name=name)
+    try:
+        sub_names, refused = scan_subs(home)
+    except FileError as exc:
+        _fail(ctx, exc)
+    for entry in refused:
+        reason = say.text(f"cloud.refused.{entry.reason}")
+        say("cloud.push.refused", name=entry.name, reason=reason)
+    for name in sub_names:
+        file = _read(ctx, home, name)
+        if file is not None:
+            files.append(file)
+    # Sub-tau files the spine holds that are gone here: a removed or renamed sub-tau must not
+    # live on in the cloud. Without a persona/subs/ here the spine's copies stay.
+    remote_subs = [f.name for f in _listing(ctx, spine).files if is_sub_file(f.name)]
+    stale: list[str] = []
+    if (home / SUBS_DIR).is_dir():
+        stale = [name for name in remote_subs if not os.path.lexists(home / name)]
+    elif remote_subs:
+        say("cloud.push.subs_kept", count=len(remote_subs))
     user = _read(ctx, home, USER_FILE)
     interactive = _interactive(ctx)
     if not yes:
         if not interactive:
             _fail(ctx, "nothing was uploaded: pass --yes to upload without a question.")
         say("cloud.push.plan", url=spine.url, files=", ".join(f.name for f in files))
+        if stale:
+            say("cloud.push.plan_remove", files=", ".join(stale))
         if not click.confirm(say.text("cloud.push.confirm"), default=False):
             say("cloud.push.cancelled")
             ctx.exit(1)
@@ -260,6 +305,12 @@ def push_command(ctx: click.Context, include_user: bool, yes: bool) -> None:
         except SpineError as exc:
             _fail(ctx, f"{file.name}: {exc}")
         say("cloud.push.uploaded", name=stored.name, size=stored.size)
+    for name in stale:
+        try:
+            delete_remote(spine, name)
+        except SpineError as exc:
+            _fail(ctx, f"{name}: {exc}")
+        say("cloud.push.removed", name=name)
     say("cloud.push.done")
 
 
@@ -268,8 +319,9 @@ def push_command(ctx: click.Context, include_user: bool, yes: bool) -> None:
 
 @cloud.command(
     name="pull",
-    help="Download the files the spine holds (tau.toml and the persona files) into TAU_HOME. "
-    "A local file that differs is kept unless you pass --force.",
+    help="Download the files the spine holds (tau.toml, the persona files and the sub-tau "
+    "files in persona/subs/) into TAU_HOME. A local file that differs is kept unless you pass "
+    "--force; no local file is ever deleted.",
     short_help="Download tau.toml and the persona files from the spine.",
 )
 @help_option()
@@ -280,10 +332,10 @@ def pull_command(ctx: click.Context, force: bool) -> None:
     env = _env(ctx, home)
     say = _Say(_language(home, env))
     spine = _cloud_spine(ctx, env)
-    try:
-        remote = list_remote(spine)
-    except SpineError as exc:
-        _fail(ctx, exc)
+    listing = _listing(ctx, spine)
+    for name in listing.ignored:
+        say("cloud.pull.refused", name=_shown(name))
+    remote = listing.files
     if not remote:
         say("cloud.pull.empty")
         ctx.exit(1)
@@ -414,7 +466,8 @@ def _stop_guard() -> Callable[[], None]:
 
 def _pull_for_run(ctx: click.Context, spine: SpineClient, home: Path) -> int:
     """Every file of the set the spine holds, written into ``home`` (replacing what is there);
-    ``tau.toml`` patched for cloud mode. Returns how many files were pulled."""
+    ``tau.toml`` patched for cloud mode. Sub-tau files ``home`` holds from an earlier start
+    that the spine no longer lists are removed. Returns how many files were pulled."""
     if (home / CONFIG_FILE).exists() and not (home / MARKER_FILE).is_file():
         _fail(
             ctx,
@@ -441,14 +494,33 @@ def _pull_for_run(ctx: click.Context, spine: SpineClient, home: Path) -> int:
         except (SpineError, FileError) as exc:
             _fail(ctx, f"{name}: {exc}")
         count += 1
+    listing = _listing(ctx, spine)
+    wanted = [entry.name for entry in listing.files if is_sub_file(entry.name)]
+    for name in wanted:
+        try:
+            text = download(spine, name)
+            if text is None:
+                continue
+            write_local(home, name, text, force=True)
+        except (SpineError, FileError) as exc:
+            _fail(ctx, f"{name}: {exc}")
+        count += 1
+    try:
+        present, _ = scan_subs(home)
+        for name in present:
+            if name not in wanted:
+                (home / name).unlink()
+    except (FileError, OSError) as exc:
+        _fail(ctx, f"{SUBS_DIR}: {exc}")
     (home / MARKER_FILE).write_text(MARKER_TEXT, encoding="utf-8")
     return count
 
 
 @cloud.command(
     name="run",
-    help="The brain container's entrypoint: pull tau.toml and the persona files from the "
-    "spine into TAU_HOME (sessions and network state set to the spine), answer GET /health "
+    help="The brain container's entrypoint: pull tau.toml, the persona files and the sub-tau "
+    "files from the spine into TAU_HOME (sessions and network state set to the spine), answer "
+    "GET /health "
     f"on {DEFAULT_HOST}:{DEFAULT_PORT} ({HOST_ENV} and {PORT_ENV} override them), then run "
     "`tau hub run` until SIGTERM. Needs TAU_SPINE_URL and TAU_SPINE_TOKEN and a spine in "
     "cloud mode. It refuses a TAU_HOME holding a tau.toml it did not write.",

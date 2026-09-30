@@ -236,6 +236,33 @@ def test_a_restart_pulls_the_new_files(tmp_path: Path, spine: FakeSpine, contain
     )
 
 
+def test_run_pulls_the_sub_taus_and_drops_removed_ones(
+    tmp_path: Path, spine: FakeSpine, container: Path
+) -> None:
+    source = push_home(spine, tmp_path)
+    subs = source / "persona" / "subs"
+    subs.mkdir()
+    (subs / "coach.md").write_text("+++\nabout = 'A coach.'\n+++\n\nCoach.\n", encoding="utf-8")
+    (subs / "coach.public.md").write_text("- Public.\n", encoding="utf-8")
+    assert invoke(spine, source, "push", "--yes").exit_code == 0
+    spine.files["persona/subs/../escape.md"] = {"text": "x", "updated_at": 1}
+
+    first = invoke(spine, container, "run", env=run_env(spine), runner=Runner())
+    assert first.exit_code == 0, first.output
+    assert f"Pulled 6 files from {spine.url} into {container}." in first.output  # 4 + 2
+    for name in ("coach.md", "coach.public.md"):
+        pulled = container / "persona" / "subs" / name
+        assert pulled.read_text(encoding="utf-8") == (subs / name).read_text(encoding="utf-8")
+        assert stat.S_IMODE(pulled.stat().st_mode) == 0o600
+    assert not (container / "persona" / "escape.md").exists()
+
+    (subs / "coach.public.md").unlink()
+    assert invoke(spine, source, "push", "--yes").exit_code == 0
+    again = invoke(spine, container, "run", env=run_env(spine), runner=Runner())
+    assert again.exit_code == 0, again.output
+    assert sorted(p.name for p in (container / "persona" / "subs").iterdir()) == ["coach.md"]
+
+
 def test_a_bad_health_port(tmp_path: Path, spine: FakeSpine, container: Path) -> None:
     push_home(spine, tmp_path)
     result = invoke(

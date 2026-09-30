@@ -262,3 +262,121 @@ def test_status_with_a_bad_token(tmp_path: Path, spine: FakeSpine, token: str) -
         assert "wrong" not in result.output
     else:
         assert "must be set" in result.output
+
+
+# -- sub-tau files (persona/subs/*.md, ADR 0012) ------------------------------------------------
+
+COACH = '+++\nabout = "A coach."\npublic = true\npublic_note = "coach.public.md"\n+++\n\nCoach.\n'
+COACH_NOTE = "- Public: the owner runs on Sundays.\n"
+SUBS = ["persona/subs/coach.md", "persona/subs/coach.public.md"]
+
+
+def add_subs(home: Path) -> Path:
+    """``persona/subs/`` with a definition, its public note and entries a push must refuse."""
+    subs = home / "persona" / "subs"
+    subs.mkdir(mode=0o700)
+    (subs / "coach.md").write_text(COACH, encoding="utf-8")
+    (subs / "coach.public.md").write_text(COACH_NOTE, encoding="utf-8")
+    for odd in ("Bad Name.md", ".hidden.md", "notes.txt"):
+        (subs / odd).write_text("x\n", encoding="utf-8")
+    (subs / "drafts").mkdir()
+    (subs / "drafts" / "landing.md").write_text("x\n", encoding="utf-8")
+    (subs / "leak.md").symlink_to(home / "persona" / "user.md")
+    return subs
+
+
+def test_push_carries_sub_taus_and_refuses_odd_names(tmp_path: Path, spine: FakeSpine) -> None:
+    home = make_home(tmp_path)
+    add_subs(home)
+    result = invoke(spine, home, "push", "--yes")
+    assert result.exit_code == 0, result.output
+    assert stored(spine) == sorted([*PUBLIC, *SUBS])
+    assert spine.files["persona/subs/coach.md"]["text"] == COACH
+    assert spine.files["persona/subs/coach.public.md"]["text"] == COACH_NOTE
+    assert "Uploaded persona/subs/coach.md (" in result.output
+    for name in ("Bad Name.md", ".hidden.md", "notes.txt"):
+        assert f"Skipped persona/subs/{name}: only .md files with a plain name" in result.output
+    assert "Skipped persona/subs/drafts: not a regular file." in result.output
+    assert "Skipped persona/subs/leak.md: a symbolic link" in result.output
+    assert USER_FACT not in str(spine.files)  # the link to user.md never went up
+    assert all("drafts" not in path and "Bad" not in path for _, path in spine.requests)
+
+
+def test_push_removes_sub_taus_that_are_gone_here(tmp_path: Path, spine: FakeSpine) -> None:
+    home = make_home(tmp_path)
+    subs = add_subs(home)
+    assert invoke(spine, home, "push", "--yes").exit_code == 0
+    (subs / "coach.public.md").unlink()
+
+    asked = invoke(spine, home, "push", interactive=True, input="n\n")
+    assert asked.exit_code == 1
+    assert (
+        "These sub-tau files are gone here and are removed from the spine: "
+        "persona/subs/coach.public.md"
+    ) in asked.output
+    assert "persona/subs/coach.public.md" in spine.files
+
+    result = invoke(spine, home, "push", "--yes")
+    assert result.exit_code == 0, result.output
+    assert "Removed persona/subs/coach.public.md from the spine." in result.output
+    assert stored(spine) == sorted([*PUBLIC, "persona/subs/coach.md"])
+
+
+def test_push_without_a_subs_directory_keeps_the_spines(tmp_path: Path, spine: FakeSpine) -> None:
+    home = make_home(tmp_path)
+    add_subs(home)
+    assert invoke(spine, home, "push", "--yes").exit_code == 0
+    other = make_home(tmp_path / "other")  # a machine that never had sub-taus
+    result = invoke(spine, other, "push", "--yes")
+    assert result.exit_code == 0, result.output
+    assert "persona/subs/ does not exist here; the spine keeps its 2 sub-tau files." in (
+        result.output
+    )
+    assert stored(spine) == sorted([*PUBLIC, *SUBS])
+
+
+def test_pull_writes_sub_taus_privately_and_only_valid_names(
+    tmp_path: Path, spine: FakeSpine
+) -> None:
+    source = make_home(tmp_path / "source")
+    add_subs(source)
+    assert invoke(spine, source, "push", "--yes").exit_code == 0
+    spine.files["persona/subs/../../escape.md"] = {"text": "x", "updated_at": 1}
+    spine.files["tools/evil.py"] = {"text": "x", "updated_at": 1}
+
+    target = tmp_path / "new"
+    result = invoke(spine, target, "pull")
+    assert result.exit_code == 0, result.output
+    for name in SUBS:
+        assert (target / name).read_text(encoding="utf-8") == (source / name).read_text(
+            encoding="utf-8"
+        )
+        assert f"Wrote {target / name}." in result.output
+        assert stat.S_IMODE((target / name).stat().st_mode) == 0o600
+    assert stat.S_IMODE((target / "persona" / "subs").stat().st_mode) == 0o700
+    assert "Skipped persona/subs/../../escape.md: not a name of the cloud-mode file set." in (
+        result.output
+    )
+    assert "Skipped tools/evil.py" in result.output
+    assert not (tmp_path / "escape.md").exists() and not (target / "escape.md").exists()
+    assert not (target / "tools").exists()
+    assert sorted(p.name for p in (target / "persona" / "subs").iterdir()) == [
+        "coach.md",
+        "coach.public.md",
+    ]
+
+    # A pull never deletes: a local sub-tau the spine does not hold stays.
+    (target / "persona" / "subs" / "mine.md").write_text("x\n", encoding="utf-8")
+    again = invoke(spine, target, "pull")
+    assert again.exit_code == 0, again.output
+    assert (target / "persona" / "subs" / "mine.md").is_file()
+
+
+def test_status_lists_sub_tau_files(tmp_path: Path, spine: FakeSpine, cloud: FakeCloud) -> None:
+    home = make_home(tmp_path)
+    add_subs(home)
+    assert invoke(spine, home, "push", "--yes").exit_code == 0
+    result = invoke(spine, home, "status")
+    assert result.exit_code == 0, result.output
+    assert "  persona/subs/coach.md  " in result.output
+    assert "  persona/subs/coach.public.md  " in result.output

@@ -42,6 +42,36 @@ CLOUD_MESSAGES: dict[str, dict[str, str]] = {
         "en": "Uploaded {name} ({size} bytes).",
         "tr": "{name} yüklendi ({size} bayt).",
     },
+    "cloud.push.refused": {
+        "en": "Skipped {name}: {reason}.",
+        "tr": "{name} atlandı: {reason}.",
+    },
+    "cloud.refused.name": {
+        "en": "only .md files with a plain name (letters, digits, '.', '_' and '-', starting "
+        "with a letter or a digit) go to the spine",
+        "tr": "spine'a yalnızca düz adlı .md dosyaları gider (harf, rakam, '.', '_' ve '-'; "
+        "harf ya da rakamla başlar)",
+    },
+    "cloud.refused.not_file": {
+        "en": "not a regular file",
+        "tr": "normal bir dosya değil",
+    },
+    "cloud.refused.link": {
+        "en": "a symbolic link, which could point outside persona/subs/",
+        "tr": "persona/subs/ dışını gösterebilecek bir sembolik bağlantı",
+    },
+    "cloud.push.subs_kept": {
+        "en": "persona/subs/ does not exist here; the spine keeps its {count} sub-tau files.",
+        "tr": "persona/subs/ burada yok; spine'daki {count} sub-tau dosyası kalır.",
+    },
+    "cloud.push.plan_remove": {
+        "en": "These sub-tau files are gone here and are removed from the spine: {files}",
+        "tr": "Bu sub-tau dosyaları burada artık yok ve spine'dan silinir: {files}",
+    },
+    "cloud.push.removed": {
+        "en": "Removed {name} from the spine.",
+        "tr": "{name} spine'dan silindi.",
+    },
     "cloud.push.done": {
         "en": "The brain reads these files when it starts, so they apply from its next start.",
         "tr": "Beyin bu dosyaları açılışta okur; bir sonraki açılışından itibaren geçerli olur.",
@@ -50,6 +80,10 @@ CLOUD_MESSAGES: dict[str, dict[str, str]] = {
     "cloud.pull.empty": {
         "en": "The spine holds no files yet. Upload them first: tau cloud push",
         "tr": "Spine'da henüz dosya yok. Önce yükle: tau cloud push",
+    },
+    "cloud.pull.refused": {
+        "en": "Skipped {name}: not a name of the cloud-mode file set.",
+        "tr": "{name} atlandı: bulut modu dosya kümesinde böyle bir ad yok.",
     },
     "cloud.pull.written": {"en": "Wrote {path}.", "tr": "{path} yazıldı."},
     "cloud.pull.unchanged": {

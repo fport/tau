@@ -35,7 +35,7 @@ store sends no request.
 ## Commands
 
 ```sh
-tau cloud push                  # tau.toml, persona/persona.md, persona/net.md; asks first
+tau cloud push                  # tau.toml, persona/persona.md, persona/net.md, persona/subs/*.md; asks first
 tau cloud push --include-user   # also persona/user.md (stored in your Cloudflare account)
 tau cloud push --yes            # no question (scripts); user.md still needs --include-user
 tau cloud pull                  # download into TAU_HOME; keeps local files that differ
@@ -44,12 +44,25 @@ tau cloud status                # spine health and mode, the files it holds, the
 tau cloud run                   # the brain container's entrypoint
 ```
 
-- **The file set** is exactly `tau.toml`, `persona/persona.md`, `persona/user.md` and
-  `persona/net.md`. Nothing else is read or sent; `.env` is never uploaded.
+- **The file set** is exactly `tau.toml`, `persona/persona.md`, `persona/user.md`,
+  `persona/net.md` and the sub-tau files (ADR 0012): `persona/subs/<file>`, where `<file>`
+  matches `[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.md` (definitions such as `coach.md`, public notes
+  such as `coach.public.md`). Nothing else is read or sent; `.env` is never uploaded.
+- **Sub-tau files.** `push` sends the `.md` files directly in `persona/subs/` and refuses the
+  rest of that directory, naming each with its reason (`Skipped persona/subs/Bad Name.md: only
+  .md files with a plain name ...`): an odd name (spaces, a leading dot, another extension), a
+  subdirectory, or a symbolic link, which could send a file from outside such as
+  `persona/user.md`. When `persona/subs/` exists here, sub-tau files the spine holds that are
+  gone here are removed from the spine (`DELETE /hub/files/<name>`) and listed before the
+  question; a machine without the directory leaves them alone. `pull` checks every name the
+  spine lists again, skips the ones outside the set (`Skipped <name>: not a name of the
+  cloud-mode file set.`), writes sub-tau files 0600 in a 0700 `persona/subs/` and never
+  deletes a local file.
 - **`persona/user.md`** holds what tau knows about its owner. `push` uploads it only with
   `--include-user`, or when the owner answers yes to its own question in a terminal. A
   non-interactive run without the flag leaves it out and says so.
-- **`run`** pulls the files into `TAU_HOME` (creating `persona/`), rewrites the pulled
+- **`run`** pulls the files into `TAU_HOME` (creating `persona/`; sub-tau files the spine no
+  longer holds are removed from `persona/subs/`), rewrites the pulled
   `tau.toml` with tomlkit so `[sessions] backend = "spine"` and `[component.net] store =
   "spine"` (every other key and comment stays), answers `GET /health` on `0.0.0.0:8080`
   (`TAU_CLOUD_HEALTH_PORT` overrides the port) with

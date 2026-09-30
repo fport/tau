@@ -11,11 +11,17 @@ import pytest
 from tau_cloud.files import (
     FILE_NAMES,
     FileError,
+    LocalFile,
+    Refused,
     check_name,
     cloud_config,
+    delete_remote,
     download,
+    is_sub_file,
     list_remote,
     read_local,
+    remote_listing,
+    scan_subs,
     upload,
     write_local,
 )
@@ -39,7 +45,10 @@ language = "tr"
 
 def test_the_set_is_closed(tmp_path: Path) -> None:
     assert FILE_NAMES == ("tau.toml", "persona/persona.md", "persona/user.md", "persona/net.md")
-    for name in (".env", "persona/../.env", "tools/x.py", "persona/other.md", "/etc/passwd"):
+    odd = (".env", "persona/../.env", "tools/x.py", "persona/other.md", "/etc/passwd")
+    subs = ("persona/subs/.hidden.md", "persona/subs/x.txt", "persona/subs/a/b.md")
+    subs += ("persona/subs/../user.md", "persona/subs/Bad Name.md", "persona/subs/")
+    for name in (*odd, *subs):
         with pytest.raises(FileError, match="is not one of the cloud-mode files"):
             check_name(name)
         with pytest.raises(FileError):
@@ -126,3 +135,73 @@ def test_cloud_config_adds_missing_tables_and_keeps_others() -> None:
 def test_cloud_config_refuses_what_it_cannot_patch(text: str, message: str) -> None:
     with pytest.raises(FileError, match=message):
         cloud_config(text)
+
+
+# -- sub-tau files (persona/subs/*.md) -----------------------------------------------------------
+
+
+def test_sub_file_names() -> None:
+    for name in ("coach.md", "coach.public.md", "A1_b-c.d.md", "x" * 81 + ".md"):
+        assert is_sub_file(f"persona/subs/{name}"), name
+        assert check_name(f"persona/subs/{name}") == f"persona/subs/{name}"
+    for name in (".hidden.md", "-x.md", "x.txt", "x.md.bak", "a/b.md", "x" * 82 + ".md", ""):
+        assert not is_sub_file(f"persona/subs/{name}"), name
+    assert not is_sub_file("persona/coach.md")
+    assert not is_sub_file("subs/coach.md")
+
+
+def test_scan_subs_sends_md_files_and_refuses_the_rest(tmp_path: Path) -> None:
+    assert scan_subs(tmp_path) == ([], [])
+    subs = tmp_path / "persona" / "subs"
+    subs.mkdir(parents=True)
+    for name in ("coach.md", "coach.public.md", "Bad Name.md", ".hidden.md", "x.txt"):
+        (subs / name).write_text("x\n", encoding="utf-8")
+    (subs / "drafts").mkdir()
+    (subs / "drafts" / "inner.md").write_text("x\n", encoding="utf-8")
+    (tmp_path / "persona" / "user.md").write_text("private\n", encoding="utf-8")
+    (subs / "linked.md").symlink_to(tmp_path / "persona" / "user.md")
+    names, refused = scan_subs(tmp_path)
+    assert names == ["persona/subs/coach.md", "persona/subs/coach.public.md"]
+    assert refused == [
+        Refused("persona/subs/.hidden.md", "name"),
+        Refused("persona/subs/Bad Name.md", "name"),
+        Refused("persona/subs/drafts", "not_file"),
+        Refused("persona/subs/linked.md", "link"),
+        Refused("persona/subs/x.txt", "name"),
+    ]
+    with pytest.raises(FileError, match="symbolic link"):
+        read_local(tmp_path, "persona/subs/linked.md")
+
+
+def test_sub_files_go_up_and_come_down_private(
+    spine: FakeSpine, client: SpineClient, tmp_path: Path
+) -> None:
+    source = tmp_path / "source"
+    (source / "persona" / "subs").mkdir(parents=True)
+    (source / "persona" / "subs" / "coach.md").write_text("+++\n+++\nCoach.\n", encoding="utf-8")
+    file = read_local(source, "persona/subs/coach.md")
+    assert file is not None
+    assert upload(client, file).name == "persona/subs/coach.md"
+    upload(client, LocalFile("tau.toml", source / "tau.toml", "[ui]\n"))
+    assert [entry.name for entry in list_remote(client)] == ["tau.toml", "persona/subs/coach.md"]
+
+    target = tmp_path / "target"
+    text = download(client, "persona/subs/coach.md")
+    assert text == "+++\n+++\nCoach.\n"
+    written = write_local(target, "persona/subs/coach.md", text)
+    assert written.outcome == "written"
+    assert stat.S_IMODE(written.path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(written.path.parent.stat().st_mode) == 0o700
+
+    assert delete_remote(client, "persona/subs/coach.md") is True
+    assert delete_remote(client, "persona/subs/coach.md") is False
+    assert [entry.name for entry in list_remote(client)] == ["tau.toml"]
+
+
+def test_the_listing_ignores_names_outside_the_set(spine: FakeSpine, client: SpineClient) -> None:
+    spine.files["persona/subs/coach.md"] = {"text": "x", "updated_at": 1}
+    spine.files["persona/subs/../../evil.md"] = {"text": "x", "updated_at": 1}
+    spine.files["tools/x.py"] = {"text": "x", "updated_at": 1}
+    listing = remote_listing(client)
+    assert [entry.name for entry in listing.files] == ["persona/subs/coach.md"]
+    assert listing.ignored == ["persona/subs/../../evil.md", "tools/x.py"]

@@ -46,12 +46,11 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 ## Models and cost
 
 - **Role** — `brain` (conversation, planning), `fast` (triage, summaries), `local` (Ollama on the Mac). Code asks for a role, never for a concrete model id.
-- **Proxy** — the LiteLLM proxy container (`infra/litellm`) that maps each role, as a *model group*, to a model, falls back between groups and enforces budgets. A role on it has `provider = "proxy"`; the other providers are *direct*.
-- **Virtual key** — a role's own key on the proxy (`TAU_PROXY_KEY_<GROUP>`, written by `tau proxy keys`); it carries the role's budget and its spend.
-- **Budget** — hard spend cap on a role's virtual key for a period (`usd` per `period`, e.g. $15 per `1mo`), set in `tau.toml` and applied by `tau proxy keys`. Distinct from the per-turn token limit `max_total_tokens`.
-- **Spend** — what a role's key spent in its current budget period, as the proxy counts it; shown under `## Now`, in `/status` and by the hub's `GET /spend`.
+- **Budget** — a hard spend cap on a role per calendar period (`usd` per `day`, `week` or `month`, Europe/Istanbul), set in `tau.toml` and enforced by tau itself (ADR 0011). Distinct from the per-turn token limit `max_total_tokens`.
+- **Spend** — what a role spent in its current budget period: every answer's token usage priced (`prices.toml`, `[models.prices]`) and recorded in the **ledger** (`TAU_DATA_DIR/spend.sqlite3`; tokens and dollars, never text). Shown under `## Now`, in `/status`, by `GET /spend` and by `tau spend`.
 - **Degrade** — a spent role handing its calls to its `budget.degrade_to` role until the reset; the channel says so. *Avoid: fallback (a spent budget is never a fallback).*
-- **Fallback** — (1) a role's `fallback` table: another direct provider used only when the primary has no credentials; (2) a proxy fallback: the proxy answering with another model group when a model fails (`brain` → `fast`, `local` → `fast`).
+- **Failover** — an unreachable role (`failover = "<role>"`: connection refused or timed out, 5xx; not throttling) handing the call to another role, e.g. `local` (Ollama on a sleeping Mac) → `fast`; the channel says so.
+- **Fallback** — a role's `fallback` table: another provider used only when the primary has no credentials.
 
 ## Safety
 

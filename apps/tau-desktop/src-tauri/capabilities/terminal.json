@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "terminal",
+  "description": "Terminal windows: their own PTY and the first-run folder choice. No core, dialog, opener or shell permissions; the pickers and links are driven from Rust.",
+  "windows": ["term-*"],
+  "permissions": [
+    "allow-home-status",
+    "allow-choose-home",
+    "allow-pty-start",
+    "allow-pty-write",
+    "allow-pty-resize",
+    "allow-open-link"
+  ]
+}

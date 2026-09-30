@@ -33,9 +33,9 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
     },
     "guard.cli.state": {"en": "Guard: {state}", "tr": "Koruma: {state}"},
     "guard.cli.reason": {"en": "  Reason: {reason}", "tr": "  Neden: {reason}"},
-    "guard.cli.trigger": {"en": "  Why: {trigger}", "tr": "  Neden: {trigger}"},
+    "guard.cli.trigger": {"en": "  Why: {trigger}", "tr": "  Kilit nedeni: {trigger}"},
     "guard.cli.method": {"en": "  Unlocked with: {method}", "tr": "  Açan yöntem: {method}"},
-    "guard.cli.since": {"en": "  Unlocked since: {when}", "tr": "  Açık olduğu an: {when}"},
+    "guard.cli.since": {"en": "  Unlocked since: {when}", "tr": "  Açılış zamanı: {when}"},
     "guard.cli.expires": {
         "en": "  Locks at the latest: {when}",
         "tr": "  En geç kilitlenme: {when}",

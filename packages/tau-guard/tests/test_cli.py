@@ -200,3 +200,12 @@ def test_log_lines_never_drive_the_terminal(tmp_path: Path) -> None:
     assert "\x1b" not in output and "\r" not in output and "\x9b" not in output
     raw = invoke(config, "log", "--json").output
     assert "\x1b" not in raw and "\x9b" not in raw and json.loads(raw)["tool"] == "lamp\x1b[2K"
+
+
+@pytest.mark.parametrize("language", ["en", "tr"])
+def test_the_status_labels_read_apart(language: str) -> None:
+    labels = {
+        t(key, language, trigger="x", reason="x").split(":")[0].strip()
+        for key in ("guard.cli.trigger", "guard.cli.reason")
+    }
+    assert len(labels) == 2  # "why it is locked" and "why it is unavailable" never look alike

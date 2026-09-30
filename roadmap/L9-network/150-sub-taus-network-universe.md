@@ -1,6 +1,6 @@
 # 150 · Public sub-taus over the network and in the universe
 
-Status: ready-for-agent
+Status: done
 Type: AFK
 Layer: L9 · Cloud mode and the tau network
 Packages: tau-net, cloud/universe
@@ -16,10 +16,10 @@ The network half of ADR 0012:
 
 ## Acceptance criteria
 
-- [ ] `tau net send alice.example.com/coach "…"` reaches Alice's public `coach`; a private one is dropped and logged
-- [ ] The universe snapshot carries `subs` per tau; the page shows them as small nodes in the owner's hull and in the tau cards
-- [ ] Protocol pages updated (`tau-network.md`, `tau-universe.md`)
-- [ ] Cloud mode: the brain image installs tau-sub; `tau cloud push|pull` carry `persona/subs/*.md`
+- [x] `tau net send alice.example.com/coach "…"` reaches Alice's public `coach`; a private one is dropped and logged
+- [x] The universe snapshot carries `subs` per tau; the page shows them as small nodes in the owner's hull and in the tau cards
+- [x] Protocol pages updated (`tau-network.md`, `tau-universe.md`)
+- [x] Cloud mode: the brain image installs tau-sub; `tau cloud push|pull` carry `persona/subs/*.md`
 
 ## Blocked by
 
@@ -30,3 +30,10 @@ The network half of ADR 0012:
 ## Comments
 
 - 2026-09-30: opened with ADR 0012.
+- 2026-09-30: done.
+  - Protocol: an optional `sub` in the sealed `message` content (the signed header is unchanged, so spines never see it and older hubs answer as the main tau). It names a sub-tau of the tau that received the thread's first envelope: an even `hops` addresses the receiver's sub-tau, an odd one is the sender's sub-tau answering. Replies carry the same `sub`, so a thread stays with `/coach`.
+  - tau-net finds sub-taus through the new entry-point group `tau.subs` (tau-sub provides `tau_sub.network:public_subs`); neither package imports the other.
+  - Universe: reports carry `subs: [{name, about}]` (public only, at most 20, left out when empty); the Worker stores them per tau (schema v2) and the page draws them inside the owner's hull and as chips on the cards.
+  - Cloud mode: the spine keeps `persona/subs/<file>.md` (plus `DELETE /hub/files/<name>`), `tau cloud push|pull|run` carry them, the brain image installs tau-sub, and the container gets `OPENAI_API_KEY`, `GEMINI_API_KEY` and `GOOGLE_API_KEY` (153).
+  - Checked locally with two kit spines, two hubs on the fake model and a local universe: `127.0.0.1:8862/coach` answered on its own role and session, the thread stayed with `/coach` up to `max_hops`, `/diary` (private) and `/nobody` were dropped, and `/api/universe` listed Bob's `coach`.
+  - To deploy: the universe Worker, the regenerated spine kit (with tau-net), and the owner's spine and brain image for cloud mode.

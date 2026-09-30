@@ -18,6 +18,8 @@ build/
 persona/user.md
 # The public note for other taus (ADR 0007); persona/net.example.md is the tracked template
 persona/net.md
+# Sub-tau definitions are the owner's files (ADR 0012); packages/tau-sub/examples/ has an example
+persona/subs/
 
 # Tools tau wrote itself, waiting for approval
 tools/_pending/*

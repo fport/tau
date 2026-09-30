@@ -25,8 +25,8 @@ Everything goes into one directory, so cleaning up is one `rm -rf`. Two shell fu
 export LAB=~/tau-lab
 mkdir -p "$LAB"
 
-alice() { TAU_HOME="$LAB/alice/home" TAU_DATA_DIR="$LAB/alice/data" TAU_HUB_PORT=7921 tau "$@"; }
-bob()   { TAU_HOME="$LAB/bob/home"   TAU_DATA_DIR="$LAB/bob/data"   TAU_HUB_PORT=7922 tau "$@"; }
+alice() { TAU_HOME="$LAB/alice/config" TAU_DATA_DIR="$LAB/alice/data" TAU_HUB_PORT=7921 tau "$@"; }
+bob()   { TAU_HOME="$LAB/bob/config"   TAU_DATA_DIR="$LAB/bob/data"   TAU_HUB_PORT=7922 tau "$@"; }
 ```
 
 The functions live only in this terminal. Define them again if you open another one for the taus.
@@ -39,12 +39,12 @@ bob init --provider fake --language en --yes
 ```
 
 ```text
-wrote $LAB/alice/home/tau.toml
-wrote $LAB/alice/home/persona/persona.md
-wrote $LAB/alice/home/persona/user.example.md
-wrote $LAB/alice/home/persona/user.md
-wrote $LAB/alice/home/.env.example
-Configuration root: $LAB/alice/home (UI language: en).
+wrote $LAB/alice/config/tau.toml
+wrote $LAB/alice/config/persona/persona.md
+wrote $LAB/alice/config/persona/user.example.md
+wrote $LAB/alice/config/persona/user.md
+wrote $LAB/alice/config/.env.example
+Configuration root: $LAB/alice/config (UI language: en).
 Next: edit persona/user.md, then run `tau doctor` and `tau chat`.
 …
 ```
@@ -52,12 +52,12 @@ Next: edit persona/user.md, then run `tau doctor` and `tau chat`.
 The `fake` provider answers `Okay.` to everything. Give each tau a line of its own, so the log shows who said what. `params.default` is the fake model's reply:
 
 ```sh
-cat >> "$LAB/alice/home/tau.toml" <<'EOF'
+cat >> "$LAB/alice/config/tau.toml" <<'EOF'
 
 [models.roles.brain.params]
 default = "Alice's tau here. Thanks, I will pass that on to Alice."
 EOF
-cat >> "$LAB/bob/home/tau.toml" <<'EOF'
+cat >> "$LAB/bob/config/tau.toml" <<'EOF'
 
 [models.roles.brain.params]
 default = "Bob's tau here. Bob is free on Friday after 14:00."
@@ -67,11 +67,11 @@ EOF
 And a public note each, the only facts a tau shares with other taus:
 
 ```sh
-cat > "$LAB/alice/home/persona/net.md" <<'EOF'
+cat > "$LAB/alice/config/persona/net.md" <<'EOF'
 - Name to use with other taus: Alice
 - Usually free: weekday afternoons.
 EOF
-cat > "$LAB/bob/home/persona/net.md" <<'EOF'
+cat > "$LAB/bob/config/persona/net.md" <<'EOF'
 - Name to use with other taus: Bob
 - Usually free: Friday afternoons.
 EOF
@@ -85,7 +85,7 @@ printf 'Hello\n/quit\n' | alice chat
 ```
 
 ```text
-ok   config: $LAB/alice/home/tau.toml loaded
+ok   config: $LAB/alice/config/tau.toml loaded
 ok   role brain: provider 'fake', needs no credentials
 …
 11 checks: 8 ok, 0 warnings, 0 failed
@@ -114,11 +114,11 @@ Ignore the next steps it prints; nothing gets deployed here. Instead, each spine
 ```sh
 TOKEN=$(openssl rand -hex 32)
 printf 'HUB_TOKEN=%s\nALLOW_INSECURE_PEERS=1\n' "$TOKEN" > "$LAB/alice/spine/.dev.vars"
-printf 'TAU_SPINE_URL=http://127.0.0.1:8821\nTAU_SPINE_TOKEN=%s\nTAU_NET_ALLOW_INSECURE=1\n' "$TOKEN" >> "$LAB/alice/home/.env"
+printf 'TAU_SPINE_URL=http://127.0.0.1:8821\nTAU_SPINE_TOKEN=%s\nTAU_NET_ALLOW_INSECURE=1\n' "$TOKEN" >> "$LAB/alice/config/.env"
 
 TOKEN=$(openssl rand -hex 32)
 printf 'HUB_TOKEN=%s\nALLOW_INSECURE_PEERS=1\n' "$TOKEN" > "$LAB/bob/spine/.dev.vars"
-printf 'TAU_SPINE_URL=http://127.0.0.1:8822\nTAU_SPINE_TOKEN=%s\nTAU_NET_ALLOW_INSECURE=1\n' "$TOKEN" >> "$LAB/bob/home/.env"
+printf 'TAU_SPINE_URL=http://127.0.0.1:8822\nTAU_SPINE_TOKEN=%s\nTAU_NET_ALLOW_INSECURE=1\n' "$TOKEN" >> "$LAB/bob/config/.env"
 ```
 
 - `HUB_TOKEN` is the secret that `tau net spine deploy` would set with `wrangler secret put`.
@@ -271,8 +271,8 @@ The two scripted taus now answer each other until the thread reaches `max_hops` 
 The universe Worker is in the repository, not in the kit: `cloud/universe`. Its [README](https://github.com/fport/tau/blob/main/cloud/universe/README.md) runs it locally with `pnpm dev`, on `http://127.0.0.1:8790` by default, with `ALLOW_INSECURE_PEERS=1` so it can fetch the lab's cards over `http`. Point both taus at it:
 
 ```sh
-printf '\n[component.net]\nuniverse = "127.0.0.1:8790"\n' >> "$LAB/alice/home/tau.toml"
-printf '\n[component.net]\nuniverse = "127.0.0.1:8790"\n' >> "$LAB/bob/home/tau.toml"
+printf '\n[component.net]\nuniverse = "127.0.0.1:8790"\n' >> "$LAB/alice/config/tau.toml"
+printf '\n[component.net]\nuniverse = "127.0.0.1:8790"\n' >> "$LAB/bob/config/tau.toml"
 alice net universe join --owner Alice
 bob net universe join --owner Bob
 alice net universe status

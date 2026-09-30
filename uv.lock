@@ -8,6 +8,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "tau-cloud",
     "tau-core",
     "tau-example-provider",
     "tau-example-service",
@@ -1608,6 +1609,25 @@ wheels = [
 ]
 
 [[package]]
+name = "tau-cloud"
+version = "0.1.0"
+source = { editable = "packages/tau-cloud" }
+dependencies = [
+    { name = "click" },
+    { name = "tau-core" },
+    { name = "tau-net" },
+    { name = "tomlkit" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1" },
+    { name = "tau-core", editable = "packages/tau-core" },
+    { name = "tau-net", editable = "packages/tau-net" },
+    { name = "tomlkit", specifier = ">=0.13" },
+]
+
+[[package]]
 name = "tau-core"
 version = "0.3.1"
 source = { editable = "packages/tau-core" }
@@ -1702,6 +1722,7 @@ name = "tau-workspace"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "tau-cloud" },
     { name = "tau-core" },
     { name = "tau-net" },
     { name = "tau-tui" },
@@ -1723,6 +1744,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "tau-cloud", editable = "packages/tau-cloud" },
     { name = "tau-core", editable = "packages/tau-core" },
     { name = "tau-net", editable = "packages/tau-net" },
     { name = "tau-tui", editable = "packages/tau-tui" },

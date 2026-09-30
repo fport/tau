@@ -3,7 +3,7 @@ name = "tau-workspace"
 version = "0.0.0"
 description = "uv workspace root for the tau monorepo (not published)."
 requires-python = ">=3.12"
-dependencies = ["tau-core", "tau-net", "tau-tui"]
+dependencies = ["tau-cloud", "tau-core", "tau-net", "tau-tui"]
 
 [tool.uv]
 package = false
@@ -17,6 +17,7 @@ members = [
 ]
 
 [tool.uv.sources]
+tau-cloud = { workspace = true }
 tau-core = { workspace = true }
 tau-net = { workspace = true }
 tau-tui = { workspace = true }

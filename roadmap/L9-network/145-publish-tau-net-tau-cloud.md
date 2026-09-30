@@ -24,3 +24,6 @@ Steps for the user: on pypi.org, add a pending trusted publisher for `tau-net` a
 ## Comments
 
 - 2026-09-30: opened with ADR 0010.
+- 2026-09-30: found while writing the tutorial (144). The source `tau-core` still says 0.3.1 but has moved on a lot since the PyPI 0.3.1 (for example `tau proxy`, and the template `tau init --provider fake` writes). Bump and release tau-core (and tau-tui) in the same tag as the first tau-net and tau-cloud.
+  - `tau net init/status` and `tau net spine init` were checked against PyPI tau-core 0.3.1 and work.
+  - The pending publishers to create: `tau-net` with environment `pypi-net`, and `tau-cloud` with `pypi-cloud`. The repository is `fport/tau` and the workflow `release.yml`; `docs/contributing/release.md` has the steps.

@@ -769,10 +769,11 @@ def spine_init_command(ctx: click.Context, directory: Path, address: str | None)
 @spine_group.command(
     name="deploy",
     help="Deploy the spine project in DIRECTORY (from `tau net spine init`) with Wrangler: "
-    "check the Cloudflare login, npm install, wrangler deploy and, when the project has a D1 "
-    "database, its migrations. Then set the Worker's HUB_TOKEN secret to TAU_SPINE_TOKEN from "
-    "the hub's .env (generated when missing; passed on stdin, never printed) and write "
-    "TAU_SPINE_URL there: https://HOST for a known address, else the workers.dev URL.",
+    "check the Cloudflare login, install Wrangler (bun install when bun is on PATH, else npm "
+    "install), wrangler deploy and, when the project has a D1 database, its migrations. Then "
+    "set the Worker's HUB_TOKEN secret to TAU_SPINE_TOKEN from the hub's .env (generated "
+    "when missing; passed on stdin, never printed) and write TAU_SPINE_URL there: "
+    "https://HOST for a known address, else the workers.dev URL.",
     short_help="Deploy a spine project.",
 )
 @help_option()

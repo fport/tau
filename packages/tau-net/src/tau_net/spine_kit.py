@@ -1,7 +1,7 @@
 """The spine kit: ``tau net spine init`` and ``tau net spine deploy`` (tau-universe.md §4).
 
 tau-net ships the spine Worker as a kit in ``tau_net/spine_kit/``, generated from
-``cloud/spine`` by ``pnpm run kit``:
+``cloud/spine`` by ``bun run kit``:
 
 - ``worker.js``: the Worker, bundled by ``wrangler deploy --dry-run --outdir``;
 - ``wrangler.template.jsonc``: its local-mode Wrangler config (``main = "worker.js"``, no
@@ -11,8 +11,9 @@ tau-net ships the spine Worker as a kit in ``tau_net/spine_kit/``, generated fro
 - ``VERSION`` and ``README.md``.
 
 :func:`init_project` writes a Wrangler project from it; :func:`deploy_project` deploys that
-project with ``npx wrangler`` and writes ``TAU_SPINE_TOKEN`` and ``TAU_SPINE_URL`` into the
-hub's ``.env``. Every external command goes through a :class:`Runner`, so tests never start
+project with ``bunx wrangler`` (``npx wrangler`` when bun is not on ``PATH``, see
+:func:`package_tools`) and writes ``TAU_SPINE_TOKEN`` and ``TAU_SPINE_URL`` into the hub's
+``.env``. Every external command goes through a :class:`Runner`, so tests never start bun,
 npm or Wrangler. The token reaches Wrangler only on stdin: it is never part of a command
 line, never printed and never logged. Error messages are plain English.
 """
@@ -43,6 +44,7 @@ __all__ = [
     "InitResult",
     "Kit",
     "NotLoggedIn",
+    "PackageTools",
     "Runner",
     "SpineKitError",
     "SubprocessRunner",
@@ -50,6 +52,7 @@ __all__ = [
     "init_project",
     "is_workers_dev",
     "load_kit",
+    "package_tools",
     "parse_jsonc",
     "render_config",
     "spine_host",
@@ -327,6 +330,48 @@ class SubprocessRunner:
 
 
 @dataclass(frozen=True)
+class PackageTools:
+    """The package manager :func:`deploy_project` drives, as argv prefixes."""
+
+    install: tuple[str, ...]
+    """Installs the project's ``package.json``, which pins Wrangler."""
+    run: tuple[str, ...]
+    """Runs the project's Wrangler after the install."""
+    fetch: tuple[str, ...]
+    """Runs a pinned ``wrangler@<version>`` before the install, without asking."""
+
+
+BUN = PackageTools(install=("bun", "install"), run=("bunx",), fetch=("bunx",))
+NPM = PackageTools(
+    install=("npm", "install", "--no-audit", "--no-fund"), run=("npx",), fetch=("npx", "--yes")
+)
+
+
+def package_tools(runner: Runner) -> PackageTools:
+    """bun (``bun install``, ``bunx wrangler``) when ``bun`` and ``bunx`` are on ``PATH``, else
+    npm (``npm install``, ``npx wrangler``).
+
+    Wrangler runs on Node.js either way: ``bunx`` starts it with the ``node`` its shebang
+    names, and runs it on bun itself only when there is no ``node``, which Wrangler does not
+    support. So bun needs ``node`` on ``PATH`` too. :class:`SpineKitError` names the missing
+    program."""
+    if runner.which("bun") is not None and runner.which("bunx") is not None:
+        if runner.which("node") is None:
+            raise SpineKitError(
+                "node was not found on PATH; Wrangler runs on Node.js, also with bun: install "
+                "Node.js 22 or newer (https://nodejs.org), then run this command again"
+            )
+        return BUN
+    for program in ("npx", "npm"):
+        if runner.which(program) is None:
+            raise SpineKitError(
+                f"{program} was not found on PATH; install Node.js 22 or newer "
+                "(https://nodejs.org), then run this command again"
+            )
+    return NPM
+
+
+@dataclass(frozen=True)
 class DeployResult:
     url: str
     dotenv: Path
@@ -390,12 +435,14 @@ def deploy_project(
 ) -> DeployResult:
     """Deploy the spine project in ``directory`` (§4) and point the hub at it.
 
-    1. ``npx`` and ``npm`` on ``PATH``; ``wrangler whoami`` shows a login, else
-       :class:`NotLoggedIn`.
-    2. ``npm install``, ``npx wrangler deploy``, and ``npx wrangler d1 migrations apply
-       <binding> --remote`` for each D1 binding of the project's ``wrangler.jsonc``.
+    1. The package tools (:func:`package_tools`): bun and ``bunx`` when bun is on ``PATH``,
+       else npm and ``npx``; below, ``bunx`` stands for either. ``wrangler whoami`` shows a
+       login, else :class:`NotLoggedIn`.
+    2. ``bun install`` (``npm install``), ``bunx wrangler deploy``, and ``bunx wrangler d1
+       migrations apply <binding> --remote`` for each D1 binding of the project's
+       ``wrangler.jsonc``.
     3. ``TAU_SPINE_TOKEN`` in ``<home>/.env`` (generated when missing) becomes the Worker's
-       ``HUB_TOKEN`` through ``npx wrangler secret put`` on stdin.
+       ``HUB_TOKEN`` through ``bunx wrangler secret put`` on stdin.
     4. ``TAU_SPINE_URL`` in ``<home>/.env``: ``https://<address>`` when the address is known
        (``address``, else ``vars.ADDRESS`` of the project), else the ``workers.dev`` URL the
        deploy printed.
@@ -457,19 +504,15 @@ def deploy_project(
         return result
 
     # 1. Tools and login.
-    for program in ("npx", "npm"):
-        if runner.which(program) is None:
-            raise SpineKitError(
-                f"{program} was not found on PATH; install Node.js 22 or newer "
-                "(https://nodejs.org), then run this command again"
-            )
-    whoami = ["npx", "--yes", wrangler, "whoami", "--json"]
+    tools = package_tools(runner)
+    login = " ".join([*tools.run, "wrangler", "login"])
+    whoami = [*tools.fetch, wrangler, "whoami", "--json"]
     say("net.spine.deploy.run", command=" ".join(whoami))
     status = runner.run(whoami, cwd=path)  # not echoed: it lists the account's e-mail and ids
     compact = re.sub(r"\s+", "", _plain(status.output))
     if '"loggedIn":false' in compact or "notauthenticated" in compact.lower():
         raise NotLoggedIn(
-            "Wrangler is not logged in to Cloudflare; run `npx wrangler login`, "
+            f"Wrangler is not logged in to Cloudflare; run `{login}`, "
             f"then `tau net spine deploy {path}` again"
         )
     if status.returncode != 0:
@@ -479,18 +522,18 @@ def deploy_project(
         )
     if '"loggedIn":true' not in compact:
         raise NotLoggedIn(
-            "`wrangler whoami` shows no Cloudflare login; run `npx wrangler login`, "
+            f"`wrangler whoami` shows no Cloudflare login; run `{login}`, "
             f"then `tau net spine deploy {path}` again"
         )
     say("net.spine.deploy.logged_in")
 
     # 2. Install, deploy, migrate.
-    run(["npm", "install", "--no-audit", "--no-fund"])
-    deployed = run(["npx", "wrangler", "deploy"])
+    run([*tools.install])
+    deployed = run([*tools.run, "wrangler", "deploy"])
     printed_url = workers_dev_url(deployed.output, name)
     migrated: list[str] = []
     for binding in d1:
-        run(["npx", "wrangler", "d1", "migrations", "apply", binding, "--remote"])
+        run([*tools.run, "wrangler", "d1", "migrations", "apply", binding, "--remote"])
         migrated.append(binding)
 
     # 3. The hub token, on stdin only.
@@ -510,7 +553,7 @@ def deploy_project(
     from_env = (environ.get(SPINE_TOKEN_ENV) or "").strip()
     if from_env and from_env != token:
         say("net.spine.deploy.token_env")
-    run(["npx", "wrangler", "secret", "put", HUB_TOKEN_SECRET], stdin=f"{token}\n")
+    run([*tools.run, "wrangler", "secret", "put", HUB_TOKEN_SECRET], stdin=f"{token}\n")
     say("net.spine.deploy.secret_set")
 
     # 4. The URL.

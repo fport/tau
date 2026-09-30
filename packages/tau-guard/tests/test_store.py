@@ -154,6 +154,19 @@ def test_tampering_is_template_invalid(tmp_path: Path) -> None:
         load_template(guard, keys, SFACE_SHA256)
 
 
+def test_an_older_template_put_back_is_refused(tmp_path: Path) -> None:
+    """A re-enrollment keeps the key; the old file restored next to the new marker must not
+    let the old enrollment's face match again."""
+    guard, keys, _ = enrolled(tmp_path)
+    old = (guard / TEMPLATE_FILE).read_bytes()
+    save_enrollment(guard, make_template("e2"), keys.key)  # enrolled again, same key
+    assert load_template(guard, keys, SFACE_SHA256).enrollment == "e2"
+    (guard / TEMPLATE_FILE).write_bytes(old)
+    with pytest.raises(StoreError) as caught:
+        load_template(guard, keys, SFACE_SHA256)
+    assert caught.value.reason == "template_invalid"
+
+
 def test_a_model_change_is_model_changed(tmp_path: Path) -> None:
     guard, keys, _ = enrolled(tmp_path)
     with pytest.raises(StoreError) as caught:

@@ -32,9 +32,11 @@ still removes it.
 takes effect at once. It raises :class:`StoreError` with ``not_enrolled`` (no template),
 ``model_changed`` (the marker or the payload names another recognizer), ``key_unavailable``
 (no key, a Keychain failure or timeout) or ``template_invalid`` (anything that does not
-decrypt or does not parse). Whether an enrollment is the first one is decided from the
-Keychain item (:func:`first_enrollment`), never from the template file, so deleting the file
-does not turn the next enrollment into a first one.
+decrypt or does not parse, and a template whose enrollment id is not the marker's: a
+re-enrollment keeps the key, so an older template file put back must not match again).
+Whether an enrollment is the first one is decided from the Keychain item
+(:func:`first_enrollment`), never from the template file, so deleting the file does not turn
+the next enrollment into a first one.
 """
 
 from __future__ import annotations
@@ -371,11 +373,14 @@ def load_template(guard_dir: Path, keys: KeyStore, model_sha: str) -> Template:
         raise StoreError("template_invalid", "the template is too large")
     payload = decrypt(blob, key, model_sha)
     try:
-        return _parse(json.loads(payload.decode("utf-8")), model_sha)
+        template = _parse(json.loads(payload.decode("utf-8")), model_sha)
     except StoreError:
         raise
     except (ValueError, TypeError, KeyError) as exc:
         raise StoreError("template_invalid", "the template does not parse") from exc
+    if template.enrollment != marker.get("enrollment"):  # an older file put back in place
+        raise StoreError("template_invalid", "the template belongs to another enrollment")
+    return template
 
 
 def _vector(value: Any) -> tuple[float, ...]:

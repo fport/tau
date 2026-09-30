@@ -33,6 +33,25 @@ export type HubState =
   | "launchd_idle"
   | "error";
 
+/** The owner guard's state from the hub's `/status` (`unknown`: anything else it said). */
+export type GuardState = "off" | "locked" | "verifying" | "unlocked" | "unavailable" | "unknown";
+
+/** The `guard` block of the hub's open `/status` (Rust `GuardStatus`). */
+export interface GuardStatus {
+  state: GuardState;
+  enrolled: boolean;
+  available: boolean;
+  reason: string | null;
+}
+
+/** What the menu and the window show about the guard (Rust `GuardMenu`). */
+export interface GuardMenu {
+  /** The guard line; null hides the whole guard section. */
+  line: string | null;
+  lock_now: boolean;
+  grant_camera: boolean;
+}
+
 /** How TauBar starts the hub (Rust `HubSettings`). */
 export interface HubSettings {
   python: string | null;
@@ -53,12 +72,15 @@ export interface HubSnapshot {
   restart_in_s: number | null;
   restarts: number;
   last_exit: { at: string; pid: number; reason: string } | null;
+  /** The owner guard, when the hub runs one. */
+  guard: GuardStatus | null;
   control_url: string | null;
   hub_log: string | null;
   command: string | null;
   problem: string | null;
   /** The menu's hub lines: status, Telegram (or a problem), last crash. */
   lines: [string, string, string];
+  guard_menu: GuardMenu;
   /** The saved switch: what TauBar does at its next start. */
   run_at_start: boolean;
   settings: HubSettings;
@@ -87,6 +109,9 @@ export const api = {
     invoke<{ snapshot: Snapshot; message: string | null }>("set_run_hub", { on }),
   saveHubSettings: (hub: HubSettings) => invoke<Snapshot>("save_hub_settings", { hub }),
   openHubLog: () => invoke<void>("open_hub_log"),
+  /** "Lock now": a signed `POST /guard/lock` from Rust; rejects when tau may not be locked. */
+  lockGuard: () => invoke<Snapshot>("lock_guard"),
+  openCameraSettings: () => invoke<void>("open_camera_settings"),
 };
 
 export function onSnapshot(handler: (snapshot: Snapshot) => void): Promise<UnlistenFn> {

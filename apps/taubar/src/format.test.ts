@@ -5,6 +5,7 @@ import {
   checkoutSettings,
   formFromSettings,
   formatEnv,
+  guardTone,
   hubTone,
   lastLines,
   loginNote,
@@ -60,6 +61,16 @@ describe("hub form", () => {
     expect(hubTone("restarting")).toBe("attention");
     expect(hubTone("off")).toBe("pending");
     expect(hubTone("error")).toBe("error");
+  });
+});
+
+describe("guardTone", () => {
+  it("marks an unlocked guard fine and a guard that cannot check for attention", () => {
+    expect(guardTone("unlocked")).toEqual({ tone: "ok", mark: "●" });
+    expect(guardTone("locked").tone).toBe("pending");
+    expect(guardTone("verifying").tone).toBe("pending");
+    expect(guardTone("unavailable")).toEqual({ tone: "attention", mark: "◆" });
+    expect(guardTone("unknown").tone).toBe("attention");
   });
 });
 

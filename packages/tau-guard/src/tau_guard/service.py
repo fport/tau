@@ -35,7 +35,9 @@ Routes (all protected; ``ControlApi`` checks the signature and signs the answer)
   first poll answers at once); refusals are ``409 {reason}`` (``locked``, ``busy``,
   ``not_enrolled``, ``unavailable``) or ``429 {reason: "cooldown", retry_after}``, never 403.
 - ``POST /guard/cancel`` → ``{ok}``; ``POST /guard/lock`` → ``{state: "locked"}``
-  (idempotent); ``POST /guard/enroll`` → ``202 {attempt, seq}`` (the worker answers
+  (idempotent; a caller's ``trigger`` is recorded only when it is ``command`` or
+  ``telegram``, anything else is recorded as ``command``: the hub decides the other
+  triggers); ``POST /guard/enroll`` → ``202 {attempt, seq}`` (the worker answers
   ``not_enrolled`` until issue 112).
 
 The open ``/status`` gains only ``guard: {state, enrolled, available, reason}``. ``reason``
@@ -119,6 +121,8 @@ ATTEMPT_LIMIT = 120.0
 PRESENCE_WAIT = 0.25
 """How long :meth:`GuardService.face_fresh` (synchronous) waits for a presence reading; a
 Quartz read takes a few milliseconds, and a slower one answers ``False``."""
+CALLER_TRIGGERS = ("command", "telegram")
+"""The lock triggers ``POST /guard/lock`` records as the caller says; the hub decides the rest."""
 SUCCESS_METHODS = ("face", "touch_id")
 STATUS_FIELDS = (
     "state",
@@ -724,7 +728,8 @@ class GuardService:
         return 200, {"ok": self._cancel_sync(body["client_id"], body.get("attempt"))}
 
     def _route_lock(self, body: dict[str, Any]) -> tuple[int, Any]:
-        trigger = body.get("trigger") or "command"
+        trigger = body.get("trigger")
+        trigger = trigger if trigger in CALLER_TRIGGERS else "command"  # never a caller's claim
         self._lock_sync(trigger, channel=body["channel"], client_id=body["client_id"])
         return 200, {"state": "locked"}
 

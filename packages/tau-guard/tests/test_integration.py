@@ -605,3 +605,20 @@ async def test_reading_an_attempt_runs_the_reflexes_first(tmp_path: Path) -> Non
         payload = call(running, "GET", "/guard/status", attempt=attempt)
         assert payload["attempt"]["ok"] is True  # the record is what the worker said, but
         assert (payload["state"], payload["lock_trigger"]) == ("locked", "screen_lock")
+
+
+@pytest.mark.parametrize(
+    ("claimed", "recorded"),
+    [("sleep", "command"), ("step_up_failed", "command"), ("hub_stop", "command"),
+     ("telegram", "telegram"), ("command", "command")],
+)  # fmt: skip
+async def test_a_caller_cannot_choose_a_hub_lock_trigger(
+    tmp_path: Path, claimed: str, recorded: str
+) -> None:
+    with running_hub(tmp_path, runs=[[match()]]) as running:
+        await unlocked_hub(running)
+        body = {**body_for(("POST", "/guard/lock")), "trigger": claimed}
+        assert call(running, "POST", "/guard/lock", body) == {"state": "locked"}
+        assert (await running.guard.status()).lock_trigger == recorded
+        audit = (running.config.data_dir / "guard" / "audit.jsonl").read_text().splitlines()
+        assert json.loads(audit[-1])["trigger"] == recorded

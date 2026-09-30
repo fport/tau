@@ -10,7 +10,8 @@ Public API (other packages import these names)::
 
     SubTau, SubRegistry, SubTauError, SubTauNotFound, SubTauExists, UnknownToolError,
     ForbiddenToolError, parse, render, validate, validate_name, template, tool_catalog,
-    NAME_RE, ROLES, DEFAULT_ROLE, ABOUT_LIMIT, FORBIDDEN_TOOLS
+    NAME_RE, ROLES, DEFAULT_ROLE, ABOUT_LIMIT, FORBIDDEN_TOOLS, RESERVED_NAMES,
+    WEB_DAILY_DEFAULT, WEB_DAILY_RANGE, STARTERS_MAX, STARTER_LIMIT, is_valid_name
     HEADER, SubConversation, build_sub_agent, allowed_tools, persona_loader, prompt_persona,
     write_prompt, prompt_path, state_dir, last_session, remember_session
     Draft, DraftError, draft_sub, parse_draft
@@ -40,7 +41,12 @@ from tau_sub.definition import (
     DEFAULT_ROLE,
     FORBIDDEN_TOOLS,
     NAME_RE,
+    RESERVED_NAMES,
     ROLES,
+    STARTER_LIMIT,
+    STARTERS_MAX,
+    WEB_DAILY_DEFAULT,
+    WEB_DAILY_RANGE,
     ForbiddenToolError,
     SubRegistry,
     SubTau,
@@ -48,6 +54,7 @@ from tau_sub.definition import (
     SubTauExists,
     SubTauNotFound,
     UnknownToolError,
+    is_valid_name,
     parse,
     render,
     template,
@@ -68,8 +75,13 @@ __all__ = [
     "FORBIDDEN_TOOLS",
     "HEADER",
     "NAME_RE",
+    "RESERVED_NAMES",
     "ROLES",
+    "STARTERS_MAX",
+    "STARTER_LIMIT",
     "TOOLS",
+    "WEB_DAILY_DEFAULT",
+    "WEB_DAILY_RANGE",
     "DelegatedApprover",
     "Draft",
     "DraftError",
@@ -88,6 +100,7 @@ __all__ = [
     "allowed_tools",
     "build_sub_agent",
     "draft_sub",
+    "is_valid_name",
     "last_session",
     "parse",
     "parse_draft",

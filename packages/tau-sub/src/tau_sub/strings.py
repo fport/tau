@@ -77,6 +77,16 @@ SUB_MESSAGES: dict[str, dict[str, str]] = {
     "sub.show.public": {"en": "public:       {public}", "tr": "herkese açık: {public}"},
     "sub.show.public_note": {"en": "public note:  {note}", "tr": "açık not:     {note}"},
     "sub.show.session": {"en": "session:      {session}", "tr": "oturum:       {session}"},
+    "sub.show.web": {"en": "web page:     {web}", "tr": "web sayfası:  {web}"},
+    "sub.show.web_off_private": {
+        "en": "yes, but only public sub-taus get a page (set public = true)",
+        "tr": "evet, ama yalnızca herkese açık alt-tau'ların sayfası olur (public = true yap)",
+    },
+    "sub.show.web_daily": {
+        "en": "visitor turns: at most {n} a day (UTC)",
+        "tr": "ziyaretçi turu: günde en çok {n} (UTC)",
+    },
+    "sub.show.starters": {"en": "starters:     {starters}", "tr": "açılışlar:    {starters}"},
     "sub.show.persona": {"en": "persona:", "tr": "persona:"},
     # -- edit and remove -----------------------------------------------------------------------
     "sub.edit.valid": {

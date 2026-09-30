@@ -53,6 +53,10 @@ from tau_sub.approval import RefusingApprover
 from tau_sub.definition import (
     DEFAULT_ROLE,
     ROLES,
+    STARTER_LIMIT,
+    STARTERS_MAX,
+    WEB_DAILY_DEFAULT,
+    WEB_DAILY_RANGE,
     SubRegistry,
     SubTau,
     SubTauError,
@@ -181,6 +185,27 @@ def sub() -> None:
     "in the universe.",
 )
 @click.option(
+    "--web",
+    is_flag=True,
+    help="Give the public sub-tau a chat page on the universe, where anonymous visitors can "
+    "talk to it (needs --public; every visitor turn costs your model budget).",
+)
+@click.option(
+    "--web-daily",
+    type=click.IntRange(*WEB_DAILY_RANGE),
+    default=None,
+    metavar="N",
+    help=f"At most N visitor turns per UTC day (default {WEB_DAILY_DEFAULT}).",
+)
+@click.option(
+    "--starter",
+    "starters",
+    multiple=True,
+    metavar="TEXT",
+    help=f"A suggested first message for its page (repeatable, at most {STARTERS_MAX}, "
+    f"1 to {STARTER_LIMIT} characters each).",
+)
+@click.option(
     "--describe", metavar="TEXT", help="Let the brain role draft it from this description."
 )
 @click.option(
@@ -198,6 +223,9 @@ def new_command(
     role: str | None,
     tools_csv: str | None,
     public: bool,
+    web: bool,
+    web_daily: int | None,
+    starters: tuple[str, ...],
     describe: str | None,
     allow_tier2: bool,
     yes: bool,
@@ -212,11 +240,28 @@ def new_command(
         _fail(ctx, exc)
     if registry.exists(name) and not force:
         _fail(ctx, SubTauExists(name, path))
+    if web and not public:
+        _fail(ctx, "--web needs --public: only a public sub-tau gets a page for visitors")
+    page = {
+        "web": web,
+        "web_daily": web_daily if web_daily is not None else WEB_DAILY_DEFAULT,
+        "starters": tuple(starters),
+    }
     tools = _split(tools_csv)
-    if describe is None:
-        sub_tau = template(
-            name, about=about, role=role or DEFAULT_ROLE, tools=tools or (), public=public
+    try:  # the page settings are checked before anything is drafted or written
+        sub_tau = validate(
+            template(
+                name,
+                about=about,
+                role=role or DEFAULT_ROLE,
+                tools=tools or (),
+                public=public,
+                **page,
+            )
         )
+    except SubTauError as exc:
+        _fail(ctx, exc)
+    if describe is None:
         path = _save(ctx, registry, sub_tau, force=force)
         say("sub.new.created", name=name, path=path)
         say("sub.new.next", name=name)
@@ -243,6 +288,7 @@ def new_command(
                 role=role or DEFAULT_ROLE,
                 tools=tools if tools is not None else draft.tools,
                 public=public,
+                **page,
             ),
             catalog=registry.catalog(),
         )
@@ -320,6 +366,17 @@ def show_command(ctx: click.Context, name: str) -> None:
     say("sub.show.tools", tools=_tools_text(registry, sub_tau, say))
     say("sub.show.public", public=say.text("sub.yes" if sub_tau.public else "sub.no"))
     say("sub.show.public_note", note=sub_tau.public_note or say.text("sub.none"))
+    if not sub_tau.web:
+        web = say.text("sub.no")
+    elif sub_tau.public:
+        web = say.text("sub.yes")
+    else:
+        web = say.text("sub.show.web_off_private")
+    say("sub.show.web", web=web)
+    if sub_tau.web:
+        say("sub.show.web_daily", n=sub_tau.web_daily)
+    starters = " · ".join(sub_tau.starters) if sub_tau.starters else say.text("sub.none")
+    say("sub.show.starters", starters=starters)
     say("sub.show.session", session=last_session(config, name) or say.text("sub.none"))
     click.echo()
     say("sub.show.persona")

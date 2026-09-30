@@ -8,11 +8,17 @@ A definition is TOML front matter between two ``+++`` lines, then the persona te
     tools = ["current_time"]            # names from the tool catalog (default none)
     public = false                      # contacts reach it as <address>/<name> (default false)
     # public_note = "coach.public.md"   # optional, a file next to the definition
+    # web = false                       # a chat page for anonymous visitors (needs public)
+    # web_daily = 50                    # visitor turns per UTC day, 1-1000 (default 50)
+    # starters = ["Plan my week"]       # up to 4 suggested first messages, 1-80 characters
     +++
 
     You plan the owner's workouts: ...
 
-The file name is the name (``coach.md`` is ``/coach``); names match ``[a-z][a-z0-9-]{1,30}``.
+The file name is the name (``coach.md`` is ``/coach``); names match ``[a-z][a-z0-9-]{1,30}``
+and are none of :data:`RESERVED_NAMES`, the path segments a tau's host uses itself (ADR 0013).
+``web``, ``web_daily`` and ``starters`` (ADR 0013 §5) give a public sub-tau a chat page on the
+universe for anonymous visitors, at most ``web_daily`` visitor turns per UTC day.
 The front matter is parsed with :mod:`tomllib` and nothing in it reaches the model; the
 persona text does (HTML comments stripped, like ``persona.md``). Loading validates
 everything: unknown keys, types, the role, the ``about`` length and every tool name, which
@@ -48,7 +54,10 @@ __all__ = [
     "KEYS",
     "NAME_RE",
     "PERSONA_LIMIT",
+    "RESERVED_NAMES",
     "ROLES",
+    "STARTERS_MAX",
+    "STARTER_LIMIT",
     "SUBS_DIR",
     "ForbiddenToolError",
     "SubRegistry",
@@ -57,6 +66,9 @@ __all__ = [
     "SubTauExists",
     "SubTauNotFound",
     "UnknownToolError",
+    "WEB_DAILY_DEFAULT",
+    "WEB_DAILY_RANGE",
+    "is_valid_name",
     "parse",
     "render",
     "split_front_matter",
@@ -78,7 +90,17 @@ PERSONA_LIMIT = 20_000
 FENCE = "+++"
 SUBS_DIR = "subs"
 SUFFIX = ".md"
-KEYS = ("about", "role", "tools", "public", "public_note")
+KEYS = ("about", "role", "tools", "public", "public_note", "web", "web_daily", "starters")
+RESERVED_NAMES = frozenset({"net", "app", "api", "auth", "claim", "hub"})
+"""Names a sub-tau can never have: a sub-tau is ``<address>/<name>``, and a tau's host serves
+these paths itself (ADR 0013 §3)."""
+WEB_DAILY_DEFAULT = 50
+WEB_DAILY_RANGE = (1, 1000)
+"""``web_daily``: visitor turns per UTC day, counted by the tau that runs the sub-tau."""
+STARTERS_MAX = 4
+STARTER_LIMIT = 80
+"""``starters``: at most :data:`STARTERS_MAX` suggested first messages of 1 to
+:data:`STARTER_LIMIT` characters each."""
 FORBIDDEN_TOOLS = frozenset({"ask_sub", "create_sub"})
 """Never in a sub-tau's allowlist: a sub-tau cannot call or create other sub-taus."""
 
@@ -139,6 +161,12 @@ class SubTau:
     tools: tuple[str, ...] = ()
     public: bool = False
     public_note: str | None = None
+    web: bool = False
+    """A chat page for anonymous visitors on the universe; only with ``public``."""
+    web_daily: int = WEB_DAILY_DEFAULT
+    """At most this many visitor turns per UTC day."""
+    starters: tuple[str, ...] = ()
+    """Suggested first messages on its page."""
     path: Path | None = field(default=None, compare=False)
     """Where the definition was read from, when it was read from a file."""
 
@@ -152,12 +180,27 @@ class SubTau:
         """The channel its sessions are recorded on: ``sub:<name>``."""
         return f"sub:{self.name}"
 
+    @property
+    def on_the_web(self) -> bool:
+        """Whether visitors can reach it: ``web`` and ``public`` both set."""
+        return self.web and self.public
+
+
+def is_valid_name(name: object) -> bool:
+    """A sub-tau name that matches :data:`NAME_RE` and is not reserved."""
+    return isinstance(name, str) and bool(NAME_RE.fullmatch(name)) and name not in RESERVED_NAMES
+
 
 def validate_name(name: object) -> str:
     if not isinstance(name, str) or not NAME_RE.fullmatch(name):
         raise SubTauError(
             f"Invalid sub-tau name {name!r}: use 2 to 31 characters (lowercase letters, digits "
             "and '-'), starting with a letter."
+        )
+    if name in RESERVED_NAMES:
+        raise SubTauError(
+            f"/{name} is a reserved name ({', '.join(sorted(RESERVED_NAMES))}): a tau's host "
+            "uses these paths itself. Pick another name."
         )
     return name
 
@@ -223,6 +266,38 @@ def _public_note(name: str, note: object) -> str | None:
     return note
 
 
+def _web_daily(name: str, value: object) -> int:
+    low, high = WEB_DAILY_RANGE
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        raise SubTauError(
+            f"/{name}: 'web_daily' must be a whole number from {low} to {high} (visitor turns "
+            f"per day); got {value!r}."
+        )
+    return value
+
+
+def _starters(name: str, starters: object) -> tuple[str, ...]:
+    if isinstance(starters, str) or not isinstance(starters, list | tuple):
+        raise SubTauError(f"/{name}: 'starters' must be a list of short first messages.")
+    kept: list[str] = []
+    for starter in starters:
+        if not isinstance(starter, str):
+            raise SubTauError(f"/{name}: 'starters' must hold text, not {starter!r}.")
+        line = " ".join(starter.split())
+        if not 1 <= len(line) <= STARTER_LIMIT:
+            raise SubTauError(
+                f"/{name}: each starter must be 1 to {STARTER_LIMIT} characters on one line; "
+                f"{line!r} has {len(line)}."
+            )
+        if line not in kept:
+            kept.append(line)
+    if len(kept) > STARTERS_MAX:
+        raise SubTauError(
+            f"/{name}: at most {STARTERS_MAX} starters; the definition has {len(kept)}."
+        )
+    return tuple(kept)
+
+
 def validate(sub: SubTau, *, catalog: Collection[str] | None = None) -> SubTau:
     """Check every field and return a normalized copy; ``catalog`` is the known tool names
     (``None`` skips that check, e.g. for a definition shown while the catalog is unknown)."""
@@ -231,12 +306,16 @@ def validate(sub: SubTau, *, catalog: Collection[str] | None = None) -> SubTau:
         raise SubTauError(f"/{name}: unknown role {sub.role!r}; use one of {', '.join(ROLES)}.")
     if not isinstance(sub.public, bool):
         raise SubTauError(f"/{name}: 'public' must be true or false.")
+    if not isinstance(sub.web, bool):
+        raise SubTauError(f"/{name}: 'web' must be true or false.")
     return replace(
         sub,
         about=_about(name, sub.about),
         persona=_persona(name, sub.persona),
         tools=_tools(name, sub.tools, catalog),
         public_note=_public_note(name, sub.public_note),
+        web_daily=_web_daily(name, sub.web_daily),
+        starters=_starters(name, sub.starters),
     )
 
 
@@ -280,6 +359,7 @@ def parse(
     if not isinstance(role, str):
         raise SubTauError(f"/{name}: 'role' must be a string.")
     tools = data.get("tools", [])
+    starters = data.get("starters", [])
     sub = SubTau(
         name=name,
         about=data["about"],
@@ -288,6 +368,9 @@ def parse(
         tools=tools if not isinstance(tools, list) else tuple(tools),
         public=data.get("public", False),
         public_note=data.get("public_note"),
+        web=data.get("web", False),
+        web_daily=data.get("web_daily", WEB_DAILY_DEFAULT),
+        starters=starters if not isinstance(starters, list) else tuple(starters),
         path=path,
     )
     return validate(sub, catalog=catalog)
@@ -326,6 +409,12 @@ def render(sub: SubTau) -> str:
     ]
     if sub.public_note:
         lines.append(f"public_note = {_toml_string(sub.public_note)}")
+    if sub.web:
+        lines.append("web = true")
+    if sub.web or sub.web_daily != WEB_DAILY_DEFAULT:
+        lines.append(f"web_daily = {int(sub.web_daily)}")
+    if sub.starters:
+        lines.append("starters = [" + ", ".join(_toml_string(s) for s in sub.starters) + "]")
     lines.append(FENCE)
     return "\n".join(lines) + "\n\n" + sub.persona.strip() + "\n"
 
@@ -350,6 +439,9 @@ def template(
     role: str = DEFAULT_ROLE,
     tools: Iterable[str] = (),
     public: bool = False,
+    web: bool = False,
+    web_daily: int = WEB_DAILY_DEFAULT,
+    starters: Iterable[str] = (),
 ) -> SubTau:
     """A starter definition for ``tau sub new NAME`` without ``--describe``."""
     validate_name(name)
@@ -360,6 +452,9 @@ def template(
         role=role,
         tools=tuple(tools),
         public=public,
+        web=web,
+        web_daily=web_daily,
+        starters=tuple(starters),
     )
 
 
@@ -407,7 +502,8 @@ class SubRegistry:
         return self._catalog
 
     def names(self) -> list[str]:
-        """The names of every definition file, valid or not, sorted."""
+        """The names of every definition file, valid or not (a reserved name included, so
+        :meth:`scan` reports it), sorted."""
         try:
             entries = list(self.directory.iterdir())
         except (FileNotFoundError, NotADirectoryError):

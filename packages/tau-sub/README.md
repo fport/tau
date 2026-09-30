@@ -18,13 +18,18 @@ It is its own distribution (`tau-sub`, import `tau_sub`), uses only the public A
 
 Each sub-tau has:
 
-- a **name**, a slug matching `^[a-z][a-z0-9-]{1,30}$`, shown as `/name`;
+- a **name**, a slug matching `^[a-z][a-z0-9-]{1,30}$`, shown as `/name`; `net`, `app`,
+  `api`, `auth`, `claim` and `hub` are reserved, because a tau's host serves those paths itself
+  (ADR 0013);
 - a **persona**: its character and its task instructions;
 - an **about** line, at most 200 characters;
 - a **model role**: `brain` (default), `fast` or `local`;
 - a **tool allowlist**: names from the tool catalog (`tau components`), empty by default;
 - a **`public`** flag, false by default: a public sub-tau answers your contacts over the tau
   network and is listed in the universe (see "Public sub-taus" below);
+- a **page** for a public sub-tau, off by default: with `web = true` anonymous visitors can
+  talk to it on its universe page, at most `web_daily` visitor turns per UTC day, and
+  `starters` are the suggested first messages there (see "Web pages" below);
 - **its own sessions**, on the channel `sub:<name>`.
 
 ## The definition file
@@ -39,6 +44,9 @@ role = "brain"                      # brain | fast | local
 tools = ["current_time"]            # names from the tool catalog
 public = false                      # true: contacts reach it as <address>/coach
 # public_note = "coach.public.md"   # optional: a file next to the definition
+# web = false                       # true: visitors talk to it on its universe page
+# web_daily = 50                    # visitor turns per UTC day, 1 to 1000
+# starters = ["Plan my week"]       # up to 4 suggested first messages, 1 to 80 characters
 +++
 
 You plan the owner's workouts: three sessions of 20 to 30 minutes a week, ...
@@ -52,6 +60,9 @@ You plan the owner's workouts: three sessions of 20 to 30 minutes a week, ...
 - HTML comments in the persona are notes for you, like in `persona.md`.
 - A `public_note` is a `.md` file in `persona/subs/` whose name is not itself a sub-tau name
   (the convention is `<name>.public.md`).
+- `web` is a boolean, `web_daily` a whole number from 1 to 1000 (default 50) and `starters` a
+  list of at most 4 texts of 1 to 80 characters (collapsed to one line, duplicates dropped).
+  `web` only takes effect with `public = true`; `tau sub show` says so.
 - Files are written atomically with mode 0600 in a 0700 directory and never overwritten
   without `--force`. [`examples/coach.md`](examples/coach.md) is a complete example with
   made-up content.
@@ -85,6 +96,7 @@ same session.
 ```sh
 tau sub new coach --describe "a strict but kind workout coach that plans three short sessions a week"
 tau sub new landing --about "Writes landing-page copy." --tools current_time   # a template to edit
+tau sub new coach --public --web --web-daily 30 --starter "Plan my week" --starter "I missed a run"
 tau sub list                        # name, role, tools, public, last session
 tau sub show coach
 tau sub edit coach                  # opens $EDITOR, then checks the file
@@ -98,7 +110,11 @@ tau sub remove coach                # the definition only; sessions are kept
   asks before writing (`--yes` skips the question). The drafter gets the tool catalog without
   tier-2 tools and never sees `user.md`; proposed tools that are unknown, forbidden or tier 2
   are left out and listed (`--allow-tier2` keeps tier-2 tools, which still ask for approval
-  on every call). `--about`, `--role`, `--tools` and `--public` win over the draft.
+  on every call). `--about`, `--role`, `--tools`, `--public` and the page options win over the
+  draft.
+- `new --web` needs `--public`; `--web-daily N` (1 to 1000) and `--starter TEXT` (repeatable,
+  at most 4) are checked before anything is drafted or written. `show` prints the page
+  settings; `edit` checks them like every other field.
 - `chat` and `ask` continue the sub-tau's last session, remembered in
   `TAU_DATA_DIR/subs/<name>/session`; `--new` starts a fresh one.
 
@@ -149,7 +165,25 @@ tau sub remove coach                # the definition only; sessions are kept
 tau-net does not import tau-sub. It finds the sub-taus through the `tau.subs` entry point:
 `tau_sub.network:public_subs(config)` returns a `PublicSubs` directory whose `public(name)`
 and `public_subs()` give plain `PublicSub` records (`name`, `about`, `role`, `persona_file`,
-`public_note_file`). Without tau-sub installed, a hub has no public sub-taus.
+`public_note_file`, `web`, `web_daily`, `starters`). Without tau-sub installed, a hub has no
+public sub-taus.
+
+## Web pages
+
+A public sub-tau with `web = true` gets a chat page on the universe (ADR 0013 §5), for
+anonymous visitors, who have no key and no card:
+
+- The universe relays a visitor's message to your hub as a signed `visit` envelope under its
+  own network identity. Your hub accepts it only from the universe it joined (its key pinned
+  at the first visit), only for a sub-tau with `public` and `web`, and only while the
+  sub-tau has visitor turns left today (`web_daily`, counted per UTC day on the hub).
+- The sub-tau answers with the same narrow network turn as for a contact (its persona, its
+  public note, no `user.md`, no tools, no approvals), framed as a message from an anonymous
+  visitor of its public page. A visit creates no contact and counts toward no universe link.
+- Each report lists `web` and `starters` with every public sub-tau, so the page can show the
+  chat box and the starter chips.
+- Visitor turns cost your model budget, which is why the page is a separate flag with a daily
+  cap. Visitor chats are not end-to-end private: the universe sees them to relay them.
 
 ## Development
 

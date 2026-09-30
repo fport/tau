@@ -8,6 +8,11 @@ importing tau-sub, and tau-sub does not import tau-net either: the contract is p
   ``public = true``, else ``None`` (tau-net then drops the message unanswered);
 - :meth:`PublicSubs.public_subs`: every valid public sub-tau, for the universe report.
 
+Each one also carries its page settings (ADR 0013 §5): ``web`` (visitors may talk to it on the
+universe), ``web_daily`` (visitor turns per UTC day) and ``starters`` (suggested first
+messages). tau-net reports ``web`` and ``starters`` to the universe and accepts a visitor's
+``visit`` only for a sub-tau with ``web``, within ``web_daily``.
+
 A :class:`PublicSub` carries the files a network turn reads: the derived persona file (the
 fixed English header and the persona text, the same file ``tau sub chat`` uses, rewritten only
 when the definition changed) and the sub-tau's public note, ``persona/subs/<public_note>``,
@@ -26,7 +31,7 @@ from strands.types.tools import AgentTool
 from tau_core import Config
 
 from tau_sub.agent import write_prompt
-from tau_sub.definition import NAME_RE, SubRegistry, SubTau, SubTauError
+from tau_sub.definition import SubRegistry, SubTau, SubTauError, is_valid_name
 
 __all__ = ["PublicSub", "PublicSubs", "public_subs"]
 
@@ -44,6 +49,12 @@ class PublicSub:
     """``TAU_DATA_DIR/subs/<name>/persona.md``: the header and the persona text."""
     public_note_file: Path | None
     """``persona/subs/<public_note>``, or ``None`` when the definition names none."""
+    web: bool = False
+    """Anonymous visitors may talk to it through the universe (ADR 0013 §5)."""
+    web_daily: int = 50
+    """At most this many visitor turns per UTC day."""
+    starters: tuple[str, ...] = ()
+    """Suggested first messages for its page."""
 
 
 class PublicSubs:
@@ -55,7 +66,7 @@ class PublicSubs:
 
     def public(self, name: str) -> PublicSub | None:
         """The public sub-tau ``name``; ``None`` when it is unknown, private or invalid."""
-        if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        if not is_valid_name(name):
             return None
         if not self.registry.exists(name):
             return None
@@ -78,6 +89,9 @@ class PublicSubs:
             role=sub.role,
             persona_file=write_prompt(self.config, sub).resolve(),
             public_note_file=note.resolve() if note is not None else None,
+            web=sub.web,
+            web_daily=sub.web_daily,
+            starters=tuple(sub.starters),
         )
 
 

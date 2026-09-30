@@ -16,7 +16,18 @@ from tau_guard.strings import CLI_MESSAGES
 PACKAGE = Path(__file__).resolve().parents[1]
 SOURCE = PACKAGE / "src" / "tau_guard"
 ROOT = PACKAGE.parents[1]
-LAZY_ONLY = {"cv2", "objc", "Quartz", "AVFoundation", "LocalAuthentication", "keyring", "numpy"}
+LAZY_ONLY = {
+    "cv2",
+    "objc",
+    "Quartz",
+    "AVFoundation",
+    "AppKit",
+    "Foundation",
+    "PyObjCTools",
+    "LocalAuthentication",
+    "keyring",
+    "numpy",
+}
 
 
 def test_entry_points() -> None:
@@ -44,6 +55,7 @@ def test_dependencies_follow_adr_0008() -> None:
     for darwin_only in (
         "keyring",
         "pyobjc-framework-avfoundation",
+        "pyobjc-framework-cocoa",
         "pyobjc-framework-quartz",
         "pyobjc-framework-localauthentication",
     ):
@@ -83,7 +95,8 @@ def test_importing_the_package_loads_no_camera_module() -> None:
 
     code = (
         "import sys, tau_guard, tau_guard.service, tau_guard.cli, tau_guard.worker, "
-        "tau_guard.cli_face, tau_guard.local, tau_guard.store, tau_guard.verify; "
+        "tau_guard.cli_face, tau_guard.cli_window, tau_guard.local, tau_guard.store, "
+        "tau_guard.verify, tau_guard.window, tau_guard.overlay; "
         f"print(sorted(m for m in {sorted(LAZY_ONLY)!r} if m in sys.modules))"
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
@@ -94,7 +107,7 @@ def test_the_worker_side_never_loads_tau_core() -> None:
     """The worker imports only what the face check needs: no tau-core, no strands."""
     import subprocess
 
-    modules = "camera, engine, enroll, liveness, localauth, store, verify, worker"
+    modules = "camera, engine, enroll, liveness, localauth, overlay, store, verify, window, worker"
     code = (
         f"import sys; from tau_guard import {modules}; "
         "print(sorted(m for m in ('tau_core', 'strands', 'cv2', 'numpy') if m in sys.modules))"

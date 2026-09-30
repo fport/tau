@@ -1,7 +1,8 @@
 """``tau guard``: the owner's guard commands (``tau.commands`` entry point ``guard``).
 
 This module has ``status``, ``lock`` and ``log`` (issue 111); :mod:`tau_guard.cli_face` adds
-``setup``, ``enroll``, ``verify``, ``forget`` and ``doctor`` (issue 112). Output lines go
+``setup``, ``enroll``, ``verify``, ``forget`` and ``doctor`` (issue 112), and
+:mod:`tau_guard.cli_window` adds ``window`` (issue 126). Output lines go
 through ``tau_core.i18n`` in the
 configured UI language (``[ui] language``, ``TAU_LANG``, ``tau --lang``); help texts and error
 lines are English. ``status`` and ``lock`` talk to the running hub through tau-core's
@@ -292,5 +293,7 @@ def log_command(ctx: click.Context, since: str | None, as_json: bool) -> None:
 
 
 from tau_guard.cli_face import register as _register_face  # noqa: E402  (needs the group above)
+from tau_guard.cli_window import register as _register_window  # noqa: E402
 
 _register_face(guard)
+_register_window(guard)

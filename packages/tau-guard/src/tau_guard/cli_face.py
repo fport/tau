@@ -22,7 +22,13 @@
   not be removed, the guard is still off (the marker is gone and ``enabled = false`` is
   written), and the command says so and exits 1.
 - **verify --explain** prints each frame's numbers (detector score, eye distance, brightness,
-  sharpness, yaw proxy, similarity); no frame is saved anywhere.
+  sharpness, yaw proxy, similarity); no frame is saved anywhere. The guard window shows as well
+  (the owner sees the picture the numbers belong to); ``--no-window`` turns it off.
+- **The guard window** (issue 126): a check this command runs in a local worker shows the
+  window when ``[component.guard] window`` is true (the default) and ``--no-window`` is not
+  given; the worker falls back to the terminal lines without a GUI session. A check through the
+  hub follows the hub's own setting (``--no-window`` then only prints a note). Esc in the
+  window cancels the check (``cancelled``).
 - **doctor** reports the platform, OpenCV's camera order, both models with their pinned sha256
   (and the enrolled and expected SFace sha after a model change), the enrollment,
   whether the template decrypts, the Keychain key, the modes, the camera device, the camera
@@ -82,6 +88,7 @@ from tau_guard.engine import (
 from tau_guard.local import LocalWorkerError, run_local
 from tau_guard.state import COUNTED_REASONS
 from tau_guard.store import MARKER_FILE
+from tau_guard.window import window_field
 
 __all__ = ["register", "responsible_app"]
 
@@ -138,9 +145,19 @@ def _settings(ctx: click.Context, config: Config) -> Any:
         ctx.exit(2)
 
 
-def _request(ctx: click.Context, config: Config, op: str, kind: str, **extra: Any) -> dict:
+def _request(
+    ctx: click.Context,
+    config: Config,
+    op: str,
+    kind: str,
+    *,
+    window: str | None = None,
+    **extra: Any,
+) -> dict:
+    """A worker request; ``window`` names the window's purpose (``enroll``, ``check``) when
+    ``[component.guard] window`` allows it and the command did not say ``--no-window``."""
     settings = _settings(ctx, config)
-    return {
+    request = {
         "v": 1,
         "op": op,
         "kind": kind,
@@ -151,6 +168,15 @@ def _request(ctx: click.Context, config: Config, op: str, kind: str, **extra: An
         "challenge_fresh": False,
         **extra,
     }
+    if window is not None and settings.window:
+        request["window"] = window_field(config.ui.language, window)
+    return request
+
+
+def _hub_window_note(window: bool, language: str) -> None:
+    """``--no-window`` with a check that runs in the hub: say who decides."""
+    if not window:
+        click.echo(t("guard.cli.window.through_hub", language))
 
 
 def _refuse_elsewhere(ctx: click.Context, language: str) -> None:
@@ -369,7 +395,9 @@ def _cancel(client: Any, attempt_id: str) -> None:
         pass
 
 
-def _enroll(ctx: click.Context, config: Config, *, add: bool) -> tuple[bool, bool]:
+def _enroll(
+    ctx: click.Context, config: Config, *, add: bool, window: bool = True
+) -> tuple[bool, bool]:
     """``(enrolled, through the hub)``."""
     language = config.ui.language
     _need_model(ctx, config)
@@ -381,6 +409,7 @@ def _enroll(ctx: click.Context, config: Config, *, add: bool) -> tuple[bool, boo
     via_hub = _hub_active(ctx, config, language)
     if via_hub:
         click.echo(t("guard.cli.via_hub", language))
+        _hub_window_note(window, language)
         answer = _hub_enroll(ctx, config, add, printer)
         first = not had
     else:
@@ -390,6 +419,7 @@ def _enroll(ctx: click.Context, config: Config, *, add: bool) -> tuple[bool, boo
             config,
             "enroll",
             "enroll",
+            window="enroll" if window else None,
             add=add,
             reason_text=t("guard.cli.la.enroll", language),
         )
@@ -437,11 +467,12 @@ def _explain_line(language: str) -> Callable[[dict[str, Any]], None]:
     return show
 
 
-def _verify(ctx: click.Context, config: Config, *, explain: bool) -> bool:
+def _verify(ctx: click.Context, config: Config, *, explain: bool, window: bool = True) -> bool:
     language = config.ui.language
     printer = _Printer(language)
     if not explain and _hub_active(ctx, config, language):
         click.echo(t("guard.cli.via_hub", language))
+        _hub_window_note(window, language)
         guard = HubGuard(config, client=_client(ctx, config))
         verdict = asyncio.run(
             guard.unlock(
@@ -457,7 +488,9 @@ def _verify(ctx: click.Context, config: Config, *, explain: bool) -> bool:
         click.echo(t("guard.cli.verify.failed", language, reason=reason), err=True)
         return False
     click.echo(t("guard.cli.verify.local", language))
-    request = _request(ctx, config, "verify", "unlock", explain=explain)
+    request = _request(
+        ctx, config, "verify", "unlock", window="check" if window else None, explain=explain
+    )
     started = time.monotonic()
     answer = _run_local(
         ctx,
@@ -489,6 +522,13 @@ def _verify(ctx: click.Context, config: Config, *, explain: bool) -> bool:
 
 # -- commands ------------------------------------------------------------------------------------
 
+_no_window_option = click.option(
+    "--no-window",
+    is_flag=True,
+    help="Keep the guard window off for checks this command runs itself (a check through the "
+    "hub follows the hub's [component.guard] window).",
+)
+
 
 @click.command(
     name="setup",
@@ -502,8 +542,9 @@ def _verify(ctx: click.Context, config: Config, *, explain: bool) -> bool:
     help="Install SFace from this file instead of downloading it (checked against the pinned "
     "sha256).",
 )
+@_no_window_option
 @click.pass_context
-def setup_command(ctx: click.Context, model_file: Path | None) -> None:
+def setup_command(ctx: click.Context, model_file: Path | None, no_window: bool) -> None:
     config = _config(ctx)
     language = config.ui.language
     _refuse_elsewhere(ctx, language)
@@ -511,11 +552,11 @@ def setup_command(ctx: click.Context, model_file: Path | None) -> None:
     click.echo(t("guard.cli.setup.start", language))
     _ensure_model(ctx, config, model_file)
     click.echo(t("guard.cli.setup.enroll", language))
-    enrolled, via_hub = _enroll(ctx, config, add=False)
+    enrolled, via_hub = _enroll(ctx, config, add=False, window=not no_window)
     if not enrolled:
         ctx.exit(1)
     click.echo(t("guard.cli.setup.verify", language))
-    if not _verify(ctx, config, explain=False):
+    if not _verify(ctx, config, explain=False, window=not no_window):
         click.echo(t("guard.cli.setup.verify_failed", language), err=True)
         ctx.exit(1)
     path = _set_enabled(config, True)
@@ -530,11 +571,12 @@ def setup_command(ctx: click.Context, model_file: Path | None) -> None:
 @click.command(name="enroll", help="Enroll your face again (behind Touch ID or your password).")
 @help_option()
 @click.option("--add", is_flag=True, help="Add samples under other light to the template.")
+@_no_window_option
 @click.pass_context
-def enroll_command(ctx: click.Context, add: bool) -> None:
+def enroll_command(ctx: click.Context, add: bool, no_window: bool) -> None:
     config = _config(ctx)
     _refuse_elsewhere(ctx, config.ui.language)
-    if not _enroll(ctx, config, add=add)[0]:
+    if not _enroll(ctx, config, add=add, window=not no_window)[0]:
         ctx.exit(1)
 
 
@@ -545,13 +587,14 @@ def enroll_command(ctx: click.Context, add: bool) -> None:
     is_flag=True,
     help="Print each frame's numbers (in a local worker; no frame is saved).",
 )
+@_no_window_option
 @click.pass_context
-def verify_command(ctx: click.Context, explain: bool) -> None:
+def verify_command(ctx: click.Context, explain: bool, no_window: bool) -> None:
     config = _config(ctx)
     if _platform(ctx) != "darwin":
         click.echo(t("guard.cli.unsupported", config.ui.language), err=True)
         ctx.exit(2)
-    if not _verify(ctx, config, explain=explain):
+    if not _verify(ctx, config, explain=explain, window=not no_window):
         ctx.exit(1)
 
 

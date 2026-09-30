@@ -3,7 +3,8 @@
  *
  * It keeps its own SQLite database:
  *
- *   taus     the joined taus (address, card name and sign_key, owner, about, times)
+ *   taus     the joined taus (address, card name and sign_key, owner, about, times, and
+ *            the public sub-taus of the last report as JSON)
  *   reports  the links each tau reported last, towards taus joined at that moment
  *   clocks   the last accepted `ts` per address (the replay guard; survives a leave)
  *   hits     one row per accepted request (the rate limit)
@@ -19,8 +20,10 @@
 
 import { DurableObject } from "cloudflare:workers";
 import type { UniverseEnv } from "./env";
+import type { ReportedSub } from "./protocol";
 import {
   buildSnapshot,
+  type PublicSub,
   type ReportRow,
   type Snapshot,
   type TauRow,
@@ -34,9 +37,10 @@ export const TAU_RETENTION_SECONDS = 30 * 86_400;
 /** Clocks older than this can go: the ±300 s window already refuses anything older. */
 export const CLOCK_RETENTION_SECONDS = 3_600;
 
-const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
-const SCHEMA_V1 = [
+/** Version 1, kept as it shipped: a fresh database runs it, then every later step. */
+export const SCHEMA_V1 = [
   `CREATE TABLE taus (
     address TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -60,6 +64,37 @@ const SCHEMA_V1 = [
   "CREATE INDEX hits_address_at ON hits (address, at)",
   "CREATE INDEX hits_at ON hits (at)",
 ];
+
+/** v2: the public sub-taus of each tau's last report, `[{"name", "about"}]` as JSON. */
+const SCHEMA_V2 = ["ALTER TABLE taus ADD COLUMN subs TEXT NOT NULL DEFAULT '[]'"];
+
+const TAU_COLUMNS = "address, name, owner, about, joined_at, last_seen, subs";
+
+/** A `taus` row as stored: `subs` is JSON text. */
+type StoredTau = Omit<TauRow, "subs"> & { subs: string };
+
+/** The stored JSON of `subs`, read defensively: anything unexpected counts as none. */
+function readSubs(text: string): PublicSub[] {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item: unknown) =>
+    typeof item === "object" &&
+    item !== null &&
+    typeof (item as PublicSub).name === "string" &&
+    typeof (item as PublicSub).about === "string"
+      ? [{ name: (item as PublicSub).name, about: (item as PublicSub).about }]
+      : [],
+  );
+}
+
+function toRow(stored: StoredTau): TauRow {
+  return { ...stored, subs: readSubs(stored.subs) };
+}
 
 /** Why the Directory refused a request; the Worker maps it to the reference's status. */
 export type Refusal = "stale" | "not_joined" | "rate_limited";
@@ -87,6 +122,8 @@ export interface ReportInput extends Signed {
   name: string;
   sign_key: string;
   links: { peer: string; messages: number }[];
+  /** Already normalised (`normalizeSubs`); absent means none. Replaces the stored list. */
+  subs?: ReportedSub[];
 }
 
 export type LeaveInput = Signed;
@@ -117,6 +154,7 @@ export class Directory extends DurableObject<UniverseEnv> {
     if (current >= SCHEMA_VERSION) return;
     this.ctx.storage.transactionSync(() => {
       if (current < 1) for (const statement of SCHEMA_V1) this.sql.exec(statement);
+      if (current < 2) for (const statement of SCHEMA_V2) this.sql.exec(statement);
       this.sql.exec("DELETE FROM schema_version");
       this.sql.exec("INSERT INTO schema_version (version) VALUES (?)", SCHEMA_VERSION);
     });
@@ -193,10 +231,11 @@ export class Directory extends DurableObject<UniverseEnv> {
         );
       }
       this.sql.exec(
-        "UPDATE taus SET name = ?, sign_key = ?, last_seen = ? WHERE address = ?",
+        "UPDATE taus SET name = ?, sign_key = ?, last_seen = ?, subs = ? WHERE address = ?",
         input.name,
         input.sign_key,
         input.ts,
+        JSON.stringify(input.subs ?? []),
         input.address,
       );
       return { visible_links: this.view(input.address, input.now)?.links.length ?? 0 };
@@ -213,8 +252,9 @@ export class Directory extends DurableObject<UniverseEnv> {
   /** The public snapshot. */
   snapshot(universe: string, now: number): Snapshot {
     const taus = this.sql
-      .exec<TauRow>("SELECT address, name, owner, about, joined_at, last_seen FROM taus")
-      .toArray();
+      .exec<StoredTau>(`SELECT ${TAU_COLUMNS} FROM taus`)
+      .toArray()
+      .map(toRow);
     const reports = this.sql
       .exec<ReportRow>("SELECT reporter, peer, messages FROM reports")
       .toArray();
@@ -319,12 +359,12 @@ export class Directory extends DurableObject<UniverseEnv> {
       ends.add(report.peer);
     }
     const taus = this.sql
-      .exec<TauRow>(
-        `SELECT address, name, owner, about, joined_at, last_seen FROM taus
-         WHERE address IN (SELECT value FROM json_each(?))`,
+      .exec<StoredTau>(
+        `SELECT ${TAU_COLUMNS} FROM taus WHERE address IN (SELECT value FROM json_each(?))`,
         JSON.stringify([...ends]),
       )
-      .toArray();
+      .toArray()
+      .map(toRow);
     return tauView(buildSnapshot("", now, taus, reports), address);
   }
 }

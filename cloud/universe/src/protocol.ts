@@ -12,6 +12,10 @@ export type Kind = (typeof KINDS)[number];
 export const MAX_OWNER_CHARS = 60;
 export const MAX_ABOUT_CHARS = 200;
 export const MAX_LINKS = 500;
+/** A report lists at most this many public sub-taus. */
+export const MAX_SUBS = 20;
+/** A sub-tau name (ADR 0012): a slug shown as `/name`. */
+export const SUB_NAME = /^[a-z][a-z0-9-]{1,30}$/;
 /** Card names are 1–80 characters on the spine (`PUT /hub/card`). */
 export const MAX_NAME_CHARS = 80;
 
@@ -28,9 +32,17 @@ export interface JoinPayload extends Common {
   about: string;
 }
 
+/** A public sub-tau as a report lists it. */
+export interface ReportedSub {
+  name: string;
+  about: string;
+}
+
 export interface ReportPayload extends Common {
   kind: "report";
   links: { peer: string; messages: number }[];
+  /** Absent in older reports, which means none. */
+  subs: ReportedSub[];
 }
 
 export interface LeavePayload extends Common {
@@ -104,11 +116,48 @@ export function parsePayload(value: unknown): Parsed<Payload> {
         }
         links.push({ peer: item.peer, messages: item.messages as number });
       }
-      return { ok: true, value: { ...common, kind: "report", links } };
+      const subs = parseSubs(p.subs);
+      if (!subs.ok) return subs;
+      return { ok: true, value: { ...common, kind: "report", links, subs: subs.value } };
     }
     case "leave":
       return { ok: true, value: { ...common, kind: "leave" } };
   }
+}
+
+/**
+ * The optional `subs` of a report: at most 20 `{name, about}` items, each name a sub-tau
+ * name and each about 0–200 characters (a missing about is empty). Absent means none.
+ */
+export function parseSubs(value: unknown): Parsed<ReportedSub[]> {
+  if (value === undefined) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false, detail: "subs must be a list" };
+  if (value.length > MAX_SUBS) {
+    return { ok: false, detail: `subs must have at most ${MAX_SUBS} items` };
+  }
+  const subs: ReportedSub[] = [];
+  for (const item of value as unknown[]) {
+    if (!isObject(item)) return { ok: false, detail: "every sub must be an object" };
+    if (typeof item.name !== "string" || !SUB_NAME.test(item.name)) {
+      return { ok: false, detail: "sub name must match ^[a-z][a-z0-9-]{1,30}$" };
+    }
+    const about = optionalText(item, "about", MAX_ABOUT_CHARS);
+    if (!about.ok) return { ok: false, detail: `sub ${about.detail}` };
+    subs.push({ name: item.name, about: about.value });
+  }
+  return { ok: true, value: subs };
+}
+
+/**
+ * The sub-taus a report stores: a repeated name keeps its last entry, every about line is
+ * sanitised, and the list is ordered by name.
+ */
+export function normalizeSubs(subs: readonly ReportedSub[]): ReportedSub[] {
+  const byName = new Map<string, string>();
+  for (const sub of subs) byName.set(sub.name, sanitizeText(sub.about, MAX_ABOUT_CHARS));
+  return [...byName.entries()]
+    .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
+    .map(([name, about]) => ({ name, about }));
 }
 
 // C0 and C1 control characters (newlines and tabs included), plus the bidirectional

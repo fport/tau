@@ -103,6 +103,25 @@ describe("buildSnapshot", () => {
     expect(snap.stats.messages).toBe(5);
   });
 
+  it("lists each tau's sub-taus by name, and none when it reported none", () => {
+    const withSubs: TauRow = {
+      ...tau("a.example", 1),
+      subs: [
+        { name: "landing", about: "Copy." },
+        { name: "coach", about: "Runs." },
+      ],
+    };
+    const snap = buildSnapshot("u", NOW, [withSubs, tau("b.example", 2)], []);
+    expect(snap.taus.map((t) => t.subs)).toEqual([
+      [
+        { name: "coach", about: "Runs." },
+        { name: "landing", about: "Copy." },
+      ],
+      [],
+    ]);
+    expect(tauView(snap, "a.example")?.subs.map((sub) => sub.name)).toEqual(["coach", "landing"]);
+  });
+
   it("never exposes sign keys or other stored columns", () => {
     const row = { ...tau("a.example", 1), sign_key: "secret-ish" } as TauRow;
     const snap = buildSnapshot("u", NOW, [row], []);
@@ -114,6 +133,7 @@ describe("buildSnapshot", () => {
       "joined_at",
       "last_seen",
       "online",
+      "subs",
     ]);
   });
 });

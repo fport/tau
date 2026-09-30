@@ -201,6 +201,7 @@ export interface SnapshotBody {
     joined_at: number;
     last_seen: number;
     online: boolean;
+    subs: { name: string; about: string }[];
   }[];
   links: { a: string; b: string; messages: number }[];
 }

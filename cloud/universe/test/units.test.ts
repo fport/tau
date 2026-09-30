@@ -15,7 +15,13 @@ import icon from "../../../docs/brand/tau-app-icon.svg?raw";
 import coin from "../../../docs/brand/tau-coin.svg?raw";
 import { baseUrl, isAddress, universeHost } from "../src/address";
 import { b64uDecode, b64uEncode, signedMessage, verifyEd25519 } from "../src/crypto";
-import { charCount, parsePayload, sanitizeText } from "../src/protocol";
+import {
+  charCount,
+  normalizeSubs,
+  parsePayload,
+  parseSubs,
+  sanitizeText,
+} from "../src/protocol";
 import { VERSION } from "../src/version";
 import { ALICE, publicKeyOf, signRaw } from "./helpers";
 
@@ -81,12 +87,49 @@ describe("payloads", () => {
       parsePayload({ ...base, kind: "report", links: [{ peer: "b.example", messages: 2, x: 1 }] }),
     ).toEqual({
       ok: true,
-      value: { ...base, kind: "report", links: [{ peer: "b.example", messages: 2 }] },
+      value: { ...base, kind: "report", links: [{ peer: "b.example", messages: 2 }], subs: [] },
     });
     expect(parsePayload({ ...base, kind: "leave" })).toEqual({
       ok: true,
       value: { ...base, kind: "leave" },
     });
+  });
+
+  it("parse a report's sub-taus: absent is none, the name rule, at most 20", () => {
+    expect(parseSubs(undefined)).toEqual({ ok: true, value: [] });
+    expect(parseSubs([{ name: "coach", about: "A", extra: 1 }, { name: "ab" }])).toEqual({
+      ok: true,
+      value: [
+        { name: "coach", about: "A" },
+        { name: "ab", about: "" },
+      ],
+    });
+    expect(parseSubs([{ name: `a${"b".repeat(30)}`, about: "" }]).ok).toBe(true);
+    for (const bad of [
+      null,
+      "coach",
+      [{ name: `a${"b".repeat(31)}`, about: "" }],
+      [{ name: "a", about: "" }],
+      [{ name: "-coach", about: "" }],
+      [{ name: "coach", about: null }],
+      Array.from({ length: 21 }, (_, i) => ({ name: `s${i}x`, about: "" })),
+    ]) {
+      expect(parseSubs(bad).ok, JSON.stringify(bad)).toBe(false);
+    }
+    expect(parseSubs(Array.from({ length: 20 }, (_, i) => ({ name: `s${i}x` }))).ok).toBe(true);
+  });
+
+  it("normalise sub-taus: the last entry of a name wins, sanitised, ordered by name", () => {
+    expect(
+      normalizeSubs([
+        { name: "zeta", about: "z" },
+        { name: "alpha", about: "one" },
+        { name: "alpha", about: "two\u0007 lines\n" },
+      ]),
+    ).toEqual([
+      { name: "alpha", about: "two lines" },
+      { name: "zeta", about: "z" },
+    ]);
   });
 
   it("count characters the way Python does", () => {

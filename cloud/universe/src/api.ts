@@ -32,6 +32,7 @@ import {
   KINDS,
   MAX_ABOUT_CHARS,
   MAX_OWNER_CHARS,
+  normalizeSubs,
   parsePayload,
   sanitizeText,
 } from "./protocol";
@@ -128,6 +129,7 @@ export async function receive(
         name: card.name,
         sign_key: card.signKey,
         links: payload.links,
+        subs: normalizeSubs(payload.subs),
       });
       if (!reported.ok) return refused(reported);
       return json({ ok: true, visible_links: reported.visible_links });

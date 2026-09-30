@@ -3,7 +3,7 @@
 import { createScheduledController, reset, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { RATE_LIMIT_PER_HOUR } from "../src/directory";
+import { RATE_LIMIT_PER_HOUR, SCHEMA_V1, SCHEMA_VERSION } from "../src/directory";
 import worker from "../src/index";
 import {
   ALICE,
@@ -45,7 +45,74 @@ describe("Directory RPC", () => {
     const version = await runInDurableObject(directory(), (_instance, state) =>
       state.storage.sql.exec<{ version: number }>("SELECT version FROM schema_version").one(),
     );
-    expect(version.version).toBe(1);
+    expect(version.version).toBe(SCHEMA_VERSION);
+    expect(SCHEMA_VERSION).toBe(2);
+  });
+
+  it("upgrades a version 1 database: taus keep their rows and get no sub-taus", async () => {
+    const d = directory();
+    await runInDurableObject(d, (instance, state) => {
+      const sql = state.storage.sql;
+      // Rebuild the database exactly as version 1 left it, with one tau in it.
+      for (const table of ["taus", "reports", "clocks", "hits", "schema_version"]) {
+        sql.exec(`DROP TABLE IF EXISTS ${table}`);
+      }
+      for (const statement of SCHEMA_V1) sql.exec(statement);
+      sql.exec("CREATE TABLE schema_version (version INTEGER NOT NULL)");
+      sql.exec("INSERT INTO schema_version (version) VALUES (1)");
+      sql.exec(
+        `INSERT INTO taus (address, name, sign_key, owner, about, joined_at, last_seen)
+         VALUES ('old.example', 'Old tau', 'k', 'O', 'from v1', ?, ?)`,
+        T,
+        T,
+      );
+      (instance as unknown as { migrate(): void }).migrate();
+      const version = sql
+        .exec<{ version: number }>("SELECT MAX(version) AS version FROM schema_version")
+        .one();
+      expect(version.version).toBe(SCHEMA_VERSION);
+    });
+    const snap = await d.snapshot("u.example", T + 1);
+    expect(snap.taus).toEqual([
+      {
+        address: "old.example",
+        name: "Old tau",
+        owner: "O",
+        about: "from v1",
+        joined_at: T,
+        last_seen: T,
+        online: true,
+        subs: [],
+      },
+    ]);
+    // The upgraded table takes sub-taus from the next report.
+    expect(
+      await d.report({
+        address: "old.example",
+        ts: T + 2,
+        now: T + 2,
+        name: "Old tau",
+        sign_key: "k",
+        links: [],
+        subs: [{ name: "coach", about: "Coach." }],
+      }),
+    ).toEqual({ ok: true, visible_links: 0 });
+    expect((await d.tau("old.example", T + 2))?.subs).toEqual([{ name: "coach", about: "Coach." }]);
+  });
+
+  it("reads stored sub-taus defensively", async () => {
+    const d = directory();
+    await d.join(joinInput("a.example", T));
+    await runInDurableObject(d, (_instance, state) => {
+      state.storage.sql.exec(
+        `UPDATE taus SET subs = '[{"name":"ok","about":"fine"},{"name":1},"x"]'`,
+      );
+    });
+    expect((await d.tau("a.example", T))?.subs).toEqual([{ name: "ok", about: "fine" }]);
+    await runInDurableObject(d, (_instance, state) => {
+      state.storage.sql.exec("UPDATE taus SET subs = 'not json'");
+    });
+    expect((await d.tau("a.example", T))?.subs).toEqual([]);
   });
 
   it("joins, reports and leaves", async () => {

@@ -57,6 +57,7 @@ describe("POST /api/join", () => {
         joined_at: ts,
         last_seen: ts,
         online: true,
+        subs: [],
       },
     ]);
     expect(snap.stats).toEqual({ taus: 1, online: 1, messages: 0 });
@@ -188,6 +189,103 @@ describe("POST /api/report", () => {
     const res = await send("report", CAROL);
     expect(res.status).toBe(404);
     expect(await body(res)).toEqual({ error: "not_joined" });
+  });
+});
+
+describe("public sub-taus in reports", () => {
+  beforeEach(async () => {
+    mockTaus(ALICE, BOB);
+    for (const tau of [ALICE, BOB]) expect((await send("join", tau)).status).toBe(200);
+  });
+
+  const aliceIn = async () => (await snapshot()).taus.find((t) => t.address === ALICE.address);
+
+  it("stores the reported sub-taus per tau, ordered by name, in the snapshot and /api/taus", async () => {
+    const res = await send("report", ALICE, {
+      subs: [
+        { name: "landing", about: "Writes landing-page copy." },
+        { name: "coach", about: "A patient running coach." },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const expected = [
+      { name: "coach", about: "A patient running coach." },
+      { name: "landing", about: "Writes landing-page copy." },
+    ];
+    expect((await aliceIn())?.subs).toEqual(expected);
+    expect((await snapshot()).taus.find((t) => t.address === BOB.address)?.subs).toEqual([]);
+    const tau = (await (await universe(`/api/taus/${ALICE.address}`)).json()) as {
+      subs: unknown;
+    };
+    expect(tau.subs).toEqual(expected);
+  });
+
+  it("keeps an old report without subs valid, and it clears the earlier subs", async () => {
+    await send("report", ALICE, { subs: [{ name: "coach", about: "Coach." }] });
+    expect((await aliceIn())?.subs).toHaveLength(1);
+    // payloadOf builds a report without `subs`, exactly as an older hub sends it.
+    const old = payloadOf("report", ALICE, { links: [{ peer: BOB.address, messages: 1 }] });
+    expect("subs" in old).toBe(false);
+    const res = await post(
+      "/api/report",
+      await signRaw(new TextEncoder().encode(JSON.stringify(old)), ALICE.seed),
+    );
+    expect(res.status).toBe(200);
+    expect(await body(res)).toEqual({ ok: true, visible_links: 0 });
+    expect((await aliceIn())?.subs).toEqual([]);
+  });
+
+  it("replaces the list with every report", async () => {
+    await send("report", ALICE, {
+      subs: [
+        { name: "coach", about: "Coach." },
+        { name: "landing", about: "Landing." },
+      ],
+    });
+    await send("report", ALICE, { subs: [{ name: "arm", about: "Robot arm helper." }] });
+    expect((await aliceIn())?.subs).toEqual([{ name: "arm", about: "Robot arm helper." }]);
+    await send("report", ALICE, { subs: [] });
+    expect((await aliceIn())?.subs).toEqual([]);
+  });
+
+  it("keeps the last entry of a repeated name, sanitises about and allows an empty or missing one", async () => {
+    await send("report", ALICE, {
+      subs: [
+        { name: "coach", about: "first" },
+        { name: "coach", about: " second\u0000 line\n " },
+        { name: "quiet", about: "" },
+        { name: "silent" },
+      ],
+    });
+    expect((await aliceIn())?.subs).toEqual([
+      { name: "coach", about: "second line" },
+      { name: "quiet", about: "" },
+      { name: "silent", about: "" },
+    ]);
+  });
+
+  it("accepts exactly 20 sub-taus and an about of 200 characters", async () => {
+    const subs = Array.from({ length: 20 }, (_, i) => ({
+      name: `sub-${String(i).padStart(2, "0")}`,
+      about: "🦊".repeat(200),
+    }));
+    expect((await send("report", ALICE, { subs })).status).toBe(200);
+    const stored = (await aliceIn())?.subs ?? [];
+    expect(stored).toHaveLength(20);
+    expect(stored[0]).toEqual({ name: "sub-00", about: "🦊".repeat(200) });
+  });
+
+  it("forgets the sub-taus when the tau leaves", async () => {
+    await send("report", ALICE, { subs: [{ name: "coach", about: "Coach." }] });
+    expect((await send("leave", ALICE)).status).toBe(200);
+    expect(await aliceIn()).toBeUndefined();
+    expect((await send("join", ALICE)).status).toBe(200);
+    expect((await aliceIn())?.subs).toEqual([]);
+  });
+
+  it("never takes sub-taus from a join", async () => {
+    await send("join", ALICE, { subs: [{ name: "coach", about: "Coach." }] });
+    expect((await aliceIn())?.subs).toEqual([]);
   });
 });
 
@@ -350,6 +448,7 @@ describe("GET /api/taus/<address>", () => {
       "joined_at",
       "last_seen",
       "online",
+      "subs",
       "links",
     ]);
   });
@@ -511,13 +610,40 @@ describe("POST checks, in the reference's order", () => {
       "link messages not an integer",
       async () => signed("report", ALICE, { links: [{ peer: BOB.address, messages: 1.5 }] }),
     ],
+    ["subs not a list", async () => signed("report", ALICE, { subs: { coach: "x" } })],
+    [
+      "subs more than 20",
+      async () =>
+        signed("report", ALICE, {
+          subs: Array.from({ length: 21 }, (_, i) => ({ name: `s${i}x`, about: "" })),
+        }),
+    ],
+    ["sub not an object", async () => signed("report", ALICE, { subs: ["coach"] })],
+    [
+      "sub name missing",
+      async () => signed("report", ALICE, { subs: [{ about: "Coach." }] }),
+    ],
+    ...["Coach", "1coach", "c", "c".repeat(32), "co ach", "/coach", "coach_1", "çoach"].map(
+      (name): [string, () => Promise<unknown>] => [
+        `sub name ${JSON.stringify(name)}`,
+        async () => signed("report", ALICE, { subs: [{ name, about: "" }] }),
+      ],
+    ),
+    [
+      "sub about not a string",
+      async () => signed("report", ALICE, { subs: [{ name: "coach", about: 7 }] }),
+    ],
+    [
+      "sub about too long",
+      async () => signed("report", ALICE, { subs: [{ name: "coach", about: "x".repeat(201) }] }),
+    ],
   ];
   for (const [name, make] of badBodies) {
     it(`400 bad_request: ${name}`, async () => {
       const made = await make();
-      // Report payloads go to /api/report, everything else to /api/join.
+      // Report payloads (links, subs) go to /api/report, everything else to /api/join.
       const path =
-        typeof made === "object" && made !== null && name.includes("link")
+        typeof made === "object" && made !== null && /link|sub/.test(name)
           ? "/api/report"
           : "/api/join";
       const res = await post(path, made);

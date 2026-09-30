@@ -3,15 +3,16 @@
 Service definitions for running `tau hub` as a long-lived process: a launchd user agent on
 macOS (the hub today) and a systemd user unit for the future RPi5 hub.
 
-**On macOS the default is [TauBar](../../apps/taubar/README.md), not launchd.** Its "Run the
-hub" switch starts `tau hub run` as TauBar's own child with the same command and environment as
-the plist below, restarts it after a crash or `kill -9`, leaves it stopped after `tau hub stop`,
-stops it when TauBar quits, and never starts a second hub next to one that is already running.
-TauBar was made the default because on the Mac it was built on (macOS 26.3.1) launchd pended every
-automatic start of user agents in the login session: neither `RunAtLoad` nor `KeepAlive` brought
-the hub up or back, only `launchctl kickstart` did (roadmap 057, 052). The launchd agent below is
-the alternative for a Mac without TauBar; after installing it, check that the hub really runs.
-To switch from the agent to TauBar: `uv run tau hub uninstall`, then tick "Run the hub".
+**On macOS the default is the [tau app](../../apps/tau/README.md) (TauBar before it), not
+launchd.** Its "Run the hub" switch starts `tau hub run` as the app's own child with the same
+command and environment as the plist below, restarts it after a crash or `kill -9`, leaves it
+stopped after `tau hub stop`, stops it when the app quits, and never starts a second hub next to
+one that is already running. The app was made the default because on the Mac it was built on
+(macOS 26.3.1) launchd pended every automatic start of user agents in the login session: neither
+`RunAtLoad` nor `KeepAlive` brought the hub up or back, only `launchctl kickstart` did (roadmap
+057, 052). The launchd agent below is the alternative for a Mac without the app; after installing
+it, check that the hub really runs. To switch from the agent to the app: `uv run tau hub
+uninstall`, then tick "Run the hub".
 
 The two files here are **examples**: the package templates in
 `packages/tau-core/src/tau_core/hub/templates/` rendered with placeholder paths
@@ -53,7 +54,7 @@ uv run tau hub status       # running, heartbeat, last crash, "launchd: installe
 - The plist points at the venv's python. After moving the checkout or recreating `.venv`, run
   `tau hub install` again.
 
-Check the self-heal by hand (with TauBar too):
+Check the self-heal by hand (with the tau app too):
 
 ```sh
 curl -s 127.0.0.1:7877/health    # note the pid
@@ -89,4 +90,4 @@ Everything the hub keeps lives in `<TAU_DATA_DIR>/hub/` (default `~/.local/share
 | `crash.json` | reason a failing hub wrote on its way down; consumed by the next start |
 | `crash_reports.jsonl` | every crash the next start noticed, oldest first |
 | `last_crash.json` | the most recent crash report (shown by `tau hub status` and `/status`) |
-| `logs/` | the supervisor's stdout/stderr capture: `launchd.{out,err}.log` or `taubar.{out,err}.log` |
+| `logs/` | the supervisor's stdout/stderr capture: `launchd.{out,err}.log` or `app.{out,err}.log` (the tau app; `taubar.{out,err}.log` from TauBar) |

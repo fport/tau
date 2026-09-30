@@ -8,7 +8,7 @@ Phone (Termius) → Tailscale → OpenSSH on the MacBook → tmux → Claude Cod
 | **OpenSSH** (macOS Remote Login) | Login by key only, only as your user, only from the tailnet |
 | **mosh** | The connection survives network changes and a locked phone |
 | **tmux** | The session (and the Claude Code inside it) keeps running when the connection drops |
-| **com.tau.keepawake** | The Mac does not sleep while on AC power (`caffeinate -s`). Once [TauBar](../../apps/taubar/README.md) is installed in `/Applications`, `setup.sh` removes this agent and TauBar does the job |
+| **com.tau.keepawake** | The Mac does not sleep while on AC power (`caffeinate -s`). Once the [tau app](../../apps/tau/README.md) is installed in `/Applications`, `setup.sh` removes this agent and the app does the job |
 
 ## Setup
 
@@ -63,9 +63,9 @@ Phone (Termius) → Tailscale → OpenSSH on the MacBook → tmux → Claude Cod
 
 `~/.zshenv` loads this file **only in SSH sessions**. You can add `GH_TOKEN` for `gh` and `CLOUDFLARE_API_TOKEN` for `wrangler` to the same file.
 
-**I cannot reach the Mac:** check in order: is Tailscale on on the iPhone, is the Mac asleep, what does `doctor.sh` say. The Mac sleeps with the lid closed. Plug it in and leave the lid open, use it in clamshell mode with an external display, or pick TauBar's "Keep awake with the lid closed" mode (it needs a one-time sudoers rule: `apps/taubar/sudoers/install-sudoers.sh`).
+**I cannot reach the Mac:** check in order: is Tailscale on on the iPhone, is the Mac asleep, what does `doctor.sh` say. The Mac sleeps with the lid closed. Plug it in and leave the lid open, use it in clamshell mode with an external display, or pick the tau app's "Keep awake with the lid closed" mode (it needs a one-time sudoers rule: `apps/tau/sudoers/install-sudoers.sh`).
 
-**Is the Mac kept awake?** `doctor.sh` checks it under "Sleep". By hand: `pmset -g assertions` shows `PreventSystemSleep 1` and the process holding it, either `caffeinate` (the agent) or `taubar` (`named: "TauBar keeps the Mac awake for tau"`). On battery the assertion has no effect.
+**Is the Mac kept awake?** `doctor.sh` checks it under "Sleep". By hand: `pmset -g assertions` shows `PreventSystemSleep 1` and the process holding it, either `caffeinate` (the agent) or `tau-app` (`named: "tau keeps the Mac awake"`; TauBar's was `taubar`, `named: "TauBar keeps the Mac awake for tau"`). On battery the assertion has no effect.
 
 ## Security model
 
@@ -76,7 +76,7 @@ Phone (Termius) → Tailscale → OpenSSH on the MacBook → tmux → Claude Cod
 
 ## Settings
 
-Defaults are in `config.env`. Put machine-specific overrides in `config.local.env` (gitignored). For example, to disable the keep-awake agent, set `TAU_KEEPAWAKE=0` and run `./setup.sh` again. With TauBar installed the agent is removed regardless; `TAU_TAUBAR_APP` points the scripts at a TauBar.app outside `/Applications` and `~/Applications`.
+Defaults are in `config.env`. Put machine-specific overrides in `config.local.env` (gitignored). For example, to disable the keep-awake agent, set `TAU_KEEPAWAKE=0` and run `./setup.sh` again. With the tau app installed the agent is removed regardless; `TAU_MAC_APP` (formerly `TAU_TAUBAR_APP`, still read) points the scripts at a tau.app outside `/Applications` and `~/Applications`.
 
 ## Rollback
 

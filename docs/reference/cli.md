@@ -342,18 +342,22 @@ Commands:
   contacts  List contacts.
   init      Create the network identity.
   log       Show the network log.
+  name      Set the card's display name.
   poll      Handle queued envelopes once.
   publish   Publish the card.
   remove    Forget a contact.
   send      Send a message to a contact.
+  spine     Set up and deploy your spine Worker.
   status    Show the network status.
+  universe  Join or leave the tau universe.
 ```
 
-Added by `tau-net`. The spine comes from `TAU_SPINE_URL` and `TAU_SPINE_TOKEN`; the identity from `TAU_DATA_DIR/net/identity.json` or `TAU_NET_IDENTITY`; the settings from `[component.net]`. The setup is in [Join the tau network](../guides/tau-network.md) and the protocol in [the tau network reference](tau-network.md).
+Added by `tau-net`. The spine comes from `TAU_SPINE_URL` and `TAU_SPINE_TOKEN`; the identity from `TAU_DATA_DIR/net/identity.json` or `TAU_NET_IDENTITY`; the settings from `[component.net]`. The setup is in [Build your own tau](../getting-started/build-your-own-tau.md) and [Join the tau network](../guides/tau-network.md); the protocols are in [the tau network reference](tau-network.md) and [the tau universe reference](tau-universe.md).
 
 | Command | What it does |
 |---|---|
-| `tau net init [--name NAME]` | Creates the identity (an Ed25519 signing key and an X25519 box key); never overwrites one. `--name` writes `[component.net] name` into `tau.toml` |
+| `tau net init [--name NAME]` | Creates the identity (an Ed25519 signing key and an X25519 box key); never overwrites one. `--name` sets the card's display name in the network profile under `TAU_DATA_DIR/net`, never in `tau.toml` |
+| `tau net name NAME...` | Sets the card's display name (1 to 80 characters) in the network profile; it wins over `[component.net] name`. Publish it with `tau net publish` |
 | `tau net status` | Identity, spine health, whether the published card matches, contacts by state, where the network state is stored |
 | `tau net card` / `tau net publish` | Prints the served card / publishes it with `PUT /hub/card` (the hub service also publishes on start) |
 | `tau net contacts` | Contacts and pending requests |
@@ -363,6 +367,10 @@ Added by `tau-net`. The spine comes from `TAU_SPINE_URL` and `TAU_SPINE_TOKEN`; 
 | `tau net send ADDRESS TEXT...` | Sends a message in your name to an accepted contact (at most 8 000 characters). Your own command, so no approval; the agent's `net_send` tool is tier 2 |
 | `tau net log [--address ADDRESS] [-n N]` | The network log, oldest first (default 20 entries) |
 | `tau net poll --once` | Handles what the spine holds right now, network turns included, without a running hub. Do not run it while the hub polls |
+| `tau net spine init DIR [--address HOST]` | Writes a ready-to-deploy spine project from the kit inside `tau-net` into a new or empty `DIR`. `--address` sets `ADDRESS` and a custom-domain route; without it the address is `tau-spine.<subdomain>.workers.dev` |
+| `tau net spine deploy DIR [--address HOST]` | Deploys it with Wrangler after checking the login, sets the Worker's `HUB_TOKEN` secret to `TAU_SPINE_TOKEN` from the hub's `.env` (generated when missing, passed on stdin, never printed) and writes `TAU_SPINE_URL` there |
+| `tau net universe join [--owner NAME] [--about TEXT] [--links \| --no-links]` | Lists this tau in the universe of `[component.net] universe` (default `tau.getporti.com`): writes the profile, publishes the card when needed, sends a signed join and a report, prints the tau's page |
+| `tau net universe status` / `tau net universe leave` | Whether the profile says joined and whether the universe lists this tau, with its visible links / sends a signed leave and stops the hub's reports |
 
 ## `tau cloud`
 

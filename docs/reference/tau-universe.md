@@ -97,25 +97,30 @@ Pages send `Content-Security-Policy: default-src 'self'; img-src 'self' data:; s
 
 ## 3. Hub behaviour (`tau-net`)
 
-`tau.toml`:
+`tau.toml` holds only the non-personal knobs:
 
 ```toml
 [component.net]
 universe = "tau.getporti.com"   # the universe host; "" switches the universe off entirely
-universe_join = false           # set by `tau net universe join` / `leave`
-universe_owner = ""             # your display name in the universe (optional)
-universe_about = ""             # one line about your tau (optional)
 universe_links = true           # report mutual links (with counts) to listed contacts
 universe_report_minutes = 60
 ```
 
+Membership and the personal values are runtime data. They live in the `profile` document of the network store (`profile.json` in the file store, `net.profile` in the spine store), never in `tau.toml`, so a checked-in `tau.toml` stays free of personal data:
+
+```json
+{"name": "Alice's tau", "universe_join": true, "universe_owner": "Alice", "universe_about": "..."}
+```
+
+The card name comes from the profile first, then from `[component.net] name` in `tau.toml` (optional), and falls back to `tau`. `tau net init --name` writes it to the profile.
+
 The CLI:
 
-- **`tau net universe join [--owner NAME] [--about TEXT] [--no-links]`** sets `universe_join = true` (and the given fields) in `tau.toml` through `tau_core.settings`, sends a `join` and then a `report`, and prints the tau's universe URL.
+- **`tau net universe join [--owner NAME] [--about TEXT] [--no-links]`** writes the profile, sends a `join` and then a `report`, and prints the tau's universe URL.
 - **`tau net universe leave`** sends a `leave` and sets `universe_join = false`.
 - **`tau net universe status`** shows the setting, whether the universe lists this tau, and its visible links.
 
-The `net` hub service reports while `universe_join` is true:
+The `net` hub service reports while the profile's `universe_join` is true:
 
 - once at start, then every `universe_report_minutes`;
 - a failure is a warning in `/status` (`net.universe`), never a crash.

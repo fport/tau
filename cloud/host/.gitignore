@@ -1,6 +1,8 @@
 # Your own configuration, written by `bun run configure`.
 wrangler.jsonc
 wrangler.jsonc.bak
+# The deployed VAULT_KEY, written once for `wrangler secret put` (keep a copy offline).
+.vault-key
 # Local values and secrets for `wrangler dev`.
 .dev.vars
 .dev.vars.*

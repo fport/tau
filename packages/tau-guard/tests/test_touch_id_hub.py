@@ -363,6 +363,44 @@ def test_step_up_none_runs_no_check_and_needs_an_unlock(clock: FakeClock) -> Non
     ) == Refusal("locked")
 
 
+@pytest.mark.parametrize("answer", ["failed", "changed"])
+@pytest.mark.parametrize(
+    ("kind", "policy"),
+    [("step_up", {"step_up": "touch_id"}), ("step_up", {"step_up": "face_or_touch_id"})],
+)
+def test_a_refused_finger_in_a_step_up_locks_without_counting(
+    clock: FakeClock, answer: str, kind: str, policy: dict
+) -> None:
+    m = unlocked(clock)
+    step_up = attempt(m, kind, policy=policy)
+    refused = Outcome(False, "touch_id_failed", local_auth=("biometrics", answer, 900))
+    assert m.finish(step_up.id, refused)
+    assert (m.state, m.lock_trigger) == ("locked", "step_up_failed")
+    assert m.failures == 0 and m.cooldown_left() is None
+
+
+def test_a_refused_finger_in_a_touch_id_recheck_locks(clock: FakeClock) -> None:
+    m = machine(clock, recheck_after_idle=180.0)
+    fail_face(m)
+    touch_unlock(m)
+    clock.advance(200)
+    m.observe(Reading(idle_seconds=200.0, screen_locked=False), tick=True)
+    recheck = attempt(m, "recheck")
+    assert m.finish(recheck.id, TOUCH_ID_FAILED)
+    assert (m.state, m.lock_trigger) == ("locked", "step_up_failed") and m.failures == 0
+
+
+@pytest.mark.parametrize("answer", ["cancelled", "timeout", "unavailable"])
+def test_a_touch_id_prompt_that_did_not_run_its_course_never_locks(
+    clock: FakeClock, answer: str
+) -> None:
+    m = unlocked(clock)
+    step_up = attempt(m, "step_up", policy={"step_up": "touch_id"})
+    reason = "touch_id_unavailable" if answer == "unavailable" else "touch_id_failed"
+    assert m.finish(step_up.id, Outcome(False, reason, local_auth=("biometrics", answer, 5)))
+    assert m.state == "unlocked"
+
+
 def test_a_worker_success_for_a_none_step_up_is_impossible(clock: FakeClock) -> None:
     m = unlocked(clock)
     step_up = attempt(m, "step_up", policy={"step_up": "touch_id"})

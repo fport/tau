@@ -258,6 +258,7 @@ def test_a_closed_lid_makes_touch_id_only_unavailable_but_not_the_password() -> 
         ((False, -8), "failed"),  # locked out after failed tries
         ((False, -6), "unavailable"),
         ((False, -13), "unavailable"),
+        ((False, -1004), "unavailable"),  # no interface allowed: not a wrong finger
         ((False, 0), "failed"),
     ],
 )

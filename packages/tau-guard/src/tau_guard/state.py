@@ -25,9 +25,11 @@ Rules the table in the ADR leaves to the implementation:
   screen is locked, so the camera never opens on a locked Mac.
 - **Strict attempts.** A recheck, a step-up, an unlock started while ``unlocked`` (a re-unlock)
   and any attempt a recheck joined lock with trigger ``step_up_failed`` ("locked after a
-  failed identity check") when they fail with a counted reason: any check that sees someone
-  else while tau is unlocked locks. tau-core's lock triggers have no separate recheck value.
-  An unlock from ``locked`` that fails goes back to ``locked``.
+  failed identity check") when they fail with a counted reason, or when Touch ID refused the
+  finger or the fingerprint set (:data:`TOUCH_ID_REFUSED`, which does not count toward the
+  cooldown): any check that sees someone else while tau is unlocked locks. tau-core's lock
+  triggers have no separate recheck value. An unlock from ``locked`` that fails goes back to
+  ``locked``.
 - **Policy.** A worker success the attempt's merged policy excludes (a Touch ID step-up when
   ``step_up`` is ``face``, Touch ID for an attempt that did not ask for it or when
   ``unlock_fallback`` is ``none``, a Touch ID success through the password policy for a
@@ -99,6 +101,7 @@ __all__ = [
     "CHALLENGE_STEPS",
     "COUNTED_REASONS",
     "KINDS",
+    "TOUCH_ID_REFUSED",
     "STRICTNESS",
     "Attempt",
     "Clock",
@@ -122,6 +125,10 @@ ATTEMPT_EVENTS = {
 """The audit event of each attempt kind."""
 COUNTED_REASONS = frozenset({"no_match", "spoof", "multiple_faces"})
 """Verdict reasons that count as failures, for unlock, recheck and step-up alike."""
+TOUCH_ID_REFUSED = frozenset({"failed", "changed"})
+"""LocalAuthentication outcomes that refused the finger (or the fingerprint set): a strict
+attempt that ends with one locks like a counted failure, without counting toward the
+cooldown. A cancelled or timed-out prompt does not lock."""
 CHALLENGE_STEPS = frozenset({"turn_left", "turn_right", "center"})
 """Progress steps that show a head-turn prompt: a check dropped at one of them failed its
 challenge (``spoof``)."""
@@ -873,6 +880,12 @@ class GuardMachine:
         now = self.clock.monotonic()
         checks = attempt.kind != "enroll"  # an enrollment neither counts nor resets failures
         counted = checks and not outcome.ok and outcome.reason in COUNTED_REASONS
+        wrong_finger = (  # Touch ID saw a finger that is not the owner's, or another set
+            checks
+            and not outcome.ok
+            and outcome.local_auth is not None
+            and outcome.local_auth[1] in TOUCH_ID_REFUSED
+        )
         self.last_verdict = outcome.reason
         if outcome.reason in _CAMERA:
             self.camera = _CAMERA[outcome.reason]
@@ -907,7 +920,7 @@ class GuardMachine:
             elif attempt.kind == "unlock" and outcome.reason in FACE_FAILURES:
                 self._face_failures = [t for t in self._face_failures if now - t < FAILURE_WINDOW]
                 self._face_failures.append(now)
-        if counted and attempt.strict:
+        if (counted or wrong_finger) and attempt.strict:
             lock_after = "step_up_failed"
         if outcome.ok and checks:
             self._failure_times.clear()

@@ -80,6 +80,10 @@ _USER_CANCEL, _SYSTEM_CANCEL, _APP_CANCEL = -2, -4, -9
 _PASSCODE_NOT_SET = -5
 _NOT_AVAILABLE, _NOT_ENROLLED, _LOCKOUT = -6, -7, -8
 _NOT_PAIRED, _DISCONNECTED = -12, -13
+_NOT_INTERACTIVE = -1004
+_UNAVAILABLE = frozenset({_NOT_AVAILABLE, _DISCONNECTED, _NOT_INTERACTIVE})
+"""Answers after which the prompt could not be used at all: ``unavailable``, never ``failed``
+(which a strict check reads as a wrong finger)."""
 IOREG = ("/usr/sbin/ioreg", "-r", "-k", "AppleClamshellState", "-d", "1")
 _CLAMSHELL = re.compile(r'"AppleClamshellState"\s*=\s*(Yes|No)')
 
@@ -295,7 +299,7 @@ class MacLocalAuth:
                 code = box.get("code")
                 if code in (_USER_CANCEL, _SYSTEM_CANCEL, _APP_CANCEL):
                     return "cancelled"
-                return "unavailable" if code in (_NOT_AVAILABLE, _DISCONNECTED) else "failed"
+                return "unavailable" if code in _UNAVAILABLE else "failed"
             if biometric and domain_state is not None and _domain_state(context) != domain_state:
                 return "changed"  # the set changed while the prompt was up
             return "ok"

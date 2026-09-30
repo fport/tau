@@ -94,7 +94,9 @@ face check it can only narrow: it never produces an approval.
   `camera_*` verdict); a counted failure never falls back. `touch_id`: Touch ID only, the
   camera never opens (the accessible choice for an owner who cannot turn their head). `none`:
   no fresh check, only when both the hub's and the client's `tau.toml` say `none`; a client
-  whose `tau.toml` leaves `step_up` out uses `face` (the doctor warns about `none`).
+  whose `tau.toml` leaves `step_up` out uses `face` (the doctor warns about `none`). A step-up
+  or a recheck whose Touch ID prompt refused the finger or found another fingerprint set
+  locks tau, like a face that does not match; a cancelled prompt does not.
 - **Audit.** Each prompt writes a `touch_id` record (`policy`, the outcome as `reason`, the
   attempt's kind as `trigger`), and checks and unlocks carry `method`.
 

@@ -1,0 +1,3169 @@
+/* tau public site: the layout of each page, on top of the hard theme (/static/theme.css,
+   built from cloud/shared/theme.css, which holds the tokens, fonts, base styles, buttons,
+   chips, HUD rings and the characters' motion).
+
+   One accent (neon red) against near-black, chrome-white type, thin lines, square corners.
+   State is never colour alone: online is a lit square, offline a hollow one.
+
+   Careful with `.corners`: it draws with background-image, so an element that carries it
+   sets `background-color` here, never the `background` shorthand. */
+
+/* ---- header and footer ------------------------------------------------------------ */
+
+.site-header {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding: 0.8rem max(var(--gutter), calc((100% - var(--page)) / 2 + var(--gutter)));
+  border-bottom: 1px solid var(--line);
+  background-color: rgba(7, 8, 10, 0.86);
+}
+
+.brand {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brand-coin {
+  width: 1.6rem;
+  height: 1.6rem;
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+.brand-name {
+  background: var(--chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-size: 1.45rem;
+  font-weight: 260;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.brand:hover .brand-name {
+  filter: brightness(1.2);
+}
+
+/* The breadcrumb after the mark: `tau / @alice / coach`. */
+.crumbs {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  margin-left: -0.65rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.crumbs:empty {
+  display: none;
+}
+
+.crumb-sep {
+  flex: none;
+  margin: 0 0.5rem;
+  color: var(--muted);
+}
+
+/* The page itself keeps its name longest; the crumbs before it give way first. */
+.crumb {
+  flex: 0 4 auto;
+  min-width: 1.6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+a.crumb:hover {
+  color: var(--text);
+}
+
+.crumb-here {
+  flex-shrink: 1;
+  color: var(--text);
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem clamp(1rem, 2.5vw, 1.75rem);
+  margin-left: auto;
+}
+
+.site-nav a {
+  padding: 0.35rem 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.site-nav a:hover,
+.site-nav a[aria-current="page"] {
+  color: var(--text);
+}
+
+.site-nav a[aria-current="page"] {
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+.gh {
+  flex: none;
+  width: 1.05em;
+  height: 1.05em;
+  fill: currentColor;
+}
+
+.signin {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  font-size: 0.88rem;
+  text-decoration: none;
+}
+
+.signin:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+/* The language switcher: the current language lit, the other a link to the same page in
+   that language. Two letters on screen, the language's name for screen readers. */
+.lang-switch {
+  display: flex;
+  flex: none;
+  border: 1px solid var(--line-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.lang-switch a,
+.lang-current {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4rem;
+  min-height: 2.25rem;
+  padding: 0 0.6rem;
+}
+
+.lang-current {
+  background-color: var(--bg-3);
+  color: var(--text);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+.lang-switch a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.lang-switch a:hover {
+  color: var(--text);
+  background-color: var(--accent-soft);
+}
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.75rem;
+  padding: 2rem max(var(--gutter), calc((100% - var(--page)) / 2 + var(--gutter))) 2.5rem;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 0.9rem;
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+}
+
+.site-footer a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  color: var(--text);
+}
+
+.site-footer p {
+  margin-left: auto;
+}
+
+.footer-coin {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* ---- shared pieces ---------------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.actions-start {
+  justify-content: flex-start;
+}
+
+.kicker-sep {
+  color: var(--faint);
+}
+
+.tag {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border: 1px solid var(--accent-line);
+  color: var(--accent-hot);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+
+.facts {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.facts div {
+  display: grid;
+  grid-template-columns: minmax(6rem, 8rem) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.facts code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.back-link {
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+}
+
+.back-link a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.back-link a:hover {
+  color: var(--text);
+}
+
+/* The loading, missing and failed states of the person and sub-tau pages. */
+.page-state {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  padding: clamp(3rem, 12vw, 7rem) 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.page-state-title {
+  color: var(--text);
+  font-size: 1.5rem;
+  font-weight: 300;
+}
+
+/* ---- landing: the universe as the hero -------------------------------------------- */
+
+.page-home .site-header {
+  position: absolute;
+  inset: 0 0 auto;
+  border-bottom-color: transparent;
+  background: linear-gradient(180deg, rgba(7, 8, 10, 0.95), rgba(7, 8, 10, 0));
+}
+
+.hero {
+  position: relative;
+  isolation: isolate;
+  min-height: max(40rem, 100svh);
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+
+.hero-texture {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  opacity: 0.7;
+  -webkit-mask-image: radial-gradient(ellipse 70% 75% at 68% 45%, #000 15%, transparent 72%);
+  mask-image: radial-gradient(ellipse 70% 75% at 68% 45%, #000 15%, transparent 72%);
+}
+
+.hero-sky {
+  position: absolute;
+  inset: 0;
+}
+
+.hero-sky .graph-box {
+  position: absolute;
+  inset: 0;
+}
+
+.hud {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.hero .hud {
+  top: 50%;
+  left: 68%;
+  width: min(96vh, 62vw);
+  height: auto;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+}
+
+.hero-copy {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: min(40rem, 46%);
+  padding: 7rem var(--gutter) 2.5rem max(var(--gutter), calc((100vw - var(--page)) / 2 + var(--gutter)));
+  background: linear-gradient(
+    90deg,
+    rgba(7, 8, 10, 0.97) 0%,
+    rgba(7, 8, 10, 0.9) 72%,
+    rgba(7, 8, 10, 0) 100%
+  );
+}
+
+.hero-live {
+  margin-bottom: 1.1rem;
+}
+
+.hero h1 {
+  font-size: clamp(2.3rem, 1rem + 3.2vw, 4.1rem);
+  font-weight: 220;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  max-width: 14ch;
+}
+
+.lead {
+  max-width: 32rem;
+  margin-top: 1.1rem;
+  color: var(--muted);
+  font-size: clamp(1.05rem, 1rem + 0.25vw, 1.2rem);
+  text-wrap: pretty;
+}
+
+.ways {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.way {
+  display: grid;
+  grid-template-columns: 8.75rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.35rem 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line-2);
+  background-color: rgba(13, 15, 19, 0.82);
+}
+
+.way-hosted {
+  border-left: 2px solid var(--accent);
+}
+
+.way-tag {
+  grid-row: span 2;
+  align-self: start;
+  padding-top: 0.7rem;
+}
+
+.way .button {
+  justify-self: start;
+}
+
+.way-note {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.way-note code {
+  margin-right: 0.35rem;
+}
+
+.hero-more {
+  margin-top: 1.25rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* The graph's messages sit in the free part of the hero, clear of the text. */
+.hero .stage-message {
+  left: 46%;
+}
+
+/* ---- landing: below the fold ------------------------------------------------------ */
+
+.band {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr);
+  gap: 1.5rem clamp(2rem, 6vw, 5rem);
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: clamp(3rem, 7vw, 5rem) var(--gutter);
+  border-top: 1px solid var(--line);
+}
+
+.band:first-of-type {
+  border-top: 0;
+}
+
+.band > h2 {
+  align-self: start;
+  position: sticky;
+  top: 1.5rem;
+  font-size: clamp(1.5rem, 1.2rem + 1vw, 1.9rem);
+  font-weight: 260;
+}
+
+.band-body {
+  min-width: 0;
+}
+
+.band-intro {
+  max-width: 38rem;
+  color: var(--muted);
+  font-size: 1.12rem;
+}
+
+.band-outro {
+  max-width: 44rem;
+  margin-top: 2rem;
+  color: var(--muted);
+}
+
+.traits {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.25rem clamp(2rem, 5vw, 4rem);
+}
+
+.trait {
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line-2);
+}
+
+.trait h3 {
+  margin-bottom: 0.5rem;
+  font-size: 1.2rem;
+  font-weight: 400;
+}
+
+.trait p {
+  max-width: 30rem;
+  color: var(--muted);
+}
+
+.ledger {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem clamp(2rem, 4vw, 3rem);
+}
+
+.ledger-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ledger-col {
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line-2);
+}
+
+.ledger-public {
+  border-top-color: var(--accent);
+}
+
+.ledger h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+  font-size: 1.15rem;
+  font-weight: 400;
+}
+
+.ledger p {
+  color: var(--muted);
+}
+
+.band-closing .actions-start {
+  margin-top: 1.75rem;
+}
+
+/* ---- the universe page ------------------------------------------------------------ */
+
+.universe {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 1.5rem var(--gutter) 4rem;
+}
+
+.universe .sky {
+  position: relative;
+  isolation: isolate;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border: 1px solid var(--line);
+  background-color: var(--bg-2);
+  overflow: hidden;
+}
+
+/* The grid under the graph: a layer of its own, since `.corners` owns the background. */
+.universe .sky::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+.sky-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.sky-titles h1 {
+  margin-top: 0.35rem;
+  font-size: clamp(1.8rem, 1.3rem + 1.6vw, 2.6rem);
+  font-weight: 220;
+}
+
+.sky-count {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.search {
+  flex: 0 1 19rem;
+  margin-left: auto;
+}
+
+.search input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem 0.55rem 2.5rem;
+  border: 1px solid var(--line-2);
+  border-radius: 0;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='8.5' cy='8.5' r='5.5' fill='none' stroke='%238a93a3' stroke-width='1.5'/%3E%3Cpath d='M13 13l4 4' stroke='%238a93a3' stroke-width='1.5'/%3E%3C/svg%3E")
+      0.85rem 50% / 1.05rem no-repeat,
+    var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.search input::placeholder {
+  color: var(--faint);
+}
+
+.search input:focus-visible {
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.search input:disabled {
+  opacity: 0.5;
+}
+
+.sky-stage {
+  position: relative;
+  margin-top: 1.25rem;
+}
+
+.graph-box {
+  position: relative;
+  width: 100%;
+}
+
+.universe .graph-box {
+  aspect-ratio: 16 / 9;
+  min-height: 22rem;
+  max-height: 74vh;
+}
+
+.graph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.stage-message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.9rem;
+  padding: 2rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.stage-message p:first-child {
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 300;
+}
+
+.stage-note {
+  position: absolute;
+  left: 50%;
+  bottom: 0.9rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--line-2);
+  background-color: rgba(7, 8, 10, 0.85);
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.6rem;
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dash {
+  display: inline-block;
+  width: 1.8rem;
+  border-top: 1px dashed var(--accent);
+}
+
+/* A small triangle: a sub-tau circling its tau. */
+.moon {
+  display: inline-block;
+  flex: none;
+  width: 0;
+  height: 0;
+  border-right: 0.3rem solid transparent;
+  border-bottom: 0.55rem solid var(--accent);
+  border-left: 0.3rem solid transparent;
+}
+
+/* Graph marks. Sizes are in the graph's own units; the viewBox fits the drawing. */
+
+.hull path {
+  fill: rgba(255, 46, 62, 0.035);
+  stroke: rgba(255, 46, 62, 0.4);
+  stroke-width: 1;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  transition: opacity 0.25s;
+}
+
+.hull-label,
+.node-name,
+.sub-name {
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-linejoin: round;
+}
+
+/* Owner names keep their own case: an upper-case transform would follow the page's language
+   (a Turkish page writes i as İ), not the name's. */
+.hull-label {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  stroke-width: 3px;
+}
+
+.link-line {
+  stroke: var(--accent);
+  stroke-opacity: 0.5;
+  stroke-dasharray: 4 5;
+}
+
+.link.active .link-line {
+  stroke-opacity: 0.95;
+}
+
+.link-hit {
+  stroke: transparent;
+  stroke-width: 14;
+}
+
+.link {
+  transition: opacity 0.25s;
+}
+
+.node {
+  cursor: pointer;
+  touch-action: none;
+  transition: opacity 0.25s;
+}
+
+.node-hit,
+.sub-hit {
+  fill: transparent;
+}
+
+.node .ring,
+.sub-ring {
+  fill: none;
+  stroke: none;
+}
+
+.node .halo {
+  fill: var(--accent);
+  opacity: 0.3;
+  filter: url(#halo);
+  animation: breathe 5s ease-in-out infinite;
+}
+
+.node.offline .node-character,
+.sub.offline .node-character {
+  opacity: 0.45;
+}
+
+.node-name {
+  fill: var(--muted);
+  font-size: 10.5px;
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
+.node.online .node-name {
+  fill: var(--text);
+}
+
+.node.hovered .ring,
+.node.selected .ring,
+.sub.hovered .sub-ring,
+.sub.selected .sub-ring {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.node.selected .ring {
+  stroke-dasharray: none;
+}
+
+.sub {
+  cursor: pointer;
+  transition: opacity 0.25s;
+}
+
+.sub-tether {
+  stroke: rgba(232, 236, 241, 0.2);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.sub.online .sub-tether {
+  stroke: rgba(255, 46, 62, 0.45);
+}
+
+.sub-name {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  stroke-width: 2.5px;
+  pointer-events: none;
+}
+
+.sub.online .sub-name,
+.sub.hovered .sub-name,
+.sub.selected .sub-name {
+  fill: var(--text);
+}
+
+/* The characters float on their pages; in the graph they only blink. */
+.graph .ch-anim .ch-body,
+.graph .ch-anim .ch-shadow {
+  animation: none;
+}
+
+.node.dimmed,
+.sub.dimmed,
+.link.dimmed,
+.hull.dimmed {
+  opacity: 0.15;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* The detail card: floats over the graph on wide screens, sits under it on phones. */
+
+.detail {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 3;
+  width: min(21rem, calc(100% - 1.8rem));
+  max-height: calc(100% - 1.8rem);
+  overflow: auto;
+  padding: 1rem 1.1rem 1.1rem;
+  border: 1px solid var(--line-2);
+  background-color: rgba(13, 15, 19, 0.96);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.page-home .detail {
+  top: 5.5rem;
+  right: var(--gutter);
+}
+
+/* A card shown on hover never catches the pointer, so it cannot steal the hover. */
+.detail:not(.pinned) {
+  pointer-events: none;
+}
+
+.detail.on-left {
+  right: auto;
+  left: 0.9rem;
+}
+
+.detail-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.detail-close:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding-right: 2rem;
+}
+
+.detail-titles {
+  min-width: 0;
+}
+
+.detail-status {
+  gap: 0.5rem;
+}
+
+.detail-status.is-online {
+  color: var(--text);
+}
+
+.detail-name {
+  margin-top: 0.3rem;
+  font-size: 1.25rem;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.detail-address {
+  margin-top: 0.6rem;
+}
+
+.detail-address code,
+.tau-card-address,
+.strip-address,
+.linked-meta {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.detail-handle {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.detail-about {
+  margin-top: 0.7rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.detail-facts {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.8rem;
+  font-size: 0.9rem;
+}
+
+.detail-facts div {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.detail-facts dt {
+  min-width: 6.5rem;
+  color: var(--muted);
+}
+
+.detail-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-heading {
+  margin-top: 1rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.detail-links {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.95rem;
+}
+
+.detail-links li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.detail-links a {
+  overflow-wrap: anywhere;
+}
+
+.detail-count {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-none {
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.detail-parent {
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.detail-subs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-page {
+  display: inline-block;
+  margin-top: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+}
+
+/* A sub-tau as a chip: `/coach`. Its about line is the chip's title. */
+.sub-chip {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--accent-line);
+  background-color: var(--accent-soft);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.sub-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* The roster: every tau as a link, the keyboard way into the graph. */
+
+.roster {
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+}
+
+.roster-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.roster-head h2,
+.join h2 {
+  font-size: 1.6rem;
+  font-weight: 260;
+}
+
+.roster-count,
+.roster-empty {
+  color: var(--muted);
+}
+
+.tau-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.tau-card {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  height: 100%;
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid var(--line);
+  background-color: var(--bg-2);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+
+.tau-card:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+  background-color: var(--bg-3);
+}
+
+.tau-card[aria-current="true"] {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.tau-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.tau-card-titles {
+  display: grid;
+  min-width: 0;
+}
+
+.tau-card-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.08rem;
+  font-weight: 450;
+  overflow-wrap: anywhere;
+}
+
+.tau-card-handle {
+  color: var(--accent-hot);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.tau-card-owner,
+.tau-card-about {
+  color: var(--muted);
+  font-size: 0.93rem;
+  overflow-wrap: anywhere;
+}
+
+.tau-card-meta {
+  margin-top: 0.2rem;
+  color: var(--faint);
+  font-size: 0.84rem;
+}
+
+.tau-card.is-offline .tau-card-name {
+  color: var(--muted);
+}
+
+.tau-card-subs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+}
+
+.tau-card.is-offline .sub-chip {
+  border-color: var(--line-2);
+  background-color: transparent;
+  color: var(--muted);
+}
+
+/* Join. */
+
+.join {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr);
+  gap: 1.25rem clamp(2rem, 6vw, 5rem);
+  margin-top: clamp(3rem, 7vw, 5rem);
+  padding-top: clamp(2.5rem, 6vw, 4rem);
+  border-top: 1px solid var(--line);
+}
+
+.join-body {
+  display: grid;
+  gap: 1rem;
+  max-width: 40rem;
+  color: var(--muted);
+}
+
+.command {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.4rem 0.4rem 0.4rem 1rem;
+  border: 1px solid var(--line-2);
+  background-color: var(--bg-2);
+}
+
+.command code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 0.95rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.copy {
+  flex: none;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.copy:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* ---- the person page (/@handle) --------------------------------------------------- */
+
+.person,
+.subpage,
+.claim {
+  margin: 0 auto;
+  padding: clamp(1.75rem, 5vw, 3rem) max(var(--gutter), calc((100% - var(--page)) / 2 + var(--gutter)))
+    4rem;
+}
+
+.person-view {
+  max-width: var(--page);
+}
+
+.person-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1.5rem clamp(1.5rem, 4vw, 3rem);
+  padding-bottom: 2rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.avatar-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 11rem;
+  aspect-ratio: 1;
+  border: 1px solid var(--line-2);
+  background-color: var(--bg-2);
+}
+
+/* A HUD ring around the avatar, turning slowly. */
+.avatar-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0.6rem;
+  border: 1px dashed var(--accent-line);
+  border-radius: 50%;
+  animation: hud-spin 60s linear infinite;
+}
+
+.avatar-frame::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+}
+
+.avatar-frame .ch {
+  position: relative;
+}
+
+.person-titles {
+  min-width: 0;
+}
+
+.person-handle {
+  margin-top: 0.4rem;
+  font-size: clamp(2.6rem, 1.4rem + 4.2vw, 4.8rem);
+  font-weight: 200;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.person-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.25rem;
+  margin-top: 0.9rem;
+  color: var(--muted);
+}
+
+.person-github {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.person-github svg {
+  width: 1.05em;
+  height: 1.05em;
+  fill: currentColor;
+}
+
+.person-github:hover {
+  color: var(--accent-hot);
+}
+
+.person-counts {
+  margin-top: 0.9rem;
+  color: var(--text);
+}
+
+.person-section {
+  margin-top: clamp(2rem, 5vw, 2.75rem);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+  font-weight: 300;
+}
+
+.section-title::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+
+.tau-strip {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--line);
+  background-color: var(--bg-2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.tau-strip:hover {
+  color: var(--text);
+  background-color: var(--bg-3);
+}
+
+.strip-titles {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.strip-status {
+  gap: 0.5rem;
+}
+
+.strip-name {
+  font-size: 1.15rem;
+  font-weight: 450;
+  overflow-wrap: anywhere;
+}
+
+.strip-about {
+  color: var(--muted);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.sub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: 0.9rem;
+  padding: 0;
+  list-style: none;
+}
+
+.sub-card {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 0.45rem;
+  height: 100%;
+  padding: 1.25rem 1rem 1.1rem;
+  border: 1px solid var(--line);
+  background-color: var(--bg-2);
+  color: var(--text);
+  text-align: center;
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+
+.sub-card:hover {
+  --corner: var(--accent);
+  color: var(--text);
+  border-color: var(--line-2);
+  background-color: var(--bg-3);
+}
+
+.sub-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sub-card-name {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+}
+
+.sub-card-about {
+  color: var(--muted);
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.sub-card-meta {
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.linked-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: 0.6rem;
+  padding: 0;
+  list-style: none;
+}
+
+.linked-tau {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 100%;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--line);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.linked-tau:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+  background-color: var(--bg-2);
+}
+
+.linked-titles {
+  display: grid;
+  min-width: 0;
+}
+
+.linked-name {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  overflow-wrap: anywhere;
+}
+
+.empty-line {
+  color: var(--muted);
+}
+
+/* ---- the sub-tau page (/<slug>, /@handle/<name>) ---------------------------------- */
+
+.sub-view {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+.subpage .back-link {
+  max-width: 46rem;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.sub-head {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  text-align: center;
+}
+
+.sub-stage {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: min(16rem, 70vw);
+  aspect-ratio: 1;
+}
+
+.sub-stage .hud {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sub-stage .ch {
+  position: relative;
+  width: 70%;
+  height: auto;
+  filter: drop-shadow(0 0 22px rgba(255, 46, 62, 0.18));
+}
+
+.sub-title {
+  font-size: clamp(3rem, 1.8rem + 5.5vw, 5.6rem);
+  font-weight: 200;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.sub-about {
+  max-width: 34rem;
+  color: var(--muted);
+  font-size: 1.15rem;
+  text-wrap: pretty;
+}
+
+.sub-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  color: var(--muted);
+}
+
+.sub-by {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sub-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.sub-owner:hover {
+  color: var(--accent-hot);
+}
+
+.sub-status {
+  gap: 0.5rem;
+}
+
+.talk {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 2.25rem;
+}
+
+.starters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.talk-log {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0;
+  list-style: none;
+}
+
+.talk-log:empty {
+  display: none;
+}
+
+.msg {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 88%;
+  justify-self: start;
+}
+
+.msg-visitor {
+  justify-self: end;
+}
+
+.msg-who {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.msg-visitor .msg-who {
+  justify-self: end;
+}
+
+.msg-who:empty {
+  display: none;
+}
+
+.msg-text {
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--line-2);
+  background-color: var(--bg-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg-sub .msg-text {
+  border-left: 2px solid var(--accent);
+}
+
+.msg-visitor .msg-text {
+  border-color: var(--accent-line);
+  background-color: var(--accent-soft);
+}
+
+.msg-pending {
+  opacity: 0.6;
+}
+
+.talk-typing {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.talk-typing-name {
+  color: var(--text);
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 0.2rem;
+}
+
+.typing-dots i {
+  width: 4px;
+  height: 4px;
+  background: var(--accent);
+  animation: dot 1.2s ease-in-out infinite;
+}
+
+.typing-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.talk-notice {
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--line-2);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.talk-notice-error {
+  border-left-color: var(--accent);
+  color: var(--accent-hot);
+}
+
+.talk-form {
+  padding: 0.75rem 0.9rem 0.6rem;
+  border: 1px solid var(--line-2);
+  background-color: var(--bg-2);
+}
+
+.talk-form:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.talk-form textarea {
+  display: block;
+  width: 100%;
+  min-height: 5.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.talk-form textarea:focus {
+  outline: none;
+}
+
+.talk-form textarea::placeholder {
+  color: var(--faint);
+}
+
+.talk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+}
+
+.talk-keys {
+  margin-right: auto;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.talk-keys kbd {
+  font-size: 0.72rem;
+}
+
+/* Touch screens have no Shift+Enter to explain. */
+@media (hover: none) {
+  .talk-keys {
+    display: none;
+  }
+}
+
+.talk-count {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.talk-count.is-over {
+  color: var(--accent-hot);
+}
+
+.talk-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.talk-privacy {
+  display: flex;
+  gap: 0.55rem;
+  max-width: 34rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.talk-privacy::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 0;
+  margin-top: 0.3rem;
+  border-right: 0.32rem solid transparent;
+  border-bottom: 0.55rem solid var(--accent);
+  border-left: 0.32rem solid transparent;
+}
+
+.no-chat {
+  margin-top: 2rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.sub-details {
+  margin-top: 2rem;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  background-color: var(--bg-2);
+}
+
+.sub-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sub-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.sub-details summary::after {
+  content: "+";
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.sub-details[open] summary::after {
+  content: "−";
+}
+
+.sub-details .facts {
+  margin: 0.25rem 0 0.9rem;
+}
+
+.sub-details-note {
+  padding-bottom: 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* ---- the claim page --------------------------------------------------------------- */
+
+.claim-panel {
+  display: grid;
+  gap: 1.1rem;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: clamp(1.25rem, 4vw, 2.25rem);
+  border: 1px solid var(--line-2);
+  background-color: var(--bg-2);
+}
+
+.claim .back-link {
+  max-width: 44rem;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.claim-panel h1 {
+  font-size: clamp(2rem, 1.3rem + 2.6vw, 3.1rem);
+  font-weight: 220;
+}
+
+.claim-lead {
+  color: var(--muted);
+}
+
+.claim-facts {
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.claim-result {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  padding: 0.3rem 0 0.3rem 0.9rem;
+  border-left: 2px solid var(--line-2);
+  color: var(--muted);
+}
+
+.claim-result-ok {
+  border-left-color: var(--accent);
+  color: var(--text);
+}
+
+.claim-result-error {
+  border-left-color: var(--accent);
+  color: var(--accent-hot);
+}
+
+.claim-result-ok p::before {
+  content: "✓ ";
+  color: var(--accent);
+}
+
+.claim-result-error p::before {
+  content: "✕ ";
+}
+
+.claim-note {
+  color: var(--faint);
+  font-size: 0.88rem;
+}
+
+/* ---- how it works ----------------------------------------------------------------- */
+
+/* A story in chapters. Each chapter is a heading and rows of prose beside a figure; the
+   figures reuse the site's vocabulary: the coin as a tau, red dashes for a question on its
+   way, chrome dots for the answer, red for anything that is lit. */
+
+.svg-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.intro {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: clamp(2rem, 6vw, 4.5rem) var(--gutter) clamp(3rem, 7vw, 5rem);
+}
+
+.intro h1 {
+  background: var(--chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-size: clamp(2.6rem, 1.2rem + 5.2vw, 5.2rem);
+  font-weight: 200;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.intro-lead {
+  max-width: 38rem;
+  margin-top: 1.4rem;
+  color: var(--muted);
+  font-size: clamp(1.1rem, 1rem + 0.45vw, 1.3rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+/* The storyline: the page's parts as stations on a dashed wire. */
+
+.storyline {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 3.4fr) minmax(0, 1.9fr);
+  gap: 1.5rem clamp(1.25rem, 3vw, 2.5rem);
+  margin-top: clamp(2.5rem, 6vw, 3.75rem);
+}
+
+.story-name {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.story-stops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  margin: 0.8rem 0 0;
+  padding: 1.05rem 0 0;
+  list-style: none;
+  background: linear-gradient(90deg, var(--accent-line) 50%, transparent 0) 0 0.45rem / 10px 1px
+    repeat-x;
+}
+
+.story-part-last .story-stops {
+  background-image: linear-gradient(90deg, var(--line-2) 50%, transparent 0);
+}
+
+.story-stops li {
+  position: relative;
+}
+
+.story-stops li::before {
+  content: "";
+  position: absolute;
+  top: -0.95rem;
+  left: 0;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+}
+
+.story-part:first-child .story-stops li::before {
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.story-part-last .story-stops li::before {
+  border-color: var(--line-2);
+}
+
+.story-stops a {
+  display: inline-block;
+  padding: 0.55rem 0 0.3rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.story-stops a:hover {
+  color: var(--accent-hot);
+}
+
+/* Chapters. */
+
+.chapter {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: clamp(3.5rem, 8vw, 6rem) var(--gutter);
+  border-top: 1px solid var(--line);
+  scroll-margin-top: 0.5rem;
+}
+
+.chapter > h2 {
+  max-width: 22ch;
+  font-size: clamp(2rem, 1.3rem + 2.6vw, 3.1rem);
+  font-weight: 220;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+
+.part-name {
+  margin-bottom: 1rem;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.part-lead {
+  max-width: 34rem;
+  margin: -0.4rem 0 1.4rem;
+  color: var(--muted);
+}
+
+.chapter-lead {
+  max-width: 40rem;
+  margin-top: 1.1rem;
+  color: var(--muted);
+  font-size: 1.15rem;
+  text-wrap: pretty;
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin-top: 1.1rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--accent-line);
+  color: var(--accent-hot);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge-next {
+  border-style: dashed;
+  border-color: var(--line-2);
+  color: var(--muted);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 27rem);
+  gap: 2rem clamp(2rem, 5vw, 4.5rem);
+  align-items: start;
+  margin-top: clamp(2.25rem, 5vw, 3.25rem);
+}
+
+.prose {
+  display: grid;
+  gap: 1rem;
+  max-width: 38rem;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.prose h3,
+.steps h3,
+.risks-title {
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 400;
+}
+
+.prose strong,
+.steps strong,
+.risks strong,
+.threats th {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.prose code,
+.steps code,
+.risks code,
+.threats code {
+  white-space: normal;
+}
+
+.next {
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--line-2);
+}
+
+.next .badge {
+  margin-right: 0.35rem;
+}
+
+.points {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0;
+  list-style: none;
+}
+
+.points li {
+  position: relative;
+  padding-left: 1.6rem;
+}
+
+.points li::before {
+  content: "";
+  position: absolute;
+  top: 0.7em;
+  left: 0;
+  width: 1rem;
+  border-top: 1px dashed var(--accent);
+}
+
+.command-block {
+  margin: 0;
+  padding: 0.85rem 1.1rem;
+  overflow-x: auto;
+  border: 1px solid var(--line-2);
+  background-color: var(--bg);
+}
+
+.command-block code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Figures. */
+
+.fig {
+  margin: 0;
+  padding: clamp(0.9rem, 2.5vw, 1.25rem);
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 45%, rgba(255, 46, 62, 0.06), transparent 70%),
+    var(--bg-2);
+}
+
+.fig figcaption {
+  margin-top: 0.85rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.fig-sticky {
+  position: sticky;
+  top: 1.5rem;
+}
+
+.diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: var(--font-sans);
+}
+
+.d-label {
+  fill: var(--muted);
+  font-size: 12.5px;
+}
+
+.d-strong {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.d-faint {
+  fill: var(--faint);
+}
+
+.d-mono {
+  fill: var(--accent-hot);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.d-small {
+  font-size: 10.5px;
+}
+
+.d-initial {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.d-house path,
+.d-house rect {
+  fill: none;
+  stroke: rgba(232, 236, 241, 0.38);
+  stroke-width: 1.5;
+  stroke-linejoin: miter;
+}
+
+.d-house rect {
+  fill: rgba(7, 8, 10, 0.75);
+}
+
+.d-device rect,
+.d-device circle,
+.d-card rect {
+  fill: rgba(7, 8, 10, 0.85);
+  stroke: rgba(232, 236, 241, 0.3);
+  stroke-width: 1.5;
+}
+
+.d-device path,
+.d-card path,
+.d-card circle {
+  fill: none;
+  stroke: rgba(232, 236, 241, 0.35);
+  stroke-width: 1.5;
+  stroke-linecap: square;
+}
+
+.d-card circle {
+  stroke: var(--accent);
+}
+
+.d-soft-wires path,
+.d-hanger,
+.d-wire-soft {
+  fill: none;
+  stroke: rgba(232, 236, 241, 0.22);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+
+.d-wire,
+.d-answer {
+  fill: none;
+  stroke-width: 2;
+  stroke-dasharray: 5 6;
+  stroke-linecap: butt;
+}
+
+.d-wire {
+  stroke: var(--accent);
+}
+
+/* The answer is dotted as well as lighter, so the two paths differ by shape too. */
+.d-answer {
+  stroke: var(--text);
+  stroke-width: 3;
+  stroke-dasharray: 0.5 10.5;
+  stroke-linecap: round;
+}
+
+.d-flow {
+  animation: flow 1.4s linear infinite;
+}
+
+@keyframes flow {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+.d-head-ember {
+  fill: var(--accent);
+}
+
+.d-head-flare {
+  fill: var(--text);
+}
+
+.d-head-soft {
+  fill: rgba(232, 236, 241, 0.35);
+}
+
+.d-gate {
+  stroke: var(--accent-hot);
+  stroke-width: 2;
+  stroke-dasharray: 2 5;
+}
+
+.d-gate-mark {
+  fill: var(--accent-hot);
+}
+
+.d-glow {
+  fill: var(--accent);
+  opacity: 0.4;
+  filter: url(#f-halo);
+  animation: breathe 5s ease-in-out infinite;
+}
+
+.d-glow-small {
+  opacity: 0.35;
+}
+
+.d-peer,
+.d-tau {
+  fill: var(--bg-2);
+  stroke: rgba(232, 236, 241, 0.3);
+  stroke-width: 1.5;
+}
+
+.d-tau-online {
+  fill: #1a0a0d;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.d-region {
+  fill: rgba(232, 236, 241, 0.02);
+  stroke: var(--line-2);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+}
+
+/* Symbols drawn through <use>: a page rule cannot reach into the copy by the <use>
+   element's class, so each part reads custom properties, which do inherit into it. */
+
+.s-box,
+.s-post {
+  fill: #1a0a0d;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: miter;
+}
+
+.s-slot {
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+
+.s-flag {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.s-paper {
+  fill: var(--paper, var(--text));
+}
+
+.s-fold {
+  fill: none;
+  stroke: #7d8796;
+  stroke-width: 1.5;
+}
+
+.s-seal {
+  fill: var(--seal, var(--accent));
+}
+
+.d-letter-ember {
+  --paper: #ffd6d9;
+}
+
+.d-letter-flare {
+  --paper: #f4f6f9;
+  --seal: var(--accent-hot);
+}
+
+.s-shackle {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.s-lockbody {
+  fill: var(--text);
+}
+
+.d-helper {
+  fill: #1a0a0d;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 2.5 2.5;
+}
+
+.d-helper-link {
+  stroke: var(--accent-line);
+  stroke-width: 1.5;
+}
+
+.d-num circle {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.d-num text {
+  fill: var(--accent-hot);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.d-hull {
+  fill: rgba(255, 46, 62, 0.05);
+  stroke: rgba(255, 46, 62, 0.4);
+  stroke-width: 1;
+  stroke-dasharray: 6 4;
+}
+
+.d-sub {
+  fill: #1a0a0d;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.d-sub-new {
+  fill: none;
+  stroke: rgba(232, 236, 241, 0.3);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+
+.d-next {
+  fill: none;
+  stroke: rgba(232, 236, 241, 0.3);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 6;
+  stroke-linecap: round;
+}
+
+.d-link {
+  fill: none;
+  stroke: var(--accent);
+  stroke-opacity: 0.8;
+  stroke-width: 2.5;
+  stroke-dasharray: 5 6;
+}
+
+.d-ghost {
+  fill: none;
+  stroke: rgba(232, 236, 241, 0.16);
+  stroke-width: 1.5;
+  stroke-dasharray: 1 6;
+  stroke-linecap: round;
+}
+
+/* The key under the conversation diagram. */
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.25rem;
+  margin-bottom: 0.4rem;
+}
+
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+}
+
+.key::before {
+  content: "";
+  width: 1.6rem;
+  border-top: 2px dashed var(--accent);
+}
+
+.key-answer::before {
+  height: 3px;
+  border: 0;
+  background: radial-gradient(circle, var(--text) 1.5px, transparent 1.8px) 0 50% / 11px 3px repeat-x;
+}
+
+/* The steps of the conversation: numbered like the markers in the diagram. */
+
+.steps {
+  display: grid;
+  gap: 1.9rem;
+  max-width: 38rem;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.steps li {
+  position: relative;
+  padding-left: 3.25rem;
+  color: var(--muted);
+  counter-increment: step;
+  text-wrap: pretty;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  top: -0.15rem;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--accent);
+  color: var(--accent-hot);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.steps li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 2.2rem;
+  bottom: -1.7rem;
+  left: calc(1rem - 0.5px);
+  border-left: 1px dashed var(--accent-line);
+}
+
+.steps h3 {
+  margin-bottom: 0.4rem;
+}
+
+/* The chat, the approval and the contact request: examples drawn in the site's colours,
+   never imitating an app's own look. */
+
+.chat-app {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.chat-log {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+
+.bubble {
+  max-width: 85%;
+  padding: 0.55rem 0.85rem 0.45rem;
+  line-height: 1.45;
+}
+
+.bubble time {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bubble-you {
+  justify-self: end;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.bubble-you time {
+  color: rgba(7, 8, 10, 0.7);
+}
+
+.bubble-tau {
+  justify-self: start;
+  border: 1px solid var(--line-2);
+  border-left: 2px solid var(--accent);
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+.bubble-tau time {
+  color: var(--muted);
+}
+
+.bubble-tau + .bubble-tau {
+  margin-top: 0.9rem;
+}
+
+.approval-title {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.approval-text {
+  margin: 0.8rem 0 0;
+  padding: 0.7rem 1rem;
+  border-left: 2px solid var(--accent);
+  background-color: var(--accent-soft);
+  color: var(--text);
+  font-size: 1.05rem;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.approval-command {
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.approval-command code {
+  white-space: normal;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0 1.1rem;
+  border: 1px solid var(--line-2);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.pill-yes {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* The ID card. */
+
+.idcard {
+  border-color: var(--accent-line);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 46, 62, 0.14), transparent 55%),
+    var(--bg-2);
+}
+
+.idcard-head {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px dashed var(--line-2);
+}
+
+.idcard-head img {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.idcard-name {
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.idcard-address {
+  color: var(--accent-hot);
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+}
+
+.idcard-fields {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+
+.idcard-fields dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.idcard-fields dd {
+  margin: 0.1rem 0 0;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.idcard-fields dd code {
+  margin-right: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.idcard figcaption code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Can I be hacked? */
+
+.threats-wrap {
+  margin-top: clamp(2rem, 5vw, 2.75rem);
+}
+
+.threats {
+  width: 100%;
+  max-width: 62rem;
+  border-collapse: collapse;
+  font-size: 1rem;
+}
+
+.threats thead th {
+  padding: 0 1rem 0.8rem 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.threats tbody th,
+.threats td {
+  padding: 1.1rem 1rem 1.1rem 0;
+  border-top: 1px solid var(--line-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.threats tbody th {
+  width: 34%;
+  font-size: 1.1rem;
+  line-height: 1.35;
+}
+
+.threats td {
+  color: var(--muted);
+}
+
+.risks-title {
+  margin-top: clamp(2.5rem, 6vw, 3.5rem);
+}
+
+.risks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem clamp(2rem, 5vw, 4rem);
+  margin-top: 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.risks li {
+  position: relative;
+  padding-left: 1.6rem;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.risks li::before {
+  content: "";
+  position: absolute;
+  top: 0.55em;
+  left: 0;
+  width: 0;
+  height: 0;
+  border-right: 0.32rem solid transparent;
+  border-bottom: 0.55rem solid var(--accent);
+  border-left: 0.32rem solid transparent;
+}
+
+.risks strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.chapter-closing .actions-start {
+  margin-top: 1.75rem;
+}
+
+/* ---- 404 -------------------------------------------------------------------------- */
+
+.missing {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: clamp(3rem, 10vw, 7rem) var(--gutter) 6rem;
+  text-align: center;
+}
+
+.missing-mark {
+  width: 8rem;
+  height: 8rem;
+  margin-bottom: 0.5rem;
+}
+
+.missing h1 {
+  font-size: clamp(2rem, 1.3rem + 2.8vw, 3.2rem);
+  font-weight: 220;
+}
+
+.missing p:not(.kicker) {
+  margin-bottom: 1rem;
+  color: var(--muted);
+}
+
+/* ---- narrow screens --------------------------------------------------------------- */
+
+/* Tablets: the hero's text runs along the bottom, the ways side by side, the graph above. */
+@media (max-width: 64rem) {
+  .hero-copy {
+    inset: auto 0 0 0;
+    width: auto;
+    padding: 3rem var(--gutter) 2rem;
+    background: linear-gradient(0deg, rgba(7, 8, 10, 0.98) 72%, rgba(7, 8, 10, 0));
+  }
+
+  .hero h1 {
+    max-width: 18ch;
+  }
+
+  .ways {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .way {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+  }
+
+  .way-tag {
+    grid-row: auto;
+    padding-top: 0;
+  }
+
+  .hero .hud {
+    top: 34%;
+    left: 50%;
+    width: min(72vh, 88vw);
+  }
+
+  .hero .stage-message {
+    left: 0;
+    bottom: 50%;
+  }
+
+  .page-home .detail {
+    display: none !important;
+  }
+}
+
+@media (max-width: 56rem) {
+  .band,
+  .join {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .band > h2 {
+    position: static;
+  }
+
+  .ledger-three {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .storyline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Figures follow their text and never grow wider than they read well. */
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .row .fig {
+    width: 100%;
+    max-width: 30rem;
+  }
+
+  .fig-sticky {
+    position: static;
+  }
+
+  .row-steps .fig {
+    order: -1;
+  }
+}
+
+/* Phones: the graph sits at the top of the hero, the text follows it. */
+@media (max-width: 44rem) {
+  .hero {
+    min-height: 0;
+  }
+
+  .hero-sky {
+    position: relative;
+    height: max(19rem, 46svh);
+  }
+
+  .hero-copy {
+    position: relative;
+    inset: auto;
+    padding: 0.5rem var(--gutter) 2.5rem;
+    background: none;
+  }
+
+  .hero .hud {
+    top: 55%;
+    width: min(92vw, 40svh);
+  }
+
+  .ways {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .way .button {
+    justify-self: stretch;
+  }
+
+  .traits,
+  .ledger,
+  .risks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Header: the mark, the breadcrumb, sign-in and the switcher on the first line, the menu
+     on the second. */
+  .site-nav {
+    order: 5;
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .signin {
+    margin-left: auto;
+  }
+
+  /* A long breadcrumb gives way (it ends in an ellipsis) rather than pushing the switcher
+     onto a line of its own. */
+  .crumbs {
+    flex: 1 1 0;
+  }
+
+  .crumbs + .site-nav + .signin {
+    margin-left: 0;
+  }
+
+  .site-footer p {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .search {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .universe .graph-box {
+    aspect-ratio: 4 / 5;
+    min-height: 18rem;
+  }
+
+  .detail,
+  .detail.on-left {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+    width: auto;
+    max-height: none;
+    margin-top: 1rem;
+    box-shadow: none;
+  }
+
+  .stage-note {
+    bottom: 0.6rem;
+    font-size: 0.85rem;
+  }
+
+  .person-head {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+
+  .avatar-frame {
+    width: 8.5rem;
+  }
+
+  .sub-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr));
+    gap: 0.6rem;
+  }
+
+  .sub-card .ch {
+    width: 4.5rem;
+    height: 4.5rem;
+  }
+
+  .avatar-frame .ch {
+    width: 7rem;
+    height: 7rem;
+  }
+
+  .facts div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem;
+  }
+
+  /* The storyline turns vertical. */
+  .story-stops {
+    flex-direction: column;
+    gap: 0;
+    margin-top: 0.4rem;
+    padding: 0 0 0 1.6rem;
+    background: linear-gradient(180deg, var(--accent-line) 50%, transparent 0) 0.35rem 0 / 1px 10px
+      repeat-y;
+  }
+
+  .story-part-last .story-stops {
+    background-image: linear-gradient(180deg, var(--line-2) 50%, transparent 0);
+  }
+
+  .story-stops li::before {
+    top: 0.85rem;
+    left: -1.6rem;
+  }
+
+  .steps li {
+    padding-left: 2.9rem;
+  }
+
+  /* The table becomes a list of cases, each with what the attacker gets under it. */
+  .threats thead,
+  .threats tbody {
+    display: block;
+  }
+
+  .threats thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.35rem;
+  }
+
+  .threats thead th {
+    padding: 0 0 0.8rem;
+  }
+
+  .threats tr,
+  .threats tbody th,
+  .threats td {
+    display: block;
+    width: auto;
+  }
+
+  .threats tbody th {
+    padding: 1.1rem 0 0.4rem;
+  }
+
+  .threats td {
+    padding: 0 0 1.1rem;
+    border-top: 0;
+  }
+}
+
+/* The smallest phones: the sign-in button keeps only its icon (its name stays for screen
+   readers). */
+@media (max-width: 26rem) {
+  .signin span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .signin {
+    padding: 0.3rem 0.6rem;
+  }
+
+  /* Only the page itself stays in the breadcrumb (the page names its owner anyway). */
+  .crumbs a.crumb,
+  .crumbs a.crumb + .crumb-sep {
+    display: none;
+  }
+
+  .site-header {
+    gap: 0.5rem 0.9rem;
+  }
+}
+
+/* ---- motion ----------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

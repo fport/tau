@@ -3,9 +3,9 @@
 ``[sessions].backend`` in ``tau.toml`` picks a factory: ``memory`` (nothing survives the
 process) and ``file`` (``Config.sessions_dir``) are the built-in seed in
 :data:`SESSION_BACKENDS`; other distributions add backends through the ``tau.sessions`` entry
-point group and code adds them with :func:`tau_core.registry.register_session_backend`. Issue
-018 registers ``cloud``, which talks only to the tau-cloud Worker API and never holds D1
-credentials.
+point group and code adds them with :func:`tau_core.registry.register_session_backend`. Cloud mode
+(ADR 0007) uses ``spine`` from the ``tau-cloud`` distribution, which stores sessions through the
+spine Worker's API and never holds D1 credentials.
 """
 
 from __future__ import annotations
@@ -37,7 +37,8 @@ SESSION_BACKENDS: dict[str, Callable[[Config], SessionStore]] = {
 """The built-in seed; ``tau_core.registry`` merges entry points and registrations into it."""
 
 # Backends a later issue builds. tau.toml may name them; opening one fails with a clear message.
-PLANNED_BACKENDS: dict[str, str] = {"cloud": "018"}
+# Empty since ADR 0007: the planned "cloud" backend became ``spine`` in tau-cloud (issue 094).
+PLANNED_BACKENDS: dict[str, str] = {}
 
 
 def open_session_store(config: Config) -> SessionStore:

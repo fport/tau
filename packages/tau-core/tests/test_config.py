@@ -73,7 +73,7 @@ def test_missing_config_names_path(tmp_path: Path) -> None:
 
 
 def test_unknown_provider_rejected(tmp_path: Path) -> None:
-    home = write_home(tmp_path, MINIMAL.replace('"fake"', '"openai"'))
+    home = write_home(tmp_path, MINIMAL.replace('"fake"', '"nosuch"'))
     with pytest.raises(ConfigError, match="unknown provider"):
         Config.load(home, env={})
 
@@ -135,12 +135,12 @@ def test_test_config_layout(tmp_path: Path) -> None:
 def test_repo_tau_toml_loads() -> None:
     config = Config.load(ROOT, env={})
     assert set(config.roles) >= {"brain", "fast", "local"}
-    # ADR 0009: every role goes through the proxy with a hard budget, and no direct fallback
-    # could bypass it when a proxy key is missing.
-    for role in ("brain", "fast", "local"):
-        assert config.roles[role].provider == "proxy"
-        assert config.roles[role].budget is not None
-        assert config.roles[role].fallback is None
+    # ADR 0011: providers are called directly, tau enforces the budgets itself.
+    assert config.roles["brain"].provider == "anthropic"
+    assert config.roles["brain"].budget is not None
+    assert config.roles["brain"].budget.degrade_to == "fast"
+    assert config.roles["local"].provider == "ollama"
+    assert config.roles["local"].failover == "fast"
 
 
 # -- [ui] language ---------------------------------------------------------------------------
@@ -323,66 +323,94 @@ def test_unknown_top_level_table_warns_once(
     assert any("[model]" in m for m in messages) and any("[telegram]" in m for m in messages)
 
 
-# -- [models.roles.<role>.budget] ----------------------------------------------------------------
+# -- [models.roles.<role>.budget], failover and [models.prices] --------------------------------
 
 BUDGETED = """\
 [models.roles.brain]
-provider = "proxy"
-model_id = "brain"
+provider = "anthropic"
+model_id = "claude-sonnet-5"
 
 [models.roles.brain.budget]
 usd = 15
-period = "1mo"
+period = "month"
 degrade_to = "fast"
 
 [models.roles.fast]
-provider = "proxy"
-model_id = "fast"
-budget = { usd = 0.5, period = "1d" }
+provider = "anthropic"
+model_id = "claude-haiku-4-5"
+budget = { usd = 0.5, period = "day" }
+
+[models.roles.local]
+provider = "ollama"
+model_id = "qwen3.5:9b"
+failover = "fast"
+
+[models.prices."my-model"]
+input = 1
+output = 2.5
 """
 
 
-def test_budget_tables(tmp_path: Path) -> None:
-    from tau_core.config import BudgetConfig
+def test_budget_failover_and_price_tables(tmp_path: Path) -> None:
+    from tau_core.config import BudgetConfig, Price
 
     config = Config.load(write_home(tmp_path, BUDGETED), env={})
-    assert config.roles["brain"].budget == BudgetConfig(15.0, "1mo", "fast")
-    assert config.roles["fast"].budget == BudgetConfig(0.5, "1d")
+    assert config.roles["brain"].budget == BudgetConfig(15.0, "month", "fast")
+    assert config.roles["fast"].budget == BudgetConfig(0.5, "day")
+    assert config.roles["local"].failover == "fast"
+    assert config.prices == {"my-model": Price(1.0, 2.5)}
 
 
 @pytest.mark.parametrize(
     ("budget", "message"),
     [
-        ('{ usd = 0, period = "1d" }', "needs 'usd', a positive number"),
-        ('{ usd = true, period = "1d" }', "needs 'usd', a positive number"),
-        ('{ usd = 1, period = "daily" }', "needs 'period' like"),
-        ('{ usd = 1, period = "0d" }', "needs 'period' like"),
-        ('{ usd = 1, period = "1d", cap = 2 }', "has unknown keys: cap"),
-        ('{ usd = 1, period = "1d", degrade_to = "" }', "must be the name of a role"),
-        ('{ usd = 1, period = "1d", degrade_to = "brain" }', "cannot name the role itself"),
-        ('{ usd = 1, period = "1d", degrade_to = "nope" }', "names 'nope', which is not a"),
+        ('{ usd = 0, period = "day" }', "needs 'usd', a positive number"),
+        ('{ usd = true, period = "day" }', "needs 'usd', a positive number"),
+        ('{ usd = 1, period = "1mo" }', "needs 'period', one of day, week, month"),
+        ('{ usd = 1, period = "day", cap = 2 }', "has unknown keys: cap"),
+        ('{ usd = 1, period = "day", degrade_to = "" }', "must be the name of a role"),
+        ('{ usd = 1, period = "day", degrade_to = "brain" }', "cannot name the role itself"),
+        ('{ usd = 1, period = "day", degrade_to = "nope" }', "names 'nope', which is not a"),
         ("5", "'budget' must be a table"),
     ],
 )
 def test_invalid_budgets(tmp_path: Path, budget: str, message: str) -> None:
-    toml = f'[models.roles.brain]\nprovider = "proxy"\nmodel_id = "b"\nbudget = {budget}\n'
+    toml = f'[models.roles.brain]\nprovider = "fake"\nmodel_id = "b"\nbudget = {budget}\n'
     with pytest.raises(ConfigError, match=message):
         Config.load(write_home(tmp_path, toml), env={})
 
 
-def test_budget_degrade_loops_and_fallback_budgets_are_refused(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        ('failover = ""', "'failover' must be the name of a role"),
+        ('failover = "brain"', "cannot name the role itself"),
+        ('failover = "gone"', "names 'gone', which is not a defined role"),
+    ],
+)
+def test_invalid_failover(tmp_path: Path, extra: str, message: str) -> None:
+    toml = f'[models.roles.brain]\nprovider = "fake"\nmodel_id = "b"\n{extra}\n'
+    with pytest.raises(ConfigError, match=message):
+        Config.load(write_home(tmp_path, toml), env={})
+
+
+def test_stand_in_loops_and_misplaced_tables_are_refused(tmp_path: Path) -> None:
     loop = (
-        '[models.roles.a]\nprovider = "proxy"\nmodel_id = "a"\n'
-        'budget = { usd = 1, period = "1d", degrade_to = "b" }\n'
-        '[models.roles.b]\nprovider = "proxy"\nmodel_id = "b"\n'
-        'budget = { usd = 1, period = "1d", degrade_to = "a" }\n'
+        '[models.roles.a]\nprovider = "fake"\nmodel_id = "a"\n'
+        'budget = { usd = 1, period = "day", degrade_to = "b" }\n'
+        '[models.roles.b]\nprovider = "fake"\nmodel_id = "b"\nfailover = "a"\n'
     )
-    with pytest.raises(ConfigError, match="loops: a → b → a"):
+    with pytest.raises(ConfigError, match="stand-ins loop: a → b → a"):
         Config.load(write_home(tmp_path, loop), env={})
     nested = (
-        '[models.roles.a]\nprovider = "proxy"\nmodel_id = "a"\n'
-        '[models.roles.a.fallback]\nprovider = "fake"\nmodel_id = "f"\n'
-        'budget = { usd = 1, period = "1d" }\n'
+        '[models.roles.a]\nprovider = "fake"\nmodel_id = "a"\n'
+        '[models.roles.a.fallback]\nprovider = "fake"\nmodel_id = "f"\nfailover = "a"\n'
     )
-    with pytest.raises(ConfigError, match="cannot have a 'budget'; set it on the role"):
+    with pytest.raises(ConfigError, match="cannot have a 'failover'; set it on the role"):
         Config.load(write_home(tmp_path, nested), env={})
+    bad_price = '[models.prices."m"]\ninput = 1\n'
+    with pytest.raises(ConfigError, match="needs 'input' and 'output'"):
+        Config.load(write_home(tmp_path, MINIMAL + bad_price), env={})
+    negative = '[models.prices."m"]\ninput = -1\noutput = 1\n'
+    with pytest.raises(ConfigError, match="'input' must be a number of dollars, 0 or more"):
+        Config.load(write_home(tmp_path, MINIMAL + negative), env={})

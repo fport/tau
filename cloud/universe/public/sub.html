@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tau</title>
+  <meta name="description" content="A public sub-tau in the tau universe: a small specialist of someone’s tau. Some take visitors: talk to it here.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#07080a">
+  <link rel="icon" href="/brand/tau-coin-red.svg" type="image/svg+xml">
+  <link rel="preload" href="/static/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/styles/site.css">
+  <script type="module" src="/static/sub.js"></script>
+</head>
+<body class="page-sub">
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <a class="brand" href="/"><img class="brand-coin" src="/brand/tau-coin-red.svg" width="26" height="26" alt=""><span class="brand-name">tau</span></a>
+    <div class="crumbs" id="crumbs"></div>
+    <nav class="site-nav" aria-label="Main">
+      <a href="/how-it-works">How it works</a>
+      <a href="/universe">Universe</a>
+      <a href="https://docs.tau.getporti.com/">Docs</a>
+    </nav>
+    <a class="signin" href="/auth/login"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg><span>Sign in</span></a>
+    <nav class="lang-switch" aria-label="Language">
+      <span class="lang-current" lang="en"><span aria-hidden="true">EN</span><span class="visually-hidden">English</span></span>
+      <a href="/tr/?lang=tr" hreflang="tr" lang="tr"><span aria-hidden="true">TR</span><span class="visually-hidden">Türkçe</span></a>
+    </nav>
+  </header>
+
+  <main id="main" class="subpage grid-bg">
+    <div class="page-state" id="page-state" aria-live="polite">
+      <p class="page-state-title">Loading…</p>
+    </div>
+
+    <article class="sub-view" id="sub-view" aria-labelledby="sub-name" hidden>
+      <header class="sub-head">
+        <div class="sub-stage" id="sub-stage">
+          <svg class="hud hud-small" viewBox="-120 -120 240 240" aria-hidden="true" focusable="false">
+            <g class="hud-spin">
+              <circle class="hud-ticks" r="114"></circle>
+              <path class="hud-arc" d="M0 -104 A104 104 0 0 1 90 -52"></path>
+              <rect class="hud-frag" x="-110" y="30" width="5" height="5"></rect>
+            </g>
+            <g class="hud-spin-back">
+              <circle class="hud-ring" r="98"></circle>
+              <rect class="hud-frag" x="92" y="-2" width="9" height="3"></rect>
+              <path class="hud-arc" d="M-69 69 A98 98 0 0 1 -95 -24"></path>
+            </g>
+          </svg>
+        </div>
+        <h1 class="sub-title chrome" id="sub-name"></h1>
+        <p class="sub-about" id="sub-about"></p>
+        <p class="sub-meta"><span class="sub-by" id="sub-by"></span><span class="sub-status kicker" id="sub-status"></span></p>
+      </header>
+
+      <section class="talk" id="chat" aria-label="Chat" hidden>
+        <ul class="starters" id="starters" aria-label="Suggestions"></ul>
+        <ol class="talk-log" id="chat-log" aria-live="polite" aria-label="Conversation"></ol>
+        <p class="talk-typing" id="chat-typing" hidden><span class="talk-typing-name" id="chat-typing-name"></span> <span id="chat-typing-text"></span><span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></p>
+        <p class="talk-notice" id="chat-notice" role="status" hidden></p>
+        <form class="talk-form corners" id="chat-form">
+          <label class="visually-hidden" for="chat-input">Your message</label>
+          <textarea id="chat-input" name="text" rows="3" maxlength="2000" autocomplete="off" placeholder="Message…"></textarea>
+          <div class="talk-bar">
+            <p class="talk-keys"><kbd>enter</kbd> send · <kbd>shift</kbd>+<kbd>enter</kbd> newline</p>
+            <span class="talk-count" id="chat-count">0 / 2,000</span>
+            <button class="button button-primary" id="chat-send" type="submit">Send</button>
+          </div>
+        </form>
+        <div class="talk-foot">
+          <p class="talk-privacy">Visitor chats pass through the universe and cost the owner’s model key. Don’t share secrets.</p>
+          <button class="chip" id="chat-new" type="button" hidden>New chat</button>
+        </div>
+      </section>
+      <p class="no-chat" id="no-chat" hidden></p>
+
+      <details class="sub-details corners">
+        <summary id="sub-details-title">About</summary>
+        <dl class="facts" id="sub-facts"></dl>
+        <p class="sub-details-note">A sub-tau answers visitors with its own persona and its tau’s public note. It never sees its owner’s profile, has no tools and can approve nothing. The universe relays the chat, so it is not end-to-end private.</p>
+      </details>
+    </article>
+
+    <p class="back-link"><a href="/universe">← The tau universe</a></p>
+  </main>
+
+  <footer class="site-footer">
+    <img class="footer-coin" src="/brand/tau-coin-red.svg" width="18" height="18" alt="">
+    <nav aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="/how-it-works">How it works</a>
+      <a href="/universe">Universe</a>
+      <a href="https://docs.tau.getporti.com/">Docs</a>
+    </nav>
+    <p>tau is in early development. The source code will be published.</p>
+  </footer>
+</body>
+</html>

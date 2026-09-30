@@ -47,6 +47,7 @@ The hub listens on `127.0.0.1:<control_port>` only (default 7877; `TAU_HUB_PORT`
 |---|---|
 | `GET /health` | `{"ok": true, "pid": …, "uptime_s": …}` |
 | `GET /status` | role, profile, version, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`, `approvals_pending`, `nodes`, plus keys that hub services add |
+| `GET /spend` | every model role's spend in its budget period next to its cap, read from the local spend ledger (`TAU_DATA_DIR/spend.sqlite3`) on each request (the `spend` hub service; `/status` carries the same object under `spend`); see [Models and budgets](models-and-budgets.md) |
 
 A request with a non-loopback `Host` header gets 403, so the API cannot be reached through a tunnel or a proxy by accident. `tau doctor` and `/status` in a session probe `/health` with a one-second timeout, for information only.
 

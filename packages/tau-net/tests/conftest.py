@@ -12,9 +12,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from net_helpers import ALICE, BOB, Pair, connect, make_tau  # noqa: E402
+from net_helpers import ALICE, BOB, UNIVERSE, Pair, connect, make_tau  # noqa: E402
 from tau_net import tools  # noqa: E402
-from tau_net.testing import FakeNetwork  # noqa: E402
+from tau_net.testing import FakeNetwork, FakeUniverse  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +38,12 @@ def no_active_node() -> Iterator[None]:
 @pytest.fixture
 def network() -> FakeNetwork:
     return FakeNetwork()
+
+
+@pytest.fixture
+def universe(network: FakeNetwork) -> FakeUniverse:
+    """A universe at ``UNIVERSE`` on the test network."""
+    return network.add(FakeUniverse(UNIVERSE))
 
 
 @pytest.fixture

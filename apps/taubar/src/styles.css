@@ -1,22 +1,47 @@
 /* TauBar settings window. Palette and state colours from docs/brand/README.md:
-   ok = Flare, error = Signal, pending = Core at 55 %, attention = Flare; no green or red. */
+   ok = Flare, error = Signal, pending = Core at 55 %, attention = Flare; no green or red.
+   On light backgrounds the brand goes flat: Ink for text and the mark, Ember only as a fill. */
 
 :root {
-  --void: #05071a;
-  --void-2: #12061a;
-  --panel: #0c0e26;
+  --bg: #05071a;
+  --bg-2: #12061a;
+  --surface: #0c0e26;
+  --field: #05071a;
   --line: #24223d;
-  --signal: #ff2e63;
-  --ember: #ff7a3d;
-  --flare: #ffb25c;
-  --core: #fff4e0;
+  --text: #fff4e0;
   --muted: rgba(255, 244, 224, 0.55);
-  color-scheme: dark;
+  /* Headings, the ok and attention states (Flare on dark). */
+  --accent-text: #ffb25c;
+  /* Fills, borders, focus rings, the mark (Ember). */
+  --accent: #ff7a3d;
+  --on-accent: #05071a;
+  --active: rgba(255, 122, 61, 0.08);
+  --error: #ff2e63;
+  --error-text: #ff2e63;
+  --mark: #ff7a3d;
+  color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   font-size: 13px;
   line-height: 1.45;
-  color: var(--core);
-  background: var(--void);
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #faf7f2;
+    --bg-2: #f2ece3;
+    --surface: #ffffff;
+    --field: #fbf9f6;
+    --line: #e4ddd2;
+    --text: #14060d;
+    --muted: rgba(20, 6, 13, 0.6);
+    --accent-text: #14060d;
+    --on-accent: #14060d;
+    --active: rgba(255, 122, 61, 0.12);
+    --error-text: #14060d;
+    --mark: #14060d;
+  }
 }
 
 * {
@@ -25,7 +50,7 @@
 
 body {
   margin: 0;
-  background: linear-gradient(180deg, var(--void), var(--void-2));
+  background: linear-gradient(180deg, var(--bg), var(--bg-2));
   min-height: 100vh;
 }
 
@@ -45,7 +70,7 @@ body {
 .mark {
   width: 40px;
   height: 40px;
-  color: var(--ember);
+  color: var(--mark);
   flex: none;
 }
 
@@ -67,11 +92,11 @@ h2 {
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--flare);
+  color: var(--accent-text);
 }
 
 section {
-  background: var(--panel);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 14px 16px;
@@ -107,11 +132,11 @@ p {
 }
 
 .status.ok {
-  color: var(--flare);
+  color: var(--accent-text);
 }
 
 .status.attention {
-  color: var(--flare);
+  color: var(--accent-text);
 }
 
 .status.pending {
@@ -120,7 +145,8 @@ p {
 
 .status.error,
 .banner.error {
-  color: var(--signal);
+  color: var(--error-text);
+  border-color: var(--error);
 }
 
 .banner {
@@ -148,8 +174,8 @@ p {
 }
 
 .choice.active {
-  border-color: var(--ember);
-  background: rgba(255, 122, 61, 0.08);
+  border-color: var(--accent);
+  background: var(--active);
 }
 
 .choice.disabled {
@@ -159,7 +185,7 @@ p {
 
 .choice input {
   margin-top: 3px;
-  accent-color: var(--ember);
+  accent-color: var(--accent);
 }
 
 .choice span {
@@ -169,7 +195,7 @@ p {
 
 .choice em {
   font-style: normal;
-  color: var(--flare);
+  color: var(--accent-text);
 }
 
 .choice small {
@@ -186,7 +212,7 @@ p {
 }
 
 .check input {
-  accent-color: var(--ember);
+  accent-color: var(--accent);
 }
 
 label.field {
@@ -205,8 +231,8 @@ input[type="number"],
 textarea {
   width: 100%;
   font: 12px ui-monospace, "SF Mono", Menlo, monospace;
-  color: var(--core);
-  background: var(--void);
+  color: var(--text);
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 6px 8px;
@@ -215,13 +241,13 @@ textarea {
 input:focus,
 textarea:focus,
 button:focus-visible {
-  outline: 2px solid var(--ember);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
 button {
   font: inherit;
-  color: var(--core);
+  color: var(--text);
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -230,13 +256,13 @@ button {
 }
 
 button:hover {
-  border-color: var(--ember);
+  border-color: var(--accent);
 }
 
 button.primary {
-  background: var(--ember);
-  border-color: var(--ember);
-  color: var(--void);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -263,7 +289,7 @@ pre.code {
   max-height: 220px;
   overflow: auto;
   font-size: 11px;
-  background: var(--void);
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: 6px;
   white-space: pre-wrap;
@@ -276,7 +302,7 @@ pre.code {
 
 details summary {
   cursor: pointer;
-  color: var(--flare);
+  color: var(--accent-text);
   margin: 4px 0 6px;
 }
 

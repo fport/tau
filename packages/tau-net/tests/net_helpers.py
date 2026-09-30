@@ -23,6 +23,8 @@ from tau_net.testing import DEFAULT_HUB_TOKEN, FakeNetwork, FakeSpine
 
 ALICE = "alice.example"
 BOB = "bob.example"
+UNIVERSE = "universe.example"
+"""The host of the test universe (a :class:`tau_net.testing.FakeUniverse`)."""
 USER_SECRET = "PRIVATE-USER-FACT: the owner's door code is 4711."
 """Written into every test tau's persona/user.md; a network turn must never show it."""
 
@@ -133,3 +135,16 @@ def connect(a: Tau, b: Tau) -> tuple[NetNode, NetNode]:
     b_node.accept(a.address)
     poll(a_node)
     return a_node, b_node
+
+
+def universe_tau(root: Path, network: FakeNetwork, address: str, **kwargs: Any) -> Tau:
+    """A tau whose ``[component.net] universe`` is the test universe."""
+    component = {"universe": UNIVERSE, **kwargs.pop("component", {})}
+    return make_tau(root, network, address, component=component, **kwargs)
+
+
+def published(tau: Tau) -> NetNode:
+    """A node of ``tau`` whose card is on its spine (a universe fetches it)."""
+    node = tau.node()
+    node.publish_card()
+    return node

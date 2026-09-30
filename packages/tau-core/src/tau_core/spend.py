@@ -1,335 +1,280 @@
-"""Spend per model role, read from the LiteLLM proxy (roadmap 011, ADR 0009).
+"""Spend per model role: the ledger on the hub and every place that reads it (ADR 0011).
 
-Every ``proxy`` role calls with its own virtual key, and the proxy keeps that key's spend for
-the current budget period. :class:`SpendTracker` reads it with the key itself
-(``GET /key/info``, no master key) and caches it; every proxied answer also carries the key's
-spend in a header, which :func:`note_spend` feeds in, so the numbers stay fresh without
-polling.
+Every answer of a role with a budget is priced (:mod:`tau_core.prices`) and recorded in a small
+SQLite ledger under ``TAU_DATA_DIR`` (``spend.sqlite3``): time, role, provider, model id,
+token counts and dollars, never any text. Every process on the hub (``tau chat``, the TUI, the
+hub itself) writes to and reads from the same file, so a budget counts every call, whichever
+channel made it.
 
-Three consumers read the same cache:
+Budgets run per calendar period in tau's time zone (Europe/Istanbul): a ``day`` resets at
+midnight, a ``week`` on Monday, a ``month`` on the 1st.
 
-- the ``budget`` context source (``tau.context``) puts one line under ``## Now`` before every
-  model call; it never waits on the network (a stale cache refreshes in a background thread);
-- the ``spend`` hub service adds ``GET /spend`` to the control API and a ``spend`` key to
-  ``GET /status``;
-- ``/status`` in the channels and ``tau proxy spend``.
+The readers:
 
-A role that is not behind the proxy has no key and so no spend here: direct providers are not
-metered by tau (ADR 0009).
+- :class:`tau_core.budget.RoleModel` checks a role's period spend before every call;
+- the ``budget`` context source (``tau.context``) puts one line under ``## Now``;
+- the ``spend`` hub service adds ``GET /spend`` and a ``spend`` key in ``GET /status``;
+- ``/status`` in the channels and ``tau spend``.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-import threading
+import sqlite3
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from tau_core.config import Config, RoleConfig
-from tau_core.models import proxy_key_env, proxy_url
+import click
+
+from tau_core.cli import help_option
+from tau_core.config import Config, ConfigError
 
 if TYPE_CHECKING:
     from tau_core.hub.control import ControlRequest
     from tau_core.hub.daemon import Hub
 
 __all__ = [
+    "LEDGER_FILE",
+    "Ledger",
     "RoleSpend",
     "SpendService",
-    "SpendTracker",
     "context_source",
     "describe",
-    "forget_trackers",
+    "ledger_for",
     "make_service",
-    "note_spend",
-    "proxy_roles",
-    "tracker_for",
+    "period_bounds",
+    "spend_command",
+    "spend_report",
 ]
 
 logger = logging.getLogger(__name__)
 
-REFRESH_SECONDS = 60.0
-"""How old the cache may get before a read triggers a refresh in the background."""
+LEDGER_FILE = "spend.sqlite3"
+DEFAULT_PERIOD = "month"
+"""The period a role without a budget is reported for."""
 
-KeyInfoFetcher = Callable[[str, str], dict]
-"""``(base_url, api_key) → the key's /key/info record``; raises ``OSError``/``ValueError``."""
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS calls (
+    id INTEGER PRIMARY KEY,
+    at REAL NOT NULL,
+    role TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd REAL,
+    priced INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS calls_role_at ON calls (role, at);
+"""
 
 
-def _fetch(base_url: str, api_key: str) -> dict:
-    from tau_core.proxy import fetch_key_info
+class Ledger:
+    """The spend ledger: one row per priced model call. Safe across processes (SQLite, WAL)."""
 
-    return fetch_key_info(base_url, api_key)
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+
+    def _connect(self) -> sqlite3.Connection:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        new = not self.path.exists()
+        connection = sqlite3.connect(self.path, timeout=5.0)
+        if new:
+            try:
+                os.chmod(self.path, 0o600)
+            except OSError:  # pragma: no cover - a filesystem without modes
+                logger.warning("could not make %s private", self.path)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.executescript(_SCHEMA)
+        return connection
+
+    def record(
+        self,
+        *,
+        role: str,
+        provider: str,
+        model_id: str,
+        usage: Mapping[str, Any],
+        cost_usd: float | None,
+        at: float | None = None,
+    ) -> None:
+        """Add one call; ``cost_usd=None`` marks a call on an unpriced model."""
+        row = (
+            time.time() if at is None else at,
+            role,
+            provider,
+            model_id,
+            int(usage.get("inputTokens") or 0),
+            int(usage.get("outputTokens") or 0),
+            int(usage.get("cacheReadInputTokens") or 0),
+            int(usage.get("cacheWriteInputTokens") or 0),
+            cost_usd,
+            int(cost_usd is not None),
+        )
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO calls (at, role, provider, model_id, input_tokens, output_tokens, "
+                "cache_read_tokens, cache_write_tokens, cost_usd, priced) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                row,
+            )
+
+    def spent(self, role: str, since: datetime) -> float:
+        """Dollars ``role`` spent from ``since`` on (unpriced calls count as 0). Reading never
+        creates the ledger: before the first call there is nothing to count."""
+        if not self.path.exists():
+            return 0.0
+        with self._connect() as connection:
+            (total,) = connection.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0) FROM calls WHERE role = ? AND at >= ?",
+                (role, since.timestamp()),
+            ).fetchone()
+        return float(total)
+
+    def unpriced(self, role: str, since: datetime) -> int:
+        """How many of ``role``'s calls since ``since`` had no price."""
+        if not self.path.exists():
+            return 0
+        with self._connect() as connection:
+            (count,) = connection.execute(
+                "SELECT COUNT(*) FROM calls WHERE role = ? AND at >= ? AND priced = 0",
+                (role, since.timestamp()),
+            ).fetchone()
+        return int(count)
 
 
-def proxy_roles(config: Config) -> dict[str, RoleConfig]:
-    """``{role: RoleConfig}`` for the roles served through the proxy, in ``tau.toml`` order."""
-    return {name: role for name, role in config.roles.items() if role.provider == "proxy"}
+def ledger_for(config: Config) -> Ledger:
+    """The ledger of this configuration's data directory."""
+    return Ledger(config.data_dir / LEDGER_FILE)
+
+
+def period_bounds(period: str, now: datetime | None = None) -> tuple[datetime, datetime]:
+    """``(start, reset)`` of the calendar ``period`` (day, week, month) around ``now``, in
+    tau's time zone."""
+    from tau_core.persona import TIMEZONE
+
+    local = (now or datetime.now(UTC)).astimezone(TIMEZONE)
+    day = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "day":
+        start = day
+        reset = (day + timedelta(days=1, hours=12)).replace(hour=0)
+    elif period == "week":
+        start = day - timedelta(days=day.weekday())
+        reset = (start + timedelta(days=7, hours=12)).replace(hour=0)
+    elif period == "month":
+        start = day.replace(day=1)
+        reset = (start + timedelta(days=32)).replace(day=1)
+    else:
+        raise ConfigError(f"unknown budget period {period!r}")
+    return start, reset
 
 
 @dataclass(frozen=True)
 class RoleSpend:
-    """What the proxy says about one role's key, next to what ``tau.toml`` asks for.
-
-    ``spend``/``max_budget``/``period``/``reset_at`` come from the proxy (``None`` until read);
-    ``usd``/``configured_period``/``degrade_to`` from the role's ``budget`` table. ``error`` is
-    why the last read failed.
-    """
+    """One role's spend in its period, next to its budget."""
 
     role: str
-    group: str
-    spend: float | None = None
-    max_budget: float | None = None
-    period: str | None = None
-    reset_at: datetime | None = None
-    usd: float | None = None
-    configured_period: str | None = None
+    provider: str
+    model_id: str
+    spent: float
+    period: str
+    since: datetime
+    reset_at: datetime
+    cap: float | None = None
     degrade_to: str | None = None
-    error: str | None = None
-
-    @property
-    def known(self) -> bool:
-        return self.spend is not None
+    unpriced_calls: int = 0
+    metered: bool = True
+    """Are this role's calls recorded (it has a budget or a failover)?"""
 
     @property
     def exhausted(self) -> bool:
-        return (
-            self.spend is not None and self.max_budget is not None and self.spend >= self.max_budget
-        )
-
-    @property
-    def drifted(self) -> bool:
-        """Does the key's cap differ from ``tau.toml`` (``tau proxy keys`` not run since)?"""
-        if not self.known:
-            return False
-        if self.usd is None:
-            return self.max_budget is not None
-        return (
-            self.max_budget is None
-            or abs(self.max_budget - self.usd) > 1e-9
-            or self.period != self.configured_period
-        )
+        return self.cap is not None and self.spent >= self.cap
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "group": self.group,
-            "spend_usd": self.spend,
-            "max_budget_usd": self.max_budget,
+            "provider": self.provider,
+            "model_id": self.model_id,
+            "spent_usd": round(self.spent, 6),
+            "cap_usd": self.cap,
             "period": self.period,
-            "reset_at": self.reset_at.isoformat() if self.reset_at else None,
+            "since": self.since.isoformat(),
+            "reset_at": self.reset_at.isoformat(),
             "exhausted": self.exhausted,
-            "configured": {
-                "usd": self.usd,
-                "period": self.configured_period,
-                "degrade_to": self.degrade_to,
-            },
-            "error": self.error,
+            "degrade_to": self.degrade_to,
+            "unpriced_calls": self.unpriced_calls,
+            "metered": self.metered,
         }
 
 
-def _blank(role: str, cfg: RoleConfig) -> RoleSpend:
-    budget = cfg.budget
-    return RoleSpend(
-        role=role,
-        group=cfg.model_id,
-        usd=budget.usd if budget else None,
-        configured_period=budget.period if budget else None,
-        degrade_to=budget.degrade_to if budget else None,
-    )
+def spend_report(
+    config: Config, *, now: datetime | None = None, ledger: Ledger | None = None
+) -> dict[str, RoleSpend]:
+    """Every role's spend in its budget period (a role without a budget: this month)."""
+    ledger = ledger or ledger_for(config)
+    report: dict[str, RoleSpend] = {}
+    for name, role in config.roles.items():
+        period = role.budget.period if role.budget else DEFAULT_PERIOD
+        since, reset = period_bounds(period, now)
+        report[name] = RoleSpend(
+            role=name,
+            provider=role.provider,
+            model_id=role.model_id,
+            spent=ledger.spent(name, since),
+            period=period,
+            since=since,
+            reset_at=reset,
+            cap=role.budget.usd if role.budget else None,
+            degrade_to=role.budget.degrade_to if role.budget else None,
+            unpriced_calls=ledger.unpriced(name, since),
+            metered=role.budget is not None or role.failover is not None,
+        )
+    return report
 
 
-def _from_info(blank: RoleSpend, info: Mapping[str, Any]) -> RoleSpend:
-    from tau_core.proxy import parse_timestamp
-
-    def number(raw: Any) -> float | None:
-        if raw is None or isinstance(raw, bool):
-            return None
-        try:
-            return float(raw)
-        except (TypeError, ValueError):
-            return None
-
-    period = info.get("budget_duration")
-    return replace(
-        blank,
-        spend=number(info.get("spend")) or 0.0,
-        max_budget=number(info.get("max_budget")),
-        period=period if isinstance(period, str) else None,
-        reset_at=parse_timestamp(info.get("budget_reset_at")),
-        error=None,
-    )
-
-
-class SpendTracker:
-    """The cached spend of every proxy role of one configuration.
-
-    :meth:`snapshot` never blocks: it returns the cache and, when it is older than ``ttl``,
-    starts one background refresh. :meth:`refresh` reads every key now (for the CLI and the
-    control API, which may wait a few seconds).
-    """
-
-    def __init__(
-        self,
-        config: Config,
-        env: Mapping[str, str] | None = None,
-        *,
-        ttl: float = REFRESH_SECONDS,
-        fetch: KeyInfoFetcher | None = None,
-        clock: Callable[[], float] = time.monotonic,
-    ) -> None:
-        self._env = os.environ if env is None else env
-        self._roles = proxy_roles(config)
-        first = next(iter(self._roles.values()), None)
-        self.url = proxy_url(first, self._env)
-        self._ttl = ttl
-        self._fetch = fetch or _fetch
-        self._clock = clock
-        self._lock = threading.Lock()
-        self._cache: dict[str, RoleSpend] = {
-            name: _blank(name, cfg) for name, cfg in self._roles.items()
-        }
-        self._fetched_at: float | None = None
-        self._refreshing = False
-
-    @property
-    def roles(self) -> list[str]:
-        return list(self._roles)
-
-    def snapshot(self) -> dict[str, RoleSpend]:
-        """The cached values; a stale cache refreshes in the background, never inline."""
-        with self._lock:
-            stale = self._fetched_at is None or self._clock() - self._fetched_at >= self._ttl
-            start = bool(self._roles) and stale and not self._refreshing
-            if start:
-                self._refreshing = True
-            cache = dict(self._cache)
-        if start:
-            threading.Thread(target=self._refresh_quietly, name="tau-spend", daemon=True).start()
-        return cache
-
-    def refresh(self) -> dict[str, RoleSpend]:
-        """Read every role's key from the proxy now and return the new values."""
-        fresh: dict[str, RoleSpend] = {}
-        for name, cfg in self._roles.items():
-            blank = _blank(name, cfg)
-            key = self._env.get(proxy_key_env(cfg))
-            if not key:
-                fresh[name] = replace(blank, error=f"{proxy_key_env(cfg)} is not set")
-                continue
-            try:
-                info = self._fetch(proxy_url(cfg, self._env), key)
-            except (OSError, ValueError) as exc:
-                fresh[name] = replace(blank, error=str(exc) or type(exc).__name__)
-                continue
-            fresh[name] = _from_info(blank, info)
-        with self._lock:
-            for name, value in fresh.items():
-                if value.error is not None and self._cache[name].known:
-                    # Keep the last good numbers; only record why this read failed.
-                    value = replace(self._cache[name], error=value.error)
-                self._cache[name] = value
-            self._fetched_at = self._clock()
-            return dict(self._cache)
-
-    def note(self, group: str, spend: float) -> None:
-        """A proxied answer reported ``spend`` for model group ``group``'s key."""
-        with self._lock:
-            for name, cfg in self._roles.items():
-                if cfg.model_id == group and self._cache[name].known:
-                    self._cache[name] = replace(self._cache[name], spend=spend)
-
-    def _refresh_quietly(self) -> None:
-        try:
-            self.refresh()
-        except Exception:
-            logger.exception("reading the proxy spend failed")
-        finally:
-            with self._lock:
-                self._refreshing = False
-
-
-_trackers: dict[tuple, SpendTracker] = {}
-_trackers_lock = threading.Lock()
-
-
-def _tracker_key(config: Config, env: Mapping[str, str]) -> tuple:
-    roles = proxy_roles(config)
-    return tuple(
-        (name, cfg.model_id, proxy_url(cfg, env), proxy_key_env(cfg), cfg.budget)
-        for name, cfg in roles.items()
-    )
-
-
-def tracker_for(config: Config, env: Mapping[str, str] | None = None) -> SpendTracker:
-    """The process-wide tracker of this configuration's proxy roles (one per distinct set of
-    roles, URLs and key names), so every channel and the hub read one cache."""
-    env = os.environ if env is None else env
-    key = _tracker_key(config, env)
-    with _trackers_lock:
-        tracker = _trackers.get(key)
-        if tracker is None:
-            tracker = _trackers[key] = SpendTracker(config, env)
-        return tracker
-
-
-def forget_trackers() -> None:
-    """Drop every shared tracker (tests; a process that reloads its configuration)."""
-    with _trackers_lock:
-        _trackers.clear()
-
-
-def note_spend(url: str, group: str, spend: float) -> None:
-    """Feed a key's spend from a proxy response header into every tracker for ``url``."""
-    with _trackers_lock:
-        trackers = list(_trackers.values())
-    for tracker in trackers:
-        if tracker.url == url.rstrip("/"):
-            tracker.note(group, spend)
-
-
-def _reset_text(reset_at: datetime | None) -> str:
-    if reset_at is None:
-        return "?"
-    from tau_core.persona import TIMEZONE
-
-    return f"{reset_at.astimezone(TIMEZONE):%d.%m.%Y %H:%M}"
+_PERIOD_WORDS = {"day": "today", "week": "this week", "month": "this month"}
 
 
 def describe(spends: Mapping[str, RoleSpend]) -> str | None:
-    """One English line for the model and the logs, ``None`` when nothing is known yet:
-    ``brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00); fast $1.00 of $1.00 per 1d,
-    spent, degrades to local (resets ...)``."""
+    """One English line for the model and the logs, ``None`` when there is nothing to say:
+    ``brain $0.42 of $15.00 this month (resets 01.10.2026 00:00); fast $1.00 of $1.00 today,
+    spent (resets …)``. Roles without a budget appear only once they spent something."""
+    from tau_core.persona import TIMEZONE
+
     parts = []
     for spend in spends.values():
-        if not spend.known:
+        if spend.cap is None and spend.spent <= 0:
             continue
-        text = f"{spend.role} ${spend.spend:.2f}"
-        if spend.max_budget is not None:
-            text += f" of ${spend.max_budget:.2f}"
-            if spend.period:
-                text += f" per {spend.period}"
-        else:
-            text += " (no cap)"
+        text = f"{spend.role} ${spend.spent:.2f}"
+        if spend.cap is not None:
+            text += f" of ${spend.cap:.2f}"
+        text += f" {_PERIOD_WORDS.get(spend.period, spend.period)}"
         if spend.exhausted:
             text += ", spent"
             if spend.degrade_to:
                 text += f", {spend.degrade_to} answers instead"
-        if spend.max_budget is not None:
-            text += f" (resets {_reset_text(spend.reset_at)})"
+        if spend.cap is not None:
+            text += f" (resets {spend.reset_at.astimezone(TIMEZONE):%d.%m.%Y %H:%M})"
         parts.append(text)
     return "; ".join(parts) or None
 
 
 def context_source(config: Config) -> Callable[[], dict[str, Any]]:
-    """The ``tau.context`` factory: ``{"budget": describe(...)}`` from the cached spend."""
-    if not proxy_roles(config):
+    """The ``tau.context`` factory: ``{"budget": describe(...)}``, read from the local ledger
+    before every model call (one indexed SQLite query per role, no network). Without any
+    budget in tau.toml it says nothing, and the line reads ``unknown``."""
+    if not any(role.budget for role in config.roles.values()):
         return lambda: {}
-    tracker = tracker_for(config)
 
     def source() -> dict[str, Any]:
-        return {"budget": describe(tracker.snapshot())}
+        return {"budget": describe(spend_report(config))}
 
     return source
 
@@ -341,26 +286,21 @@ class SpendService:
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.tracker = tracker_for(config)
 
-    def payload(self, spends: Mapping[str, RoleSpend]) -> dict[str, Any]:
-        return {
-            "proxy": self.tracker.url if self.tracker.roles else None,
-            "roles": {name: spend.to_json() for name, spend in spends.items()},
-        }
+    def payload(self) -> dict[str, Any]:
+        return {"roles": {name: s.to_json() for name, s in spend_report(self.config).items()}}
 
     def status(self) -> dict[str, Any]:
-        return {self.name: self.payload(self.tracker.snapshot())}
+        return {self.name: self.payload()}
 
     def handle_spend(self, request: ControlRequest) -> tuple[int, Any]:
-        return 200, self.payload(self.tracker.refresh())
+        return 200, self.payload()
 
     async def start(self, hub: Hub) -> None:
         hub.add_status_source(self.status)
         api = hub.find_service("control-api")
         if api is not None:
             api.add_route("GET", "/spend", self.handle_spend)  # type: ignore[attr-defined]
-        self.tracker.snapshot()  # first read in the background
 
     async def stop(self) -> None:
         return None
@@ -369,3 +309,48 @@ class SpendService:
 def make_service(config: Config) -> SpendService:
     """The ``tau.hub_services`` factory."""
     return SpendService(config)
+
+
+def spend_line(spend: RoleSpend) -> str:
+    """One ``tau spend`` line."""
+    from tau_core.persona import TIMEZONE
+
+    if not spend.metered:
+        return f"  {spend.role:<8} {spend.provider:<9} no budget (its calls are not counted)"
+    line = f"  {spend.role:<8} {spend.provider:<9} ${spend.spent:.2f}"
+    if spend.cap is not None:
+        line += f" of ${spend.cap:.2f}"
+    line += f" {_PERIOD_WORDS.get(spend.period, spend.period)}"
+    if spend.cap is None:
+        line += ", no budget"
+    if spend.cap is not None:
+        line += f", resets {spend.reset_at.astimezone(TIMEZONE):%d.%m.%Y %H:%M}"
+    if spend.exhausted:
+        line += " · SPENT" + (f", {spend.degrade_to} answers instead" if spend.degrade_to else "")
+    if spend.unpriced_calls:
+        line += f" · {spend.unpriced_calls} calls without a price for {spend.model_id}"
+    return line
+
+
+@click.command(
+    name="spend",
+    help="Show what every model role spent in its budget period (from the ledger under "
+    "TAU_DATA_DIR) next to its budget in tau.toml.",
+    short_help="Show the spend per model role.",
+)
+@help_option()
+@click.option("--json", "as_json", is_flag=True, help="Print the spend as JSON.")
+@click.pass_context
+def spend_command(ctx: click.Context, as_json: bool) -> None:
+    obj = ctx.find_object(dict) or {}
+    try:
+        config = Config.load(obj.get("home"))
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+    report = spend_report(config)
+    if as_json:
+        payload = {name: value.to_json() for name, value in report.items()}
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    for value in report.values():
+        click.echo(spend_line(value))

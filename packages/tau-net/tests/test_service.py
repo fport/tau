@@ -131,6 +131,21 @@ def test_handle_then_ack_then_cursor(pair_factory) -> None:
     assert (pair.b.net_dir / "cursor").read_text() == f"{seq}\n"
 
 
+def test_a_cursor_from_another_spine_skips_nothing(pair_factory) -> None:
+    # A hub moved to a fresh spine (seq starts at 1 again) keeps its old cursor on disk; the
+    # poll must not use it as `after`, or the new spine's mail would be skipped.
+    pair: Pair = pair_factory(replies=["Friday works."])
+    pair.b_node.store.save_cursor(500)
+    pair.a_node.send(BOB, "When is Bob free?")
+
+    async def body(run: Run) -> None:
+        await run.until(lambda: pair.b.spine.pending() == [])
+
+    serve(pair.b, body)
+    assert pair.b.spine.acked and max(pair.b.spine.acked) < 500
+    assert any(entry["direction"] == "in" for entry in pair.b_node.store.log())
+
+
 def test_network_errors_back_off_up_to_a_minute(tmp_path: Path, network) -> None:
     tau = make_tau(tmp_path, network, ALICE)
     network.down.add(ALICE)

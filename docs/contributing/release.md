@@ -109,14 +109,17 @@ project:
     | Workflow name | `release.yml` |
     | Environment name | `pypi` |
 
-3. Repeat with the project name `tau-tui` and the environment name `pypi-tui`, then with
-   `tau-guard` and `pypi-guard`. PyPI accepts only one pending publisher per (repository,
-   workflow, environment) tuple, so each package publishes from its own GitHub environment;
-   the workflow's matrix already maps `tau-core → pypi`, `tau-tui → pypi-tui` and
-   `tau-guard → pypi-guard`.
-4. On GitHub, **Settings → Environments → New environment** → `pypi`, `pypi-tui` and
-   `pypi-guard` (or `gh api -X PUT repos/fport/tau/environments/pypi` and the same for the
-   others).
+3. Repeat with the project name `tau-tui` and the environment name `pypi-tui`, `tau-guard`
+   and `pypi-guard`, `tau-net` and `pypi-net`, and `tau-cloud` and `pypi-cloud`. PyPI accepts
+   only one pending publisher per (repository, workflow, environment) tuple, so each package
+   publishes from its own GitHub environment; the workflow already maps `tau-core → pypi`,
+   `tau-tui → pypi-tui`, `tau-guard → pypi-guard`, `tau-net → pypi-net` and
+   `tau-cloud → pypi-cloud`. tau-net and tau-cloud keep their own version (0.1.0 at first) and
+   are uploaded on every tag with `skip-existing`, so an unchanged version is a no-op: bump
+   them when they change.
+4. On GitHub, **Settings → Environments → New environment** → `pypi`, `pypi-tui`,
+   `pypi-guard`, `pypi-net` and `pypi-cloud` (or
+   `gh api -X PUT repos/fport/tau/environments/pypi` and the same for the others).
    Optional: add yourself as a required reviewer, so every tag waits for a click before
    anything is uploaded. The first run creates a missing environment; the reviewer rule is
    the reason to create it by hand.

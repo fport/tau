@@ -1,0 +1,12 @@
+# Your own configuration, written by `pnpm run configure`.
+wrangler.jsonc
+wrangler.jsonc.bak
+# Local values and secrets for `wrangler dev`.
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+# Build output: the bundled scripts and the copied styles (`pnpm run build`).
+public/app/
+# Local state of `wrangler dev` (the Durable Objects' SQLite) and dependencies.
+.wrangler/
+node_modules/

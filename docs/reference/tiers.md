@@ -58,7 +58,8 @@ A channel implements `Approver` (a `name` and `async decide(request) -> Decision
 | `TuiApprover` | `tau tui` | `y`/`e` or the **Approve** button, after the arming delay | none by default |
 | `AutoRejectApprover` | the default when a channel passes none | never | – |
 | `ScriptedApprover` | tests only | a scripted list of decisions | – |
-| Telegram buttons, TauBar, web UI | planned (issues 017, 025, 074) | a button from an allowlisted chat or an enrolled device | yes, as rejected |
+| `TelegramApprover` | Telegram | the **Approve** inline button, pressed in an allowlisted chat | `approval_timeout_seconds`, then rejected |
+| TauBar, web UI | planned (issues 025, 074) | a button on an enrolled device | yes, as rejected |
 
 The terminal prompt:
 

@@ -38,17 +38,21 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Envelope** — one message between taus: signed by the sender, sealed end to end to the recipient's box key. Kinds: `contact_request`, `contact_accept`, `message`.
 - **Contact** — another tau the owner accepted; only contacts reach the model. States: `pending_in`, `pending_out`, `accepted`, `blocked`. Keys are pinned on acceptance.
 - **Mailbox** — the spine's store-and-forward queue of envelopes waiting for the hub; an envelope is deleted once the hub acknowledges it.
+- **Universe** — an opt-in public directory of taus, at `tau.<domain>/universe` by default: a tau joins with `tau net universe join`, reports its links every hour and leaves with `tau net universe leave`. A link between two taus shows only when both report it; only counts are published, never contents ([ADR 0010](docs/adr/0010-public-site-and-tau-universe.md)). *Avoid: social network, registry.*
+- **Public site** — `tau.<domain>`, served by the `tau-universe` Worker (`cloud/universe`): the landing page and the universe. It holds nothing private.
+- **Spine kit** — the spine Worker bundled inside `tau-net`; `tau net spine init|deploy` sets up a spine without the repository.
 - **Network turn** — a turn the hub runs for a message from a contact: its own session per contact, `persona.md` plus the owner's **public note** (`persona/net.md`) instead of `user.md`, no tools, no approvals, the text framed as untrusted, auto-replies bounded by `hops` and an hourly cap.
+- **Sub-tau** — a named specialist of a tau (`/coach`), defined in `persona/subs/<name>.md`: its own persona, about line, model role, tool allowlist and sessions, sharing the tau's hub, identity, spine and address ([ADR 0012](docs/adr/0012-sub-taus.md)). *Avoid: sub-agent, bot.*
+- **Public sub-tau** — a sub-tau with `public = true`: contacts reach it as `<address>/<name>` (the `sub` field of a `message`), it answers with its own network turn (its persona and its own public note, never `user.md`) and the universe shows it inside its owner's hull. A private sub-tau never leaves the hub.
 
 ## Models and cost
 
 - **Role** — `brain` (conversation, planning), `fast` (triage, summaries), `local` (Ollama on the Mac). Code asks for a role, never for a concrete model id.
-- **Proxy** — the LiteLLM proxy container (`infra/litellm`) that maps each role, as a *model group*, to a model, falls back between groups and enforces budgets. A role on it has `provider = "proxy"`; the other providers are *direct*.
-- **Virtual key** — a role's own key on the proxy (`TAU_PROXY_KEY_<GROUP>`, written by `tau proxy keys`); it carries the role's budget and its spend.
-- **Budget** — hard spend cap on a role's virtual key for a period (`usd` per `period`, e.g. $15 per `1mo`), set in `tau.toml` and applied by `tau proxy keys`. Distinct from the per-turn token limit `max_total_tokens`.
-- **Spend** — what a role's key spent in its current budget period, as the proxy counts it; shown under `## Now`, in `/status` and by the hub's `GET /spend`.
+- **Budget** — a hard spend cap on a role per calendar period (`usd` per `day`, `week` or `month`, Europe/Istanbul), set in `tau.toml` and enforced by tau itself (ADR 0011). Distinct from the per-turn token limit `max_total_tokens`.
+- **Spend** — what a role spent in its current budget period: every answer's token usage priced (`prices.toml`, `[models.prices]`) and recorded in the **ledger** (`TAU_DATA_DIR/spend.sqlite3`; tokens and dollars, never text). Shown under `## Now`, in `/status`, by `GET /spend` and by `tau spend`.
 - **Degrade** — a spent role handing its calls to its `budget.degrade_to` role until the reset; the channel says so. *Avoid: fallback (a spent budget is never a fallback).*
-- **Fallback** — (1) a role's `fallback` table: another direct provider used only when the primary has no credentials; (2) a proxy fallback: the proxy answering with another model group when a model fails (`brain` → `fast`, `local` → `fast`).
+- **Failover** — an unreachable role (`failover = "<role>"`: connection refused or timed out, 5xx; not throttling) handing the call to another role, e.g. `local` (Ollama on a sleeping Mac) → `fast`; the channel says so.
+- **Fallback** — a role's `fallback` table: another provider used only when the primary has no credentials.
 
 ## Safety
 

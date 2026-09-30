@@ -7,9 +7,10 @@ It is built on [Strands Agents](https://strandsagents.com/) and is published on 
 
 ```sh
 pip install tau-core        # or, inside the tau repo: uv sync --all-packages --group dev
-tau --help                  # chat, hub, components, doctor, init, version, plus plugin commands (tui, ...)
+tau --help                  # chat, hub, components, doctor, init, spend, version, plus plugin commands (tui, net, ...)
 tau init                    # create ~/.tau/tau.toml and the persona files from the templates
-tau doctor                  # check config, credentials, sessions, persona, .env, the hub
+tau doctor                  # check config, credentials, budgets, sessions, persona, .env, the hub
+tau spend                   # what every model role spent in its budget period
 tau chat                    # talk to tau in the terminal
 tau --lang tr chat          # same, with Turkish UI chrome
 ```
@@ -32,24 +33,102 @@ asks for a role (`brain`, `fast`, `local`). Credentials and roots come from the 
 `TAU_HOME/.env` (never overriding variables that are already set): `TAU_HOME` (config root,
 default: the current directory if it has a `tau.toml`, else `~/.tau`), `TAU_DATA_DIR` (mutable
 state, default `~/.local/share/tau`), `TAU_PROFILE` (`home` | `travel` | `sport`, default
-`home`), `TAU_ROLE` (`hub`|`node`), `TAU_HUB_PORT`, `TAU_LANG` (see below). Built-in providers:
-`bedrock`, `anthropic` (with an optional per-role `fallback`) and `fake`; a `tau.providers`
-component adds more (see [Components](#components)). A missing credential stops `tau chat` with
-a message naming the variables; `tau doctor` reports it without starting anything, and `tau tui`
+`home`), `TAU_ROLE` (`hub`|`node`), `TAU_HUB_PORT`, `TAU_LANG` (see below). Built-in providers,
+all called directly: `anthropic`, `openai` (also any OpenAI-compatible API), `gemini`, `ollama`
+(a local model, what the shipped `local` role uses), `bedrock` (optional) and `fake`; any role
+may name a `fallback` used when its primary has no credentials, and a `tau.providers` component
+adds more providers (see [Components](#components)). A missing credential stops `tau chat` with a
+message naming the variables; `tau doctor` reports it without starting anything, and `tau tui`
 opens its settings screen so the key can be added in place.
 
 ```toml
 [models.roles.brain]
-provider = "bedrock"
-model_id = "..."
+provider = "anthropic"    # anthropic | openai | gemini | ollama | bedrock | fake
+model_id = "claude-sonnet-5"
 max_tokens = 4096
-cache = { strategy = "auto", ttl = "1h" }  # optional: Strands CacheConfig (bedrock, anthropic)
+budget = { usd = 15, period = "month", degrade_to = "fast" }  # a hard cap tau enforces itself
+cache = { strategy = "auto", ttl = "1h" }  # optional: Strands CacheConfig (anthropic, bedrock)
+
+[models.roles.fast]
+provider = "gemini"
+model_id = "gemini-3.1-flash-lite"
+budget = { usd = 1, period = "day" }
+
+[models.roles.local]
+provider = "ollama"       # params.base_url, else TAU_OLLAMA_URL, else http://127.0.0.1:11434
+model_id = "qwen3.5:9b"
+params = { reasoning_effort = "none" }
+failover = "fast"         # answers while Ollama cannot be reached
+
+[models.prices."my-model"]  # extends or overrides the shipped prices.toml ($ per 1M tokens)
+input = 0.5
+output = 1.5
 
 [agent]
 max_turns = 12            # model calls per user turn (Limits(turns=...))
 context = "sliding"       # sliding | summarize: the model's window on a long session
 window_size = 60          # sliding: messages kept; summarize: recent messages never summarized
 max_total_tokens = 200000 # optional per-turn token budget (Limits(total_tokens=...))
+```
+
+### Models, budgets and failover
+
+Providers are called directly (ADR 0011), with no gateway or container in between. `anthropic`
+reads `ANTHROPIC_API_KEY` (plus `ANTHROPIC_WORKSPACE_ID`, sent as `anthropic-workspace-id`, for a
+key not scoped to a workspace; `params.base_url` and `params.workspace_id` override). `openai` reads `OPENAI_API_KEY`, takes `params.base_url` for an
+OpenAI-compatible API and sends `max_tokens` as `max_completion_tokens`. `gemini` is Strands'
+`GeminiModel` with `GEMINI_API_KEY` or `GOOGLE_API_KEY` and `max_output_tokens`.
+`params.api_key_env` names another key variable for these three. `ollama` calls Ollama's
+OpenAI-compatible endpoint (`params.base_url`, else `TAU_OLLAMA_URL`, else
+`http://127.0.0.1:11434`) with a 3-second connect timeout and no retries, and needs no
+credentials. `tau init` writes `brain` and `fast` from `templates/models.toml` for the provider
+it picks and keeps `local` on Ollama.
+
+`budget` (a `[models.roles.<role>.budget]` table or an inline table) is the role's hard spend
+cap: `usd` (a positive number of dollars), `period` (`day`, `week` or `month`: calendar periods in
+Europe/Istanbul, reset at midnight, on Monday, on the 1st) and optional `degrade_to`. `failover`
+names the role that answers when this role's model cannot be reached. Both must name another
+defined role, must not loop together (`brain` → `fast` → `brain` is a `ConfigError`) and are not
+allowed inside a `fallback`. `resolve_model` wraps a role with either in
+`tau_core.budget.RoleModel`; other roles are returned unwrapped and are not metered.
+
+- **Before a call** `RoleModel` reads the role's spend in the current period from the ledger. At
+  the cap it answers with `degrade_to` (the turn goes on and yields
+  `Notice(notice.budget_degraded)`: `The brain budget is spent until 01.10.2026 00:00; fast
+  answered instead.`) or raises `BudgetExhausted`, which ends the turn with stop reason `error`
+  and `notice.budget_exhausted`: `The brain budget is spent ($15.00 of $15.00) and resets at
+  01.10.2026 00:00. To raise the cap, change it in tau.toml.` (`notice.budget_exhausted_also` when
+  the stand-in is spent too). `BudgetExhausted` is a `ModelNotice`: one sentence in the UI
+  language, a warning in the log, never a trace.
+- **After a call** the answer's Strands `usage` is priced with `tau_core.prices` and recorded in
+  `tau_core.spend.Ledger`, a SQLite file at `TAU_DATA_DIR/spend.sqlite3` (mode `0600`, WAL)
+  shared by every process on the hub: time, role, provider, model id, token counts and dollars,
+  never text. Prices come from `templates/prices.toml` ($ per million tokens: `input`, `output`,
+  `cache_read`, `cache_write`, keyed by model id) and `[models.prices."<model_id>"]` in
+  `tau.toml` (`input` and `output` required, the cache prices default to `input`); `ollama` and
+  `fake` are free. Anthropic and Bedrock count cached tokens apart from the input tokens, OpenAI
+  and Gemini include them; `cost` handles both. A call on an unpriced model is recorded without a
+  cost (it counts as $0) and `tau doctor` warns about a budgeted role on one.
+- **Failover**: when the provider cannot be reached before anything streamed (connection refused
+  or timed out, a 5xx; `is_unavailable` walks the exception chain, throttling excluded), the
+  `failover` role answers, the turn yields `Notice(notice.failover)` (`local is not reachable
+  right now; fast answered instead.`) and the log gets a warning.
+
+Stand-in roles are ordinary roles: their own budget and failover apply and their spend is
+recorded under their own name. A cap change in `tau.toml` applies when the process starts.
+`tau_core.spend` also serves every reader of the ledger: `spend_report(config)` (a `RoleSpend`
+per role, a role without a budget reported for the current month), `describe(...)` (the one-line
+form), the `budget` context source (`- Budget: …` under `## Now`), the `spend` hub service
+(`GET /spend`, see [Hub](#hub)), the `Budget:` line of `/status` and `tau spend`:
+
+```sh
+tau spend [--json]     # spend, cap, period and reset per role, from the ledger
+```
+
+```text
+  brain    anthropic $0.42 of $15.00 this month, resets 01.10.2026 00:00
+  fast     anthropic $0.03 of $1.00 today, resets 01.10.2026 00:00
+  local    ollama    $0.00 this month, no budget
 ```
 
 ### Editing the two files: `tau_core.settings`
@@ -90,9 +169,11 @@ file's mode, and `.env` is created private and kept private. No function returns
 prints a credential value; the UI shows `mask(value)` (`sk-…abcd` from 20 characters on,
 `ab…yz` for 12 to 19, only `…` and the last two below that) or a `set` / `not set` flag, and
 `credential_source` says whether the shell environment or `.env` supplies a value (the shell
-always wins). `set_role` and `check_document` refuse a planned provider a save would newly
-introduce (`ollama` until issue 012), since a role on it cannot start; one that is already in
-the file is left alone. `known_env_names(home)` lists what a credentials editor
+always wins). `set_role` and `check_document` refuse a planned provider (one a later issue
+builds, listed in `PLANNED_PROVIDERS`; none today) that a save would newly introduce, since a
+role on it cannot start; one that is already in the file is left alone. `set_role` leaves a
+role's `budget` table and `failover` as they are; a budget moved onto a model with no price
+counts nothing until the price is added (`tau doctor` warns). `known_env_names(home)` lists what a credentials editor
 should offer: the variables of the configured providers, then every other provider's, then the
 names in `.env.example` and `.env`. `report_lines(config, language=…)` is the `/settings`
 listing both channels print. `Config.load` raises `ConfigNotFound` (a `ConfigError`) when there
@@ -107,7 +188,8 @@ with a different [agent] context setting; set it back to sliding or start a new 
 --resume`, `/resume` and the TUI's picker and sidebar alike; the current session is kept. The SDK's
 `context_manager = "auto"`/`"agentic"` presets are rejected with a `ConfigError`: they register
 untiered SDK tools that the tier gate would refuse. `cache` accepts the `CacheConfig` fields
-(`strategy`, `ttl`, `system_prompt_ttl`, `tools_ttl`); the fake provider ignores it.
+(`strategy`, `ttl`, `system_prompt_ttl`, `tools_ttl`); `openai`, `gemini`, `ollama` and `fake`
+ignore it.
 
 ## UI language and commands
 
@@ -140,7 +222,7 @@ are accepted forever but never shown in hints:
 | `/session` | `/oturum` | current session id, title, message count, store |
 | `/compact [focus]` | `/özet`, `/ozet` | summarize this session into a new one and continue there; the old one is kept (see [Compaction](#compaction)) |
 | `/clear` | `/temizle`, `/cls` | clear the screen; the session continues, nothing is deleted (`--resume` shows the history again) |
-| `/status` | `/durum` | profile, session, model, context, tools, UI language, versions, hub |
+| `/status` | `/durum` | profile, session, model, context, tools, UI language, versions, hub, budget |
 | `/model [role]` | `/rol` | list the model roles, or switch this session to one (remembered by `/resume`) |
 | `/lang en\|tr` | `/dil` | switch the UI language for this run |
 | `/settings [key value]` | `/ayarlar`, `/ayar` | show the bootstrap config (roles, credential status, language, profile, context, files); `language en\|tr`, `profile NAME`, `model ROLE PROVIDER MODEL_ID`, `set NAME` (hidden prompt), `clear NAME` change one and reload; the TUI opens its settings screen |
@@ -178,7 +260,7 @@ loop. Its layout is fixed:
 - Profile: home
 - Host role: hub
 - Live nodes: unknown
-- Budget: unknown
+- Budget: brain $0.42 of $15.00 this month (resets 01.10.2026 00:00); fast $0.03 of $1.00 today (resets 01.10.2026 00:00)
 ```
 
 The scaffolding (headings, labels, `unknown`) is English because the model reads it; the
@@ -213,10 +295,16 @@ unknown, and a source that raises is skipped and logged once. Without an explici
 agent = build_agent(
     context_sources=[
         lambda: {"nodes": ["mac", "arm"]},  # live nodes (L5)
-        lambda: {"budget": "fast 0,12 $ / 1 $"},  # today's spend (L2)
+        lambda: {"budget": "fast $0.12 of $1.00 today (resets 01.10.2026 00:00)"},  # spend (L2)
     ],
 )
 ```
+
+tau-core ships one context source itself, `budget` (`tau_core.spend:context_source`): with at
+least one role that has a budget it fills `budget` from the local spend ledger before every model
+call (one indexed SQLite query per role, no network), e.g. `brain $0.42 of $15.00 this month
+(resets 01.10.2026 00:00); fast $0.00 of $1.00 today (resets …)`; a spent role reads `…, spent,
+fast answers instead`. Without any budget it provides nothing and the line reads `unknown`.
 
 ## Tiers and approval
 
@@ -358,7 +446,7 @@ for now. `TurnEnd.stop_reason` (`tau_core.STOP_REASONS`):
 | `max_tokens` | the reply hit the provider's output limit; the partial reply is kept | `notice.max_tokens`, `notice` event |
 | `cancelled` | `TauAgent.cancel()` stopped the turn at the SDK's next safe point; a cancel while no turn runs is ignored | `notice.cancelled`, `notice` event |
 | `interrupt` | a hook kept interrupting after `max_turns` refusals; tau cleared the SDK's interrupt state | `notice.interrupt_refused`, `error` event |
-| `error` | the model call failed (`notice.model_error`), the context window overflowed (`notice.overflow`) | `error` event with `where`: `model`, `context` or `interrupt` |
+| `error` | the model call failed (`notice.model_error`, or a `ModelNotice`'s own sentence for a spent budget), the context window overflowed (`notice.overflow`) | `error` event with `where`: `model`, `context` or `interrupt` |
 | `busy` | another invocation held the SDK's concurrency guard; nothing ran | `notice.busy`, no event |
 | `locked` | the owner guard refused the turn before any history, prompt or model work; nothing was appended (see [Guard](#guard)) | `guard.refused.<reason>`, `guard` event |
 
@@ -394,7 +482,7 @@ and `event_sink`. `[sessions].backend` in `tau.toml` picks the backend and
 |----------|----------------------------------------|-----------------------------------------|
 | `memory` | the process                            | tests and throwaway runs                |
 | `file`   | `TAU_DATA_DIR/sessions/<session id>/`  | the default in the repo's `tau.toml`    |
-| `cloud`  | D1 through the tau-cloud Worker API    | issue 018; the hub holds no D1 secrets  |
+| `spine`  | D1 through the tau's spine Worker      | from `tau-cloud`, for cloud mode (ADR 0007); the hub holds no D1 secrets |
 
 The `file` layout, one directory per session (ids look like `20260929-153012-3f9a`, UTC):
 
@@ -425,9 +513,10 @@ In `tau chat`:
 - `/status` prints the profile, the session (id, title, stored message count, role), the model
   (role → provider, whether the role's `fallback` is in use, the model id; never a key), the
   context mode and window with the in-memory message count, the tools (registered, how many
-  need approval), the UI language, the installed `tau-*` versions and whether a hub answers on
+  need approval), the UI language, the installed `tau-*` versions, whether a hub answers on
   `http://127.0.0.1:<control_port>/health` (the `tau doctor` probe, one second, information
-  only).
+  only) and, when a role has a budget, the spend read from the ledger (`Budget: brain $0.42 of
+  $15.00 this month (resets 01.10.2026 00:00); fast $0.00 of $1.00 today (resets …)`).
 - `/model` lists the roles of `tau.toml` with their providers and marks the current one;
   `/model fast` rebuilds the agent on the **same** session with that role: the new agent is
   built first (`build_agent(role=..., session_id=<current>)`, which restores the stored history
@@ -495,8 +584,21 @@ tau hub systemd-unit   # prints the systemd user unit (RPi5 hub)
 The control API listens on `127.0.0.1:<control_port>` only (default 7877, `TAU_HUB_PORT`
 overrides) and speaks JSON: `GET /health` → `{"ok": true, "pid", "uptime_s"}`, `GET /status` →
 `role`, `profile`, `version`, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`,
-`approvals_pending`, `nodes`, plus the keys hub services add (`telegram`). Requests with a
-non-loopback `Host` header get 403.
+`approvals_pending`, `nodes`, plus the keys hub services add (`telegram`, `spend`). Requests
+with a non-loopback `Host` header get 403.
+
+The `spend` service adds `GET /spend`, read from the local ledger on every request (`/status`
+carries the same object under `spend`):
+
+```json
+{"roles": {"brain": {"provider": "anthropic", "model_id": "claude-sonnet-5", "spent_usd": 0.42,
+                     "cap_usd": 15.0, "period": "month", "since": "2026-09-01T00:00:00+03:00",
+                     "reset_at": "2026-10-01T00:00:00+03:00", "exhausted": false,
+                     "degrade_to": "fast", "unpriced_calls": 0, "metered": true}}}
+```
+
+Every role of `tau.toml` has an entry; one without a budget has `cap_usd: null` and is reported
+for the current month. `tau spend --json` prints the same objects without the `roles` wrapper.
 
 Every other route is **protected** (ADR 0008): `add_route(method, path, handler, open=False)`,
 and only `/health` and `/status` are open. At start, while it holds the hub lock, the hub writes
@@ -549,7 +651,8 @@ def make_service(config):  # [project.entry-points."tau.hub_services"] voice = "
     return VoiceService(config)
 ```
 
-tau-core itself ships one hub service, `telegram` (see [Telegram](#telegram)).
+tau-core itself ships two hub services: `telegram` (see [Telegram](#telegram)) and `spend`
+(`GET /spend` and the `spend` key of `/status`, see above).
 
 launchd is driven through the `Launchctl`
 protocol; tests pass `FakeLaunchctl` to the CLI as `obj={"launchctl": fake}`. The launchd plist
@@ -736,7 +839,7 @@ mine = "my_package:TOOLS"              # tools carry a tier (tau_tool); untiered
 mine = "my_package.cli:command"        # `tau mine`
 
 [project.entry-points."tau.providers"]
-ollama = "my_package.models:make_model"   # make_model(role_cfg, env) -> Model; make_model.required_env = []
+example = "my_package.models:make_model"  # make_model(role_cfg, env) -> Model; make_model.required_env = []
 
 [project.entry-points."tau.sessions"]
 cloud = "my_package.sessions:make_store"  # make_store(config) -> SessionStore
@@ -777,17 +880,23 @@ Three commands show, check and set up an installation (English, `--json` where u
 
 ```sh
 tau components          # every component in every group: distribution, version, enabled/disabled, load error
-tau doctor              # config, per-role provider + credentials (no client built), session store, persona
-                        # files, .env names vs .env.example, component load errors, [components] names that
-                        # no installed component provides, control API reachable, Telegram poller state;
-                        # exit 1 when a check fails
-                        # ("warn" for a planned provider such as ollama and for the unknown names)
-tau init                # tau.toml from the shipped template (provider: bedrock > anthropic > fake, by the
-                        # credentials present in the environment or <home>/.env), persona/persona.md,
+tau doctor              # config, per-role provider + credentials (no client built), the budgets (one line
+                        # with every role's spend), session store, persona files, .env names vs .env.example,
+                        # component load errors, [components] names that no installed component provides,
+                        # control API reachable, Telegram poller state; exit 1 when a check fails ("warn"
+                        # for a planned provider, a budgeted role whose model has no price, and the
+                        # unknown names)
+tau init                # tau.toml from the shipped template (provider: anthropic > openai > gemini > bedrock
+                        # > fake, by the credentials present in the environment or <home>/.env), persona/persona.md,
                         # user.example.md, user.md (from the example unless it exists) and .env.example;
                         # asks the UI language unless --language or --yes
 tau init --home ~/.tau --provider anthropic --language tr --profile home --yes   # non-interactive
 ```
+
+`tau init` rewrites the `provider` and `model_id` of `brain` and `fast` to the provider it picks,
+with the ids of `templates/models.toml` (`anthropic` renders the template as shipped). The
+`budget` tables stay, since tau enforces them for every provider, and `local` stays on Ollama
+(`qwen3.5:9b`, `failover = "fast"`).
 
 `tau init` never overwrites an existing `tau.toml` or `persona.md` without `--force` and never
 overwrites `user.md` or `.env.example` (the latter is the list of names `tau doctor` checks

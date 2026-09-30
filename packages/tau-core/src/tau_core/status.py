@@ -19,7 +19,7 @@ from tau_core.config import Config
 from tau_core.guard import GuardStatus, guard_status_line
 from tau_core.i18n import DEFAULT_LANGUAGE, t
 from tau_core.sessions import SessionStore
-from tau_core.spend import RoleSpend, describe, proxy_roles, tracker_for
+from tau_core.spend import RoleSpend, describe, spend_report
 
 __all__ = [
     "ModelInfo",
@@ -36,7 +36,6 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 _PROVIDER_BY_CLASS = {
-    "ProxyModel": "proxy",
     "BedrockModel": "bedrock",
     "AnthropicModel": "anthropic",
     "OllamaModel": "ollama",
@@ -148,9 +147,9 @@ def status_lines(
     guard: GuardStatus | None = None,
 ) -> list[str]:
     """The ``/status`` report, one line per fact, in ``language``. ``hub`` is the control-API
-    check and ``spends`` the proxy roles' spend when the caller read them (see
-    :func:`status_report`); without ``spends`` the cached values are used. ``guard`` is the
-    owner guard's status, shown only when a guard is active."""
+    check and ``spends`` the roles' spend when the caller read it (see :func:`status_report`);
+    without ``spends`` the ledger is read here (a local SQLite query). ``guard`` is the owner
+    guard's status, shown only when a guard is active."""
     config = agent.config
     store = agent.store
     session_id = agent.session_id
@@ -214,23 +213,22 @@ def status_lines(
     ]
     if hub is not None:
         lines.append(t("status.hub", language, detail=hub.detail))
-    if proxy_roles(config):
+    if any(role.budget for role in config.roles.values()):
         if spends is None:
-            spends = tracker_for(config).snapshot()
-        detail = describe(spends) or t("status.budget_unknown", language)
-        lines.append(t("status.budget", language, detail=detail))
+            spends = spend_report(config)
+        detail = describe(spends)
+        if detail:
+            lines.append(t("status.budget", language, detail=detail))
     if guard is not None:
         lines.append(guard_status_line(guard, language))
     return lines
 
 
 async def status_report(agent: TauAgent, *, language: str = DEFAULT_LANGUAGE) -> list[str]:
-    """:func:`status_lines` with the hub probed and the proxy spend read in threads, so a UI
-    loop never blocks on either."""
+    """:func:`status_lines` with the hub probed and the ledger read in threads, so a UI loop
+    never blocks on either."""
     hub = await asyncio.to_thread(check_hub, agent.config)
-    spends = None
-    if proxy_roles(agent.config):
-        spends = await asyncio.to_thread(tracker_for(agent.config).refresh)
+    spends = await asyncio.to_thread(spend_report, agent.config)
     guard = await agent.guard.status() if agent.guard is not None else None
     return status_lines(agent, language=language, hub=hub, spends=spends, guard=guard)
 

@@ -11,6 +11,10 @@ payload bytes are compact UTF-8 JSON with the header fields (``v``, ``id``, ``ki
   recipient_box_key, info=b"tau-net/1 box")`` and ChaCha20-Poly1305 with the associated data
   ``tau-net/1|{id}|{kind}|{from}|{to}``, so a box cannot be moved to another header.
 
+The kinds are ``contact_request``, ``contact_accept``, ``message`` and ``visit`` (ADR 0013
+§5): a universe relays an anonymous visitor of a public sub-tau's page as a ``visit`` sealed to
+the hub that runs the sub-tau, with the content ``{"text", "sub"}``.
+
 Every failure raises a subclass of :class:`EnvelopeError` whose ``reason`` is a short fixed
 English phrase for logs.
 """
@@ -40,6 +44,7 @@ from tau_net.encoding import (
     b64u_encode,
     is_valid_address,
     is_valid_id,
+    is_valid_sub_name,
 )
 from tau_net.identity import Identity
 
@@ -48,6 +53,7 @@ __all__ = [
     "KINDS",
     "MAX_ENVELOPE_BYTES",
     "MAX_MESSAGE_CHARS",
+    "MAX_VISIT_CHARS",
     "SIGNATURE_CONTEXT",
     "BadSignature",
     "Box",
@@ -71,11 +77,14 @@ __all__ = [
 
 SIGNATURE_CONTEXT = b"tau-net/1\n"
 BOX_INFO = b"tau-net/1 box"
-KINDS = ("contact_request", "contact_accept", "message")
+KINDS = ("contact_request", "contact_accept", "message", "visit")
 MAX_ENVELOPE_BYTES = 65_536
 """The largest ``POST /net/inbox`` body a spine accepts."""
 MAX_MESSAGE_CHARS = 8_000
 """The longest ``message`` text."""
+MAX_VISIT_CHARS = MAX_MESSAGE_CHARS
+"""The longest ``visit`` text: the same as a ``message`` (a universe takes less from a
+visitor)."""
 NONCE_BYTES = 12
 KEY_BYTES = 32
 
@@ -374,12 +383,16 @@ def parse_content(kind: str, content: dict[str, Any]) -> dict[str, str]:
     """The sealed plaintext of ``kind`` with the right types, else :class:`BoxError`.
 
     ``contact_request`` → ``{"name", "text"}``, ``contact_accept`` → ``{"name"}``,
-    ``message`` → ``{"text"}`` (at most :data:`MAX_MESSAGE_CHARS`).
+    ``message`` → ``{"text"}`` (at most :data:`MAX_MESSAGE_CHARS`) plus ``"sub"`` when the
+    message carries a sub-tau name (issue 150; absent or ``null`` means none), ``visit`` →
+    ``{"text", "sub"}`` (at most :data:`MAX_VISIT_CHARS`; ``sub`` is required). Other keys are
+    ignored, which is what lets a hub that predates a field read a message that has it.
     """
     fields = {
         "contact_request": ("name", "text"),
         "contact_accept": ("name",),
         "message": ("text",),
+        "visit": ("text", "sub"),
     }.get(kind)
     if fields is None:
         raise BoxError(f"unknown kind {kind!r}")
@@ -391,6 +404,16 @@ def parse_content(kind: str, content: dict[str, Any]) -> dict[str, str]:
         parsed[name] = value
     if kind == "message" and len(parsed["text"]) > MAX_MESSAGE_CHARS:
         raise BoxError(f"message text is longer than {MAX_MESSAGE_CHARS} characters")
+    if kind == "message" and content.get("sub") is not None:
+        sub = content["sub"]
+        if not is_valid_sub_name(sub):
+            raise BoxError("message sub is not a sub-tau name")
+        parsed["sub"] = sub
+    if kind == "visit":
+        if not is_valid_sub_name(parsed["sub"]):
+            raise BoxError("visit sub is not a sub-tau name")
+        if len(parsed["text"]) > MAX_VISIT_CHARS:
+            raise BoxError(f"visit text is longer than {MAX_VISIT_CHARS} characters")
     return parsed
 
 

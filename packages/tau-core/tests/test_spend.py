@@ -1,196 +1,173 @@
-"""Spend per proxy role: the tracker, the ``budget`` context line and the ``spend`` service."""
+"""The spend ledger, calendar periods, the report and its readers (ADR 0011)."""
 
 from __future__ import annotations
 
-import threading
+import asyncio
+import json
+import stat
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
-import pytest
+from click.testing import CliRunner
 from tau_core import Config
+from tau_core.cli import cli
 from tau_core.config import BudgetConfig, RoleConfig
 from tau_core.hub.control import ControlApi, ControlRequest
-from tau_core.persona import default_context_factory
+from tau_core.persona import TIMEZONE, default_context_factory
 from tau_core.spend import (
+    Ledger,
     RoleSpend,
     SpendService,
-    SpendTracker,
     context_source,
     describe,
-    note_spend,
-    tracker_for,
+    ledger_for,
+    period_bounds,
+    spend_report,
 )
 from tau_core.testing import test_config
 
-URL = "http://proxy.test"
-ENV = {"TAU_PROXY_URL": URL, "TAU_PROXY_KEY_BRAIN": "sk-b", "TAU_PROXY_KEY_FAST": "sk-f"}
-RESET = "2026-10-01T00:00:00+00:00"
+NOW = datetime(2026, 9, 30, 14, 0, tzinfo=TIMEZONE)  # a Wednesday
 
 
-def proxy_config(tmp_path: Path) -> Config:
+def budgeted(tmp_path: Path) -> Config:
     config = test_config(tmp_path)
     return config.with_overrides(
         roles={
-            "brain": RoleConfig("proxy", "brain", budget=BudgetConfig(15.0, "1mo", "fast")),
-            "fast": RoleConfig("proxy", "fast", budget=BudgetConfig(1.0, "1d")),
-            "test": RoleConfig("fake", "fake"),
+            "brain": RoleConfig(
+                "anthropic", "claude-sonnet-5", budget=BudgetConfig(15.0, "month", "fast")
+            ),
+            "fast": RoleConfig("anthropic", "claude-haiku-4-5", budget=BudgetConfig(1.0, "day")),
+            "local": RoleConfig("ollama", "qwen3.5:9b", failover="fast"),
         }
     )
 
 
-class FakeProxy:
-    """``/key/info`` answers per key; ``fail`` makes one key's lookup raise."""
-
-    def __init__(self) -> None:
-        self.info: dict[str, dict[str, Any]] = {
-            "sk-b": {"spend": 0.42, "max_budget": 15.0, "budget_duration": "1mo"},
-            "sk-f": {"spend": 1.0, "max_budget": 1.0, "budget_duration": "1d"},
-        }
-        self.calls: list[tuple[str, str]] = []
-        self.fail: set[str] = set()
-
-    def __call__(self, base_url: str, api_key: str) -> dict:
-        self.calls.append((base_url, api_key))
-        if api_key in self.fail:
-            raise OSError("connection refused")
-        if api_key not in self.info:
-            raise ValueError("unknown key")
-        return {"budget_reset_at": RESET, **self.info[api_key]}
+def at(day: int, hour: int = 12, month: int = 9) -> float:
+    return datetime(2026, month, day, hour, tzinfo=TIMEZONE).timestamp()
 
 
-def test_refresh_reads_every_proxy_role(tmp_path: Path) -> None:
-    proxy = FakeProxy()
-    tracker = SpendTracker(proxy_config(tmp_path), ENV, fetch=proxy)
-    spends = tracker.refresh()
-    assert set(spends) == {"brain", "fast"}  # the fake role has no key
-    assert proxy.calls == [(URL, "sk-b"), (URL, "sk-f")]
-    brain, fast = spends["brain"], spends["fast"]
-    assert (brain.spend, brain.max_budget, brain.period) == (0.42, 15.0, "1mo")
-    assert brain.reset_at == datetime(2026, 10, 1, tzinfo=UTC)
-    assert not brain.exhausted and not brain.drifted and brain.degrade_to == "fast"
-    assert fast.exhausted
+def usage(inp: int = 100, out: int = 50) -> dict:
+    return {"inputTokens": inp, "outputTokens": out, "totalTokens": inp + out}
+
+
+def test_period_bounds_are_calendar_periods_in_istanbul() -> None:
+    assert period_bounds("day", NOW) == (
+        datetime(2026, 9, 30, tzinfo=TIMEZONE),
+        datetime(2026, 10, 1, tzinfo=TIMEZONE),
+    )
+    assert period_bounds("week", NOW) == (
+        datetime(2026, 9, 28, tzinfo=TIMEZONE),  # Monday
+        datetime(2026, 10, 5, tzinfo=TIMEZONE),
+    )
+    assert period_bounds("month", NOW) == (
+        datetime(2026, 9, 1, tzinfo=TIMEZONE),
+        datetime(2026, 10, 1, tzinfo=TIMEZONE),
+    )
+    december = datetime(2026, 12, 31, 23, 59, tzinfo=TIMEZONE)
+    assert period_bounds("month", december)[1] == datetime(2027, 1, 1, tzinfo=TIMEZONE)
+    # 22:30 UTC on the 30th is already the 1st in Istanbul (UTC+3).
+    late = datetime(2026, 9, 30, 22, 30, tzinfo=UTC)
+    assert period_bounds("day", late)[0] == datetime(2026, 10, 1, tzinfo=TIMEZONE)
+
+
+def test_ledger_records_and_sums_per_role_and_period(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "data" / "spend.sqlite3")
+    ledger.record(
+        role="brain", provider="anthropic", model_id="m", usage=usage(), cost_usd=0.5, at=at(29)
+    )
+    ledger.record(
+        role="brain", provider="anthropic", model_id="m", usage=usage(), cost_usd=0.25, at=at(30)
+    )
+    ledger.record(
+        role="brain", provider="x", model_id="unpriced", usage=usage(), cost_usd=None, at=at(30)
+    )
+    ledger.record(
+        role="fast", provider="anthropic", model_id="m", usage=usage(), cost_usd=9.0, at=at(30)
+    )
+    assert ledger.spent("brain", datetime(2026, 9, 30, tzinfo=TIMEZONE)) == 0.25
+    assert ledger.spent("brain", datetime(2026, 9, 1, tzinfo=TIMEZONE)) == 0.75
+    assert ledger.unpriced("brain", datetime(2026, 9, 1, tzinfo=TIMEZONE)) == 1
+    assert ledger.spent("nobody", datetime(2026, 9, 1, tzinfo=TIMEZONE)) == 0.0
+    assert stat.S_IMODE(ledger.path.stat().st_mode) == 0o600  # life data stays private
+    # A second process (a second Ledger on the same file) sees the same numbers.
+    assert Ledger(ledger.path).spent("fast", datetime(2026, 9, 30, tzinfo=TIMEZONE)) == 9.0
+
+
+def test_spend_report_and_describe(tmp_path: Path) -> None:
+    config = budgeted(tmp_path)
+    ledger = ledger_for(config)
+    ledger.record(
+        role="brain",
+        provider="anthropic",
+        model_id="claude-sonnet-5",
+        usage=usage(),
+        cost_usd=0.42,
+        at=at(30),
+    )
+    ledger.record(
+        role="fast",
+        provider="anthropic",
+        model_id="claude-haiku-4-5",
+        usage=usage(),
+        cost_usd=1.0,
+        at=at(30),
+    )
+    ledger.record(
+        role="fast",
+        provider="anthropic",
+        model_id="claude-haiku-4-5",
+        usage=usage(),
+        cost_usd=5.0,
+        at=at(29),
+    )  # yesterday: not today's
+    report = spend_report(config, now=NOW)
+    brain, fast, local = report["brain"], report["fast"], report["local"]
+    assert (brain.spent, brain.cap, brain.period, brain.degrade_to) == (0.42, 15.0, "month", "fast")
+    assert brain.reset_at == datetime(2026, 10, 1, tzinfo=TIMEZONE)
+    assert fast.spent == 1.0 and fast.exhausted
+    assert local.cap is None and local.period == "month"
+    assert describe(report) == (
+        "brain $0.42 of $15.00 this month (resets 01.10.2026 00:00); "
+        "fast $1.00 of $1.00 today, spent (resets 01.10.2026 00:00)"
+    )
     assert brain.to_json() == {
-        "group": "brain",
-        "spend_usd": 0.42,
-        "max_budget_usd": 15.0,
-        "period": "1mo",
-        "reset_at": RESET,
+        "provider": "anthropic",
+        "model_id": "claude-sonnet-5",
+        "spent_usd": 0.42,
+        "cap_usd": 15.0,
+        "period": "month",
+        "since": "2026-09-01T00:00:00+03:00",
+        "reset_at": "2026-10-01T00:00:00+03:00",
         "exhausted": False,
-        "configured": {"usd": 15.0, "period": "1mo", "degrade_to": "fast"},
-        "error": None,
+        "degrade_to": "fast",
+        "unpriced_calls": 0,
+        "metered": True,
     }
-
-
-def test_missing_key_failure_and_drift(tmp_path: Path) -> None:
-    proxy = FakeProxy()
-    env = {**ENV, "TAU_PROXY_KEY_FAST": ""}
-    tracker = SpendTracker(proxy_config(tmp_path), env, fetch=proxy)
-    spends = tracker.refresh()
-    assert spends["fast"].error == "TAU_PROXY_KEY_FAST is not set" and not spends["fast"].known
-    proxy.info["sk-b"]["max_budget"] = 20.0
-    assert tracker.refresh()["brain"].drifted
-    proxy.fail.add("sk-b")
-    kept = tracker.refresh()["brain"]
-    assert kept.spend == 0.42 and kept.error == "connection refused"  # last good numbers stay
-
-
-def test_snapshot_never_blocks_and_refreshes_in_the_background(tmp_path: Path) -> None:
-    release = threading.Event()
-    started = threading.Event()
-    proxy = FakeProxy()
-
-    def slow(base_url: str, api_key: str) -> dict:
-        started.set()
-        release.wait(5)
-        return proxy(base_url, api_key)
-
-    now = [0.0]
-    tracker = SpendTracker(proxy_config(tmp_path), ENV, fetch=slow, ttl=60, clock=lambda: now[0])
-    first = tracker.snapshot()
-    assert not first["brain"].known  # nothing yet, and no wait
-    assert started.wait(5)
-    tracker.snapshot()  # a refresh is running: no second one
-    release.set()
-    for _ in range(100):
-        if tracker.snapshot()["brain"].known:
-            break
-        threading.Event().wait(0.02)
-    assert tracker.snapshot()["brain"].spend == 0.42
-    calls = len(proxy.calls)
-    now[0] = 30.0
-    tracker.snapshot()  # still fresh
-    assert len(proxy.calls) == calls
-
-
-def test_note_updates_known_spend_only(tmp_path: Path) -> None:
-    tracker = SpendTracker(proxy_config(tmp_path), ENV, fetch=FakeProxy())
-    tracker.note("brain", 3.0)
-    assert not tracker.snapshot()["brain"].known  # an unread key is not invented
-    tracker.refresh()
-    tracker.note("brain", 3.0)
-    assert tracker.snapshot()["brain"].spend == 3.0
-
-
-def test_tracker_for_is_shared_and_note_spend_finds_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from tau_core import proxy
-
-    proxy_fake = FakeProxy()
-    monkeypatch.setattr(proxy, "fetch_key_info", lambda url, key, **kw: proxy_fake(url, key))
-    config = proxy_config(tmp_path)
-    tracker = tracker_for(config, ENV)
-    assert tracker_for(config, dict(ENV)) is tracker
-    tracker.refresh()
-    note_spend(URL + "/", "fast", 0.5)
-    assert tracker.snapshot()["fast"].spend == 0.5
-    note_spend("http://other", "fast", 0.9)
-    assert tracker.snapshot()["fast"].spend == 0.5
-
-
-def test_describe() -> None:
-    reset = datetime(2026, 10, 1, tzinfo=UTC)
-    spends = {
-        "brain": RoleSpend("brain", "brain", 0.42, 15.0, "1mo", reset, 15.0, "1mo", "fast"),
-        "fast": RoleSpend("fast", "fast", 1.0, 1.0, "1d", reset, 1.0, "1d"),
-        "local": RoleSpend("local", "local"),
-        "free": RoleSpend("free", "free", 0.1),
-    }
-    assert describe(spends) == (
-        "brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00); "
-        "fast $1.00 of $1.00 per 1d, spent (resets 01.10.2026 03:00); "
-        "free $0.10 (no cap)"
+    spent_brain = RoleSpend("brain", "anthropic", "m", 16.0, "month", NOW, NOW, 15.0, "fast")
+    assert describe({"brain": spent_brain}).startswith(
+        "brain $16.00 of $15.00 this month, spent, fast answers instead (resets"
     )
-    spends["brain"] = RoleSpend("brain", "brain", 16.0, 15.0, "1mo", None, 15.0, "1mo", "fast")
-    assert describe({"brain": spends["brain"]}) == (
-        "brain $16.00 of $15.00 per 1mo, spent, fast answers instead (resets ?)"
+    free = RoleSpend("local", "ollama", "q", 0.0, "month", NOW, NOW)
+    assert describe({"local": free}) is None
+
+
+def test_context_source_puts_the_budget_under_now(tmp_path: Path) -> None:
+    config = budgeted(tmp_path)
+    ledger_for(config).record(
+        role="brain", provider="anthropic", model_id="claude-sonnet-5", usage=usage(), cost_usd=0.42
     )
-    assert describe({"local": RoleSpend("local", "local")}) is None
-
-
-def test_context_source_puts_the_budget_under_now(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    config = proxy_config(tmp_path)
-    for name, value in ENV.items():
-        monkeypatch.setenv(name, value)
-    tracker_for(config)._fetch = FakeProxy()  # type: ignore[attr-defined]
-    tracker_for(config).refresh()
     factory = default_context_factory(config, sources=[context_source(config)])
     rendered = factory().render()
-    assert "- Budget: brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00); fast" in rendered
-    assert context_source(test_config(tmp_path / "plain"))() == {}
+    assert "- Budget: brain $0.42 of $15.00 this month (resets " in rendered
+    assert "fast $0.00 of $1.00 today" in rendered
 
 
-def test_spend_service_adds_status_and_route(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    config = proxy_config(tmp_path)
-    for name, value in ENV.items():
-        monkeypatch.setenv(name, value)
+def test_spend_service_adds_status_and_route(tmp_path: Path) -> None:
+    config = budgeted(tmp_path)
+    ledger_for(config).record(
+        role="fast", provider="anthropic", model_id="claude-haiku-4-5", usage=usage(), cost_usd=1.5
+    )
     service = SpendService(config)
-    service.tracker._fetch = FakeProxy()  # type: ignore[attr-defined]
     api = ControlApi(0, lambda: {})
     sources: list = []
 
@@ -201,33 +178,23 @@ def test_spend_service_adds_status_and_route(
         def find_service(self, name: str):
             return api if name == "control-api" else None
 
-    import asyncio
-
     asyncio.run(service.start(Hub()))  # type: ignore[arg-type]
     assert not api.is_open("GET", "/spend")  # protected: the token is needed over HTTP
     code, payload = api.handle(ControlRequest("GET", "/spend"))
-    assert code == 200 and payload["proxy"] == URL
-    assert payload["roles"]["brain"]["spend_usd"] == 0.42
-    assert payload["roles"]["fast"]["exhausted"] is True
+    assert code == 200 and payload["roles"]["fast"]["exhausted"] is True
+    assert payload["roles"]["fast"]["spent_usd"] == 1.5
     (source,) = sources
-    assert source()["spend"]["roles"]["brain"]["spend_usd"] == 0.42  # the refreshed cache
+    assert source()["spend"]["roles"]["brain"]["cap_usd"] == 15.0
 
 
-def test_spend_needs_the_control_token_over_http(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import asyncio
-    import json
+def test_spend_needs_the_control_token_over_http(tmp_path: Path) -> None:
     import urllib.error
     import urllib.request
 
     from tau_core.hub.control import auth_headers
 
-    config = proxy_config(tmp_path)
-    for name, value in ENV.items():
-        monkeypatch.setenv(name, value)
+    config = budgeted(tmp_path)
     service = SpendService(config)
-    service.tracker._fetch = FakeProxy()  # type: ignore[attr-defined]
     api = ControlApi(0, lambda: {}, hub_dir=tmp_path / "hub")
 
     class Hub:
@@ -246,7 +213,7 @@ def test_spend_needs_the_control_token_over_http(
         request = urllib.request.Request(f"{api.url}/spend", headers=headers)
         try:
             with opener.open(request, timeout=5) as response:
-                assert json.loads(response.read())["proxy"] == URL
+                assert json.loads(response.read())["roles"]["brain"]["cap_usd"] == 15.0
                 return response.status
         except urllib.error.HTTPError as exc:
             return exc.code
@@ -257,3 +224,30 @@ def test_spend_needs_the_control_token_over_http(
         assert get(auth_headers(token, "GET", "/spend")) == 200
     finally:
         api.shutdown()
+
+
+def test_spend_command(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    (home / "persona").mkdir(parents=True)
+    (home / "tau.toml").write_text(
+        '[models.roles.brain]\nprovider = "anthropic"\nmodel_id = "claude-sonnet-5"\n'
+        'budget = { usd = 15, period = "month" }\n',
+        encoding="utf-8",
+    )
+    data = tmp_path / "data"
+    Ledger(data / "spend.sqlite3").record(
+        role="brain",
+        provider="anthropic",
+        model_id="claude-sonnet-5",
+        usage=usage(),
+        cost_usd=16.0,
+    )
+    env = {"TAU_DATA_DIR": str(data)}
+    result = CliRunner().invoke(cli, ["--home", str(home), "spend"], env=env, prog_name="tau")
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("  brain    anthropic $16.00 of $15.00 this month, resets ")
+    assert result.output.rstrip().endswith("· SPENT")
+    result = CliRunner().invoke(
+        cli, ["--home", str(home), "spend", "--json"], env=env, prog_name="tau"
+    )
+    assert json.loads(result.output)["brain"]["exhausted"] is True

@@ -1,0 +1,4 @@
+# Dependencies: `pnpm install` here. A Worker that imports cloud/shared needs them too (README).
+node_modules/
+# Local state and the output of `pnpm run bundle-check`.
+.wrangler/

@@ -192,9 +192,11 @@ def test_file_backend_registered(tmp_path: Path) -> None:
     assert isinstance(open_session_store(test_config(tmp_path)), MemorySessionStore)
 
 
-def test_cloud_backend_still_planned(tmp_path: Path) -> None:
+def test_retired_cloud_backend_is_unknown(tmp_path: Path) -> None:
+    # ADR 0007: the planned "cloud" backend became ``spine`` from tau-cloud.
+    assert "cloud" not in PLANNED_BACKENDS
     config = test_config(tmp_path, sessions=SessionsConfig(backend="cloud"))
-    with pytest.raises(ConfigError, match="issue 018"):
+    with pytest.raises(ConfigError, match="Unknown session backend: 'cloud'"):
         open_session_store(config)
 
 

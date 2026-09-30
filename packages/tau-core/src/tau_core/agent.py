@@ -201,7 +201,7 @@ def model_notice_of(exc: BaseException) -> ModelNotice | None:
 
 def model_error_text(exc: BaseException, language: str = DEFAULT_LANGUAGE) -> str:
     """The notice for a failed model call: a :class:`ModelNotice`'s own sentence (a spent
-    budget, the proxy down), else a short detail with the rest in the log."""
+    budget), else a short detail with the rest in the log."""
     notice = model_notice_of(exc)
     if notice is not None:
         return notice.notice(language)
@@ -584,7 +584,7 @@ class TauAgent:
                 for item in drain():
                     yield item
                 if model_notice_of(exc) is not None:
-                    # A spent budget or a stopped proxy: the notice says it all, no trace.
+                    # A spent budget: the notice says it all, no trace.
                     logger.warning("model call refused in session %s: %s", self.session_id, exc)
                 else:
                     logger.exception("model call failed in session %s", self.session_id)
@@ -592,8 +592,8 @@ class TauAgent:
                 repair = text = model_error_text(exc, language)
                 yield Notice(text=text)
                 stop_reason = "error"
-            for text in self._model_notices(language):
-                self._emit("notice", {"message": text, "reason": "budget"})
+            for text, reason in self._model_notices(language):
+                self._emit("notice", {"message": text, "reason": reason})
                 yield Notice(text=text)
             if stop_reason == "limit_turns":
                 self._emit("turn_limit", {"max_turns": agent_cfg.max_turns})
@@ -623,18 +623,19 @@ class TauAgent:
                 self.agent.cancel_signal.clear()
             unsubscribe()
 
-    def _model_notices(self, language: str) -> list[str]:
-        """What the model asks the channel to say about this turn (a spent role that handed the
-        call to its ``degrade_to``), each distinct sentence once."""
+    def _model_notices(self, language: str) -> list[tuple[str, str]]:
+        """``[(text, reason)]`` the model asks the channel to show about this turn (a spent
+        role that handed the call to ``degrade_to``, an unreachable one that failed over),
+        each distinct sentence once."""
         take = getattr(self.agent.model, "take_notices", None)
         if not callable(take):
             return []
-        texts: list[str] = []
+        found: list[tuple[str, str]] = []
         for notice in take():
-            text = notice.notice(language)
-            if text not in texts:
-                texts.append(text)
-        return texts
+            item = (notice.notice(language), str(getattr(notice, "reason", "model")))
+            if item not in found:
+                found.append(item)
+        return found
 
     def _schedule_repair(self, text: str, last_before: Message | None) -> None:
         """Remember ``text`` for the next turn when this turn left the history dangling.

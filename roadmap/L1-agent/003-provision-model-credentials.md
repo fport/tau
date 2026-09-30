@@ -29,3 +29,4 @@ None - can start immediately
 ## Comments
 
 - 2026-09-30: rescoped by [ADR 0009](../../docs/adr/0009-anthropic-only-models-behind-the-proxy.md). The owner dropped Bedrock, so nothing is created on AWS. The Anthropic key is in `.env` and serves every role through the LiteLLM proxy (010), which also holds the hard budgets that replace the AWS Budgets alarms (011). One thing left for the owner: set a monthly spend limit on the Anthropic workspace in the Console, then close this issue.
+- 2026-09-30 (later): the proxy is gone ([ADR 0011](../../docs/adr/0011-budgets-in-tau-no-litellm.md)); tau now enforces the per-role budgets itself. The Console spend limit is still the one open item.

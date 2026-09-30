@@ -3,12 +3,13 @@
 A tau talks to other taus through its **spine** (a Worker in its owner's Cloudflare account):
 identity keys on the hub, envelopes signed by the sender and sealed to the recipient, contacts
 the owner accepts, the ``net`` hub service that long-polls the spine, network turns with a
-reduced agent, the owner's tools and ``tau net``.
+reduced agent, the owner's tools and ``tau net``. An owner may also list the tau in a
+**universe**, an opt-in public directory (ADR 0010, docs/reference/tau-universe.md).
 
 Public API (other packages import these names, ``tau_net.spine`` and ``tau_net.testing``)::
 
     b64u_encode, b64u_decode, parse_address, validate_address, is_valid_address, base_url,
-    AddressError, EncodingError
+    parse_host, is_valid_host, parse_target, split_address, AddressError, EncodingError
     Identity, IdentityError, IdentityExists, create_identity, load_identity, load_or_none,
     identity_path, IDENTITY_ENV
     Envelope, Payload, Box, build_envelope, open_verified, open_box, parse_content,
@@ -21,7 +22,9 @@ Public API (other packages import these names, ``tau_net.spine`` and ``tau_net.t
     Contact, ContactBook, ContactError, Transition
     NetSettings, NetConfigError, SPINE_URL_ENV, SPINE_TOKEN_ENV
     NetworkTurns, FRAME, build_frame, sanitize, is_no_reply
-    NetNode, Handled, NetError, NetNotConfigured, open_node
+    UniverseClient, UniverseError, UniverseUnreachable, DEFAULT_UNIVERSE, UNIVERSE_CONTEXT
+    NetNode, Handled, NetError, NetNotConfigured, UniverseSync, open_node
+    NetProfile
     NetService, make_service, doctor_check
     TOOLS
 """
@@ -42,7 +45,11 @@ from tau_net.encoding import (
     b64u_encode,
     base_url,
     is_valid_address,
+    is_valid_host,
     parse_address,
+    parse_host,
+    parse_target,
+    split_address,
     validate_address,
 )
 from tau_net.envelope import (
@@ -74,8 +81,9 @@ from tau_net.identity import (
     load_identity,
     load_or_none,
 )
-from tau_net.node import Handled, NetError, NetNode, NetNotConfigured, open_node
+from tau_net.node import Handled, NetError, NetNode, NetNotConfigured, UniverseSync, open_node
 from tau_net.peers import CardError, Delivery, DeliveryError, PeerCard, PeerClient
+from tau_net.profile import NetProfile
 from tau_net.service import NetService, doctor_check, make_service
 from tau_net.spine import (
     SpineClient,
@@ -90,10 +98,18 @@ from tau_net.spine import (
 from tau_net.store import FileBackend, NetStore, SpineBackend
 from tau_net.tools import TOOLS
 from tau_net.turns import FRAME, NetworkTurns, build_frame, is_no_reply, sanitize
+from tau_net.universe import (
+    DEFAULT_UNIVERSE,
+    UNIVERSE_CONTEXT,
+    UniverseClient,
+    UniverseError,
+    UniverseUnreachable,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_UNIVERSE",
     "FRAME",
     "IDENTITY_ENV",
     "KINDS",
@@ -102,6 +118,7 @@ __all__ = [
     "SPINE_TOKEN_ENV",
     "SPINE_URL_ENV",
     "TOOLS",
+    "UNIVERSE_CONTEXT",
     "AddressError",
     "BadSignature",
     "Box",
@@ -126,6 +143,7 @@ __all__ = [
     "NetError",
     "NetNode",
     "NetNotConfigured",
+    "NetProfile",
     "NetService",
     "NetSettings",
     "NetStore",
@@ -141,6 +159,10 @@ __all__ = [
     "Transition",
     "Transport",
     "TransportError",
+    "UniverseClient",
+    "UniverseError",
+    "UniverseSync",
+    "UniverseUnreachable",
     "Update",
     "UrllibTransport",
     "__version__",
@@ -154,6 +176,7 @@ __all__ = [
     "identity_path",
     "is_no_reply",
     "is_valid_address",
+    "is_valid_host",
     "load_identity",
     "load_or_none",
     "make_service",
@@ -162,8 +185,11 @@ __all__ = [
     "open_verified",
     "parse_address",
     "parse_content",
+    "parse_host",
+    "parse_target",
     "peek_sender",
     "sanitize",
     "seal",
+    "split_address",
     "validate_address",
 ]

@@ -1,55 +1,75 @@
 # TauBar
 
-tau's macOS menu bar app: Tauri v2 with a Rust core and a small React/TypeScript window. Tray
-only, no Dock icon.
+tau's macOS menu bar app: Tauri v2 with a Rust core and a small React/TypeScript UI (the panel
+and the settings window). Tray only, no Dock icon.
 
 What it does today:
 
-- **Runs the hub:** with "Run the hub" ticked, TauBar starts `tau hub run`, restarts it after a
-  crash, leaves it stopped after `tau hub stop`, stops it when TauBar quits, and never starts a
-  second hub. The menu shows whether the hub is up, its Telegram poller and its last crash.
+- **Runs the hub:** with "Run the hub" switched on, TauBar starts `tau hub run`, restarts it
+  after a crash, leaves it stopped after `tau hub stop`, stops it when TauBar quits, and never
+  starts a second hub. It shows whether the hub is up, its Telegram poller and its last crash.
 - **Shows the owner guard** when the hub runs one ([ADR 0008](../../docs/adr/0008-owner-guard.md)):
-  a guard line, **Lock now**, and **Grant camera access…** when the hub cannot use the camera.
+  its state, **Lock now**, and **Grant camera access…** when the hub cannot use the camera.
   TauBar holds the camera and microphone permission for the hub it runs.
 - **Sleep modes:** Normal, Keep awake on AC power (default), Keep awake with the lid closed.
-- **Launch at login:** a checkbox that registers TauBar as a login item.
-- A **window** (Settings…) with the same switches, the hub's settings and TauBar's own log.
+- **Launch at login:** a switch that registers TauBar as a login item.
+- A **panel** under the τ with all of that (left click), the same items as a native **menu**
+  (right click), and a **window** (Settings…) with the same switches, the hub's settings and
+  TauBar's own log.
 
-The status panel, approvals and voice come with later roadmap issues (025, 031).
+The status panel for nodes, spend and approvals, and voice come with later roadmap issues (025,
+031).
 
 ```text
-τ
-├─ Hub: up 2 h 5 min · pid 1234
-├─ Telegram: polling as @your_bot
-├─ Last crash: none
-├─ Guard: unlocked                          (only with a guard)
-├─   Lock now                               (only with a guard)
-├─ ✓ Run the hub
-├─   Open Hub Log
-├─ ──────────
-├─ Sleep: kept awake on AC power
-├─   Normal
-├─ ✓ Keep awake on AC power
-├─   Keep awake with the lid closed (needs setup)
-├─ ──────────
-├─ ✓ Launch at login
-├─   Settings…                              ⌘,
-├─   Open TauBar Log
-├─ ──────────
-└─   Quit TauBar                            ⌘Q
+Hub                                      [ on]
+(τ)  Up 2 h 5 min
+     pid 1234 · started by TauBar
+(➤)  Telegram
+     polling as @your_bot
+(!)  Last crash
+     none
+(▣)  Guard                          (only with a guard)
+     unlocked
+     Lock now                       (only with a guard)
+──────────────────────────────────────────────
+Sleep
+( )  Normal
+(●)  Keep awake on AC power
+( )  Keep awake with the lid closed    Set up…
+──────────────────────────────────────────────
+Launch at login                          [ on]
+Open Hub Log
+Open TauBar Log
+Settings…                                   ⌘,
+──────────────────────────────────────────────
+Quit TauBar                                 ⌘Q
 ```
+
+## The panel
+
+A left click on the τ opens the panel under the icon; another click, Esc, or clicking anywhere
+else closes it, as with a menu, and the icon stays pressed while it is open. It is a borderless,
+transparent window with macOS's popover material behind the page, so it follows light and dark
+mode and the wallpaper shows through; its height follows its content. ⌘, opens the settings
+window and ⌘Q quits TauBar while it has focus. The coin next to the hub status carries the state:
+Ember when the hub is up, Flare when it needs attention, Signal on an error, dimmed otherwise.
+
+The right click shows the old native menu with the same items, so every action stays reachable
+if the panel ever fails to open (TauBar then also shows the menu on the left click and says why
+in its log). Transparent windows use a private macOS API (`app.macOSPrivateApi` in
+`tauri.conf.json`): fine for a Mac that builds its own TauBar, not allowed in the App Store.
 
 ## Build
 
-Needs macOS 13 or later, Rust (`rustup`), Node 20+ with pnpm, and the Xcode command line tools.
+Needs macOS 13 or later, Rust (`rustup`), [Bun](https://bun.sh), and the Xcode command line tools.
 
 ```sh
 cd apps/taubar
-pnpm install
-pnpm tauri build          # → src-tauri/target/release/bundle/macos/TauBar.app
+bun install
+bun run tauri build       # → src-tauri/target/release/bundle/macos/TauBar.app
 ```
 
-`pnpm tauri dev` runs it with hot reload for development. Launch at login needs the built
+`bun run tauri dev` runs it with hot reload for development. Launch at login needs the built
 `.app` installed in `/Applications` (see below), so test that part with an installed build.
 
 Only one TauBar runs at a time (`tauri-plugin-single-instance`, keyed by the bundle id): a
@@ -73,7 +93,7 @@ An ad-hoc signature changes with every build, so macOS sees each build as a new 
 replacing TauBar.app with a new build, check that "Launch at login" is still ticked.
 
 For a Developer ID signature and notarization, set `APPLE_SIGNING_IDENTITY` (and `APPLE_ID`,
-`APPLE_PASSWORD`, `APPLE_TEAM_ID` for notarization) before `pnpm tauri build`; see Tauri's
+`APPLE_PASSWORD`, `APPLE_TEAM_ID` for notarization) before `bun run tauri build`; see Tauri's
 [macOS code signing](https://v2.tauri.app/distribute/sign/macos/) guide.
 
 Every build is signed with the hardened runtime (Tauri's default) and the entitlements in
@@ -107,12 +127,12 @@ Set it up once (this is a step for you; nothing in the repo does it):
    ```sh
    cd apps/taubar
    export APPLE_SIGNING_IDENTITY="TauBar Local Signing"   # your certificate's name
-   pnpm tauri build
+   bun run tauri build
    ```
 
    To keep the name out of your shell history and profile, put the `export` line in a file the
    repo ignores (`*.local`), for example `apps/taubar/signing.local`, and run
-   `source signing.local && pnpm tauri build`. The first build asks whether `codesign` may use
+   `source signing.local && bun run tauri build`. The first build asks whether `codesign` may use
    the key: choose **Always Allow**. Without the notarization variables Tauri skips
    notarization, which a build for your own Mac does not need.
 4. Check the build:
@@ -141,7 +161,7 @@ TauBar while the guard checks.
   `tccutil reset Microphone com.tau.taubar`), then restart the hub from TauBar (untick and tick
   **Run the hub**). The next camera use asks again.
 - **Who holds the grant** depends on how the hub runs: TauBar's **Run the hub** → TauBar;
-  `pnpm tauri dev` → the terminal that runs it; `uv run tau hub run` in a terminal → that
+  `bun run tauri dev` → the terminal that runs it; `uv run tau hub run` in a terminal → that
   terminal app; the `com.tau.hub` launchd agent or a hub started over SSH or in tmux → nobody,
   so the camera is refused.
 - `tau guard doctor` (roadmap 112) reports the camera state; with TauBar running the hub it
@@ -223,9 +243,11 @@ gone). To go back: untick the switch, then `uv run tau hub install`.
 
 ## The owner guard
 
-When the hub runs the owner guard ([ADR 0008](../../docs/adr/0008-owner-guard.md)), the menu and
-the window show it under the hub lines, from the `guard` block of the hub's open `/status`
-(`{state, enrolled, available, reason}`):
+When the hub runs the owner guard ([ADR 0008](../../docs/adr/0008-owner-guard.md)), the panel,
+the menu and the window show it under the hub lines, from the `guard` block of the hub's open
+`/status` (`{state, enrolled, available, reason}`). The panel has a **Guard** row (Flare when
+the guard cannot check) with **Lock now** and **Grant camera access…** under it; the right-click
+menu shows the same as lines:
 
 ```text
 ├─ Guard: unavailable (camera denied)
@@ -233,7 +255,7 @@ the window show it under the hub lines, from the `guard` block of the hub's open
 ├─   Grant camera access…
 ```
 
-| Guard line | When |
+| Guard line (the panel's row shows the same without `Guard:`) | When |
 |---|---|
 | `Guard: locked` | guarded channels (`tau tui`, `tau chat`) refuse turns until the owner's face is checked at the Mac |
 | `Guard: checking…` | a face check is running |
@@ -260,8 +282,9 @@ may not be locked. TauBar never unlocks: that is a face check at the Mac.
 
 **No webview gets the camera.** wry grants a page's `getUserMedia` by default, and TauBar holds
 the camera grant, so every TauBar webview denies every permission request (the app builder and
-each window install the same handler, `src-tauri/src/webview.rs`). To check by hand: in
-`pnpm tauri dev`, right-click the window → Inspect Element → Console, and run
+each window, the panel included, install the same handler, `src-tauri/src/webview.rs`). To
+check by hand: in
+`bun run tauri dev`, right-click the window → Inspect Element → Console, and run
 `await navigator.mediaDevices.getUserMedia({video: true})`; it rejects with `NotAllowedError`
 and no camera turns on.
 
@@ -275,7 +298,7 @@ and no camera turns on.
 
 The choice is saved and applied again at the next start. **Quitting restores normal sleep:**
 TauBar releases the assertion and, if it set it, runs `pmset -a disablesleep 0`. The same
-happens on SIGTERM, SIGINT and SIGHUP (logout, `kill <pid>`, Ctrl-C in `pnpm tauri dev`). A
+happens on SIGTERM, SIGINT and SIGHUP (logout, `kill <pid>`, Ctrl-C in `bun run tauri dev`). A
 `kill -9` cannot be caught: macOS drops the assertion with the process, and `disablesleep` stays
 until TauBar's next start resets it (or `sudo pmset -a disablesleep 0`).
 
@@ -355,10 +378,15 @@ nobody logged out while this was built; check it after your next login.
 ## Development
 
 ```sh
-pnpm test                          # vitest: the window's display and form logic
-pnpm build                         # tsc + vite
+bun run test                       # vitest: the display and form logic of the panel and window
+bun run build                      # tsc + vite
 (cd src-tauri && cargo test)       # Rust: supervisor, restart policy, sleep modes, settings, …
 ```
+
+To work on the UI without the app, run `bun run dev` and open http://localhost:1420/ (the settings
+window) or http://localhost:1420/#panel (the panel) in a browser: outside Tauri a development
+build answers the commands from `src/devmock.ts`, a stand-in with example values. No build
+contains it.
 
 The supervisor tests run real `/bin/sh` children as stand-in hubs (crash, `kill -9`, clean
 exit, a SIGTERM-deaf hub, a foreign lock holder, an orphan to adopt) against a fake probe, so
@@ -369,18 +397,21 @@ re-read, a missing or wrong proof, a redirect).
 | File | Job |
 |---|---|
 | `src-tauri/src/lib.rs` | app setup (tray only), menu actions, window, ticker and hub threads |
-| `src-tauri/src/core.rs` | state shared by the menu and the window |
+| `src-tauri/src/core.rs` | state shared by the panel, the menu and the window |
 | `src-tauri/src/hub/supervisor.rs` | the hub supervisor (start, reap, restart, stop, adopt, never a second hub) |
 | `src-tauri/src/hub/policy.rs` | which exits are restarted, and the backoff |
-| `src-tauri/src/hub/probe.rs`, `launch.rs`, `display.rs` | lock/control API/launchd probes, the command and environment, the menu lines |
+| `src-tauri/src/hub/probe.rs`, `launch.rs`, `display.rs` | lock/control API/launchd probes, the command and environment, the menu lines and panel rows |
 | `src-tauri/src/hub/control.rs`, `guard.rs` | signed control requests (token, nonce, proof); the guard line and "Lock now" |
 | `src-tauri/src/webview.rs` | denies every webview permission request |
 | `src-tauri/Info.plist`, `Entitlements.plist` | usage descriptions and the camera/microphone entitlements (checked by `tests/bundle_config.rs`) |
 | `src-tauri/src/sleep.rs` | the three modes behind a `Power` trait (a fake in tests) |
 | `src-tauri/src/login.rs` | `SMAppService.mainApp` |
-| `src-tauri/src/tray.rs` | the native menu |
-| `src-tauri/src/settings.rs`, `eventlog.rs`, `signals.rs`, `commands.rs` | settings files, TauBar's log, quit on signals, window commands |
-| `src/App.tsx`, `src/api.ts`, `src/format.ts` | the window |
+| `src-tauri/src/tray.rs` | the icon and the native menu (right click) |
+| `src-tauri/src/panel.rs` | the panel's window: open under the icon, hide on focus loss, fit its height |
+| `src-tauri/src/settings.rs`, `eventlog.rs`, `signals.rs`, `commands.rs` | settings files, TauBar's log, quit on signals, the commands the UI calls |
+| `src/Panel.tsx`, `src/panel.css`, `src/icons.tsx` | the panel |
+| `src/App.tsx`, `src/styles.css` | the settings window |
+| `src/main.tsx`, `src/api.ts`, `src/format.ts`, `src/devmock.ts` | which view a window shows, the commands, display helpers, the browser stand-in |
 | `sudoers/` | the lid-closed rule and its install/uninstall scripts |
 
 The UI is English only for now; tau's other UIs take their strings from the `tau_core.i18n`

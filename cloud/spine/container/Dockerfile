@@ -17,11 +17,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_NO_CACHE=1
 
-# The packages the brain runs: the agent core, the network and the cloud-mode commands.
+# The packages the brain runs: the agent core, the network, the cloud-mode commands and
+# sub-taus (persona/subs/, which `tau cloud run` pulls with the other persona files).
 COPY packages/tau-core /src/tau-core
 COPY packages/tau-net /src/tau-net
 COPY packages/tau-cloud /src/tau-cloud
-RUN uv pip install --system /src/tau-core /src/tau-net /src/tau-cloud
+COPY packages/tau-sub /src/tau-sub
+RUN uv pip install --system /src/tau-core /src/tau-net /src/tau-cloud /src/tau-sub
 
 # Config root and data directory; `tau cloud run` fills them from the spine at start.
 ENV TAU_HOME=/tau \
@@ -32,6 +34,11 @@ RUN useradd --system --create-home --home-dir /home/tau tau \
 USER tau
 WORKDIR /tau
 
-# The spine talks to the brain on this port (TauBrain.defaultPort); `GET /health` answers.
+# The spine talks to the brain on this port (TauBrain.defaultPort); `GET /health` answers
+# {"ok": true, "version", "hub"} (TAU_CLOUD_HEALTH_PORT overrides the port).
 EXPOSE 8080
+# `tau cloud run` is PID 1: it pulls tau.toml and the persona files into /tau, then runs
+# `tau hub run` in the same process. SIGTERM stops the hub cleanly (exit 0); it needs
+# TAU_SPINE_URL and TAU_SPINE_TOKEN, which the spine sets, and exits 1 without them.
+STOPSIGNAL SIGTERM
 CMD ["tau", "cloud", "run"]

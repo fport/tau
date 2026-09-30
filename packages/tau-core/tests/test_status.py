@@ -200,22 +200,24 @@ def test_hub_check_never_raises(config: Config, monkeypatch: pytest.MonkeyPatch)
     assert lines[-1].startswith("Hub: control API check failed on ")
 
 
-def test_status_reports_the_proxy_budget(config: Config) -> None:
-    from datetime import UTC, datetime
+def test_status_reports_the_budget(config: Config) -> None:
+    from datetime import datetime
 
     from tau_core.config import BudgetConfig
-    from tau_core.spend import RoleSpend
+    from tau_core.persona import TIMEZONE
+    from tau_core.spend import RoleSpend, ledger_for
 
-    roles = {**config.roles, "brain": RoleConfig("proxy", "brain", budget=BudgetConfig(15, "1mo"))}
-    proxied = config.with_overrides(roles=roles)
-    agent = build_agent(config=proxied, model=FakeModel(), tools=[], context_sources=[])
-    reset = datetime(2026, 10, 1, tzinfo=UTC)
-    spends = {"brain": RoleSpend("brain", "brain", 0.42, 15.0, "1mo", reset, 15.0, "1mo")}
+    roles = {**config.roles, "brain": RoleConfig("fake", "fake", budget=BudgetConfig(15, "month"))}
+    budgeted = config.with_overrides(roles=roles)
+    agent = build_agent(config=budgeted, model=FakeModel(), tools=[], context_sources=[])
+    since = datetime(2026, 9, 1, tzinfo=TIMEZONE)
+    reset = datetime(2026, 10, 1, tzinfo=TIMEZONE)
+    spends = {"brain": RoleSpend("brain", "fake", "fake", 0.42, "month", since, reset, 15.0)}
     lines = status_lines(agent, language="en", spends=spends)
-    assert lines[-1] == "Budget: brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00)"
-    unread = status_lines(agent, language="tr", spends={"brain": RoleSpend("brain", "brain")})
-    assert unread[-1] == "Bütçe: henüz okunamadı (proxy yanıt vermedi)"
-    assert not any(
-        line.startswith("Budget")
-        for line in status_lines(build_agent(config=config, model=FakeModel(), tools=[]))
-    )  # no proxy role, no budget line
+    assert lines[-1] == "Budget: brain $0.42 of $15.00 this month (resets 01.10.2026 00:00)"
+    ledger_for(budgeted).record(
+        role="brain", provider="fake", model_id="fake", usage={}, cost_usd=1.25
+    )
+    assert status_lines(agent, language="tr")[-1].startswith("Bütçe: brain $1.25 of $15.00")
+    plain = status_lines(build_agent(config=config, model=FakeModel(), tools=[]))
+    assert not any(line.startswith("Budget") for line in plain)  # no budget, no line

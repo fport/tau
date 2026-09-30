@@ -9,7 +9,7 @@ Precedence for the settings that have a command-line option: option → environm
 | Variable | Default | Meaning |
 |---|---|---|
 | `TAU_HOME` | the current directory when it holds `tau.toml`, else `~/.tau` | The configuration root: `tau.toml`, `.env`, `persona/`, `tools/`. `tau --home DIR` wins. |
-| `TAU_DATA_DIR` | `~/.local/share/tau` | Mutable state: `sessions/`, `hub/`, `logs/`. Never inside a repository. |
+| `TAU_DATA_DIR` | `~/.local/share/tau` | Mutable state: `sessions/`, `hub/`, `logs/` and the spend ledger `spend.sqlite3`. Never inside a repository. |
 | `TAU_PROFILE` | `home` | The active profile: `home`, `travel` or `sport`. `tau --profile NAME` wins and is exported as this variable. |
 | `TAU_ROLE` | `hub` | The host role, `hub` or `node`. The hub service templates set `hub`; the mesh (layer 5) uses `node`. Any other value is a `ConfigError`. |
 | `TAU_HUB_PORT` | `[hub] control_port` (7877) | Overrides the control API port. Must be a number. |
@@ -21,21 +21,27 @@ Which ones you need depends on the providers in `tau.toml`. Each provider accept
 
 | Provider | Alternatives |
 |---|---|
-| `bedrock` | `AWS_REGION` + `AWS_PROFILE` · `AWS_REGION` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` · `AWS_REGION` + `AWS_BEARER_TOKEN_BEDROCK`. A `region` in the role drops `AWS_REGION` from each alternative. |
 | `anthropic` | `ANTHROPIC_API_KEY` (or the variable named by `params.api_key_env`). Optionally `ANTHROPIC_WORKSPACE_ID` for a key that is not scoped to a workspace. |
+| `openai` | `OPENAI_API_KEY` (or the variable named by `params.api_key_env`). |
+| `gemini` | `GEMINI_API_KEY` · `GOOGLE_API_KEY` (or the variable named by `params.api_key_env`). |
+| `bedrock` | `AWS_REGION` + `AWS_PROFILE` · `AWS_REGION` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` · `AWS_REGION` + `AWS_BEARER_TOKEN_BEDROCK`. A `region` in the role drops `AWS_REGION` from each alternative. |
+| `ollama` | none |
 | `fake` | none |
 | a `tau.providers` component | whatever its factory declares in `required_env` |
 
 | Variable | Meaning |
 |---|---|
-| `AWS_REGION` | Bedrock region, e.g. `eu-central-1`. |
+| `ANTHROPIC_API_KEY` | The Anthropic key, `sk-ant-…`. |
+| `ANTHROPIC_WORKSPACE_ID` | `wrksp_…`; sent as the `anthropic-workspace-id` header. Without it a non-scoped key gets a 400 from the API. |
+| `OPENAI_API_KEY` | The OpenAI key, `sk-…`, or the key of the OpenAI-compatible API a role's `params.base_url` points at. |
+| `GEMINI_API_KEY`, `GOOGLE_API_KEY` | The Google Gemini key; either name works, `GEMINI_API_KEY` is looked at first. |
+| `TAU_OLLAMA_URL` | Where the `ollama` provider finds Ollama, without `/v1`. Default `http://127.0.0.1:11434` (this machine); a role's `params.base_url` wins. Set it when the hub is not the Mac that runs Ollama, e.g. `http://my-mac.tailXXXXXX.ts.net:11434`. Not a secret. |
+| `AWS_REGION` | Bedrock region, e.g. `eu-central-1`. Bedrock is optional. |
 | `AWS_PROFILE` | A named profile from `~/.aws/config`. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Static AWS credentials. |
 | `AWS_BEARER_TOKEN_BEDROCK` | A Bedrock API key (bearer token). |
-| `ANTHROPIC_API_KEY` | The Anthropic key, `sk-ant-…`. |
-| `ANTHROPIC_WORKSPACE_ID` | `wrksp_…`; sent as the `anthropic-workspace-id` header. Without it a non-scoped key gets a 400 from the API. |
 
-A missing credential stops `tau chat` with exit 2 and a message naming the variables; `tau tui` opens its settings screen on the Credentials section instead; `tau doctor` reports it without starting anything. `/settings set NAME` (terminal, hidden prompt) and the TUI's Credentials section write a value to `.env` (mode `0600`) and export it to the running process.
+A missing credential stops `tau chat` with exit 2 and a message naming the variables; `tau tui` opens its settings screen on the Credentials section instead; `tau doctor` reports it without starting anything. `/settings set NAME` (terminal, hidden prompt) and the TUI's Credentials section write a value to `.env` (mode `0600`) and export it to the running process. Budgets need no variable: they live in `tau.toml`, the spend in `TAU_DATA_DIR/spend.sqlite3` ([Models and budgets](../guides/models-and-budgets.md)).
 
 ## Telegram
 
@@ -45,6 +51,19 @@ Read by the `telegram` hub service (see [Telegram](../guides/telegram.md)). With
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | The bot token from @BotFather, `123456789:AA…`. A password: it never appears in logs, `/status` or `tau doctor`. |
 | `TELEGRAM_ALLOWED_CHAT_IDS` | The chat ids the bot answers, comma-separated. Messages from any other chat are dropped unanswered. |
+
+## tau network and cloud mode
+
+[ADR 0007](../adr/0007-cloud-mode-and-tau-network.md); setup in [Join the tau network](../guides/tau-network.md) and [cloud mode](../guides/cloud-mode.md).
+
+| Variable | Meaning |
+|---|---|
+| `TAU_SPINE_URL` | The tau's spine Worker, `https://tau.example.com` (`http://127.0.0.1:8787` while developing). Without it the `net` hub service stays idle. |
+| `TAU_SPINE_TOKEN` | The spine's `HUB_TOKEN` secret. A password: never in logs, reprs or `/status`. |
+| `TAU_NET_IDENTITY` | The network identity as base64url JSON, in place of `TAU_DATA_DIR/net/identity.json`. Cloud mode sets it as a Worker secret. |
+| `TAU_NET_ALLOW_INSECURE` | `1` allows `http` to peers on `localhost` / `127.0.0.1`. Development only. |
+
+In cloud mode the brain container gets its credentials from the spine's Worker secrets: every model credential above except `AWS_PROFILE` and `TAU_OLLAMA_URL` (`ANTHROPIC_*`, the static and bearer AWS variables, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`), `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TAU_NET_IDENTITY` and `TAU_LANG`, each only when it is set ([cloud mode](../guides/cloud-mode.md), §5 of the [protocol](tau-network.md)).
 
 ## Remote access reference values (layer 0)
 
@@ -105,7 +124,9 @@ TAU_LANG=en
 
 ANTHROPIC_API_KEY=sk-ant-...
 # ANTHROPIC_WORKSPACE_ID=wrksp_...
+# OPENAI_API_KEY=sk-...
+# GEMINI_API_KEY=...
 
-# AWS_REGION=eu-central-1
-# AWS_PROFILE=tau
+# only when the hub is not the Mac that runs Ollama
+# TAU_OLLAMA_URL=http://my-mac.tailXXXXXX.ts.net:11434
 ```

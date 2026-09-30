@@ -43,3 +43,5 @@ LiteLLM 1.82.7 and 1.82.8 on PyPI were compromised in March 2026 — this is why
     - LiteLLM answers a spent key with `429 budget_exceeded`, which Strands would retry as throttling; `ProxyModel` catches it first.
     - The response headers `x-litellm-attempted-fallbacks` and `x-litellm-key-spend` are read on every call.
     - Prompt caching does not pass the proxy yet (131).
+
+- 2026-09-30 (later): superseded by 132 ([ADR 0011](../../docs/adr/0011-budgets-in-tau-no-litellm.md)). The owner dropped the LiteLLM proxy so users need no Docker; `infra/litellm`, the `proxy` provider and `tau proxy` are gone, and budgets, spend and failover now live in tau-core.

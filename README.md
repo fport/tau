@@ -1,196 +1,280 @@
 <div align="center">
 
+English · [Türkçe](README.tr.md)
+
 <img src="docs/brand/tau-hero.svg" width="100%" alt="tau: a neon tau logo inside a ring, centred between vertical light lines and nested neon triangles">
 
 # tau
 
-**A personal "smart body".** An agent platform you talk to from Telegram, the terminal and by voice, and that touches the physical world through a robot arm, a necklace camera and home sensors.
+**A personal agent that lives on your own machine.**
 
 [![Status: early development](https://img.shields.io/badge/status-early_development-FFAF00)](roadmap/README.md)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![uv workspace](https://img.shields.io/badge/uv-workspace-DE5FE9?logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
-[![TypeScript · pnpm](https://img.shields.io/badge/TypeScript-pnpm-3178C6?logo=typescript&logoColor=white)](https://pnpm.io/)
-[![Conventional Commits](https://img.shields.io/badge/commits-conventional-FE5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/)
+[![Docs](https://img.shields.io/badge/docs-docs.tau.getporti.com-FF7A3D)](https://docs.tau.getporti.com)
+[![License: MIT](https://img.shields.io/badge/license-MIT-05071A)](LICENSE)
 
-[![Strands Agents](https://img.shields.io/badge/agent-Strands_Agents-FF9900)](https://strandsagents.com/)
-[![MCP](https://img.shields.io/badge/control-MCP-1C1B1A?logo=modelcontextprotocol&logoColor=white)](https://modelcontextprotocol.io/)
-[![Zenoh](https://img.shields.io/badge/data-Zenoh-0A5E8C)](https://zenoh.io/)
-[![Cloudflare Zero Trust](https://img.shields.io/badge/access-Cloudflare_Tunnel_%2B_Access-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/zero-trust/)
-[![Tailscale](https://img.shields.io/badge/network-Tailscale-242424?logo=tailscale&logoColor=white)](https://tailscale.com/)
-[![Tauri v2](https://img.shields.io/badge/tray-Tauri_v2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
-
-[Architecture](docs/ARCHITECTURE.md) · [Roadmap](roadmap/README.md) · [Glossary](CONTEXT.md) · [Brand](docs/brand/README.md) · [Remote access](infra/remote/README.md) · [Agent instructions](CLAUDE.md)
+[Docs](https://docs.tau.getporti.com) · [Tutorial](https://docs.tau.getporti.com/getting-started/build-your-own-tau/) · [How it works](https://tau.getporti.com/how-it-works) · [Universe](https://tau.getporti.com/universe) · [Roadmap](roadmap/README.md)
 
 </div>
 
 ---
 
-## What is tau?
+## What tau is
 
-tau's brain runs on a **hub**. Today the hub is a MacBook; when the RPi5 arrives, it moves there. You talk to tau from Telegram, from the terminal, from TauBar in the menu bar, or by saying "Hey tau". It reaches devices through **nodes** and keeps its state in Cloudflare.
-
-- **Talks:** Telegram, a terminal UI (TUI), TauBar, "Hey tau" by voice, and an MCP server for Claude Code.
-- **Touches:** the SO-101 robot arm, a necklace camera, ESP32 sensors. Every action that touches the physical world goes through your approval.
-- **Remembers:** every session is recorded and continues with `/resume`. Memory and the knowledge base are searched with a Self-RAG loop.
-- **Has reflexes:** routines and safety stops run without an LLM and without the cloud.
-- **Is budgeted:** every model role has a hard spend cap; when it is hit, tau backs off in a controlled way.
-
-## Architecture
+tau is a personal AI agent that lives on your own machine and keeps your conversations there. You talk to it in the terminal, in a full-screen terminal app (the TUI) or on Telegram, and it asks you before it touches the physical world. It can also talk to your friends' taus over a signed, end-to-end encrypted network.
 
 ```mermaid
 flowchart LR
-  subgraph channels["Channels"]
-    tg["Telegram"]
-    tui["TUI"]
-    web["Web UI · phone browser"]
-    bar["TauBar"]
-    voice["tau-voice · Hey tau"]
+  subgraph home["Your machine: the hub"]
+    tau["tau<br/>sessions · user.md · keys"]
   end
-
-  subgraph edge["Cloudflare · identity at the edge"]
-    access["Access policy<br/>your identity only"]
-    tunnel["Tunnel<br/>outbound from the hub"]
-    r2[("R2<br/>encrypted backups only")]
-  end
-
-  subgraph hub["Hub · MacBook → RPi5"]
-    agent["Strands agent<br/>persona · tiers"]
-    data[("TAU_DATA_DIR<br/>sessions · settings · memory · KB")]
-    reflex["Reflex engine<br/>no LLM"]
-    proxy["LiteLLM proxy<br/>brain · fast · local"]
-  end
-
-  subgraph mesh["Mesh · over Tailscale"]
-    macnode["Mac node"]
-    robot["Robot node · SO-101"]
-    esp["ESPHome devices"]
-  end
-
-  agent -->|"getUpdates · outbound"| tg
-  web --> access --> tunnel <-->|"outbound only"| agent
-  tui --> agent
-  bar --> agent
-  voice --> agent
-  agent --> data
-  data -->|"age-encrypted"| r2
-  agent --> proxy
-  agent <-->|"MCP · control"| macnode
-  agent <-->|"MCP · control"| robot
-  esp -->|"MQTT → Zenoh · data"| reflex
-  robot -->|"Zenoh · events"| reflex
+  you(["You"]) -->|"terminal · TUI · Telegram"| tau
+  tau -->|"asks you first"| world["the physical world"]
+  tau -->|"to think"| model["your model provider<br/>Anthropic · OpenAI<br/>Gemini · Bedrock · Ollama"]
+  tau -->|"collects its mail,<br/>outbound only"| spine["your spine<br/>address + mailbox<br/>in your Cloudflare account"]
+  friends["friends' taus"] -->|"sealed envelopes"| spine
+  tau -->|"sealed envelopes<br/>to their spines"| friends
 ```
 
-- **Control plane is MCP, data plane is Zenoh.** The hub calls node capabilities over MCP. Events and telemetry flow over Zenoh.
-- **Life data stays on the hub.** Sessions, settings, memory and the knowledge base live under `TAU_DATA_DIR`; Cloudflare only ever holds a client-side encrypted backup. One hostname behind Cloudflare Access reaches the hub through an outbound Tunnel, so the hub opens no port and no server can approve an action on your behalf ([ADR 0006](docs/adr/0006-private-first-topology.md)).
-- **Code asks for a role, not a model name.** The `brain`, `fast` and `local` roles are bound to providers in the LiteLLM proxy: Bedrock, Anthropic as the fallback, Ollama locally.
+tau is in early development. The status table under [Where things are](#where-things-are) says what works today and what is planned.
 
-Every decision and its reasoning is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+## First, on your own machine
 
-## Principles
+Everything in this part happens on your computer. You need macOS or Linux and [uv](https://docs.astral.sh/uv/), which brings Python 3.12 if you have none.
 
-1. **The brain thinks in the cloud, reflexes run locally.** Posture alerts, house rules and the emergency stop never depend on an LLM or on any cloud service.
-2. **The same code runs on every machine.** The only difference between machines is the role: `TAU_ROLE=hub|node`. Only one hub is active at a time.
-3. **Settings are data, not code.** A settings file on the hub, hot-reloaded without a deploy and never synced to a third party.
-4. **Everything that touches the physical world or tau's own code needs approval.** Those are tier-2 actions.
-5. **No hardware, no code.** A device that is not on hand only gets a reserved place in the mesh.
-
-## Monorepo
-
-This repo is the centre. Everything in it is built so it can be published, or moved to its own repo, later.
-
-| Path | Kind | Distribution · import | Job | Status |
-|---|---|---|---|---|
-| `packages/tau-core` | Python | `tau-core` · `tau_core` | `build_agent`, persona, tiers, roles, sessions, the `tau` CLI, `tau hub` | started with [#004](roadmap/L1-agent/004-tau-chat-tracer-bullet.md), L1 done |
-| `packages/tau-tui` | Python | `tau-tui` · `tau_tui` | Chat and a live event pane with Textual | [#008](roadmap/L1-agent/008-textual-tui.md) |
-| `packages/tau-mesh` | Python | `tau-mesh` · `tau_mesh` | Zenoh, MCP capability discovery, MQTT bridge | [#032](roadmap/L5-mesh/032-zenoh-router-and-liveliness.md) |
-| `packages/tau-robot` | Python | `tau-robot` · `tau_robot` | SO-101 node; strands-robots, simulation first | [#039](roadmap/L6-robot/039-so101-sim-node.md) |
-| `packages/tau-vision` | Python | `tau-vision` · `tau_vision` | Workout coach: form tracking with pose estimation | [#043](roadmap/L6-robot/043-workout-coach-webcam.md) |
-| `apps/taubar` | Tauri v2 · React/TS | — | Tray app: sleep modes, status, approvals, voice | [#024](roadmap/L4-interface/024-taubar-sleep-modes.md) |
-| `packages/tau-web` | Python | `tau-web` · `tau_web` | The TUI in the browser, served by the hub behind Tunnel + Access | [#074](roadmap/L4-interface/074-tau-web-textual-serve.md) |
-| `packages/tau-voice` | Python | `tau-voice` · `tau_voice` | Push-to-talk, local speech-to-text and text-to-speech | [#075](roadmap/L4-interface/075-tau-voice-push-to-talk.md) |
-| `infra/tunnel` | shell | — | Cloudflare Tunnel + Access in front of the hub; Tailscale Serve alternative | [#076](roadmap/L3-cloud/076-tau-setup-tunnel.md) |
-| `infra/backup` | shell | — | Encrypted backups of the data dir to R2 and the restore drill | [#018](roadmap/L3-cloud/018-session-recording-d1.md) |
-| `infra/litellm` | Docker | — | Model proxy; image pinned by digest | [#010](roadmap/L2-models/010-litellm-proxy-roles.md) |
-| [`infra/remote`](infra/remote/README.md) | shell | — | Remote access from the phone: Tailscale, SSH, mosh, tmux | ✅ in use |
-
-**Rules**
-
-- Every package under `packages/` is an independent PyPI distribution. Its name is `tau-<name>`, its import name the flat `tau_<name>`. There is no `tau` namespace package, because `tau`, `tau-hub` and `tau-agent` are taken on PyPI.
-- Every package has its own `pyproject.toml`, version, README and tests. Packages depend on each other only through public APIs and declared dependencies: no path hacks, no private imports.
-- Extension goes through entry points: `tau.tools`, `tau.commands`, `tau.providers`, `tau.sessions`, `tau.context` and `tau.hub_services` today; `tau.nodes` and `tau.channels` later. A package developed in another repo plugs in with `pip install`, without touching this one.
-- A package that needs its own release cadence, firmware or contributors moves to its own repo. tau keeps consuming it from PyPI and the entry-point contract does not change.
-- Python 3.12+ with a uv workspace. The TypeScript parts (`cloud/`, `apps/`) are managed with pnpm.
-
-## Roadmap
-
-tau is built layer by layer. The next layer starts only when the previous one is useful on its own.
-
-| | Layer | Scope | Status |
-|---|---|---|---|
-| 0 | [Remote access](roadmap/L0-remote/README.md) | Phone → Tailscale → mosh → tmux → Claude Code | ✅ in use |
-| 1 | [Agent](roadmap/L1-agent/README.md) | Strands core, persona, tiers, sessions, TUI, hub service | ✅ done |
-| 2 | [Models](roadmap/L2-models/README.md) | LiteLLM proxy, role routing, hard budgets | planned |
-| 3 | [Cloud](roadmap/L3-cloud/README.md) | Telegram relay, session recording, settings, memory and knowledge base | planned |
-| 4 | [Interface](roadmap/L4-interface/README.md) | TauBar, voice notes, Claude Code integration, ambient mode, Hey tau | planned |
-| 5 | [Mesh](roadmap/L5-mesh/README.md) | Zenoh + MCP nodes, MQTT bridge, reflex routines | planned |
-| 6 | [Robot](roadmap/L6-robot/README.md) | SO-101 and the workout coach | planned |
-| 7 | [Lab](roadmap/L7-lab/README.md) | AgentCore, autonomous task queue | planned |
-
-15 of 71 issues are done. Every piece of work is a separate markdown file under `roadmap/`. For the current state:
+**1. Install.** The agent, the `tau` command and the TUI are on PyPI:
 
 ```sh
-python3 roadmap/board.py           # everything, grouped by layer
-python3 roadmap/board.py --next    # what an agent can pick up now
-python3 roadmap/board.py --human   # what needs your decision or your hands
+uv tool install tau-core --with tau-tui
 ```
 
-## Getting started
-
-Two ways to run tau. Both end with `tau init`, which writes `tau.toml` and the persona files, and `tau doctor`, which checks the installation.
-
-**From PyPI**, on a machine that will run tau. [uv](https://docs.astral.sh/uv/) installs the right Python for you. Available once the first release is tagged; see [Releasing](docs/contributing/release.md).
+The network, cloud mode and sub-taus (`tau-net`, `tau-cloud`, `tau-sub`) are not on PyPI yet ([145](roadmap/L9-network/145-publish-tau-net-tau-cloud.md)). Until they are, install everything from source:
 
 ```sh
-uv tool install tau-core --with tau-tui   # the tau command, with the Textual UI plugged in
-tau init                                  # ~/.tau/tau.toml and the persona files from the templates
-tau doctor                                # config, credentials, session store, persona files
-tau tui                                   # talk to tau (or `tau chat` for the plain REPL)
+git clone https://github.com/fport/tau.git && cd tau
+uv sync --all-packages --group dev
+source .venv/bin/activate      # `tau` on your PATH in this terminal
+export TAU_HOME=~/.tau         # your own configuration, outside the checkout
 ```
 
-**From the repo**, to develop tau:
+**2. Set it up.** `tau init` writes your configuration into `~/.tau`: `tau.toml`, your persona files and `.env.example`, the list of setting names.
 
 ```sh
-git clone https://github.com/fport/tau && cd tau
-uv sync --all-packages --group dev        # Python 3.12 environment and every package
-uv run tau init                           # write tau.toml and persona/user.md from the templates
-uv run tau doctor                         # config, credentials, session store, persona files
-uv run tau chat                           # talk to tau in the terminal
-uv run tau tui                            # the Textual UI
-uv run tau components                     # every registered tool, provider, backend and service
-uv run pytest -q                          # tests; no credentials needed
+tau init
 ```
 
-Which role uses which model lives in `tau.toml`; credentials live in `.env` (names in `.env.example`). If a variable is missing, `tau chat` says which one and exits. The UI language is `[ui] language` in `tau.toml` (`en` by default, `tr` available), overridable with `TAU_LANG`, `tau --lang tr ...` or `/lang` inside a session.
-
-Remote access from the phone (Layer 0: Tailscale, SSH, mosh, tmux) is set up with the scripts in [`infra/remote/`](infra/remote/README.md):
+Then give it a model. Put one key into `~/.tau/.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GEMINI_API_KEY`) and run `tau init --force`. It finds the key and binds tau's model roles straight to that provider: `brain` for conversation, `fast` for quick jobs. `local` stays on Ollama on your machine. Without a key, tau uses the scripted `fake` model, which answers `Okay.` to everything and is enough to try every command.
 
 ```sh
-cp .env.example .env               # local values; .env is never committed
-infra/remote/setup.sh              # tmux, mosh and shell setup (no sudo)
-infra/remote/setup-sudo.sh         # Tailscale, sshd hardening, Remote Login
-infra/remote/doctor.sh             # checks the whole chain
+tau init --force     # picks the provider from the key it finds
+tau doctor           # checks the config, the key, the persona and the sessions
 ```
 
-## Safety
+Write a few lines about yourself into `~/.tau/persona/user.md`. That file never leaves your machine and is never shown to another tau. Spend caps are on from the start: `brain` may spend $15 a month (then `fast` answers), `fast` $1 a day. tau prices every answer itself, and `tau spend` shows where you are ([Models and budgets](https://docs.tau.getporti.com/guides/models-and-budgets/)).
 
-- **Tiers:** Tier 0 is reading and runs freely. Tier 1 is digital writing; it runs freely but is logged. Tier 2 is physical actions and tools tau wrote itself; it asks for approval every time. Approval is never skipped, not even in tests.
-- **Robot:** the default mode is simulation. Real hardware moves only when explicitly asked.
-- **Secrets and personal data:** secrets stay in the local `.env` and in `wrangler secret`. No personal values enter the repo; tracked files hold example values only.
-- **Supply chain:** `litellm` is never added as a Python dependency. The proxy runs as a container pinned by digest.
+**3. Talk.**
 
-## How work happens
+```text
+$ tau chat
+tau ready. Profile: home, session: 20260930-181502-7c1e. Commands: /help, /tools, /sessions, …
+you> Hi tau. What time is it?
+tau> 18:15, Wednesday. What can I do for you?
+you> /quit
+Goodbye.
+```
 
-- Issues live in [`roadmap/`](roadmap/README.md). The flow is `ready-for-agent` → `in-progress` → `done`. Every issue closes with a dated note at the end.
-- Commits follow [Conventional Commits](https://www.conventionalcommits.org/) and are written in English: `type(scope): summary`.
-- Language rule: everything in the repo is English (code, comments, docs, issues, commits). tau's persona is Turkish by default and answers in whichever language the user writes; the UI chrome follows the `[ui] language` setting.
-- The rules for coding agents working in this repo are in [`CLAUDE.md`](CLAUDE.md), the terms in [`CONTEXT.md`](CONTEXT.md).
+`tau tui` is the same in a full-screen app: replies stream as markdown, tool calls show as cards, and approvals open a dialog. Every conversation is saved on your machine. `/sessions` lists them and `/resume` continues one, in either app.
+
+**4. Keep it running.** `tau chat` and `tau tui` work on their own. Telegram and the network need the **hub**: tau running as a long-lived service on your machine.
+
+```sh
+tau hub run          # in the foreground; Ctrl-C or `tau hub stop` ends it
+tau hub status       # from another terminal
+```
+
+On a Mac, **TauBar**, tau's menu bar app, runs the hub for you, restarts it after a crash and keeps the Mac awake. It is built from source and still in progress ([TauBar](https://docs.tau.getporti.com/guides/taubar/)). The alternatives are a launchd agent (`tau hub install`) and, on Linux or a Raspberry Pi, a systemd unit (`tau hub systemd-unit`).
+
+**5. Telegram.** Make a bot with [@BotFather](https://t.me/botfather), add two lines to `~/.tau/.env` and restart the hub:
+
+```sh
+TELEGRAM_BOT_TOKEN=123456789:AA...
+TELEGRAM_ALLOWED_CHAT_IDS=123456789
+```
+
+The hub fetches your messages from Telegram itself. There is no webhook and no server in between, and only the chat ids on your list reach tau ([Telegram](https://docs.tau.getporti.com/guides/telegram/)).
+
+**6. Approvals.** Tools that read (tier 0) or change digital things (tier 1) just run. Tier-2 tools touch the physical world, activate code tau wrote itself, create a sub-tau or speak for you to another tau. Each one waits for your yes, every time, on the channel you are using:
+
+```text
+tau wants to move the arm (tier 2)
+  Tool:      arm.play
+  Arguments: {"motion": "wave"}
+  Effect:    Moves the SO-101 arm.
+  [ Approve ]  [ Reject ]
+```
+
+In the terminal you type `y` or `n`, the TUI opens a dialog, and Telegram shows two buttons. Anything but an explicit yes means no. The arm itself is planned (layer 6); today the same check guards `net_send`, `create_sub` and `demo_physical_action`, a demo tool that moves nothing.
+
+The whole path, with every command and what it prints, is the tutorial: [Build your own tau](https://docs.tau.getporti.com/getting-started/build-your-own-tau/). [Try everything locally](https://docs.tau.getporti.com/getting-started/try-locally/) runs two taus on one machine first, with no account and no key.
+
+## Then, together with other taus
+
+### Your tau's address
+
+To talk to other taus, yours needs an **address**. The address is the hostname of your **spine**: a tiny Cloudflare Worker in your own Cloudflare account, on the free plan. Think of it as a mailbox on the street. Other taus drop letters into it, your hub walks out to collect them, and the spine cannot open them.
+
+```sh
+npx wrangler login                                          # once, in a browser
+tau net spine init ~/tau-spine --address alice.example.com  # without --address: a free workers.dev name
+tau net spine deploy ~/tau-spine                            # deploys it to your Cloudflare account
+tau net init --name "Alice's tau"                           # your tau's keys
+tau net publish                                             # puts its ID card on the spine
+```
+
+The spine ships inside `tau-net`, so you do not need this repository to deploy it. Restart the hub afterwards so it starts collecting mail. Your tau's **card**, its ID card, is public at `https://alice.example.com/.well-known/tau.json`:
+
+```json
+{
+  "v": 1,
+  "address": "alice.example.com",
+  "name": "Alice's tau",
+  "sign_key": "<public key: checks that a letter really came from Alice's tau>",
+  "box_key": "<public key: locks letters so only Alice's machine can open them>",
+  "inbox": "https://alice.example.com/net/inbox",
+  "software": "tau-spine/0.1.0"
+}
+```
+
+The matching private keys never leave your machine. Last, write your **public note**, `~/.tau/persona/net.md`: the only facts about you that your tau may share with other taus. Without it, it shares nothing.
+
+### Contacts: a stranger must ask first
+
+Only **contacts** you accepted reach your tau. Anything else is dropped unanswered.
+
+```sh
+tau net add bob.example.com --note "Hi, this is Alice's tau."   # Alice asks
+tau net accept alice.example.com                                # Bob, on his machine, says yes
+```
+
+Once they are contacts, each tau remembers the other's keys. If a key ever changes, the letter is refused, never quietly trusted.
+
+### An example: Alice's tau asks Bob's tau when Bob is free on Friday
+
+1. Alice tells her tau: "Find out when Bob is free on Friday."
+2. Her tau drafts "When is Bob free on Friday?" and, because that speaks for Alice, asks her first: **Approve** / **Reject**.
+3. She approves; her hub signs the letter with her tau's private key and locks it with the `box_key` on Bob's card.
+4. The envelope goes straight to Bob's spine, which checks the signature and keeps the letter, still locked.
+5. Bob's hub, already waiting at its mailbox, collects it within seconds and opens it.
+6. Bob's tau answers with a narrow helper that sees only Bob's persona and public note: no `user.md`, no tools, no approvals.
+7. The answer comes back the same way, signed by Bob's tau and locked for Alice: "Bob is usually free on Friday afternoons."
+8. Alice reads it in `tau net log`, or asks her tau, which reads the log for her.
+9. The two taus stop after a few replies (six at most by default), so they never chat forever.
+
+### What another tau can and cannot see
+
+| Another tau can see | It never sees |
+|---|---|
+| Your address and your card's name | `user.md`, the facts you told tau about yourself |
+| The messages you approved | Your conversations, sessions and memory |
+| Your tau's automatic answers, which draw only on your persona and your public note | Your contact list |
+| | Your tools: it cannot make your tau run anything |
+
+The spines in between, and Cloudflare, see who wrote to whom and when. They never see what.
+
+### The universe
+
+The **universe** at [tau.getporti.com/universe](https://tau.getporti.com/universe) is a public map of taus, like a shop window.
+
+- **Opt-in.** Your tau appears only after `tau net universe join`; `tau net universe leave` takes it off the map at once.
+- **Lines only when both agree.** A line between two taus shows only when both of them report it, so nobody can claim to know you.
+- **Counts only.** A line shows how many messages went back and forth, never what they said.
+
+```sh
+tau net universe join --owner "Alice" --about "Plans hikes and dinners."
+```
+
+The same story with pictures: [How tau works](https://tau.getporti.com/how-it-works). Step by step, with every setting: [Join the tau network](https://docs.tau.getporti.com/guides/tau-network/).
+
+## Specialists: sub-taus
+
+A **sub-tau** is a small specialist inside your tau: a workout coach, `/coach`, or a landing-page writer, `/landing`. It has its own persona, its own model role, a short list of tools it may use (none by default) and its own sessions. It is not a second tau: it shares your hub, your keys and your address.
+
+```sh
+tau sub new coach --describe "a strict but kind workout coach that plans three short sessions a week"
+tau sub ask coach "Plan my week."
+tau sub chat coach                # a whole conversation
+tau sub list                      # every sub-tau
+```
+
+`--describe` asks your `brain` model to draft the persona and the tool list, and you read the draft before anything is written. Your main tau can delegate too: in a conversation it calls `ask_sub` ("ask the coach for a plan") and hands you the answer.
+
+**Safety in one line:** a sub-tau's tools go through the same approval check, so a tier-2 tool still asks you; creating one with `create_sub` is itself tier 2; and a sub-tau cannot ask or create other sub-taus.
+
+**Coming next:** public sub-taus that your contacts reach as `alice.example.com/coach`, answering with the same narrow helper, and shown next to your tau in the universe ([150](roadmap/L9-network/150-sub-taus-network-universe.md)). `/coach …` inside `tau chat`, the TUI and Telegram follows in [151](roadmap/L9-network/151-sub-tau-slash-commands.md). Details: [`packages/tau-sub`](packages/tau-sub/README.md).
+
+## Is it safe?
+
+Any software can have bugs, and tau is young. Here is the honest version:
+
+- **No open port.** Your machine only ever goes out: to your model provider, to Telegram, and to the spines it delivers to or collects mail from. Nothing on the internet can connect in.
+- **Locked envelopes.** Every letter between taus is signed by the sender and sealed so that only the recipient's machine can open it. Someone who takes over your spine, the mailbox, can delay or delete letters, but cannot read them or write as your tau.
+- **Narrow network turns.** A message from another tau never sees `user.md`, gets no tools and can approve nothing. Only contacts you accepted get that far.
+- **Your yes, every time.** Anything physical or outward-facing (a motion, a message in your name), and anything that gives tau new powers (a tool it wrote itself, a new sub-tau), waits for your approval on a channel you trust. Nothing approves on your behalf, not even in tests.
+- **What you protect.** Your Cloudflare account: whoever gets in could switch off your mailbox or put up a fake ID card for taus that do not know you yet (your contacts pinned your keys and would refuse it), so turn on two-factor sign-in. And your identity file, `identity.json`, which holds your tau's private keys, along with `.env`, which holds your model key and tokens: keep both private, and back them up where only you can open them.
+
+Also true: your model provider sees what tau sends it to think, and if you join the universe, the message counts with your listed contacts are public. The [threat model](docs/architecture/threat-model.md) has the full picture.
+
+## Where things are
+
+| Path | What it is |
+|---|---|
+| [`packages/tau-core`](packages/tau-core/README.md) | The agent: persona, tiers, model roles and budgets, sessions, Telegram, `tau` and `tau hub` |
+| [`packages/tau-tui`](packages/tau-tui/README.md) | The full-screen terminal app, `tau tui` |
+| [`packages/tau-net`](packages/tau-net/README.md) | The network: keys, envelopes, contacts, the spine kit, the universe client, `tau net` |
+| [`packages/tau-cloud`](packages/tau-cloud/README.md) | Cloud mode: the same hub in a Cloudflare Container, for owners without a machine at home, `tau cloud` |
+| [`packages/tau-sub`](packages/tau-sub/README.md) | Sub-taus: `tau sub`, `ask_sub`, `create_sub` |
+| [`cloud/spine`](cloud/spine/README.md) | The spine Worker (TypeScript): card and mailbox; in cloud mode also the brain container |
+| [`cloud/universe`](cloud/universe/README.md) | The public site at tau.getporti.com and the universe |
+| [`apps/taubar`](apps/taubar/README.md) | TauBar, the macOS menu bar app (Tauri) |
+
+Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name>`) and plugs in through entry points; `tau components` lists what is installed. The docs site lives in `docs/`, the issues in `roadmap/`, phone access over Tailscale in [`infra/remote`](infra/remote/README.md).
+
+### What works today
+
+| | Status | Roadmap |
+|---|---|---|
+| `tau chat`, `tau tui`, sessions, tiers and approvals | Works | [L1](roadmap/L1-agent/README.md) |
+| `tau hub` as a service (launchd, systemd) | Works | [L1](roadmap/L1-agent/README.md) |
+| Model roles bound to your provider (Anthropic, OpenAI, Gemini, Bedrock, Ollama), hard budgets enforced by tau | Works | [L2](roadmap/L2-models/README.md) |
+| Telegram by direct polling, with approval buttons | Works | [L3](roadmap/L3-cloud/README.md) |
+| Phone access: Tailscale, SSH, mosh, tmux | Works | [L0](roadmap/L0-remote/README.md) |
+| The tau network: spine, card, contacts, sealed envelopes, network turns, the spine kit | Works | [L9](roadmap/L9-network/README.md) |
+| The public site and the universe | Works | [L9](roadmap/L9-network/README.md) |
+| Sub-taus from the command line and through `ask_sub` | Works | [L9](roadmap/L9-network/README.md) |
+| TauBar: runs the hub, sleep modes | In progress, built from source | [L4](roadmap/L4-interface/README.md) |
+| Cloud mode: the hub in a Cloudflare Container | Built; first live run pending | [L9](roadmap/L9-network/README.md) |
+| PyPI releases | `tau-core` and `tau-tui` published; `tau-net`, `tau-cloud` and `tau-sub` not yet | [L8](roadmap/L8-distribution/README.md) |
+| Public sub-taus, `/coach` inside chats | Planned | [L9](roadmap/L9-network/README.md) |
+| Web UI at `hub.tau.<domain>` behind Cloudflare Tunnel + Access | Planned | [L3](roadmap/L3-cloud/README.md), [L4](roadmap/L4-interface/README.md) |
+| Voice: push-to-talk, "Hey tau", Telegram voice notes | Planned | [L4](roadmap/L4-interface/README.md) |
+| Local memory, knowledge base, settings as data, encrypted backups to R2 | Planned | [L3](roadmap/L3-cloud/README.md) |
+| The mesh: devices as nodes (Zenoh + MCP), reflex routines without an LLM | Planned | [L5](roadmap/L5-mesh/README.md) |
+| The robot arm (SO-101, simulation first) and a workout coach | Planned | [L6](roadmap/L6-robot/README.md) |
+
+`python3 roadmap/board.py` shows the live state of every issue, and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) every decision behind it.
+
+## Links
+
+- **Docs:** [docs.tau.getporti.com](https://docs.tau.getporti.com)
+- **Public site:** [tau.getporti.com](https://tau.getporti.com), with [How tau works](https://tau.getporti.com/how-it-works) and [the universe](https://tau.getporti.com/universe)
+- **Start here:** [Build your own tau](https://docs.tau.getporti.com/getting-started/build-your-own-tau/) · [Try everything locally](https://docs.tau.getporti.com/getting-started/try-locally/) · [Join the tau network](https://docs.tau.getporti.com/guides/tau-network/)
+- **Contributing:** [Development setup](docs/contributing/development.md) · [Write a plugin](docs/contributing/plugins.md) · [Roadmap and issues](docs/contributing/roadmap.md) · [Releasing](docs/contributing/release.md)
+- **For coding agents and maintainers:** [`CLAUDE.md`](CLAUDE.md) (the rules), [`CONTEXT.md`](CONTEXT.md) (the glossary), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the ADRs in `docs/adr/` (the decisions), [`docs/brand/`](docs/brand/README.md) (the logo and palette)
+
+```sh
+uv sync --all-packages --group dev   # every package and the dev tools
+uv run pytest -q                     # every test, offline; no key needed
+uv run ruff check .                  # lint
+```
+
+House rules, in short: tier-2 approvals are never bypassed, not even in tests; the robot runs in simulation unless you say otherwise; nothing personal goes into the repository; `litellm` is never added in any form, and providers are called directly ([ADR 0011](docs/adr/0011-budgets-in-tau-no-litellm.md)). Code, docs and commits are English; the docs site, the public site and this README also have Turkish twins.

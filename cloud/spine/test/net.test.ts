@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { b64uEncode } from "../src/crypto";
 import {
   envelope,
+  inMailbox,
   mailboxCount,
   mockCards,
   newId,
@@ -19,6 +20,28 @@ import {
 } from "./helpers";
 
 const PEER_URL = `https://${PEER}`;
+
+/** The only envelope in the mailbox, as stored. */
+async function storedEnvelope(): Promise<string> {
+  const row = await inMailbox((sql) =>
+    sql.exec<{ envelope: string }>("SELECT envelope FROM mailbox").one(),
+  );
+  return row.envelope;
+}
+
+/** Seeds `count` replay-guard rows for `sender` at the given arrival times. */
+async function seedSeen(sender: string, count: number, ts: (i: number) => number, prefix: string) {
+  await inMailbox((sql) => {
+    for (let i = 0; i < count; i++) {
+      sql.exec(
+        "INSERT INTO seen (sender, id, ts) VALUES (?, ?, ?)",
+        sender,
+        `${prefix}-${String(i).padStart(4, "0")}`,
+        ts(i),
+      );
+    }
+  });
+}
 
 beforeEach(resetStore);
 afterEach(() => {
@@ -50,7 +73,7 @@ describe("card", () => {
       sign_key: VECTOR.signKey,
       box_key: VECTOR.boxKey,
       inbox: `https://${SELF}/net/inbox`,
-      software: "tau-spine/0.1.0",
+      software: "tau-spine/0.2.0",
     };
     expect(await put.json()).toEqual(expected);
 
@@ -83,12 +106,15 @@ describe("POST /net/inbox", () => {
     expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(`${PEER_URL}/.well-known/tau.json`);
     expect(await env.TAU.get(`peer:${PEER}`, "json")).toEqual(peerCard());
 
-    const rows = await env.DB.prepare("SELECT sender, envelope FROM mailbox ORDER BY seq").all<{
-      sender: string;
-      envelope: string;
-    }>();
-    expect(rows.results.map((row) => row.sender)).toEqual([PEER, PEER]);
-    expect(JSON.parse(rows.results[0]!.envelope)).toEqual({
+    const rows = await inMailbox((sql) =>
+      sql
+        .exec<{ sender: string; envelope: string }>(
+          "SELECT sender, envelope FROM mailbox ORDER BY seq",
+        )
+        .toArray(),
+    );
+    expect(rows.map((row) => row.sender)).toEqual([PEER, PEER]);
+    expect(JSON.parse(rows[0]!.envelope)).toEqual({
       payload: first.payload,
       sig: first.sig,
     });
@@ -122,8 +148,7 @@ describe("POST /net/inbox", () => {
     mockCards({ [PEER_URL]: peerCard() });
     const env1 = await envelope();
     expect((await postEnvelope({ ...env1, extra: "x" })).status).toBe(202);
-    const row = await env.DB.prepare("SELECT envelope FROM mailbox").first<{ envelope: string }>();
-    expect(JSON.parse(row!.envelope)).toEqual({ payload: env1.payload, sig: env1.sig });
+    expect(JSON.parse(await storedEnvelope())).toEqual({ payload: env1.payload, sig: env1.sig });
   });
 
   describe("rejects in the §4 order", () => {
@@ -266,22 +291,14 @@ describe("POST /net/inbox", () => {
     it("429 rate_limited after 60 envelopes from one sender in an hour", async () => {
       mockCards({ [PEER_URL]: peerCard(), "https://carol.example": peerCard("carol.example") });
       const now = nowSeconds();
-      await env.DB.batch(
-        Array.from({ length: 60 }, (_, i) =>
-          env.DB.prepare("INSERT INTO seen (sender, id, ts) VALUES (?1, ?2, ?3)").bind(
-            PEER,
-            `old-envelope-${String(i).padStart(4, "0")}`,
-            now - 3_500 + i,
-          ),
-        ),
-      );
+      await seedSeen(PEER, 60, (i) => now - 3_500 + i, "old-envelope");
       const res = await postEnvelope(await envelope());
       expect(res.status).toBe(429);
       expect(await res.json()).toEqual({ error: "rate_limited" });
       // Another sender is not affected.
       expect((await postEnvelope(await envelope({ from: "carol.example" }))).status).toBe(202);
       // Rows older than an hour do not count.
-      await env.DB.prepare("UPDATE seen SET ts = ts - 200 WHERE sender = ?1").bind(PEER).run();
+      await inMailbox((sql) => sql.exec("UPDATE seen SET ts = ts - 200 WHERE sender = ?", PEER));
       expect((await postEnvelope(await envelope())).status).toBe(202);
     });
 
@@ -289,30 +306,84 @@ describe("POST /net/inbox", () => {
       mockCards({ [PEER_URL]: peerCard() });
       const one = await envelope();
       expect((await postEnvelope(one)).status).toBe(202);
-      await env.DB.batch(
-        Array.from({ length: 60 }, (_, i) =>
-          env.DB.prepare("INSERT INTO seen (sender, id, ts) VALUES (?1, ?2, ?3)").bind(
-            PEER,
-            `filler-envelope-${String(i).padStart(4, "0")}`,
-            nowSeconds(),
-          ),
-        ),
-      );
+      await seedSeen(PEER, 60, () => nowSeconds(), "filler-envelope");
       expect(await (await postEnvelope(one)).json()).toEqual({ status: "duplicate", id: one.id });
     });
 
     it("503 mailbox_full at 1000 undelivered envelopes", async () => {
       mockCards({ [PEER_URL]: peerCard() });
-      await env.DB.prepare(
-        "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 1000) " +
-          "INSERT INTO mailbox (sender, envelope, received_at) SELECT 'other.example', '{}', ?1 FROM n",
-      )
-        .bind(nowSeconds())
-        .run();
+      await inMailbox((sql) =>
+        sql.exec(
+          "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 1000) " +
+            "INSERT INTO mailbox (sender, envelope, received_at) SELECT 'other.example', '{}', ? FROM n",
+          nowSeconds(),
+        ),
+      );
       const res = await postEnvelope(await envelope());
       expect(res.status).toBe(503);
       expect(await res.json()).toEqual({ error: "mailbox_full" });
       expect(await mailboxCount()).toBe(1000);
+    });
+  });
+
+  describe("handle addresses and visits (ADR 0013)", () => {
+    const HOSTED = "tau.example.com/@alice";
+    const HOSTED_URL = `https://${HOSTED}`;
+
+    it("accepts a sender with a handle address, fetching its card under the path", async () => {
+      const spy = mockCards({ [HOSTED_URL]: peerCard(HOSTED) });
+      const one = await envelope({ from: HOSTED });
+      const res = await postEnvelope(one);
+      expect(res.status).toBe(202);
+      expect(await res.json()).toEqual({ status: "queued", id: one.id });
+      expect(String(spy.mock.calls[0]?.[0])).toBe(
+        "https://tau.example.com/@alice/.well-known/tau.json",
+      );
+      expect(await env.TAU.get(`peer:${HOSTED}`, "json")).toEqual(peerCard(HOSTED));
+      const row = await inMailbox((sql) =>
+        sql.exec<{ sender: string }>("SELECT sender FROM mailbox").one(),
+      );
+      expect(row.sender).toBe(HOSTED);
+      // the second envelope uses the cached card
+      expect((await postEnvelope(await envelope({ from: HOSTED }))).status).toBe(202);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the handle: another handle on the same host is another sender", async () => {
+      mockCards({ [HOSTED_URL]: peerCard(HOSTED) });
+      // The card answers for /@alice; a sender claiming /@bob gets no card from it.
+      const res = await postEnvelope(await envelope({ from: "tau.example.com/@bob" }));
+      expect(res.status).toBe(502);
+      expect(await res.json()).toEqual({ error: "sender_card_unavailable" });
+      // A card whose address lacks the handle does not vouch for the handle address.
+      vi.restoreAllMocks();
+      mockCards({ [HOSTED_URL]: peerCard("tau.example.com") });
+      expect((await postEnvelope(await envelope({ from: HOSTED }))).status).toBe(502);
+    });
+
+    for (const bad of ["tau.example.com/@", "tau.example.com/@Upper", "tau.example.com/@a/b/c"]) {
+      it(`400 bad_request for the sender ${bad}`, async () => {
+        const spy = mockCards({});
+        const res = await postEnvelope(await envelope({ from: bad }));
+        expect(res.status).toBe(400);
+        expect(((await res.json()) as { error: string }).error).toBe("bad_request");
+        expect(spy).not.toHaveBeenCalled();
+      });
+    }
+
+    it("400 wrong_recipient for a handle address: a spine's own address is a plain host", async () => {
+      const res = await postEnvelope(await envelope({ to: `${SELF}/@bob` }));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "wrong_recipient" });
+    });
+
+    it("queues a visit like any other kind (the hub decides)", async () => {
+      mockCards({ "https://universe.example": peerCard("universe.example") });
+      const visit = await envelope({ kind: "visit", from: "universe.example" });
+      const res = await postEnvelope(visit);
+      expect(res.status).toBe(202);
+      expect(await res.json()).toEqual({ status: "queued", id: visit.id });
+      expect(await mailboxCount()).toBe(1);
     });
   });
 
@@ -331,8 +402,7 @@ describe("POST /net/inbox", () => {
       "box": {"epk": "AAAA", "nonce": "AAAA", "ct": "AAAA"}, "extra": true }`;
     const res = await postEnvelope(await signRaw(new TextEncoder().encode(text)));
     expect(res.status).toBe(202);
-    const row = await env.DB.prepare("SELECT envelope FROM mailbox").first<{ envelope: string }>();
-    const stored = JSON.parse(row!.envelope) as { payload: string };
+    const stored = JSON.parse(await storedEnvelope()) as { payload: string };
     expect(stored.payload).toBe(b64uEncode(new TextEncoder().encode(text)));
   });
 

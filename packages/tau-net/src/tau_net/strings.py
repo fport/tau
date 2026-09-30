@@ -25,25 +25,32 @@ NET_MESSAGES: dict[str, dict[str, str]] = {
         "en": "The identity comes from TAU_NET_IDENTITY; no file was written.",
         "tr": "Kimlik TAU_NET_IDENTITY değişkeninden geliyor; dosya yazılmadı.",
     },
-    "net.init.name_saved": {
-        "en": "Card name set to {name} in {path}.",
-        "tr": "Kart adı {path} içinde {name} olarak ayarlandı.",
+    "net.name.saved": {
+        "en": "Card name set to {name} in the network profile ({store}).",
+        "tr": "Kart adı ağ profilinde {name} olarak ayarlandı ({store}).",
+    },
+    "net.name.publish": {
+        "en": "Publish it with `tau net publish`; the hub also publishes it when it starts.",
+        "tr": "`tau net publish` ile yayımla; hub da başlarken yayımlar.",
     },
     "net.init.next": {"en": "Next steps:", "tr": "Sonraki adımlar:"},
     "net.init.step_env": {
-        "en": "1. Put TAU_SPINE_URL and TAU_SPINE_TOKEN in .env (the names are in .env.example).",
-        "tr": "1. TAU_SPINE_URL ve TAU_SPINE_TOKEN değerlerini .env dosyasına yaz "
-        "(adlar .env.example içinde).",
+        "en": "- Give your tau an address: `tau net spine init DIR` and `tau net spine deploy DIR` "
+        "(they write TAU_SPINE_URL and TAU_SPINE_TOKEN into .env).",
+        "tr": "- Tau'na bir adres ver: `tau net spine init DIR` ve `tau net spine deploy DIR` "
+        "(TAU_SPINE_URL ve TAU_SPINE_TOKEN değerlerini .env dosyasına yazarlar).",
     },
     "net.init.step_note": {
-        "en": "2. Write what other taus may know about you in persona/{note} "
-        "(start from persona/net.example.md).",
-        "tr": "2. Diğer tau'ların senin hakkında bilebileceklerini persona/{note} dosyasına yaz "
-        "(persona/net.example.md ile başla).",
+        "en": "- Write what other taus may know about you in persona/{note}.",
+        "tr": "- Diğer tau'ların senin hakkında bilebileceklerini persona/{note} dosyasına yaz.",
+    },
+    "net.init.note_written": {
+        "en": "Created {path}: your public note for other taus, empty until you fill it in.",
+        "tr": "{path} oluşturuldu: diğer tau'lar için herkese açık notun, doldurana kadar boş.",
     },
     "net.init.step_publish": {
-        "en": "3. Run `tau net publish`, or start the hub: it publishes the card itself.",
-        "tr": "3. `tau net publish` çalıştır ya da hub'ı başlat: kartı kendisi yayımlar.",
+        "en": "- Run `tau net publish`, or start the hub: it publishes the card itself.",
+        "tr": "- `tau net publish` çalıştır ya da hub'ı başlat: kartı kendisi yayımlar.",
     },
     # -- keys and status -----------------------------------------------------------------------
     "net.keys.sign": {"en": "sign_key  {key}", "tr": "sign_key  {key}"},
@@ -132,6 +139,110 @@ NET_MESSAGES: dict[str, dict[str, str]] = {
     "net.poll.done": {
         "en": "{handled} handled, {dropped} dropped, {replied} replied.",
         "tr": "{handled} işlendi, {dropped} düşürüldü, {replied} yanıtlandı.",
+    },
+    # -- the universe --------------------------------------------------------------------------
+    "net.universe.joined": {
+        "en": "Joined the universe {universe}: {url}",
+        "tr": "{universe} evrenine katıldın: {url}",
+    },
+    "net.universe.reported": {
+        "en": "Report sent. Listed contacts: {links}; visible links: {visible} "
+        "(a link shows once both taus report each other).",
+        "tr": "Rapor gönderildi. Listelenen kişiler: {links}; görünür bağlantılar: {visible} "
+        "(bir bağlantı iki tau da birbirini bildirince görünür).",
+    },
+    "net.universe.reported_off": {
+        "en": "Report sent without links (links are off).",
+        "tr": "Rapor bağlantısız gönderildi (bağlantılar kapalı).",
+    },
+    "net.universe.subs": {
+        "en": "Public sub-taus listed: {subs}.",
+        "tr": "Listelenen açık sub-tau'lar: {subs}.",
+    },
+    "net.universe.left": {
+        "en": "Left the universe {universe}: this tau and its links are no longer listed.",
+        "tr": "{universe} evreninden ayrıldın: bu tau ve bağlantıları artık listelenmiyor.",
+    },
+    "net.universe.left_unlisted": {
+        "en": "This tau was not listed in {universe}; universe_join is off now.",
+        "tr": "Bu tau {universe} evreninde listelenmiyordu; universe_join artık kapalı.",
+    },
+    "net.universe.status.off": {
+        "en": 'universe: off ([component.net] universe = "")',
+        "tr": 'evren:    kapalı ([component.net] universe = "")',
+    },
+    "net.universe.status.host": {"en": "universe: {universe}", "tr": "evren:    {universe}"},
+    "net.universe.status.joined": {
+        "en": "joined:   yes, the hub reports every {minutes} min",
+        "tr": "katılım:  evet, hub her {minutes} dakikada bir raporlar",
+    },
+    "net.universe.status.not_joined": {
+        "en": "joined:   no (`tau net universe join` lists this tau)",
+        "tr": "katılım:  hayır (`tau net universe join` bu tau'yu listeler)",
+    },
+    "net.universe.status.links_on": {
+        "en": "links:    on (mutual links with listed contacts are reported)",
+        "tr": "bağlar:   açık (listelenen kişilerle karşılıklı bağlantılar raporlanır)",
+    },
+    "net.universe.status.links_off": {
+        "en": "links:    off (no contacts are reported)",
+        "tr": "bağlar:   kapalı (hiçbir kişi raporlanmaz)",
+    },
+    "net.universe.status.owner": {"en": "owner:    {owner}", "tr": "sahip:    {owner}"},
+    "net.universe.status.about": {"en": "about:    {about}", "tr": "hakkında: {about}"},
+    "net.universe.status.unlisted": {
+        "en": "listed:   no",
+        "tr": "listede:  hayır",
+    },
+    "net.universe.status.online": {
+        "en": "listed:   yes, online, last report {when}",
+        "tr": "listede:  evet, çevrimiçi, son rapor {when}",
+    },
+    "net.universe.status.offline": {
+        "en": "listed:   yes, offline, last report {when}",
+        "tr": "listede:  evet, çevrimdışı, son rapor {when}",
+    },
+    "net.universe.status.url": {"en": "page:     {url}", "tr": "sayfa:    {url}"},
+    "net.universe.status.no_links": {
+        "en": "visible:  no links yet (a link shows once both taus report each other)",
+        "tr": "görünür:  henüz bağlantı yok (iki tau da birbirini bildirince görünür)",
+    },
+    "net.universe.status.link": {
+        "en": "visible:  {peer}, messages: {messages}",
+        "tr": "görünür:  {peer}, mesaj: {messages}",
+    },
+    "net.universe.status.sub": {
+        "en": "sub-tau:  /{name}: {about}",
+        "tr": "sub-tau:  /{name}: {about}",
+    },
+    "net.universe.status.sub_web": {
+        "en": "sub-tau:  /{name} (web page, {visits} visitor turns today): {about}",
+        "tr": "sub-tau:  /{name} (web sayfası, bugün {visits} ziyaretçi turu): {about}",
+    },
+    "net.universe.status.handle": {
+        "en": "handle:   @{handle}  {url}",
+        "tr": "tanıtıcı: @{handle}  {url}",
+    },
+    "net.universe.status.no_handle": {
+        "en": "handle:   none yet (`tau net universe claim` proves one with GitHub)",
+        "tr": "tanıtıcı: henüz yok (`tau net universe claim` GitHub ile bir tane kanıtlar)",
+    },
+    "net.universe.claim.link": {
+        "en": "Open this link within an hour and sign in with GitHub there; {universe} then "
+        "binds your GitHub login as the handle of {address}:",
+        "tr": "Bu bağlantıyı bir saat içinde aç ve orada GitHub ile giriş yap; {universe} "
+        "GitHub kullanıcı adını {address} için tanıtıcı olarak bağlar:",
+    },
+    "net.universe.claim.private": {
+        "en": "The link is a signed claim for this tau: whoever opens it with their GitHub "
+        "account could take the handle for it, so do not share it.",
+        "tr": "Bağlantı bu tau için imzalı bir talep: onu kendi GitHub hesabıyla açan herkes "
+        "tanıtıcıyı alabilir, o yüzden paylaşma.",
+    },
+    "net.universe.claim.not_joined": {
+        "en": "This tau is not in the universe yet; the handle shows once you run `tau net "
+        "universe join`.",
+        "tr": "Bu tau henüz evrende değil; tanıtıcı `tau net universe join` çalıştırınca görünür.",
     },
 }
 

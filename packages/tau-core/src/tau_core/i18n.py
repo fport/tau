@@ -185,10 +185,6 @@ MESSAGES: dict[str, dict[str, str]] = {
     "status.versions": {"en": "Versions: {versions}", "tr": "Sürümler: {versions}"},
     "status.hub": {"en": "Hub: {detail}", "tr": "Hub: {detail}"},
     "status.budget": {"en": "Budget: {detail}", "tr": "Bütçe: {detail}"},
-    "status.budget_unknown": {
-        "en": "not read yet (the proxy did not answer)",
-        "tr": "henüz okunamadı (proxy yanıt vermedi)",
-    },
     "model.current": {
         "en": "Model role: {role} ({provider})",
         "tr": "Model rolü: {role} ({provider})",
@@ -352,12 +348,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The previous turn did not finish.",
         "tr": "Önceki tur tamamlanmadı.",
     },
-    # -- model budgets and the proxy (tau_core.models, ADR 0009) ----------------------------------
+    # -- model budgets and failover (tau_core.budget, ADR 0011) ------------------------------------
     "notice.budget_exhausted": {
         "en": "The {role} budget is spent (${spend} of ${cap}) and resets at {reset}. To raise "
-        "the cap, change it in tau.toml and run tau proxy keys.",
+        "the cap, change it in tau.toml.",
         "tr": "{role} bütçesi doldu (${spend} / ${cap}); {reset} itibarıyla yenileniyor. Sınırı "
-        "artırmak için tau.toml'da değiştirip tau proxy keys çalıştırın.",
+        "artırmak için tau.toml'da değiştirin.",
     },
     "notice.budget_exhausted_also": {
         "en": "The {role} budget is spent until {reset}, and {degrade}, which stands in for it, "
@@ -369,10 +365,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The {role} budget is spent until {reset}; {degrade} answered instead.",
         "tr": "{role} bütçesi doldu ({reset} itibarıyla yenilenecek); bu yanıtı {degrade} verdi.",
     },
-    "notice.proxy_down": {
-        "en": "The model proxy at {url} is not answering. Start it with infra/litellm/proxy.sh up.",
-        "tr": "{url} adresindeki model proxy'si yanıt vermiyor. infra/litellm/proxy.sh up ile "
-        "başlatın.",
+    "notice.failover": {
+        "en": "{role} is not reachable right now; {failover} answered instead.",
+        "tr": "{role} şu an ulaşılamıyor; bu yanıtı {failover} verdi.",
     },
     "budget.reset_unknown": {"en": "the end of its period", "tr": "dönem sonu"},
     # -- Telegram channel (tau_core.channels.telegram) -------------------------------------------
@@ -487,6 +482,69 @@ MESSAGES: dict[str, dict[str, str]] = {
     "tui.event.turn_limit": {"en": "turn limit: {n} turns", "tr": "tur sınırı: {n} tur"},
     "tui.event.error": {"en": "error", "tr": "hata"},
     "tui.event.approval": {"en": "approval", "tr": "onay"},
+    # -- tau init: the provider key (ADR 0013 §7) ---------------------------------------------
+    "init.provider.none": {
+        "en": "No model key was found in the environment or {path}. tau needs a key from one "
+        "provider (`tau init --yes` sets up the scripted 'fake' provider without one).",
+        "tr": "Ortamda ya da {path} içinde model anahtarı bulunamadı. tau'nun bir sağlayıcıdan "
+        "anahtara ihtiyacı var (`tau init --yes` anahtarsız, senaryolu 'fake' sağlayıcıyı "
+        "kurar).",
+    },
+    "init.provider.prompt": {"en": "Provider", "tr": "Sağlayıcı"},
+    "init.key.prompt": {
+        "en": "{name} (hidden; empty skips)",
+        "tr": "{name} (gizli; boş bırakırsan atlanır)",
+    },
+    "init.key.checking": {
+        "en": "Checking the key with one small request to {provider}...",
+        "tr": "Anahtar {provider} sağlayıcısına tek bir küçük istekle deneniyor...",
+    },
+    "init.key.ok": {
+        "en": "{provider} accepted the key.",
+        "tr": "{provider} anahtarı kabul etti.",
+    },
+    "init.key.unchecked": {
+        "en": "The key was not checked (--no-check).",
+        "tr": "Anahtar denenmedi (--no-check).",
+    },
+    "init.key.refused": {
+        "en": "{provider} refused the key (HTTP {status}). Check it and run tau init again; "
+        "nothing was written.",
+        "tr": "{provider} anahtarı reddetti (HTTP {status}). Anahtarı kontrol edip tau init'i "
+        "yeniden çalıştır; hiçbir şey yazılmadı.",
+    },
+    "init.key.http": {
+        "en": "{provider} answered the key check with HTTP {status}. Try again later or skip "
+        "the check with --no-check; nothing was written.",
+        "tr": "{provider} anahtar denemesine HTTP {status} ile yanıt verdi. Sonra yeniden dene "
+        "ya da denemeyi --no-check ile atla; hiçbir şey yazılmadı.",
+    },
+    "init.key.unreachable": {
+        "en": "{provider} could not be reached to check the key ({error}). Check the "
+        "connection or skip the check with --no-check; nothing was written.",
+        "tr": "Anahtarı denemek için {provider} sağlayıcısına ulaşılamadı ({error}). Bağlantıyı "
+        "kontrol et ya da denemeyi --no-check ile atla; hiçbir şey yazılmadı.",
+    },
+    "init.key.invalid": {
+        "en": "The key holds spaces, quotes or control characters; paste it again. Nothing "
+        "was written.",
+        "tr": "Anahtarda boşluk, tırnak ya da kontrol karakteri var; yeniden yapıştır. Hiçbir "
+        "şey yazılmadı.",
+    },
+    "init.key.skipped": {
+        "en": "No key given. Add {name} to {path} later; until then the {provider} roles "
+        "cannot start.",
+        "tr": "Anahtar girilmedi. {name} değerini sonra {path} dosyasına ekle; o zamana kadar "
+        "{provider} rolleri başlayamaz.",
+    },
+    "init.key.written": {
+        "en": "wrote {name} to {path} (mode 0600)",
+        "tr": "{name}, {path} dosyasına yazıldı (izin 0600)",
+    },
+    "init.key.kept": {
+        "en": "kept  {name} in {path} (it already has a value)",
+        "tr": "{path} içindeki {name} korundu (zaten bir değeri var)",
+    },
 }
 
 

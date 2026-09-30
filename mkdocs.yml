@@ -36,7 +36,76 @@ extra_css:
   - stylesheets/brand.css
 
 plugins:
-  - search
+  - search:
+      lang:
+        - en
+        - tr
+  # Bilingual site (issue 147): page.md is English, page.tr.md its Turkish twin.
+  # English is the default and the fallback; Turkish pages are served under /tr/.
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: tr
+          name: Türkçe
+          build: true
+          site_description: Gizlilik öncelikli, kişisel bir "akıllı beden" ajanı. Kur, onunla konuş; fiziksel dünyaya yalnızca senin onayınla dokunsun.
+          nav_translations:
+            Home: Ana sayfa
+            Getting started: Başlarken
+            Build your own tau: Kendi tau'nu kur
+            Try everything locally: Her şeyi yerelde dene
+            Install: Kurulum
+            First run: İlk çalıştırma
+            Configure: Yapılandırma
+            Talk to tau: tau ile konuş
+            Guides: Rehberler
+            Reach tau from your phone (Tailscale + Termius): Telefondan tau'ya ulaş (Tailscale + Termius)
+            Private deployment (Cloudflare Tunnel + Access): Özel dağıtım (Cloudflare Tunnel + Access)
+            Voice: Ses
+            Backups (encrypted, R2): Yedekler (şifreli, R2)
+            Run tau as a service: tau'yu servis olarak çalıştır
+            Models and budgets: Modeller ve bütçeler
+            TauBar (macOS menu bar): TauBar (macOS menü çubuğu)
+            Move the hub to a Raspberry Pi: Hub'ı Raspberry Pi'ye taşı
+            Join the tau network: tau ağına katıl
+            Run tau in Cloudflare (cloud mode): tau'yu Cloudflare'de çalıştır (bulut modu)
+            Reference: Referans
+            Slash commands: Slash komutları
+            Environment variables: Ortam değişkenleri
+            Components and plugins: Bileşenler ve eklentiler
+            Tiers and approvals: Tier'lar ve onaylar
+            Sessions and compaction: Oturumlar ve sıkıştırma
+            tau network protocol and spine API: tau ağı protokolü ve spine API'si
+            tau universe protocol and the spine kit: tau evreni protokolü ve spine kiti
+            Architecture: Mimari
+            Decisions: Kararlar
+            Threat model: Tehdit modeli
+            ADRs: ADR'ler
+            0001 Approval through Strands hooks: 0001 Strands hook'larıyla onay
+            0002 tau.commands entry point: 0002 tau.commands giriş noktası
+            0003 Session store: 0003 Oturum deposu
+            0004 Config roots and persona privacy: 0004 Yapılandırma kökleri ve persona gizliliği
+            0005 Components and entry-point groups: 0005 Bileşenler ve giriş noktası grupları
+            0006 Private-first topology: 0006 Gizlilik öncelikli topoloji
+            0007 Cloud mode and the tau network: 0007 Bulut modu ve tau ağı
+            0009 Anthropic-only models behind the proxy: 0009 Proxy arkasında yalnızca Anthropic modelleri
+            0010 The public site and the tau universe: 0010 Herkese açık site ve tau evreni
+            0011 Budgets in tau, no LiteLLM: 0011 Bütçeler tau'da, LiteLLM yok
+            0012 Sub-taus: 0012 Alt-tau'lar
+            0013 Hosted taus, handles and public pages: 0013 Barındırılan tau'lar, kullanıcı adları ve açık sayfalar
+            Contributing: Katkıda bulunma
+            Development setup: Geliştirme ortamı
+            Write a plugin: Eklenti yaz
+            Roadmap and issues: Yol haritası ve issue'lar
+            Releasing: Sürüm yayınlama
+            Brand: Marka
 
 markdown_extensions:
   - admonition
@@ -67,6 +136,8 @@ exclude_docs: |
 nav:
   - Home: index.md
   - Getting started:
+      - Build your own tau: getting-started/build-your-own-tau.md
+      - Try everything locally: getting-started/try-locally.md
       - Install: getting-started/install.md
       - First run: getting-started/first-run.md
       - Configure: getting-started/configure.md
@@ -78,6 +149,7 @@ nav:
       - Voice: guides/voice.md
       - Backups (encrypted, R2): guides/backups.md
       - Run tau as a service: guides/hub-service.md
+      - Models and budgets: guides/models-and-budgets.md
       - TauBar (macOS menu bar): guides/taubar.md
       - Move the hub to a Raspberry Pi: guides/raspberry-pi.md
       - Join the tau network: guides/tau-network.md
@@ -91,6 +163,7 @@ nav:
       - Tiers and approvals: reference/tiers.md
       - Sessions and compaction: reference/sessions.md
       - tau network protocol and spine API: reference/tau-network.md
+      - tau universe protocol and the spine kit: reference/tau-universe.md
   - Architecture:
       - Decisions: ARCHITECTURE.md
       - Threat model: architecture/threat-model.md
@@ -102,6 +175,11 @@ nav:
           - 0005 Components and entry-point groups: adr/0005-components-and-entry-point-groups.md
           - 0006 Private-first topology: adr/0006-private-first-topology.md
           - 0007 Cloud mode and the tau network: adr/0007-cloud-mode-and-tau-network.md
+          - 0009 Anthropic-only models behind the proxy: adr/0009-anthropic-only-models-behind-the-proxy.md
+          - 0010 The public site and the tau universe: adr/0010-public-site-and-tau-universe.md
+          - 0011 Budgets in tau, no LiteLLM: adr/0011-budgets-in-tau-no-litellm.md
+          - 0012 Sub-taus: adr/0012-sub-taus.md
+          - 0013 Hosted taus, handles and public pages: adr/0013-hosted-taus-handles-and-public-pages.md
   - Contributing:
       - Development setup: contributing/development.md
       - Write a plugin: contributing/plugins.md

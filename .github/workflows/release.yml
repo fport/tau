@@ -1,26 +1,28 @@
 name: release
 
-# Publishes tau-core, tau-tui and tau-guard to PyPI when a version tag is pushed, and creates
-# the matching GitHub release with the built files attached.
+# Publishes tau-core, tau-tui, tau-guard, tau-net and tau-cloud to PyPI when a version tag is
+# pushed, and creates the matching GitHub release with the built files attached.
 #
 # Tag rule: the tag is `v<version>`, where <version> is the version in
 # packages/tau-core/pyproject.toml. tau-tui and tau-guard are released in lockstep and must
 # carry the same version. The `check` step fails the run before anything is built when they
-# disagree.
+# disagree. tau-net (with the spine kit, `tau net spine init|deploy`) and tau-cloud keep their
+# own versions: every tag builds and uploads them too, and `skip-existing` makes an unchanged
+# version a no-op, so bump their pyproject.toml when they change.
 #
 # One-time setup by the owner (details in docs/contributing/release.md):
-#   PyPI, once per project (tau-core, tau-tui and tau-guard):
+#   PyPI, once per project:
 #     https://pypi.org/manage/account/publishing/ -> "Add a new pending publisher" for a
 #     project that does not exist yet, or Manage -> Publishing on an existing project, with
-#       PyPI project name: tau-core (then tau-tui with environment pypi-tui, and tau-guard
-#                          with environment pypi-guard)
+#       PyPI project name: tau-core   tau-tui    tau-guard    tau-net    tau-cloud
+#       Environment name:  pypi       pypi-tui   pypi-guard   pypi-net   pypi-cloud
+#     and, for all five:
 #       Owner:             fport
 #       Repository:        tau
 #       Workflow name:     release.yml
-#       Environment name:  pypi   (tau-tui: pypi-tui, tau-guard: pypi-guard)
-#   GitHub: environments `pypi`, `pypi-tui` and `pypi-guard` (Settings -> Environments); the
-#     first run creates one if it is missing. Optional: required reviewers, so a tag waits for
-#     a click before upload.
+#   GitHub: environments `pypi`, `pypi-tui`, `pypi-guard`, `pypi-net` and `pypi-cloud`
+#     (Settings -> Environments); the first run creates a missing one. Optional: required
+#     reviewers, so a tag waits for a click before upload.
 # No API token is stored anywhere: the publish job exchanges its GitHub OIDC token for a
 # short-lived PyPI token (trusted publishing), which is why it needs `id-token: write`.
 #
@@ -47,6 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.check.outputs.version }}
+      net_version: ${{ steps.check.outputs.net_version }}
+      cloud_version: ${{ steps.check.outputs.cloud_version }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0 # same pin as ci.yml (no floating v10 tag is published)
@@ -62,7 +66,9 @@ jobs:
           core="$(uv version --package tau-core --short)"
           tui="$(uv version --package tau-tui --short)"
           guard="$(uv version --package tau-guard --short)"
-          echo "tau-core $core, tau-tui $tui, tau-guard $guard, ref $GITHUB_REF_TYPE $GITHUB_REF_NAME, publish=$PUBLISH"
+          net="$(uv version --package tau-net --short)"
+          cloud="$(uv version --package tau-cloud --short)"
+          echo "tau-core $core, tau-tui $tui, tau-guard $guard, tau-net $net, tau-cloud $cloud, ref $GITHUB_REF_TYPE $GITHUB_REF_NAME, publish=$PUBLISH"
           if [ "$tui" != "$core" ]; then
             echo "::error::tau-tui is $tui but tau-core is $core; both packages are released with the same version"
             exit 1
@@ -80,13 +86,19 @@ jobs:
             echo "::error::publishing needs a v<version> tag, not $GITHUB_REF_TYPE $GITHUB_REF_NAME; run again as a dry run or push a tag"
             exit 1
           fi
-          echo "version=$core" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$core"
+            echo "net_version=$net"
+            echo "cloud_version=$cloud"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build the sdists and wheels
         run: |
           uv build --package tau-core --out-dir dist/tau-core
           uv build --package tau-tui --out-dir dist/tau-tui
           uv build --package tau-guard --out-dir dist/tau-guard
+          uv build --package tau-net --out-dir dist/tau-net
+          uv build --package tau-cloud --out-dir dist/tau-cloud
           ls -l dist/*
 
       # The same commands "install it yourself" relies on, against the files that will be
@@ -119,6 +131,42 @@ jobs:
           "$UV_TOOL_BIN_DIR/tau" version
           "$UV_TOOL_BIN_DIR/tau" tui --help
 
+      # Wrangler (in the spine kit) needs Node.js 22 or newer.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # tau-net and tau-cloud on top of tau-core, from the files that will be uploaded. The
+      # spine kit must work without the repository: `tau net spine init` writes the project,
+      # Wrangler bundles it offline (`deploy --dry-run`), and `tau net spine deploy` stops at
+      # the login check because this runner has no Cloudflare credentials.
+      - name: Smoke-test tau-net (spine kit) and tau-cloud in a fresh virtualenv
+        env:
+          TAU_HOME: ${{ runner.temp }}/tau-net-home
+          TAU_DATA_DIR: ${{ runner.temp }}/tau-net-data
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/smoke-net"
+          uv pip install --python "$RUNNER_TEMP/smoke-net/bin/python" \
+            dist/tau-core/*.whl dist/tau-net/*.whl dist/tau-cloud/*.whl
+          tau="$RUNNER_TEMP/smoke-net/bin/tau"
+          "$tau" version
+          "$tau" init --yes --home "$TAU_HOME" --provider fake --language en
+          "$tau" components
+          "$tau" net --help
+          "$tau" cloud --help
+          kit="$RUNNER_TEMP/spine-kit"
+          "$tau" net spine init "$kit" --address tau.example.com
+          ls -la "$kit"
+          (cd "$kit" && npm install --no-audit --no-fund && npx wrangler deploy --dry-run)
+          if "$tau" net spine deploy "$kit" > "$RUNNER_TEMP/deploy.log" 2>&1; then
+            cat "$RUNNER_TEMP/deploy.log"
+            echo "::error::tau net spine deploy succeeded without a Cloudflare login"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/deploy.log"
+          grep -q "npx wrangler login" "$RUNNER_TEMP/deploy.log"
+          test ! -e "$TAU_HOME/.env" || ! grep -q TAU_SPINE "$TAU_HOME/.env"
+
       - uses: actions/upload-artifact@v7
         with:
           name: dist
@@ -133,9 +181,10 @@ jobs:
     environment:
       # One environment per package: PyPI accepts a single pending trusted publisher per
       # (repository, workflow, environment) tuple, so tau-core publishes from `pypi`, tau-tui
-      # from `pypi-tui` and tau-guard from `pypi-guard`.
+      # from `pypi-tui`, tau-guard from `pypi-guard`, tau-net from `pypi-net` and tau-cloud from
+      # `pypi-cloud`.
       name: ${{ matrix.environment }}
-      url: https://pypi.org/project/${{ matrix.package }}/${{ needs.build.outputs.version }}/
+      url: https://pypi.org/project/${{ matrix.package }}/${{ matrix.version }}/
     permissions:
       id-token: write # trusted publishing: the OIDC token is exchanged for a short-lived PyPI token
       contents: read
@@ -145,10 +194,19 @@ jobs:
         include:
           - package: tau-core
             environment: pypi
+            version: ${{ needs.build.outputs.version }}
           - package: tau-tui
             environment: pypi-tui
+            version: ${{ needs.build.outputs.version }}
           - package: tau-guard
             environment: pypi-guard
+            version: ${{ needs.build.outputs.version }}
+          - package: tau-net
+            environment: pypi-net
+            version: ${{ needs.build.outputs.net_version }}
+          - package: tau-cloud
+            environment: pypi-cloud
+            version: ${{ needs.build.outputs.cloud_version }}
     steps:
       - uses: actions/download-artifact@v8
         with:

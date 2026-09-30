@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-TOOL","object":"chat.completion.chunk","created":1790000000,"model":"gpt-6.1-sol","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_abc123","type":"function","function":{"name":"create_sub","arguments":""}}],"refusal":null},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-TOOL","object":"chat.completion.chunk","created":1790000000,"model":"gpt-6.1-sol","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"name\":\"coach\","}}]},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-TOOL","object":"chat.completion.chunk","created":1790000000,"model":"gpt-6.1-sol","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"about\":\"A workout coach.\",\"persona\":\"You coach.\"}"}}]},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-TOOL","object":"chat.completion.chunk","created":1790000000,"model":"gpt-6.1-sol","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":null}
+
+data: {"id":"chatcmpl-TOOL","object":"chat.completion.chunk","created":1790000000,"model":"gpt-6.1-sol","choices":[],"usage":{"prompt_tokens":300,"completion_tokens":30,"total_tokens":330,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":12}}}
+
+data: [DONE]
+

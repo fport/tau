@@ -3,7 +3,7 @@
 The hub is the one machine that runs the agent, the hub services and, later, the mesh router. A MacBook is a fine first hub and a poor permanent one: it sleeps, it leaves the house, it gets its lid closed. A Raspberry Pi 5 on a shelf, plugged in, on the tailnet, is the natural end state. This page says what "moving the hub" means, what you can do by hand today, and what the roadmap will automate.
 
 !!! info "Planned (roadmap issue 048): self-replication"
-    The intended way to move is to tell tau: *"move the hub to the RPi5"*. tau provisions the Pi over SSH (uv, the packages, the systemd unit, later `zenohd` and the model proxy), copies its configuration and data, hands over the hub role and demotes the Mac to a **node** with its `mac.*` tools. Every step is tier 2 and asks for approval; the handover loses no queued messages; a rollback path back to the Mac exists. None of that is built; issue 048 waits for the hardware and for the mesh layer (issue 032). The manual steps below are what that automation will do.
+    The intended way to move is to tell tau: *"move the hub to the RPi5"*. tau provisions the Pi over SSH (uv, the packages, the systemd unit, later `zenohd`), copies its configuration and data, hands over the hub role and demotes the Mac to a **node** with its `mac.*` tools. Every step is tier 2 and asks for approval; the handover loses no queued messages; a rollback path back to the Mac exists. None of that is built; issue 048 waits for the hardware and for the mesh layer (issue 032). The manual steps below are what that automation will do.
 
 ## What moving the hub means
 
@@ -59,7 +59,7 @@ Or restore from the encrypted bundle as the [backup guide](backups.md) shows. Th
 tau doctor
 ```
 
-Fix what it flags: usually the provider's credentials in `.env`, and the `local` role, which stays planned (issue 012).
+Fix what it flags: usually the model key (`ANTHROPIC_API_KEY`, or your provider's) in `.env`. The budgets need nothing on the Pi: they live in `tau.toml`, and the spend ledger `spend.sqlite3` came over with the data directory, so the current period's spend carries on. Point `TAU_OLLAMA_URL` at the Mac's tailnet address (`http://my-mac.tailXXXXXX.ts.net:11434`) so the `local` role still reaches Ollama there, and let Ollama on the Mac listen on its tailnet address only ([Models and budgets](models-and-budgets.md#set-up-ollama)).
 
 ### 4. Start the service
 
@@ -98,7 +98,7 @@ Two hubs at once is a configuration error the mesh will refuse once it exists; t
 |---|---|
 | Sleep | none; the keep-awake agent and TauBar's sleep modes are Mac-only concerns |
 | Service manager | systemd user unit with linger, not launchd |
-| Models | the `brain` and `fast` roles call a provider over the network as before; the `local` role (Ollama) is planned and a Pi 5 runs only small models |
+| Models | nothing extra runs on the Pi: `brain` and `fast` call their provider directly as before, with the same budgets; the `local` role reaches Ollama on the Mac over the tailnet (`TAU_OLLAMA_URL`) and fails over to `fast` within a few seconds while the Mac sleeps or is away; a Pi 5 runs only small models itself |
 | Voice | MLX Whisper is Apple-only; the Pi gets a CPU Whisper build (`tau-voice`, planned) |
 | Mesh | `zenohd` runs on the hub, so on the Pi; the Mac joins as a node |
 | Backups | the same `age` + R2 flow; the key moves with the password manager, not with the disk |

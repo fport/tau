@@ -1,4 +1,4 @@
-// Pure display helpers for the settings window (tested in format.test.ts).
+// Pure display helpers for the settings window and the panel (tested in format.test.ts).
 
 import type {
   GuardState,
@@ -157,6 +157,26 @@ export const SLEEP_CHOICES: SleepChoice[] = [
 /** Whether a sleep choice can be picked right now. */
 export function sleepChoiceEnabled(mode: SleepMode, status: SleepStatus): boolean {
   return mode !== "keep_awake_lid_closed" || status.lid_available;
+}
+
+/** The panel's line under "Sleep" when what is in force needs explaining, else null. */
+export function sleepNote(status: SleepStatus): string | null {
+  if (status.disabled_elsewhere) {
+    return "Sleep is disabled outside TauBar (pmset disablesleep 1).";
+  }
+  if (status.wanted !== status.effective) {
+    return `"${choiceTitle(status.wanted)}" is unavailable, so "${choiceTitle(status.effective)}" is in force.`;
+  }
+  return status.problem;
+}
+
+function choiceTitle(mode: SleepMode): string {
+  return SLEEP_CHOICES.find((choice) => choice.mode === mode)?.title ?? mode;
+}
+
+/** Whether "Launch at login" shows as on (macOS may still wait for the user's approval). */
+export function loginChecked(status: LoginItemStatus): boolean {
+  return status === "enabled" || status === "requires_approval";
 }
 
 /** The sentence under the "Launch at login" checkbox. */

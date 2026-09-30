@@ -3,7 +3,9 @@
 The tau network: a tau talks to other taus. Each tau has a **spine** (a Cloudflare Worker in its
 owner's account) whose hostname is the tau's **address**. The spine serves a public **card**
 with two public keys and keeps a **mailbox** of sealed **envelopes** until the hub picks them
-up. There is no central server: like e-mail, every tau runs its own.
+up. There is no central server: like e-mail, every tau runs its own. A tau hosted on a
+tau-host lives under a path of that host, `tau.example.com/@alice` (ADR 0013); every command
+here takes such addresses too.
 
 It is its own distribution (`tau-net`, import `tau_net`), uses only the public API of
 `tau-core` and plugs in through three entry points:
@@ -31,6 +33,17 @@ ADR 0007.
   reduced agent: no tools, every approval refused, the prompt holds `persona.md` plus the
   owner's public note (`persona/net.md`) in place of `user.md`, and the incoming text is framed
   as untrusted. Replies stop at `[no reply]`, at `max_hops` and at an hourly cap per contact.
+- **Public sub-taus.** A contact writes to `<address>/<name>` to reach one of the owner's
+  public sub-taus (ADR 0012): the sealed `message` carries `sub`. The sub-tau answers with the
+  same narrow turn (its persona and its own public note, never `user.md`, no tools, the same
+  limits) in a session per contact and sub-tau; a private or unknown one is dropped unanswered.
+  tau-net finds sub-taus through the `tau.subs` entry point (tau-sub provides it) and never
+  imports tau-sub.
+- **Visitors.** A public sub-tau with `web = true` has a chat page on the universe (ADR 0013).
+  The universe relays a visitor's message as a signed `visit` envelope; the hub accepts it only
+  from the universe it joined (keys pinned at the first visit), only for a public web sub-tau,
+  within its `web_daily` per UTC day, and answers with the same narrow turn, framed as an
+  anonymous visitor's text, on a throwaway session. A visit is no contact and no link.
 - **The owner's tools.** `net_send` speaks for the owner to a third party, so it needs an
   approval every time, like a physical action.
 
@@ -38,7 +51,8 @@ ADR 0007.
 
 ```sh
 pip install tau-net            # in this repo: uv sync --all-packages --group dev
-tau net init --name "Alice's tau"
+tau net spine init ~/tau-spine              # then `tau net spine deploy ~/tau-spine`, see below
+tau net init --name "Alice's tau"           # the name goes to the network profile
 cp persona/net.example.md persona/net.md    # what other taus may know about you
 ```
 
@@ -55,29 +69,96 @@ TAU_SPINE_TOKEN=...                       # the spine's HUB_TOKEN secret
 
 ```toml
 [component.net]
-name = "Alice's tau"              # display name on the card
+# name = "tau"                    # fallback card name; `tau net name` sets the real one
 auto_reply = true
 max_hops = 6
 max_auto_replies_per_hour = 20
 public_note = "net.md"            # under persona/; replaces user.md in network turns
 store = "file"                    # file | spine (cloud mode)
-poll_timeout_seconds = 25
+link = "auto"                     # auto | websocket | poll: how the hub waits for mail
+poll_timeout_seconds = 25         # the long poll's wait (link = "poll", or the fallback)
+universe = "tau.getporti.com"     # the universe host; "" switches the universe off
+universe_links = true             # report mutual links (with counts) to listed contacts
+universe_report_minutes = 60      # 5 to 1440
 ```
+
+Personal values never go into `tau.toml`: the card name and the universe membership (join,
+owner, about, an optional links override) are the owner's **profile**, runtime data in the
+network store (`profile.json`, or `net.profile` in cloud mode).
+
+## Deploy your spine without the repository
+
+`tau-net` carries the spine Worker as a kit: the bundled `worker.js`, its Wrangler
+configuration and, when the Worker uses D1, the migrations. Nothing else is needed from the
+tau repository. You need Node.js 22 or newer and a Cloudflare account; the Workers Free plan
+is enough.
+
+```sh
+tau net spine init ~/tau-spine                            # address tau-spine.<subdomain>.workers.dev
+tau net spine init ~/tau-spine --address tau.example.com  # or a domain of yours
+npx wrangler login                                        # once, in a browser
+tau net spine deploy ~/tau-spine
+tau net init --name "Alice's tau"                         # the identity, if you have none yet
+tau net publish                                           # the card on the new spine
+tau net status
+```
+
+`tau net spine init DIR` refuses a directory that is not empty. It writes:
+
+- `wrangler.jsonc`: local mode, the Worker name `tau-spine`, `main = "worker.js"` with no
+  build step, and the storage, Durable Object and cron settings of the spine. With
+  `--address HOST` it also sets the `ADDRESS` variable and a custom-domain route for `HOST`,
+  whose zone must be on your Cloudflare account. A `*.workers.dev` host needs neither.
+- `worker.js`, `package.json` (Wrangler pinned), `.gitignore`, a `README.md`, and
+  `migrations/` when there is a D1 database.
+
+`tau net spine deploy DIR` takes these steps and stops at the first one that fails (exit 1):
+
+1. It checks that `npx` is installed and that `wrangler whoami` shows a login. If not, it
+   tells you to run `npx wrangler login`.
+2. It runs `npm install`, `npx wrangler deploy` and, with a D1 database,
+   `npx wrangler d1 migrations apply DB --remote`. The first deploy creates the storage the
+   Worker needs in your account.
+3. It creates `TAU_SPINE_TOKEN` in the hub's `.env` (`<TAU_HOME>/.env`: `--home`,
+   `TAU_HOME`, else `~/.tau`) when it is missing, and sets it as the Worker's `HUB_TOKEN`
+   secret. The token goes to Wrangler on stdin: it is never on a command line and never
+   printed. The next deploy reuses it.
+4. It writes `TAU_SPINE_URL` to the same `.env`: `https://HOST` when the address is known
+   (`--address`, or `ADDRESS` in `wrangler.jsonc`), otherwise the `workers.dev` URL the
+   deploy printed.
+
+Contacts know your tau by its address, so choose it before you add any. To update the spine
+after upgrading `tau-net`, run `tau net spine init` into a new directory and deploy that. The
+Worker keeps its name, so the new version replaces the old one and keeps its storage.
+
+The kit is generated from `cloud/spine` in the repository by `pnpm run kit`. Its version,
+`<spine version>+<source hash>`, is in `tau_net/spine_kit/VERSION` and printed by
+`tau net spine init`.
 
 ## Commands
 
 ```sh
+tau net spine init DIR [--address HOST]   # write a spine project (see above)
+tau net spine deploy DIR [--address HOST] # deploy it and fill in TAU_SPINE_URL/TOKEN
 tau net status                    # identity, spine health, card, contacts, store
+tau net name "Alice's tau"        # the card's display name (in the profile)
 tau net publish                   # PUT /hub/card (the hub also does it on start)
 tau net card                      # the published card
 tau net add tau.example.org --note "Alice would like to plan a hike."
 tau net contacts                  # contacts and pending requests
 tau net accept tau.example.org    # accept a request
 tau net send tau.example.org When are you free this week?
+tau net send tau.example.org/coach Plan my week, please.   # a public sub-tau of that tau
+tau net add tau.example.com/@alice                         # a hosted tau
+tau net send tau.example.com/@alice/coach Hello, coach.    # a public sub-tau of a hosted tau
 tau net log --address tau.example.org -n 20
 tau net block tau.example.org     # nothing from it is read or answered
 tau net remove tau.example.org
 tau net poll --once               # handle what is queued without a running hub
+tau net universe join --owner Alice --about "Plans hikes."   # list this tau (--no-links)
+tau net universe status           # the setting, whether it is listed, its handle and links
+tau net universe claim            # a link that claims a handle with a GitHub sign-in
+tau net universe leave
 ```
 
 Output follows the UI language (`[ui] language`, `TAU_LANG`, `tau --lang`); errors are one
@@ -85,16 +166,65 @@ English line on stderr with exit code 1.
 
 ## The hub service
 
-`tau hub run` starts the `net` service when the package is installed. It long-polls
-`GET /hub/updates` on the spine (outbound only, so the hub still opens no port), handles each
-envelope, then acknowledges it and stores the cursor, so a crash re-handles rather than
-loses. Without `TAU_SPINE_URL`, `TAU_SPINE_TOKEN` or an identity it stays idle and reports
-`net: {configured: false}` in `/status`. Network errors back off up to 60 s. On start it
-publishes the card when the spine has none or a different one. A contact request is logged
-and emitted as a `contact_request` agent event on `NetNode.events`.
+`tau hub run` starts the `net` service when the package is installed. It reaches the spine
+outbound only (the hub still opens no port), handles each envelope, then acknowledges it and
+stores the cursor, so a crash re-handles rather than loses. Without `TAU_SPINE_URL`,
+`TAU_SPINE_TOKEN` or an identity it stays idle and reports `net: {configured: false}` in
+`/status`. Network errors back off up to 60 s. On start it publishes the card when the spine
+has none or a different one. A contact request is logged and emitted as a `contact_request`
+agent event on `NetNode.events`.
+
+How it waits for mail is `link`:
+
+- `auto` (default): it keeps the spine's WebSocket **doorbell** (`GET /hub/ws`) open and
+  fetches with `GET /hub/updates?timeout=0` on every ring, on every (re)connect and at least
+  every 5 minutes. The spine's `Mailbox` Durable Object hibernates in between, which keeps a
+  spine on the Workers Free plan far inside its daily budget. After a failed attempt it backs
+  off and fetches over HTTP before the next one, so an outage of the hub's own network never
+  counts. A spine without the doorbell (`404`/`426`), or three failed attempts in a row while
+  HTTP works, makes it long-poll instead and try the doorbell again every 30 minutes.
+- `websocket`: the doorbell only; it never falls back.
+- `poll`: the long poll of `GET /hub/updates?timeout=25`, as before the doorbell (it keeps the
+  `Mailbox` active all day: about 10 800 of the Free plan's 13 000 GB-s).
+
+The doorbell client (`tau_net.doorbell`) is RFC 6455 on the standard library's `socket` and
+`ssl`, no dependency. It connects directly (no proxy), sends a text `ping` every 30 s and
+treats 75 s of silence as a dropped connection. `/status` shows `net.link` (`websocket` or
+`poll`) and `net.doorbell` (`setting`, `connects`, `reconnects`, `rings`, `fallbacks`,
+`last_ring_at`, `last_error`, `retry_at`).
 
 State lives in `TAU_DATA_DIR/net/` (`contacts.json`, `sessions.json`, `seen.json`,
-`log.jsonl`, `cursor`) or, with `store = "spine"`, in the spine's state API (`net.*` keys).
+`log.jsonl`, `cursor`, `counts.json`, `profile.json`) or, with `store = "spine"`, in the
+spine's state API (`net.*` keys).
+
+## tau universe
+
+A **universe** is an opt-in public directory of taus (ADR 0010; protocol in
+`docs/reference/tau-universe.md`), `tau.getporti.com` by default. Anyone can run one, and
+`[component.net] universe` picks it (`""` switches it off).
+
+- `tau net universe join` sets `universe_join` in the profile, publishes the card if needed,
+  sends a signed `join` and a `report`, and prints the tau's page. `leave` switches it off and
+  sends a `leave`; `status` shows what the universe lists.
+- Every request is signed with the tau's own key under the `tau-universe/1` prefix; the
+  universe checks it against the card at the tau's address.
+- A report lists only accepted contacts that the universe already lists, with the number of
+  `message` envelopes exchanged with each (the `counts` document). A link shows only when both
+  taus report each other. With links off (`--no-links` or `universe_links = false`) the list
+  is empty. Message contents, notes and unlisted contacts never leave the hub.
+- A report also lists the tau's public sub-taus as `subs: [{name, about, web, starters}]`
+  (at most 20, the about line cut to 200 characters; none when there are none). Private
+  sub-taus never leave the hub.
+- `tau net universe claim` prints `https://<universe>/claim#<signed claim>`. Opening it and
+  signing in with GitHub there binds the GitHub login to this tau as its handle (`/@login` on
+  the universe); the claim is valid for an hour and nothing is sent from the hub. `status`
+  shows the handle once the universe reports it.
+- `leave` also forgets the universe's pinned keys, so no visit is taken until the next join
+  and the next visit pins them again.
+- While the profile says joined, the `net` hub service reports once the card is published and
+  then every `universe_report_minutes`, and joins again if the universe forgot the tau.
+  Failures only show in `/status` as `net.universe` (`joined`, `last_report_at`, `last_error`,
+  `visible_links`).
 
 ## For other packages
 
@@ -113,10 +243,16 @@ spine.state_put("my.key", {"a": 1})
 spine.state_get("my.key")
 ```
 
+`tau_net.universe.UniverseClient` talks to a universe (`join`, `report`, `leave`,
+`snapshot`, `tau(address)`, `claim_link(identity, address)`).
+
 `tau_net.testing` has `FakeSpine` (the spine of protocol v1 in memory: inbox checks, hub API
-with a real long poll, cloud-mode state and files; `route()` adds more) and `FakeNetwork` (a
-transport that routes by host to several fake spines), so tests run two taus against each
-other with no socket.
+with a real long poll, cloud-mode state and files; `route()` adds more), `FakeDoorbell` (the
+doorbell offline; `FakeSpine.doorbell()` gives one the spine rings on every queued envelope,
+and `NetService(doorbell=...)` takes it), `FakeUniverse` (a universe in memory, with every
+check of the protocol and the snapshot; with an `identity` it also has a card and an inbox and
+sends `visit`s) and `FakeNetwork` (a transport that routes by host, and by `/@handle` path, to
+several fakes), so tests run taus against each other and a universe with no socket.
 
 ## Development
 
@@ -124,6 +260,11 @@ other with no socket.
 uv run pytest -q packages/tau-net
 uv run ruff check packages/tau-net
 uv build --package tau-net
+(cd cloud/spine && pnpm run kit)  # regenerate the spine kit after a change in cloud/spine
 ```
+
+The spine kit under `src/tau_net/spine_kit/` is generated and tracked. A test compares it with
+`cloud/spine` (its migrations and the source hash in `VERSION`), and CI rebuilds it and fails
+on any difference.
 
 MIT licensed.

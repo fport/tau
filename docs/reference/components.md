@@ -19,7 +19,7 @@ A *plugin* is a third-party distribution that provides components. To write one,
 
 ### Precedence
 
-- A **seed** name (`bedrock`, `anthropic`, `fake`, `memory`, `file`) wins over an entry point of the same name; the entry point is logged and ignored, so an installed package cannot silently replace `bedrock`.
+- A **seed** name (`anthropic`, `openai`, `gemini`, `ollama`, `bedrock`, `fake`, `memory`, `file`) wins over an entry point of the same name; the entry point is logged and ignored, so an installed package cannot silently replace `bedrock`.
 - An **in-process registration** (`register_provider`, `register_session_backend`) replaces anything, because it is explicit code.
 - `Config.load` validates provider and backend **names** without loading any entry point, so `tau version` and `tau hub status` never import a provider SDK. A name that is declared but fails to load errors when the role is resolved, with the entry point's own error: `Model provider 'x' from <distribution> failed to load: …`. Only a name no distribution declares is an `Unknown model provider`.
 
@@ -51,35 +51,50 @@ tau components
 tau components --json
 ```
 
-In a repository checkout with the `dev` group installed, the listing also shows the three test-fixture distributions (`tau-example-*`); a plain install shows only `tau-core` and `tau-tui`:
+In a repository checkout with the `dev` group installed, the listing also shows `tau-net`, `tau-cloud` and the three test-fixture distributions (`tau-example-*`); a plain install shows only `tau-core` and `tau-tui`:
 
 ```text
 tau.tools
   example_echo          tau-example-tool 0.0.1  enabled  tier 0
   current_time          tau-core 0.3.1          enabled  tier 0
   demo_physical_action  tau-core 0.3.1          enabled  tier 2
+  net_contacts          tau-net 0.1.0           enabled  tier 0
+  net_log               tau-net 0.1.0           enabled  tier 0
+  net_send              tau-net 0.1.0           enabled  tier 2
 tau.commands
-  tui         tau-tui 0.3.1   enabled  tau tui
-  chat        tau-core 0.3.1  enabled  tau chat
-  components  tau-core 0.3.1  enabled  tau components
-  doctor      tau-core 0.3.1  enabled  tau doctor
-  hub         tau-core 0.3.1  enabled  tau hub
-  init        tau-core 0.3.1  enabled  tau init
+  chat        tau-core 0.3.1   enabled  tau chat
+  components  tau-core 0.3.1   enabled  tau components
+  doctor      tau-core 0.3.1   enabled  tau doctor
+  hub         tau-core 0.3.1   enabled  tau hub
+  init        tau-core 0.3.1   enabled  tau init
+  spend       tau-core 0.3.1   enabled  tau spend
+  tui         tau-tui 0.3.1    enabled  tau tui
+  net         tau-net 0.1.0    enabled  tau net
+  cloud       tau-cloud 0.1.0  enabled  tau cloud
 tau.providers
-  bedrock    tau-core 0.3.1              enabled  in use: brain, fast (built-in)
   anthropic  tau-core 0.3.1              enabled  in use: brain, fast (built-in)
+  openai     tau-core 0.3.1              enabled  available (built-in)
+  gemini     tau-core 0.3.1              enabled  available (built-in)
+  ollama     tau-core 0.3.1              enabled  in use: local (built-in)
+  bedrock    tau-core 0.3.1              enabled  available (built-in)
   fake       tau-core 0.3.1              enabled  available (built-in)
   fake2      tau-example-provider 0.0.1  enabled  available
-  ollama     - -                         disabled not available until issue 012; used by local (planned)
 tau.sessions
   memory   tau-core 0.3.1              enabled  available (built-in)
   file     tau-core 0.3.1              enabled  in use (built-in)
   example  tau-example-provider 0.0.1  enabled  available
+  spine    tau-cloud 0.1.0             enabled  available
 tau.context
   example  tau-example-service 0.0.1  enabled
+  budget   tau-core 0.3.1             enabled
 tau.hub_services
-  example  tau-example-service 0.0.1  enabled
+  example   tau-example-service 0.0.1  enabled
+  spend     tau-core 0.3.1             enabled
+  telegram  tau-core 0.3.1             enabled
+  net       tau-net 0.1.0              enabled
 ```
+
+The `budget` context source, the `spend` hub service and the `spend` command are tau-core's three readers of the spend ledger ([Models and budgets](../guides/models-and-budgets.md)).
 
 Columns: name, distribution and version, `enabled`/`disabled` (from `[components]`), then a note: `tier N` for a tool (or `no tier: never registered`), `tau <name>` for a command, `in use: <roles>` / `available` / `planned` for a provider, `in use` / `available` for a backend, and the load error for anything that failed. `--json` gives the same rows as objects with `group`, `name`, `distribution`, `version`, `source` (`built-in`, `entry point`, `registered`, `planned`), `enabled`, `note`, `error`.
 

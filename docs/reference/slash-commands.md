@@ -20,7 +20,7 @@ A line that starts with `/` is a slash command. The channel handles it and the m
 | `/session` | `/oturum` | – | current session id, title, message count and store |
 | `/compact` | `/özet`, `/ozet` | `[focus]` | summarize this session with its own model and continue in a new session seeded with the summary; the old session is kept and the two are linked |
 | `/clear` | `/temizle`, `/cls` | – | clear the screen (terminal) or the transcript (TUI); the session and the agent go on |
-| `/status` | `/durum` | – | profile, session, model, context, tools, UI language, versions, hub |
+| `/status` | `/durum` | – | profile, session, model, context, tools, UI language, versions, hub, budget |
 | `/model` | `/rol` | `[role]` | list the roles of `tau.toml` with the current one marked, or switch this session to a role |
 | `/lang` | `/dil` | `en` or `tr` | switch the UI language for this run |
 | `/settings` | `/ayarlar`, `/ayar` | `[key value]` | show the bootstrap config (roles, credential status, language, profile, context, files) or change one value; the TUI opens its settings screen |
@@ -101,23 +101,24 @@ Terminal: an ANSI clear, the ready banner again, then `Screen cleared; the sessi
 ```text
 Profile: home
 Session: 20260929-173826-f949 · Merhaba tau · 2 messages stored · role brain
-Model: brain → anthropic (fallback; bedrock has no credentials) · claude-sonnet-5
+Model: brain → anthropic · claude-sonnet-5
 Context: sliding, window 60 · 2 messages in memory
 Tools: 2 registered · 1 need approval (tier 2)
 UI language: en
 Versions: tau-core 0.3.1 · tau-tui 0.3.1
 Hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
+Budget: brain $0.42 of $15.00 this month (resets 01.10.2026 00:00); fast $0.03 of $1.00 today (resets 01.10.2026 00:00)
 ```
 
-The model line names the provider and model id and says when the fallback is in use; it never prints a key. The hub line is the `tau doctor` probe (one second, information only). In the TUI `/status` is an info card.
+The model line names the provider and model id and says when the role's `fallback` is in use; it never prints a key. The budget line appears when some role has a budget in `tau.toml`: what each role spent in its current period against its cap, read from the local spend ledger, the same text as `tau spend` and the model's `## Now` block ([Models and budgets](../guides/models-and-budgets.md)). The hub line is the `tau doctor` probe (one second, information only). In the TUI `/status` is an info card.
 
 ### `/model [role]`
 
 ```text
 Model role: brain (anthropic)
 Roles in tau.toml:
-  brain  bedrock (fallback anthropic) · current
-  fast   bedrock (fallback anthropic)
+  brain  anthropic · current
+  fast   anthropic
   local  ollama
 ```
 
@@ -134,9 +135,9 @@ Without an argument, the bootstrap config as the files hold it:
 ```text
 Settings · ~/.tau
 Model roles:
-  brain  bedrock · global.anthropic.claude-sonnet-5 · fallback anthropic · missing AWS_REGION, AWS_PROFILE · fallback anthropic in use
-  fast   bedrock · global.anthropic.claude-haiku-4-5 · fallback anthropic · missing AWS_REGION, AWS_PROFILE · fallback anthropic in use
-  local  ollama · qwen3:8b · provider not available: Provider 'ollama' is not supported yet (issue 012).
+  brain  anthropic · claude-sonnet-5 · credentials ok
+  fast   anthropic · claude-haiku-4-5 · credentials ok
+  local  ollama · qwen3.5:9b · no credentials needed
 UI language: en · profile: home
 Context: sliding, window 60 · max_turns 12 · max_total_tokens none
 Files:
@@ -156,7 +157,7 @@ In the terminal the setters write the files through `tau_core.settings` (comment
 |---|---|
 | `/settings language en\|tr` | `[ui] language` in `tau.toml`; the chrome switches at once (`Settings saved.` then, already in the new language, `Arayüz dili: tr.`) |
 | `/settings profile NAME` | `TAU_PROFILE` in `.env`; the agent is rebuilt on the same session (`Settings saved; model reloaded.`) |
-| `/settings model ROLE PROVIDER MODEL_ID` | provider and model id of a role (its `max_tokens` and `fallback` are kept); rebuilds. A planned provider (`ollama` until issue 012) is refused unless the role already names it: `Not saved: tau.toml: [models.roles.brain] provider 'ollama' is not supported yet (issue 012); available: anthropic, bedrock, fake.` |
+| `/settings model ROLE PROVIDER MODEL_ID` | provider and model id of a role (its `max_tokens` and `fallback` are kept); rebuilds. A planned provider (one a later issue builds; none right now) is refused unless the role already names it: `Not saved: tau.toml: [models.roles.brain] provider '…' is not supported yet (issue …); available: anthropic, bedrock, fake, gemini, ollama, openai.` |
 | `/settings set NAME` | asks `Value for NAME (not echoed): ` with a hidden prompt, writes `NAME` to `.env` (surrounding whitespace stripped), exports it to the running process and rebuilds (`NAME set in .env.`); an empty or blank value changes nothing |
 | `/settings clear NAME` | removes `NAME` from `.env` and the process (`NAME removed from .env.` / `NAME is not in .env.`) |
 

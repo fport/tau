@@ -120,6 +120,34 @@ def test_cloud_files_and_unimplemented_routes() -> None:
     assert local.request("GET", "/hub/files").json() == {"error": "cloud_mode_off"}
 
 
+def test_cloud_sub_tau_files_like_the_real_spine() -> None:
+    spine = FakeSpine("tau.example.com", mode="cloud")
+    spine_client = client(spine)
+    for name in ("coach.public.md", "coach.md", "A1_b-c.d.md"):
+        assert spine_client.call("PUT", f"/hub/files/persona/subs/{name}", body="x")["size"] == 1
+    spine_client.call("PUT", "/hub/files/tau.toml", body="[ui]\n")
+    assert [entry["name"] for entry in spine_client.call("GET", "/hub/files")["files"]] == [
+        "tau.toml",
+        "persona/subs/A1_b-c.d.md",
+        "persona/subs/coach.md",
+        "persona/subs/coach.public.md",
+    ]
+    assert spine_client.request("GET", "/hub/files/persona%2Fsubs%2Fcoach.md").text == "x"
+    for odd in (
+        "persona/subs/.hidden.md",
+        "persona/subs/Bad%20Name.md",
+        "persona/subs/x.txt",
+        "persona/subs/drafts/x.md",
+        "persona/subs/..%2Fuser.md",
+        f"persona/subs/{'a' * 82}.md",
+    ):
+        assert spine_client.request("PUT", f"/hub/files/{odd}", body="x").status == 404, odd
+        assert spine_client.request("DELETE", f"/hub/files/{odd}").status == 404, odd
+    assert spine_client.call("DELETE", "/hub/files/persona/subs/coach.md") == {"deleted": True}
+    assert spine_client.call("DELETE", "/hub/files/persona/subs/coach.md") == {"deleted": False}
+    assert "persona/subs/coach.md" not in spine.files
+
+
 def test_the_long_poll_waits_and_wakes_on_arrival() -> None:
     network = FakeNetwork()
     bob_spine = network.add(FakeSpine("bob.example"))
@@ -156,8 +184,12 @@ def test_the_long_poll_waits_and_wakes_on_arrival() -> None:
 # -- the inbox of the fake spine ---------------------------------------------------------------
 
 
-def inbox(network: FakeNetwork, body: bytes) -> tuple[int, dict]:
-    status, _, data = network("POST", "https://bob.example/net/inbox", {}, body, 5)
+JSON_HEADERS = {"Content-Type": "application/json"}
+
+
+def inbox(network: FakeNetwork, body: bytes, headers: dict | None = None) -> tuple[int, dict]:
+    sent = JSON_HEADERS if headers is None else headers
+    status, _, data = network("POST", "https://bob.example/net/inbox", sent, body, 5)
     return status, json.loads(data)
 
 
@@ -191,6 +223,13 @@ def test_inbox_accepts_then_reports_duplicates() -> None:
 
 def test_inbox_checks_in_order() -> None:
     network, alice, bob, bob_spine = setup_pair()
+    for headers in ({}, {"Content-Type": "text/plain"}):
+        status, data = inbox(network, envelope_bytes(alice, bob), headers)
+        assert (status, data) == (415, {"error": "unsupported_media_type"})
+    assert inbox(network, b"x" * 70_000, {})[0] == 415
+    typed = {"content-type": "application/json; charset=utf-8"}
+    assert inbox(network, envelope_bytes(alice, bob), typed)[0] == 202
+    bob_spine.mailbox.clear()
     assert inbox(network, b"x" * 70_000)[0] == 413
     status, data = inbox(network, b'{"payload": "AAAA"}')
     assert status == 400 and data["error"] == "bad_request"
@@ -299,3 +338,16 @@ def test_deliver_reports_errors() -> None:
     assert (caught.value.status, caught.value.code) == (429, "rate_limited")
     with pytest.raises(DeliveryError, match="unreachable"):
         peers.deliver("nobody.example", envelope)
+
+
+def test_a_local_peer_without_insecure_gets_a_hint() -> None:
+    from tau_net.peers import CardError
+
+    def refuse(method, url, headers, body, timeout):
+        raise ConnectionRefusedError("refused")
+
+    with pytest.raises(CardError, match="TAU_NET_ALLOW_INSECURE=1"):
+        PeerClient(refuse).fetch_card("127.0.0.1:8822")
+    with pytest.raises(CardError) as info:
+        PeerClient(refuse, allow_insecure=True).fetch_card("127.0.0.1:8822")
+    assert "TAU_NET_ALLOW_INSECURE" not in str(info.value)

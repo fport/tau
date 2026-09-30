@@ -1,6 +1,6 @@
 # ADR 0009 · Anthropic-only models behind the LiteLLM proxy
 
-Date: 2026-09-30 · Status: accepted · Supersedes the 2026-09-28 "Models" and "Cost protection" decisions in `docs/ARCHITECTURE.md` (Bedrock as the primary provider, AWS Budgets alarms) and closes roadmap 067.
+Date: 2026-09-30 · Status: superseded in part by [ADR 0011](0011-budgets-in-tau-no-litellm.md) (decisions 1–6; 7 and 8 stand) · Supersedes the 2026-09-28 "Models" and "Cost protection" decisions in `docs/ARCHITECTURE.md` (Bedrock as the primary provider, AWS Budgets alarms) and closes roadmap 067.
 
 ## Context
 

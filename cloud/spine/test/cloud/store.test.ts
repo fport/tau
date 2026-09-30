@@ -16,6 +16,21 @@ describe("cloud mode", () => {
   it("reports mode cloud", async () => {
     expect(await body(await hub("/hub/health"))).toMatchObject({ mode: "cloud" });
   });
+
+  it("keeps only the cloud store in D1; the mailbox stays in the Durable Object", async () => {
+    const { results } = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' " +
+        "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name != 'd1_migrations' " +
+        "ORDER BY name",
+    ).all<{ name: string }>();
+    expect(results.map((row) => row.name)).toEqual([
+      "agents",
+      "events",
+      "messages",
+      "sessions",
+      "state",
+    ]);
+  });
 });
 
 describe("state", () => {
@@ -95,6 +110,70 @@ describe("files", () => {
     for (const name of ["other.txt", "persona%2F..%2Ftau.toml", "persona/soul.md", ".env"]) {
       expect((await hub(`/hub/files/${name}`, { method: "PUT", raw: "x" })).status, name).toBe(404);
     }
+  });
+
+  it("keeps sub-tau files under persona/subs/, listed after the fixed files", async () => {
+    await hub("/hub/files/tau.toml", { method: "PUT", raw: "[ui]\n" });
+    for (const name of ["coach.public.md", "coach.md", "landing.md", "A1_b-c.d.md"]) {
+      const put = await hub(`/hub/files/persona/subs/${name}`, { method: "PUT", raw: `# ${name}` });
+      expect(put.status, name).toBe(200);
+      expect(await body(put)).toMatchObject({ name: `persona/subs/${name}` });
+    }
+    expect(await (await hub("/hub/files/persona/subs/coach.md")).text()).toBe("# coach.md");
+    expect(await (await hub("/hub/files/persona%2Fsubs%2Fcoach.md")).text()).toBe("# coach.md");
+    const listed = await body<{ files: { name: string; size: number }[] }>(await hub("/hub/files"));
+    expect(listed.files.map((file) => file.name)).toEqual([
+      "tau.toml",
+      "persona/subs/A1_b-c.d.md",
+      "persona/subs/coach.md",
+      "persona/subs/coach.public.md",
+      "persona/subs/landing.md",
+    ]);
+    expect(listed.files[2]).toEqual({
+      name: "persona/subs/coach.md",
+      size: 10,
+      updated_at: expect.any(Number),
+    });
+  });
+
+  it("refuses odd names under persona/subs/", async () => {
+    const odd = [
+      "persona/subs/",
+      "persona/subs/.hidden.md",
+      "persona/subs/Bad%20Name.md",
+      "persona/subs/x.txt",
+      "persona/subs/x.md.bak",
+      "persona/subs/drafts/x.md",
+      "persona/subs/drafts%2Fx.md",
+      "persona/subs/..%2F..%2Ftau.toml",
+      "persona/subs/..%2Fuser.md",
+      "persona/subs/-x.md",
+      `persona/subs/${"a".repeat(82)}.md`,
+      "persona%2Fsubs%2F..%2Fuser.md",
+    ];
+    for (const name of odd) {
+      expect((await hub(`/hub/files/${name}`, { method: "PUT", raw: "x" })).status, name).toBe(404);
+      expect((await hub(`/hub/files/${name}`)).status, name).toBe(404);
+      expect((await hub(`/hub/files/${name}`, { method: "DELETE" })).status, name).toBe(404);
+    }
+    expect(await body(await hub("/hub/files"))).toEqual({ files: [] });
+    // The longest allowed name: 81 characters before ".md".
+    const longest = `persona/subs/${"a".repeat(81)}.md`;
+    expect((await hub(`/hub/files/${longest}`, { method: "PUT", raw: "x" })).status).toBe(200);
+  });
+
+  it("deletes a file", async () => {
+    await hub("/hub/files/persona/subs/coach.md", { method: "PUT", raw: "x" });
+    const deleted = await hub("/hub/files/persona/subs/coach.md", { method: "DELETE" });
+    expect(await body(deleted)).toEqual({ deleted: true });
+    expect(
+      await body(await hub("/hub/files/persona/subs/coach.md", { method: "DELETE" })),
+    ).toEqual({ deleted: false });
+    expect((await hub("/hub/files/persona/subs/coach.md")).status).toBe(404);
+    expect(await body(await hub("/hub/files"))).toEqual({ files: [] });
+    const post = await hub("/hub/files/persona/subs/coach.md", { method: "POST", raw: "x" });
+    expect(post.status).toBe(405);
+    expect(post.headers.get("allow")).toBe("GET, PUT, DELETE");
   });
 
   it("413 above 512 KiB and 400 for invalid UTF-8", async () => {
@@ -382,12 +461,20 @@ describe("brain", () => {
         SPINE_URL: "https://tau.example.com/",
         HUB_TOKEN: "t0k3n",
         ANTHROPIC_API_KEY: "sk-test",
+        OPENAI_API_KEY: "sk-openai",
+        GEMINI_API_KEY: "gm-test",
+        GOOGLE_API_KEY: "",
         TELEGRAM_BOT_TOKEN: "",
       }),
     ).toEqual({
       TAU_SPINE_URL: "https://tau.example.com",
       TAU_SPINE_TOKEN: "t0k3n",
       ANTHROPIC_API_KEY: "sk-test",
+      OPENAI_API_KEY: "sk-openai",
+      GEMINI_API_KEY: "gm-test",
+    });
+    expect(brainEnvVars({ ...base, GOOGLE_API_KEY: "g-test" })).toEqual({
+      GOOGLE_API_KEY: "g-test",
     });
     expect(brainEnvVars({ ...base, ADDRESS: "tau.example.com" })).toEqual({
       TAU_SPINE_URL: "https://tau.example.com",

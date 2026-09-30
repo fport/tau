@@ -1,12 +1,22 @@
-"""The network's state: contacts, sessions, seen ids, the network log and the poll cursor.
+"""The network's state: contacts, sessions, seen ids, the log, the cursor, counts, the profile
+and the universe's pinned key with today's visits.
 
-:class:`NetStore` keeps five documents (§6.7) behind a small backend:
+:class:`NetStore` keeps eight documents (§6.8) behind a small backend:
 
 - :class:`FileBackend` (``[component.net] store = "file"``, the default) writes them under
-  ``TAU_DATA_DIR/net/``: ``contacts.json``, ``sessions.json``, ``seen.json``, ``log.jsonl`` and
-  ``cursor``, atomically, files 0600 in a 0700 directory.
+  ``TAU_DATA_DIR/net/``: ``contacts.json``, ``sessions.json``, ``seen.json``, ``log.jsonl``,
+  ``cursor``, ``counts.json``, ``profile.json`` and ``universe.json``, atomically, files 0600
+  in a 0700 directory.
 - :class:`SpineBackend` (``store = "spine"``, cloud mode) keeps them in the spine's state API
-  under ``net.contacts``, ``net.sessions``, ``net.seen``, ``net.log`` and ``net.cursor``.
+  under ``net.contacts``, ``net.sessions``, ``net.seen``, ``net.log``, ``net.cursor``,
+  ``net.counts``, ``net.profile`` and ``net.universe``.
+
+``counts`` is ``{peer: {"in": n, "out": n}}``: the ``message`` envelopes handled from and sent
+to each contact, which a universe report sums up. ``profile`` holds the owner's personal
+values (:mod:`tau_net.profile`): the card name and the universe membership. ``universe`` holds
+what ``visit`` envelopes need (ADR 0013 §5): the universe's keys, pinned at its first visit
+(``{"pins": {host: {"sign_key", "box_key", "pinned_at"}}``), and the visitor turns of the
+current UTC day per sub-tau (``{"visits": {"day": "YYYY-MM-DD", "subs": {name: n}}}``).
 
 Documents are read again on every access (nothing is cached), so ``tau net accept`` in a
 terminal and the running hub see each other's writes; read-modify-write steps hold a
@@ -20,7 +30,7 @@ import logging
 import os
 import tempfile
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
@@ -28,6 +38,7 @@ from typing import Any, Protocol, TypeVar
 from tau_net.spine import SpineClient
 
 __all__ = [
+    "DIRECTIONS",
     "DOCUMENTS",
     "LOG_LIMIT",
     "SEEN_LIMIT",
@@ -40,7 +51,8 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-DOCUMENTS = ("contacts", "sessions", "seen", "log", "cursor")
+DOCUMENTS = ("contacts", "sessions", "seen", "log", "cursor", "counts", "profile", "universe")
+DIRECTIONS = ("in", "out")
 STORE_KINDS = ("file", "spine")
 LOG_LIMIT = 500
 SEEN_LIMIT = 1000
@@ -90,6 +102,9 @@ class FileBackend:
         "seen": "seen.json",
         "log": "log.jsonl",
         "cursor": "cursor",
+        "counts": "counts.json",
+        "profile": "profile.json",
+        "universe": "universe.json",
     }
 
     def __init__(self, root: Path):
@@ -172,7 +187,7 @@ class SpineBackend:
 
 
 class NetStore:
-    """Typed access to the five documents. Thread-safe within one process."""
+    """Typed access to the eight documents. Thread-safe within one process."""
 
     def __init__(self, backend: DocumentBackend):
         self.backend = backend
@@ -276,3 +291,105 @@ class NetStore:
     def save_cursor(self, seq: int) -> None:
         with self.lock:
             self.backend.write("cursor", int(seq))
+
+    # -- message counts ------------------------------------------------------------------------
+
+    def counts(self) -> dict[str, dict[str, int]]:
+        """``peer → {"in": n, "out": n}``: ``message`` envelopes handled from and sent to it."""
+        counts: dict[str, dict[str, int]] = {}
+        for peer, entry in self._dict("counts").items():
+            if isinstance(peer, str) and isinstance(entry, dict):
+                counts[peer] = {d: _count(entry.get(d)) for d in DIRECTIONS}
+        return counts
+
+    def count_message(self, address: str, direction: str) -> None:
+        """One more ``message`` from (``in``) or to (``out``) ``address``."""
+        if direction not in DIRECTIONS:
+            raise ValueError(f"direction must be one of {', '.join(DIRECTIONS)}")
+        with self.lock:
+            counts = self.counts()
+            entry = counts.setdefault(address, dict.fromkeys(DIRECTIONS, 0))
+            entry[direction] += 1
+            self.backend.write("counts", counts)
+
+    # -- the owner's profile -------------------------------------------------------------------
+
+    def profile(self) -> dict[str, Any]:
+        """The raw ``profile`` document (:class:`tau_net.profile.NetProfile` types it)."""
+        return self._dict("profile")
+
+    def update_profile(self, changes: Mapping[str, Any]) -> dict[str, Any]:
+        """Merge ``changes`` into the profile (a ``None`` value removes the key); returns it."""
+        with self.lock:
+            profile = self.profile()
+            for key, value in changes.items():
+                if value is None:
+                    profile.pop(key, None)
+                else:
+                    profile[key] = value
+            self.backend.write("profile", profile)
+            return profile
+
+    # -- the universe: its pinned keys and today's visits (ADR 0013 §5) -------------------------
+
+    def _universe(self) -> dict[str, Any]:
+        return self._dict("universe")
+
+    def universe_pin(self, host: str) -> dict[str, Any] | None:
+        """The keys pinned for the universe ``host`` (``{"sign_key", "box_key", "pinned_at"}``),
+        or ``None`` before its first visit."""
+        pins = self._universe().get("pins")
+        pin = pins.get(host) if isinstance(pins, dict) else None
+        if not isinstance(pin, dict):
+            return None
+        if not isinstance(pin.get("sign_key"), str) or not isinstance(pin.get("box_key"), str):
+            return None
+        return dict(pin)
+
+    def pin_universe(self, host: str, *, sign_key: str, box_key: str, ts: int) -> None:
+        """Pin the keys of the universe ``host``; an existing pin is never replaced."""
+        with self.lock:
+            document = self._universe()
+            pins = document.get("pins") if isinstance(document.get("pins"), dict) else {}
+            if isinstance(pins.get(host), dict):
+                return
+            pins[host] = {"sign_key": sign_key, "box_key": box_key, "pinned_at": int(ts)}
+            document["pins"] = pins
+            self.backend.write("universe", document)
+
+    def forget_universe(self, host: str) -> bool:
+        """Drop the pin of ``host`` (``tau net universe leave``); ``True`` if there was one."""
+        with self.lock:
+            document = self._universe()
+            pins = document.get("pins")
+            if not isinstance(pins, dict) or host not in pins:
+                return False
+            del pins[host]
+            self.backend.write("universe", document)
+            return True
+
+    def visits(self, day: str) -> dict[str, int]:
+        """``sub → visitor turns`` on the UTC ``day`` (``YYYY-MM-DD``); ``{}`` for another day."""
+        visits = self._universe().get("visits")
+        if not isinstance(visits, dict) or visits.get("day") != day:
+            return {}
+        subs = visits.get("subs")
+        subs = subs if isinstance(subs, dict) else {}
+        return {name: _count(n) for name, n in subs.items() if isinstance(name, str)}
+
+    def take_visit(self, sub: str, day: str, limit: int) -> bool:
+        """Count one visitor turn of ``sub`` on ``day`` when fewer than ``limit`` were taken;
+        ``False`` (nothing counted) at the cap. Older days are dropped."""
+        with self.lock:
+            document = self._universe()
+            counts = self.visits(day)
+            if counts.get(sub, 0) >= limit:
+                return False
+            counts[sub] = counts.get(sub, 0) + 1
+            document["visits"] = {"day": day, "subs": counts}
+            self.backend.write("universe", document)
+            return True
+
+
+def _count(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0

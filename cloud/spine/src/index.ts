@@ -22,7 +22,7 @@ import { error, methodNotAllowed, notFound } from "./http";
 import { receiveEnvelope, serveCard } from "./net";
 
 export { TauBrain } from "./brain";
-export { HubSignal } from "./signal";
+export { Mailbox } from "./mailbox";
 
 async function route(request: Request, env: SpineEnv): Promise<Response> {
   const url = new URL(request.url);

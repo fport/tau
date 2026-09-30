@@ -2,30 +2,23 @@
 # variable names and example values, never real ones.
 
 # --- Agent (L1): model credentials. Uncomment what you use; tau.toml says which role needs what.
-# Bedrock (optional, direct mode only): AWS_REGION plus one of AWS_PROFILE |
+# Bedrock (optional): AWS_REGION plus one of AWS_PROFILE |
 # AWS_ACCESS_KEY_ID+AWS_SECRET_ACCESS_KEY | AWS_BEARER_TOKEN_BEDROCK
 # AWS_REGION=eu-central-1
 # AWS_PROFILE=tau
 # AWS_ACCESS_KEY_ID=AKIAXXXXXXXXXXXXXXXX
 # AWS_SECRET_ACCESS_KEY=...
 # AWS_BEARER_TOKEN_BEDROCK=...
-# Anthropic (the only cloud provider, ADR 0009; the proxy reads the same variables). A key that
-# is not scoped to a workspace also needs the workspace id (Console → Settings → Workspaces).
+# Anthropic. A key that is not scoped to a workspace also needs the workspace id
+# (Console → Settings → Workspaces).
 # ANTHROPIC_API_KEY=sk-ant-...
 # ANTHROPIC_WORKSPACE_ID=wrksp_...
 
-# --- Models (L2): the LiteLLM proxy (infra/litellm, ADR 0009). proxy.sh init generates the
-# first three; `tau proxy keys` writes one virtual key per model group, carrying its budget.
-# LITELLM_MASTER_KEY=sk-...                  # admin key of the proxy (tau proxy keys, rotate)
-# LITELLM_SALT_KEY=sk-...                    # encrypts what the proxy stores; never change it after the first start
-# TAU_PROXY_DB_PASSWORD=...                  # the proxy's Postgres, reachable only inside compose
-# TAU_PROXY_KEY_BRAIN=sk-...                 # virtual key of the brain group (tau proxy keys)
-# TAU_PROXY_KEY_FAST=sk-...
-# TAU_PROXY_KEY_LOCAL=sk-...
-# TAU_PROXY_URL=http://127.0.0.1:4000        # where tau reaches the proxy (default shown)
-# TAU_PROXY_PORT=4000                        # loopback port proxy.sh publishes (default shown)
-# TAU_OLLAMA_URL=http://my-mac.tailXXXXXX.ts.net:11434   # Ollama when the hub is not the Mac; unset: the Mac itself
-# TAU_LOCAL_MODEL=ollama_chat/qwen3.5:9b     # the proxy's local group: ollama_chat/<ollama model name>
+# OpenAI and Google Gemini (ADR 0011): set the one tau.toml uses.
+# OPENAI_API_KEY=sk-...
+# GEMINI_API_KEY=...                  # GOOGLE_API_KEY works too
+# Ollama for the local role: unset means this machine; the Mac over the tailnet otherwise.
+# TAU_OLLAMA_URL=http://my-mac.tailXXXXXX.ts.net:11434
 
 # --- Agent (L1): roots and identity. Defaults are shown; set only what differs.
 # TAU_HOME=/path/to/tau               # tau.toml, persona/, tools/ (default: cwd with tau.toml, else ~/.tau)

@@ -29,3 +29,4 @@ The cloud-mode image likewise installs from PyPI instead of the workspace.
 ## Comments
 
 - 2026-09-30: filed with ADR 0007.
+- 2026-09-30: the spine part is done by 142 (the kit in the tau-net wheel, `tau net spine init|deploy`). What remains here is the cloud-mode brain image built from PyPI releases instead of the workspace.

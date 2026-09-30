@@ -2,7 +2,8 @@
  * Cloud-mode routes: state, files, sessions and the brain (§5 "Cloud mode only").
  *
  * hub.ts only calls this module when TAU_MODE is "cloud", so a local-mode spine can never
- * hold life data. Stored documents are opaque: the spine keeps them as JSON text and never
+ * hold life data. State and sessions live in D1, which only the cloud configuration binds;
+ * files live in KV. Stored documents are opaque: the spine keeps them as JSON text and never
  * interprets them.
  */
 
@@ -35,13 +36,29 @@ const STATE_KEY = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MESSAGE_ID = /^[0-9]{1,15}$/;
 
-/** The only files the spine keeps (in KV under `file:<name>`). */
+/** The fixed files the spine keeps (in KV under `file:<name>`). */
 export const FILE_NAMES = [
   "tau.toml",
   "persona/persona.md",
   "persona/user.md",
   "persona/net.md",
 ] as const;
+
+/** The directory of sub-tau files: definitions (`coach.md`) and public notes (`coach.public.md`). */
+export const SUBS_PREFIX = "persona/subs/";
+
+/**
+ * A file directly in `persona/subs/`: a plain name ending in `.md` that starts with a letter
+ * or a digit, so no hidden file, no slash and no `..` segment.
+ */
+export const SUB_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.md$/;
+
+/** The environment of the D1 routes (state, sessions): cloud mode with its D1 binding. */
+type StoreEnv = SpineEnv & { DB: D1Database };
+
+function hasStore(env: SpineEnv): env is StoreEnv {
+  return env.DB !== undefined;
+}
 
 export function isCloudRoute(path: string): boolean {
   return (
@@ -59,11 +76,16 @@ export async function handleStore(request: Request, env: SpineEnv, url: URL): Pr
   if (path === "/hub/brain") {
     return request.method === "GET" ? brainHealth(env) : methodNotAllowed(["GET"]);
   }
-  if (path.startsWith("/hub/state/")) {
-    return state(request, env, path.slice("/hub/state/".length));
-  }
   if (path === "/hub/files" || path.startsWith("/hub/files/")) {
     return files(request, env, path.slice("/hub/files".length).replace(/^\//, ""));
+  }
+  if (!hasStore(env)) {
+    // TAU_MODE=cloud on a configuration without D1 (the local-mode wrangler.jsonc).
+    console.error(JSON.stringify({ event: "store_unavailable", reason: "no DB binding" }));
+    return error(503, "not_configured");
+  }
+  if (path.startsWith("/hub/state/")) {
+    return state(request, env, path.slice("/hub/state/".length));
   }
   return sessions(request, env, url);
 }
@@ -84,7 +106,7 @@ interface StateRow {
   updated_at: number;
 }
 
-async function state(request: Request, env: SpineEnv, rawKey: string): Promise<Response> {
+async function state(request: Request, env: StoreEnv, rawKey: string): Promise<Response> {
   const key = decodeSegment(rawKey);
   if (key === null || !STATE_KEY.test(key)) {
     return badRequest("key must match ^[a-z0-9][a-z0-9._:-]{0,127}$");
@@ -129,15 +151,44 @@ interface FileMeta {
   updated_at: number;
 }
 
-function isFileName(name: string): name is (typeof FILE_NAMES)[number] {
-  return (FILE_NAMES as readonly string[]).includes(name);
+/** A fixed file, or a sub-tau file `persona/subs/<file>`; checked after URL decoding. */
+export function isFileName(name: string): boolean {
+  if ((FILE_NAMES as readonly string[]).includes(name)) return true;
+  return name.startsWith(SUBS_PREFIX) && SUB_FILE.test(name.slice(SUBS_PREFIX.length));
+}
+
+interface FileEntry extends FileMeta {
+  name: string;
+}
+
+/** The sub-tau files in KV, sorted by name; a KV listing carries each key's metadata. */
+async function subFiles(env: SpineEnv): Promise<FileEntry[]> {
+  const found: FileEntry[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await env.TAU.list<FileMeta>({
+      prefix: `file:${SUBS_PREFIX}`,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    for (const key of page.keys) {
+      const name = key.name.slice("file:".length);
+      if (!isFileName(name)) continue;
+      found.push({
+        name,
+        size: key.metadata?.size ?? 0,
+        updated_at: key.metadata?.updated_at ?? 0,
+      });
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor !== undefined);
+  return found.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
 async function files(request: Request, env: SpineEnv, rawName: string): Promise<Response> {
   if (rawName === "") {
     if (request.method !== "GET") return methodNotAllowed(["GET"]);
-    const found = await Promise.all(
-      FILE_NAMES.map(async (name) => {
+    const fixed = await Promise.all(
+      FILE_NAMES.map(async (name): Promise<FileEntry | null> => {
         const { value, metadata } = await env.TAU.getWithMetadata<FileMeta>(`file:${name}`);
         if (value === null) return null;
         return {
@@ -147,7 +198,8 @@ async function files(request: Request, env: SpineEnv, rawName: string): Promise<
         };
       }),
     );
-    return json({ files: found.filter((file) => file !== null) });
+    const listed = fixed.filter((file) => file !== null);
+    return json({ files: [...listed, ...(await subFiles(env))] });
   }
 
   const name = decodeSegment(rawName);
@@ -171,8 +223,13 @@ async function files(request: Request, env: SpineEnv, rawName: string): Promise<
       await env.TAU.put(`file:${name}`, text, { metadata: meta });
       return json({ name, ...meta });
     }
+    case "DELETE": {
+      const existed = (await env.TAU.get(`file:${name}`)) !== null;
+      if (existed) await env.TAU.delete(`file:${name}`);
+      return json({ deleted: existed });
+    }
     default:
-      return methodNotAllowed(["GET", "PUT"]);
+      return methodNotAllowed(["GET", "PUT", "DELETE"]);
   }
 }
 
@@ -182,7 +239,7 @@ async function files(request: Request, env: SpineEnv, rawName: string): Promise<
 const NEXT_REV = "(SELECT COALESCE(MAX(rev), 0) + 1 FROM sessions)";
 
 /** Refreshes updated_at and moves the session to the top of the listing. */
-function touch(env: SpineEnv, sid: string, now: string): D1PreparedStatement {
+function touch(env: StoreEnv, sid: string, now: string): D1PreparedStatement {
   return env.DB.prepare(
     `UPDATE sessions SET updated_at = ?2, rev = ${NEXT_REV} WHERE session_id = ?1`,
   ).bind(sid, now);
@@ -193,7 +250,7 @@ function touch(env: SpineEnv, sid: string, now: string): D1PreparedStatement {
  * missing, else touches it. With `meta`, the stored meta is replaced by it.
  */
 function upsertSession(
-  env: SpineEnv,
+  env: StoreEnv,
   sid: string,
   now: string,
   meta?: string,
@@ -212,14 +269,14 @@ function upsertSession(
   ).bind(sid, data, meta ?? "{}", now);
 }
 
-async function sessionExists(env: SpineEnv, sid: string): Promise<boolean> {
+async function sessionExists(env: StoreEnv, sid: string): Promise<boolean> {
   const row = await env.DB.prepare("SELECT 1 AS found FROM sessions WHERE session_id = ?1")
     .bind(sid)
     .first();
   return row !== null;
 }
 
-async function agentExists(env: SpineEnv, sid: string, aid: string): Promise<boolean> {
+async function agentExists(env: StoreEnv, sid: string, aid: string): Promise<boolean> {
   const row = await env.DB.prepare(
     "SELECT 1 AS found FROM agents WHERE session_id = ?1 AND agent_id = ?2",
   )
@@ -243,7 +300,7 @@ async function readData(request: Request): Promise<DataBody> {
   return { ok: true, body: body.value, data: JSON.stringify(body.value.data) };
 }
 
-async function sessions(request: Request, env: SpineEnv, url: URL): Promise<Response> {
+async function sessions(request: Request, env: StoreEnv, url: URL): Promise<Response> {
   const raw = url.pathname.slice("/hub/sessions".length).split("/").slice(1);
   const parts = raw.map(decodeSegment);
   if (parts.some((part) => part === null)) return badRequest("bad path encoding");
@@ -325,7 +382,7 @@ interface SessionListRow {
 }
 
 /** GET /hub/sessions?limit= — most recently updated first. */
-async function listSessions(env: SpineEnv, url: URL): Promise<Response> {
+async function listSessions(env: StoreEnv, url: URL): Promise<Response> {
   const limit = intParam(url, "limit", DEFAULT_SESSIONS_LIMIT);
   if (limit === null || limit < 1 || limit > MAX_SESSIONS_LIMIT) {
     return badRequest(`limit must be an integer from 1 to ${MAX_SESSIONS_LIMIT}`);
@@ -346,7 +403,7 @@ async function listSessions(env: SpineEnv, url: URL): Promise<Response> {
 }
 
 /** POST /hub/sessions: `{session_id, data}`. */
-async function createSession(request: Request, env: SpineEnv): Promise<Response> {
+async function createSession(request: Request, env: StoreEnv): Promise<Response> {
   const read = await readData(request);
   if (!read.ok) return read.response;
   const sid = read.body.session_id;
@@ -368,7 +425,7 @@ async function createSession(request: Request, env: SpineEnv): Promise<Response>
   return created();
 }
 
-async function readMeta(env: SpineEnv, sid: string): Promise<Response> {
+async function readMeta(env: StoreEnv, sid: string): Promise<Response> {
   const row = await env.DB.prepare("SELECT meta FROM sessions WHERE session_id = ?1")
     .bind(sid)
     .first<{ meta: string }>();
@@ -376,7 +433,7 @@ async function readMeta(env: SpineEnv, sid: string): Promise<Response> {
 }
 
 /** PATCH /hub/sessions/<sid>/meta: a shallow merge; creates the session when missing. */
-async function patchMeta(request: Request, env: SpineEnv, sid: string): Promise<Response> {
+async function patchMeta(request: Request, env: StoreEnv, sid: string): Promise<Response> {
   const body = await readJsonObject(request, MAX_DOCUMENT_BYTES);
   if (!body.ok) return body.response;
   const patch = body.value.meta;
@@ -390,7 +447,7 @@ async function patchMeta(request: Request, env: SpineEnv, sid: string): Promise<
   return json({ meta: merged });
 }
 
-async function listEvents(env: SpineEnv, sid: string): Promise<Response> {
+async function listEvents(env: StoreEnv, sid: string): Promise<Response> {
   const { results } = await env.DB.prepare(
     "SELECT data FROM events WHERE session_id = ?1 ORDER BY seq",
   )
@@ -400,7 +457,7 @@ async function listEvents(env: SpineEnv, sid: string): Promise<Response> {
 }
 
 /** POST /hub/sessions/<sid>/events: `{data}`; creates the session when missing. */
-async function appendEvent(request: Request, env: SpineEnv, sid: string): Promise<Response> {
+async function appendEvent(request: Request, env: StoreEnv, sid: string): Promise<Response> {
   const read = await readData(request);
   if (!read.ok) return read.response;
   await env.DB.batch([
@@ -411,7 +468,7 @@ async function appendEvent(request: Request, env: SpineEnv, sid: string): Promis
 }
 
 /** POST /hub/sessions/<sid>/agents: `{agent_id, data}`. */
-async function createAgent(request: Request, env: SpineEnv, sid: string): Promise<Response> {
+async function createAgent(request: Request, env: StoreEnv, sid: string): Promise<Response> {
   const read = await readData(request);
   if (!read.ok) return read.response;
   const aid = read.body.agent_id;
@@ -438,7 +495,7 @@ async function createAgent(request: Request, env: SpineEnv, sid: string): Promis
 /** PUT /hub/sessions/<sid>/agents/<aid>: `{data}`. */
 async function updateAgent(
   request: Request,
-  env: SpineEnv,
+  env: StoreEnv,
   sid: string,
   aid: string,
 ): Promise<Response> {
@@ -457,7 +514,7 @@ async function updateAgent(
 /** POST /hub/sessions/<sid>/agents/<aid>/messages: `{message_id, data}`. */
 async function createMessage(
   request: Request,
-  env: SpineEnv,
+  env: StoreEnv,
   sid: string,
   aid: string,
 ): Promise<Response> {
@@ -485,7 +542,7 @@ async function createMessage(
 /** PUT /hub/sessions/<sid>/agents/<aid>/messages/<mid>: `{data}`. */
 async function updateMessage(
   request: Request,
-  env: SpineEnv,
+  env: StoreEnv,
   sid: string,
   aid: string,
   mid: number,
@@ -503,7 +560,7 @@ async function updateMessage(
 }
 
 /** GET .../messages?offset=&limit= — ordered by message id; without limit all (≤ 10 000). */
-async function listMessages(env: SpineEnv, url: URL, sid: string, aid: string): Promise<Response> {
+async function listMessages(env: StoreEnv, url: URL, sid: string, aid: string): Promise<Response> {
   const offset = intParam(url, "offset", 0);
   const limit = intParam(url, "limit", MAX_MESSAGES);
   if (offset === null) return badRequest("offset must be a non-negative integer");

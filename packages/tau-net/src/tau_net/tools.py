@@ -23,7 +23,7 @@ from tau_core.persona import TIMEZONE
 
 from tau_net.config import NetConfigError
 from tau_net.contacts import ACCEPTED, BLOCKED, PENDING_IN, PENDING_OUT, ContactError
-from tau_net.encoding import AddressError
+from tau_net.encoding import AddressError, parse_target
 from tau_net.identity import IdentityError
 from tau_net.node import NetError, NetNode, open_node
 from tau_net.spine import SpineError
@@ -165,19 +165,23 @@ def net_send(address: str, text: str) -> str:
     owner's approval every time.
 
     Args:
-        address: The contact's tau address, for example "tau.example.com".
+        address: The contact's tau address, for example "tau.example.com" or
+            "tau.example.com/@alice" (a hosted tau), or "tau.example.com/coach" and
+            "tau.example.com/@alice/coach" for that tau's public sub-tau /coach (a specialist).
         text: The message, at most 8000 characters.
     """
     try:
         delivery = _node().send(address, text)
+        _, sub = parse_target(address)
     except _Unavailable as exc:
         return str(exc)
     except (ContactError, NetError, AddressError) as exc:
         return f"Not sent: {exc}."
     except SpineError as exc:
         return f"Not sent: {exc}."
-    logger.info("net: net_send delivered %s to %s", delivery.id or "a message", delivery.address)
-    return f"Sent to {delivery.address}."
+    target = f"{delivery.address}/{sub}" if sub else delivery.address
+    logger.info("net: net_send delivered %s to %s", delivery.id or "a message", target)
+    return f"Sent to {target}."
 
 
 TOOLS = [net_contacts, net_log, net_send]

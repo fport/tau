@@ -1,0 +1,48 @@
+name: host
+
+# tau-host (cloud/host): the generated data is fresh, the Worker and the app typecheck, the
+# tests pass in the Workers runtime, and the app builds. Nothing is deployed from here.
+#
+# src/generated/ is made from tau-core's templates (models.toml, prices.toml, persona.md) by
+# `pnpm run generate`, so a change to those templates runs this workflow too.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cloud/host/**"
+      - "cloud/shared/**"
+      - "packages/tau-core/src/tau_core/templates/**"
+      - ".github/workflows/host.yml"
+  pull_request:
+    paths:
+      - "cloud/host/**"
+      - "cloud/shared/**"
+      - "packages/tau-core/src/tau_core/templates/**"
+      - ".github/workflows/host.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/host
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: cloud/host/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: The generated files match tau-core's templates
+        run: pnpm run check-generated
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm run build

@@ -1,0 +1,29 @@
+{
+  "name": "tau-cloud-shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Code shared by tau's Workers and imported by relative path: the tau network protocol's TypeScript half (net/)",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "vectors": "node net/test/make-ts-vectors.mjs",
+    "bundle-check": "wrangler deploy --dry-run --config net/test/bundle/wrangler.jsonc"
+  },
+  "dependencies": {
+    "@noble/ciphers": "2.4.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "~0.22.0",
+    "@cloudflare/workers-types": "^5.20260930.1",
+    "typescript": "^6.0.3",
+    "vitest": "~4.1.11",
+    "wrangler": "^4.144.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ]
+  }
+}

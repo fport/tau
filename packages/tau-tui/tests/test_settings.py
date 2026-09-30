@@ -666,14 +666,15 @@ async def test_setup_screen_detects_credentials_and_reuses_a_home(tmp_path: Path
         assert screen.query_one("#provider", Select).value == "anthropic"
         assert "anthropic · credentials found" in screen.text
         assert provider_labels({"ANTHROPIC_API_KEY": "k"}) == [
-            ("proxy · no credentials found", "proxy"),
             ("anthropic · credentials found", "anthropic"),
+            ("openai · no credentials found", "openai"),
+            ("gemini · no credentials found", "gemini"),
             ("bedrock · no credentials found", "bedrock"),
             ("fake · no credentials needed", "fake"),
         ]
-        assert provider_labels({"TAU_PROXY_KEY_BRAIN": "sk-x"})[0] == (
-            "proxy · credentials found",
-            "proxy",
+        assert provider_labels({"GOOGLE_API_KEY": "k"})[2] == (
+            "gemini · credentials found",
+            "gemini",
         )
         await pilot.press("ctrl+s")
         await pilot.pause()

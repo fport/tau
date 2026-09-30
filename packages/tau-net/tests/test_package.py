@@ -42,7 +42,7 @@ def test_no_turkish_outside_the_message_table() -> None:
     turkish = re.compile(r"[çğıöşüÇĞİÖŞÜ]")
     source = Path(tau_net.__file__).parent
     for path in source.glob("*.py"):
-        if path.name == "strings.py":
+        if path.name in {"strings.py", "spine_strings.py"}:
             continue
         assert not turkish.search(path.read_text(encoding="utf-8")), path.name
 

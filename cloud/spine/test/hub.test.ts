@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SpineEnv } from "../src/env";
 import * as mainModule from "../src/index";
 import worker from "../src/index";
-import { SIGNAL_NAME } from "../src/signal";
 import {
   envelope,
   hub,
+  inMailbox,
   mailboxCount,
   mockCards,
   nowSeconds,
@@ -47,7 +47,7 @@ async function queue(count: number): Promise<Update[]> {
 }
 
 it("exports only entrypoints from the main module (workerd rejects anything else)", () => {
-  expect(Object.keys(mainModule).sort()).toEqual(["HubSignal", "TauBrain", "default"]);
+  expect(Object.keys(mainModule).sort()).toEqual(["Mailbox", "TauBrain", "default"]);
 });
 
 describe("auth", () => {
@@ -92,7 +92,7 @@ describe("GET /hub/health", () => {
       mode: "local",
       card: false,
       mailbox: 0,
-      version: "0.1.0",
+      version: "0.2.0",
     });
     await publishCard();
     await queue(2);
@@ -214,28 +214,6 @@ describe("GET /hub/updates", () => {
   });
 });
 
-describe("HubSignal", () => {
-  it("returns early once for mail announced before the wait, then waits", async () => {
-    const signal = env.SIGNAL.getByName(SIGNAL_NAME);
-    expect(await signal.notify(7)).toBe(0);
-    // Mail 7 arrived after a poll with cursor 6 queried: the next wait returns at once.
-    expect(await signal.wait(10_000, 6)).toBe(true);
-    // A poll whose cursor lags behind acknowledged mail does not spin.
-    const started = Date.now();
-    expect(await signal.wait(200, 6)).toBe(false);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(150);
-    expect(await signal.wait(100, 7)).toBe(false);
-  });
-
-  it("wakes every waiter", async () => {
-    const signal = env.SIGNAL.getByName(SIGNAL_NAME);
-    const waits = [signal.wait(10_000, 0), signal.wait(10_000, 0)];
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(await signal.notify(1)).toBe(2);
-    expect(await Promise.all(waits)).toEqual([true, true]);
-  });
-});
-
 describe("POST /hub/ack", () => {
   it("deletes acknowledged envelopes and counts only real deletions", async () => {
     const [a, b, c] = await queue(3);
@@ -253,14 +231,16 @@ describe("POST /hub/ack", () => {
   });
 
   it("handles more than 100 seqs in one call", async () => {
-    await env.DB.prepare(
-      "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 250) " +
-        "INSERT INTO mailbox (sender, envelope, received_at) SELECT 'x.example', '{}', 0 FROM n",
-    ).run();
-    const { results } = await env.DB.prepare("SELECT seq FROM mailbox").all<{ seq: number }>();
+    const seqs = await inMailbox((sql) => {
+      sql.exec(
+        "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 250) " +
+          "INSERT INTO mailbox (sender, envelope, received_at) SELECT 'x.example', '{}', 0 FROM n",
+      );
+      return sql.exec<{ seq: number }>("SELECT seq FROM mailbox").toArray();
+    });
     const res = await hub("/hub/ack", {
       method: "POST",
-      body: { seqs: results.map((r) => r.seq) },
+      body: { seqs: seqs.map((r) => r.seq) },
     });
     expect(await res.json()).toEqual({ deleted: 250 });
     expect(await mailboxCount()).toBe(0);
@@ -295,23 +275,48 @@ describe("local mode", () => {
   it("still requires the token for cloud routes", async () => {
     expect((await hub("/hub/sessions", { token: null })).status).toBe(401);
   });
+
+  it("has no D1 binding: the mailbox lives in the Mailbox Durable Object", async () => {
+    expect((env as SpineEnv).DB).toBeUndefined();
+    expect(Object.keys(env)).not.toContain("DB");
+    // Everything local mode does still works without it.
+    await publishCard();
+    await queue(1);
+    expect(await (await hub("/hub/health")).json()).toMatchObject({ card: true, mailbox: 1 });
+  });
+
+  it("503 not_configured for the D1 routes when TAU_MODE=cloud has no DB binding", async () => {
+    const auth = { authorization: `Bearer ${env.HUB_TOKEN}` };
+    for (const path of ["/hub/state/net.cursor", "/hub/sessions", "/hub/sessions/s1/meta"]) {
+      const res = await fetchWith({ TAU_MODE: "cloud" }, path, { headers: auth });
+      expect(res.status, path).toBe(503);
+      expect(await res.json()).toEqual({ error: "not_configured" });
+    }
+    // Files live in KV and still answer.
+    const files = await fetchWith({ TAU_MODE: "cloud" }, "/hub/files", { headers: auth });
+    expect(await files.json()).toEqual({ files: [] });
+  });
 });
 
 describe("cron", () => {
   it("prunes mailbox rows older than 7 days and seen rows older than 1 day", async () => {
     const now = nowSeconds();
-    await env.DB.batch([
-      env.DB.prepare(
-        "INSERT INTO mailbox (sender, envelope, received_at) VALUES ('a.example', '{}', ?1), ('a.example', '{}', ?2)",
-      ).bind(now - 8 * 86_400, now - 6 * 86_400),
-      env.DB.prepare(
-        "INSERT INTO seen (sender, id, ts) VALUES ('a.example', 'old-id-0000000000', ?1), ('a.example', 'new-id-0000000000', ?2)",
-      ).bind(now - 2 * 86_400, now - 3_600),
-    ]);
+    await inMailbox((sql) => {
+      sql.exec(
+        "INSERT INTO mailbox (sender, envelope, received_at) VALUES ('a.example', '{}', ?), ('a.example', '{}', ?)",
+        now - 8 * 86_400,
+        now - 6 * 86_400,
+      );
+      sql.exec(
+        "INSERT INTO seen (sender, id, ts) VALUES ('a.example', 'old-id-0000000000', ?), ('a.example', 'new-id-0000000000', ?)",
+        now - 2 * 86_400,
+        now - 3_600,
+      );
+    });
     await worker.scheduled(createScheduledController({ cron: "* * * * *" }), env);
     expect(await mailboxCount()).toBe(1);
-    const seen = await env.DB.prepare("SELECT id FROM seen").all<{ id: string }>();
-    expect(seen.results.map((r) => r.id)).toEqual(["new-id-0000000000"]);
+    const seen = await inMailbox((sql) => sql.exec<{ id: string }>("SELECT id FROM seen").toArray());
+    expect(seen.map((r) => r.id)).toEqual(["new-id-0000000000"]);
   });
 
   it("never touches the brain in local mode", async () => {

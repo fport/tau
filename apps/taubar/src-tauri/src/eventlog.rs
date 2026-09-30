@@ -54,7 +54,7 @@ impl EventLog {
         {
             let _ = file.write_all(line.as_bytes());
         }
-        // Visible in `pnpm tauri dev` and when TauBar is started from a terminal.
+        // Visible in `bun run tauri dev` and when TauBar is started from a terminal.
         eprint!("taubar: {line}");
     }
 

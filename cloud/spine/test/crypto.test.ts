@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ADDRESS_PATTERN, baseUrl, hostOf, isAddress, ownAddress } from "../src/address";
+import {
+  ADDRESS_PATTERN,
+  baseUrl,
+  HANDLE_PATTERN,
+  hostOf,
+  isAddress,
+  isHost,
+  ownAddress,
+} from "../src/address";
 import {
   b64uDecode,
   b64uEncode,
@@ -117,6 +125,41 @@ describe("addresses", () => {
     }
     expect(ADDRESS_PATTERN.test("a".repeat(63))).toBe(true);
     expect(ADDRESS_PATTERN.test("a".repeat(64))).toBe(false);
+  });
+
+  it("takes host/@handle addresses (ADR 0013)", () => {
+    for (const ok of [
+      "tau.example.com/@alice",
+      "tau.example.com/@a",
+      "tau.example.com/@alice-bob",
+      `tau.example.com/@${"a".repeat(39)}`,
+      "127.0.0.1:8787/@alice",
+    ]) {
+      expect(isAddress(ok), ok).toBe(true);
+      expect(isHost(ok), ok).toBe(false);
+    }
+    for (const bad of [
+      "tau.example.com/@",
+      "tau.example.com/@Upper",
+      "tau.example.com/@a/b/c",
+      "tau.example.com/@alice/coach",
+      "tau.example.com/@alice/",
+      "tau.example.com/@-alice",
+      "tau.example.com/@alice-",
+      `tau.example.com/@${"a".repeat(40)}`,
+      "tau.example.com/alice",
+      "tau.example.com//@alice",
+      "/@alice",
+      "@alice",
+    ]) {
+      expect(isAddress(bad), bad).toBe(false);
+    }
+    expect(isHost("tau.example.com")).toBe(true);
+    expect(HANDLE_PATTERN.test("alice")).toBe(true);
+    expect(hostOf("127.0.0.1:8787/@alice")).toBe("127.0.0.1");
+    expect(hostOf("tau.example.com/@alice")).toBe("tau.example.com");
+    expect(baseUrl("tau.example.com/@alice", true)).toBe("https://tau.example.com/@alice");
+    expect(baseUrl("127.0.0.1:8787/@alice", true)).toBe("http://127.0.0.1:8787/@alice");
   });
 
   it("uses http only for localhost and 127.0.0.1 with insecure peers allowed", () => {

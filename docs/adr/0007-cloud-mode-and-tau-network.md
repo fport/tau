@@ -32,7 +32,7 @@ The private default must survive both: a tau that runs at home keeps its life da
    - `net_send` (tier 2). It speaks for the owner to a third party, so it needs an approval like a physical action does.
 6. **Deploying stays reproducible and personal-data free.**
    - `cloud/spine` tracks example configurations without resource ids, and `pnpm run configure` writes the gitignored `wrangler.jsonc`.
-   - `pnpm dev` runs the spine locally (Miniflare keeps D1, KV and the Durable Object on disk). `pnpm run deploy` lets Wrangler provision KV and D1 on the first deploy.
+   - `pnpm dev` runs the spine locally (Miniflare keeps KV and the Durable Object on disk). `pnpm run deploy` lets Wrangler provision KV on the first deploy. In local mode the mailbox lives in the SQLite-backed `Mailbox` Durable Object and the spine needs no D1, because the Workers Free plan allows only 10 D1 databases per account (amended 2026-09-30); cloud mode adds D1 for its store.
    - Local mode fits the Workers Free plan. Cloud mode needs Workers Paid for Containers, and Docker to build the image.
 
 ## Consequences
@@ -51,4 +51,4 @@ The private default must survive both: a tau that runs at home keeps its life da
 - **A central directory or relay** (one "tau-net" Worker everyone registers with): one operator would see every conversation's metadata, and one outage would stop the whole network. Federation costs a card fetch per new sender and nothing else.
 - **A second brain in TypeScript** (Cloudflare Agents SDK in a Durable Object): it runs on the Free plan, but the tier gate, the approval rules and the persona would exist twice and drift. The container runs the code that is already tested.
 - **Plain-text messages through the spines**: a compromised spine or a leaked Cloudflare token would expose every conversation. Sealing is a few lines of code with `cryptography` on the hub, and the spine never needs the plaintext.
-- **A WebSocket from the hub to the spine**: it needs a new dependency and reconnect logic. A long poll mirrors the Telegram poller the hub already runs, and a Durable Object wakes the waiting poll when mail arrives.
+- **A WebSocket from the hub to the spine**: it needs a new dependency and reconnect logic. A long poll mirrors the Telegram poller the hub already runs, and a Durable Object wakes the waiting poll when mail arrives. *(Amended 2026-09-30, issue 105: the long poll kept the `Mailbox` Durable Object awake and used about 10 800 of the Free plan's 13 000 GB-s a day. The hub now waits on a WebSocket "doorbell" to the object, written with the standard library only; the object hibernates between envelopes, and the long poll stays as the fallback.)*

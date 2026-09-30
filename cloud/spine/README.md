@@ -137,7 +137,8 @@ npx wrangler login
 pnpm run deploy:cloud          # checks the config, builds the image, deploys, migrates D1
 npx wrangler secret put HUB_TOKEN
 # model credentials: ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID), or AWS_REGION with
-#   AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY or AWS_BEARER_TOKEN_BEDROCK
+#   AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY or AWS_BEARER_TOKEN_BEDROCK; OPENAI_API_KEY
+#   and GEMINI_API_KEY (or GOOGLE_API_KEY) only when a role uses those providers
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put TELEGRAM_BOT_TOKEN
 npx wrangler secret put TELEGRAM_ALLOWED_CHAT_IDS
@@ -150,7 +151,7 @@ The container gets `TAU_SPINE_URL`, `TAU_SPINE_TOKEN` and each of these secrets 
 Then, from the hub machine (with `TAU_SPINE_URL` and `TAU_SPINE_TOKEN` in its `.env`), copy config and persona into the spine:
 
 ```sh
-uv run tau cloud push           # tau.toml, persona/persona.md, persona/net.md; asks first
+uv run tau cloud push           # tau.toml, persona/persona.md, persona/net.md, persona/subs/*.md; asks first
 uv run tau cloud push --include-user   # persona/user.md too (it then lives in your account)
 uv run tau cloud status         # the spine, the files it holds, the brain
 ```
@@ -182,7 +183,7 @@ That deletes the brain's own Durable Object storage, not the Mailbox, your D1 da
 |---|---|---|
 | The card, cached peer cards (`peer:<address>`, one hour) | KV `TAU` | both |
 | The mailbox, the replay guard (`seen`) and the per-sender arrival counts of the rate limit | the `Mailbox` Durable Object (one instance, `hub`), in its own SQLite storage | both |
-| `tau.toml` and the persona files | KV `TAU` (`file:<name>`) | cloud |
+| `tau.toml`, the persona files and the sub-tau files (`persona/subs/*.md`) | KV `TAU` (`file:<name>`) | cloud |
 | State and sessions (the cloud store) | D1 `DB`, schema in `migrations/` | cloud |
 | Media (reserved) | R2 `MEDIA` | cloud |
 

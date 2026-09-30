@@ -36,13 +36,22 @@ const STATE_KEY = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MESSAGE_ID = /^[0-9]{1,15}$/;
 
-/** The only files the spine keeps (in KV under `file:<name>`). */
+/** The fixed files the spine keeps (in KV under `file:<name>`). */
 export const FILE_NAMES = [
   "tau.toml",
   "persona/persona.md",
   "persona/user.md",
   "persona/net.md",
 ] as const;
+
+/** The directory of sub-tau files: definitions (`coach.md`) and public notes (`coach.public.md`). */
+export const SUBS_PREFIX = "persona/subs/";
+
+/**
+ * A file directly in `persona/subs/`: a plain name ending in `.md` that starts with a letter
+ * or a digit, so no hidden file, no slash and no `..` segment.
+ */
+export const SUB_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.md$/;
 
 /** The environment of the D1 routes (state, sessions): cloud mode with its D1 binding. */
 type StoreEnv = SpineEnv & { DB: D1Database };
@@ -142,15 +151,44 @@ interface FileMeta {
   updated_at: number;
 }
 
-function isFileName(name: string): name is (typeof FILE_NAMES)[number] {
-  return (FILE_NAMES as readonly string[]).includes(name);
+/** A fixed file, or a sub-tau file `persona/subs/<file>`; checked after URL decoding. */
+export function isFileName(name: string): boolean {
+  if ((FILE_NAMES as readonly string[]).includes(name)) return true;
+  return name.startsWith(SUBS_PREFIX) && SUB_FILE.test(name.slice(SUBS_PREFIX.length));
+}
+
+interface FileEntry extends FileMeta {
+  name: string;
+}
+
+/** The sub-tau files in KV, sorted by name; a KV listing carries each key's metadata. */
+async function subFiles(env: SpineEnv): Promise<FileEntry[]> {
+  const found: FileEntry[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await env.TAU.list<FileMeta>({
+      prefix: `file:${SUBS_PREFIX}`,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    for (const key of page.keys) {
+      const name = key.name.slice("file:".length);
+      if (!isFileName(name)) continue;
+      found.push({
+        name,
+        size: key.metadata?.size ?? 0,
+        updated_at: key.metadata?.updated_at ?? 0,
+      });
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor !== undefined);
+  return found.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
 async function files(request: Request, env: SpineEnv, rawName: string): Promise<Response> {
   if (rawName === "") {
     if (request.method !== "GET") return methodNotAllowed(["GET"]);
-    const found = await Promise.all(
-      FILE_NAMES.map(async (name) => {
+    const fixed = await Promise.all(
+      FILE_NAMES.map(async (name): Promise<FileEntry | null> => {
         const { value, metadata } = await env.TAU.getWithMetadata<FileMeta>(`file:${name}`);
         if (value === null) return null;
         return {
@@ -160,7 +198,8 @@ async function files(request: Request, env: SpineEnv, rawName: string): Promise<
         };
       }),
     );
-    return json({ files: found.filter((file) => file !== null) });
+    const listed = fixed.filter((file) => file !== null);
+    return json({ files: [...listed, ...(await subFiles(env))] });
   }
 
   const name = decodeSegment(rawName);
@@ -184,8 +223,13 @@ async function files(request: Request, env: SpineEnv, rawName: string): Promise<
       await env.TAU.put(`file:${name}`, text, { metadata: meta });
       return json({ name, ...meta });
     }
+    case "DELETE": {
+      const existed = (await env.TAU.get(`file:${name}`)) !== null;
+      if (existed) await env.TAU.delete(`file:${name}`);
+      return json({ deleted: existed });
+    }
     default:
-      return methodNotAllowed(["GET", "PUT"]);
+      return methodNotAllowed(["GET", "PUT", "DELETE"]);
   }
 }
 

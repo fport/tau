@@ -59,16 +59,33 @@ from tau_net.universe import MAX_REQUEST_BYTES, MalformedRequest, parse_request,
 __all__ = [
     "DEFAULT_HUB_TOKEN",
     "FILE_NAMES",
+    "SUB_FILE_PATTERN",
     "FakeDoorbell",
     "FakeNetwork",
     "FakeRequest",
     "FakeSpine",
     "FakeUniverse",
+    "is_file_name",
 ]
 
 DEFAULT_HUB_TOKEN = "test-hub-token"
 FILE_NAMES = ("tau.toml", "persona/persona.md", "persona/user.md", "persona/net.md")
-"""The files a cloud-mode spine keeps (``/hub/files/<name>``)."""
+"""The fixed files a cloud-mode spine keeps (``/hub/files/<name>``)."""
+SUBS_PREFIX = "persona/subs/"
+SUB_FILE_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.md")
+"""A sub-tau file directly in ``persona/subs/`` (a definition or a public note), matched with
+``fullmatch``; the spine keeps these next to :data:`FILE_NAMES`."""
+
+
+def is_file_name(name: str) -> bool:
+    """A name ``/hub/files/<name>`` accepts: a fixed file or ``persona/subs/<file>``."""
+    if name in FILE_NAMES:
+        return True
+    return name.startswith(SUBS_PREFIX) and bool(
+        SUB_FILE_PATTERN.fullmatch(name[len(SUBS_PREFIX) :])
+    )
+
+
 STALE_SECONDS = 300
 PEER_CACHE_SECONDS = 3600
 RATE_PER_HOUR = 60
@@ -429,6 +446,7 @@ class FakeSpine:
         files = re.compile(r"/hub/files/(?P<name>.+)")
         add(_Route("GET", files, self._cloud(self._file_get)))
         add(_Route("PUT", files, self._cloud(self._file_put)))
+        add(_Route("DELETE", files, self._cloud(self._file_delete)))
         for method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
             add(_Route(method, re.compile(r"/hub/(sessions|brain)(/.*)?"), self._cloud(None)))
 
@@ -634,21 +652,31 @@ class FakeSpine:
             return 200, {"deleted": self.state.pop(key, None) is not None}
 
     def _files_list(self, request: FakeRequest) -> tuple[int, Any]:
+        """The fixed files in :data:`FILE_NAMES` order, then the sub-tau files by name."""
         with self._cond:
+            fixed = [name for name in FILE_NAMES if name in self.files]
+            subs = sorted(name for name in self.files if name not in FILE_NAMES)
             return 200, {
                 "files": [
                     {
                         "name": name,
-                        "size": len(entry["text"].encode()),
-                        "updated_at": entry["updated_at"],
+                        "size": len(self.files[name]["text"].encode()),
+                        "updated_at": self.files[name]["updated_at"],
                     }
-                    for name, entry in sorted(self.files.items())
+                    for name in fixed + subs
                 ]
             }
 
     def _file_name(self, request: FakeRequest) -> str | None:
         name = urllib.parse.unquote(request.match.group("name")) if request.match else ""
-        return name if name in FILE_NAMES else None
+        return name if is_file_name(name) else None
+
+    def _file_delete(self, request: FakeRequest) -> tuple[int, Any]:
+        name = self._file_name(request)
+        if name is None:
+            return 404, _error(404, "not_found")
+        with self._cond:
+            return 200, {"deleted": self.files.pop(name, None) is not None}
 
     def _file_get(self, request: FakeRequest) -> tuple[int, Any]:
         name = self._file_name(request)

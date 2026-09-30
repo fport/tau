@@ -120,6 +120,34 @@ def test_cloud_files_and_unimplemented_routes() -> None:
     assert local.request("GET", "/hub/files").json() == {"error": "cloud_mode_off"}
 
 
+def test_cloud_sub_tau_files_like_the_real_spine() -> None:
+    spine = FakeSpine("tau.example.com", mode="cloud")
+    spine_client = client(spine)
+    for name in ("coach.public.md", "coach.md", "A1_b-c.d.md"):
+        assert spine_client.call("PUT", f"/hub/files/persona/subs/{name}", body="x")["size"] == 1
+    spine_client.call("PUT", "/hub/files/tau.toml", body="[ui]\n")
+    assert [entry["name"] for entry in spine_client.call("GET", "/hub/files")["files"]] == [
+        "tau.toml",
+        "persona/subs/A1_b-c.d.md",
+        "persona/subs/coach.md",
+        "persona/subs/coach.public.md",
+    ]
+    assert spine_client.request("GET", "/hub/files/persona%2Fsubs%2Fcoach.md").text == "x"
+    for odd in (
+        "persona/subs/.hidden.md",
+        "persona/subs/Bad%20Name.md",
+        "persona/subs/x.txt",
+        "persona/subs/drafts/x.md",
+        "persona/subs/..%2Fuser.md",
+        f"persona/subs/{'a' * 82}.md",
+    ):
+        assert spine_client.request("PUT", f"/hub/files/{odd}", body="x").status == 404, odd
+        assert spine_client.request("DELETE", f"/hub/files/{odd}").status == 404, odd
+    assert spine_client.call("DELETE", "/hub/files/persona/subs/coach.md") == {"deleted": True}
+    assert spine_client.call("DELETE", "/hub/files/persona/subs/coach.md") == {"deleted": False}
+    assert "persona/subs/coach.md" not in spine.files
+
+
 def test_the_long_poll_waits_and_wakes_on_arrival() -> None:
     network = FakeNetwork()
     bob_spine = network.add(FakeSpine("bob.example"))

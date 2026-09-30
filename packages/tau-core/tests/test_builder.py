@@ -369,6 +369,7 @@ def test_render_config_per_provider(tmp_path: Path, provider: str) -> None:
     assert "budget]" not in text
     assert config.ui.language == "tr"
     assert "# proxy | anthropic | bedrock | ollama | fake" in text  # comments survive
+    assert "# [models.roles.brain.cache]" in text  # also the ones after a dropped budget table
     assert "\n\n\n" not in text
 
 

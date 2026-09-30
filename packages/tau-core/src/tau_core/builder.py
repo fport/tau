@@ -816,6 +816,8 @@ def render_config(template: str, *, provider: str, language: str) -> str:
         if header:
             table = header.group(1).strip()
             skipping = provider != "proxy" and table.endswith(".budget")
+        elif skipping and not line.strip():
+            skipping = False  # a budget table ends at its blank line; comments after it stay
         if skipping:
             continue
         role = (

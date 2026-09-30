@@ -50,3 +50,6 @@ select = ["E", "F", "I", "UP", "B"]
 asyncio_mode = "auto"
 testpaths = ["packages"]
 addopts = "--import-mode=importlib"
+markers = [
+    "models: opt-in tau-guard tests with the real face models (uv run pytest -m models packages/tau-guard)",
+]

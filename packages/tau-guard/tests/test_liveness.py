@@ -19,8 +19,8 @@ from tau_guard.liveness import (
     Challenge,
     draw_directions,
 )
-from tau_guard.testing import FakeEngine, SimulatedUser, face_row
-from tau_guard.verify import Policy, Progress, Result, run_check
+from tau_guard.testing import OWNER, STRANGER, FakeEngine, SimulatedUser, face_row, variant
+from tau_guard.verify import STEP_MATCHES, Policy, Progress, Result, run_check
 
 CAL = Calibration(sign=1, left=0.45, right=0.45)
 
@@ -182,12 +182,71 @@ def test_directions_come_from_the_rng() -> None:
         ({"photo": True}, "spoof"),
         ({"second_face": (102.0, 120.0)}, "multiple_faces"),
         ({"jump_at": 102.5}, "spoof"),
+        ({"stranger_after_centers": 1}, "spoof"),  # someone else turns for the second step
+        ({"stranger_after_centers": 2}, "no_match"),  # ... or is there after the steps
         ({"stranger_after_centers": 3}, "no_match"),
     ],
 )
 def test_the_challenge_fails(switches: dict, reason: str) -> None:
     result, _ = attempt(SimulatedUser(**switches))
     assert not result.ok and result.reason == reason, result
+
+
+def first_prompt_at(seed: int = 3) -> float:
+    _, published = attempt(SimulatedUser(), seed=seed)
+    return next(at for at, p in published if p.step.startswith("turn_"))
+
+
+@pytest.mark.parametrize(("offset", "length", "ok"), [(0.4, 0.1, True), (0.4, 0.3, False)])
+def test_a_face_may_vanish_only_briefly_during_the_challenge(
+    offset: float, length: float, ok: bool
+) -> None:
+    start = first_prompt_at() + offset  # while the head turns for the first step
+    result, _ = attempt(SimulatedUser(gap=(start, start + length)))
+    assert result.ok is ok and (ok or result.reason == "spoof"), result
+
+
+def test_a_gap_before_the_frontal_match_only_starts_it_over() -> None:
+    result, _ = attempt(SimulatedUser(gap=(100.05, 100.4)))
+    assert result.ok
+
+
+class PhotoThenStranger(SimulatedUser):
+    """The owner's photo for the frontal checks, swapped in place for a live stranger who
+    follows the prompts, and back to the photo for the frontal match after the steps."""
+
+    def scene(self):  # type: ignore[no-untyped-def]
+        image = super().scene()
+        turns = any(step.startswith("turn_") for _, step in self.steps)
+        centers = sum(1 for _, step in self.steps if step == "center")
+        photo = not turns or (centers >= 3 and abs(self.yaw - self.frontal) < 0.05)
+        person = self.embedding if photo else STRANGER
+        image.embeddings[0] = variant(person, self.frame_seed * 100003 + self.index)
+        return image
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_a_photo_for_the_frontal_checks_and_someone_else_turning_fails(seed: int) -> None:
+    for steps in (2, 3):
+        result, _ = attempt(PhotoThenStranger(frame_seed=seed), steps=steps, seed=seed)
+        assert not result.ok and result.reason == "spoof", (seed, steps, result)
+
+
+def test_the_owner_s_frames_near_the_baseline_are_checked_during_the_steps() -> None:
+    engine = FakeEngine()
+    user = SimulatedUser()
+    result = run_check(
+        Policy("unlock", 0.5, 2),
+        OWNER,
+        CAL,
+        engine,
+        user.source(),
+        rng=random.Random(3),
+        emit=user.on_progress,
+    )
+    assert result.ok
+    frames = int((user.now() - user.start) * user.fps)
+    assert 3 + STEP_MATCHES * 2 + 3 <= engine.embedded < frames  # turned frames are skipped
 
 
 def test_a_flat_photo_turned_about_the_vertical_axis_keeps_its_yaw_proxy() -> None:

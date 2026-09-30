@@ -29,8 +29,17 @@ floor of 0.45 is accepted), a presence recheck and a step-up the stricter
 baseline. Then the steps of :class:`tau_guard.liveness.Challenge`, then a second frontal match
 (3 of the last 5 frontal quality frames within 3.5 s). From the frontal match to the end
 exactly one face stays in view: a counted second face aborts (``multiple_faces``), and a box
-whose IoU with the previous frame's is 0.3 or less, or a face gone for more than 0.5 s, aborts
-with ``spoof``. Before the first match such a jump only starts the match over.
+whose IoU with the previous frame's is 0.3 or less, or a face gone for more than
+:data:`CHALLENGE_MAX_GAP` (0.2 s), aborts with ``spoof``. Before the first match a jump or a
+gap of more than :data:`MAX_GAP` (0.5 s) only starts the match over.
+
+**Identity during the steps.** The turns themselves are tied to the owner too: every challenge
+frame near the baseline (``|Δp| <= 0.10``: the pause before a prompt, the moment before the
+turn, the return) that passes the quality gates is embedded, and when a step's hold is done
+(``center``) the frames since the previous step's hold must hold at least
+:data:`STEP_MATCHES` (2) at or above the threshold, and at least as many matches as misses;
+otherwise ``spoof``. So the owner's photo held up for the frontal checks, with someone else's
+live head turning in between, fails.
 
 **Verdicts.** ``match`` (with ``score``, the median of the matching similarities, and
 ``liveness``), ``no_match`` (quality frames below the threshold and no match), ``too_dark`` or
@@ -72,6 +81,7 @@ from typing import Any
 from tau_guard.camera import FrameSource, opened
 from tau_guard.engine import Face, FaceEngine, cosine, iou
 from tau_guard.liveness import (
+    RETURN_TOLERANCE,
     STEP_UP_STEPS,
     UNLOCK_STEPS,
     Calibration,
@@ -80,12 +90,15 @@ from tau_guard.liveness import (
 )
 
 __all__ = [
+    "CHALLENGE_MAX_GAP",
+    "MAX_GAP",
     "MIN_BRIGHTNESS",
     "MIN_IOD",
     "MIN_SCORE",
     "MIN_SCORE_CHALLENGE",
     "MIN_SHARPNESS",
     "SECOND_FACE_RATIO",
+    "STEP_MATCHES",
     "STEP_UP_THRESHOLD",
     "THRESHOLD_FLOOR",
     "UNLOCK_THRESHOLD",
@@ -119,6 +132,12 @@ VERIFY_TIMEOUT = 15.0
 TIMEOUT_RANGE = (5.0, 60.0)
 MIN_IOU = 0.3
 MAX_GAP = 0.5
+"""Seconds without a face that only start the frontal match over (before it passed)."""
+CHALLENGE_MAX_GAP = 0.2
+"""Seconds without a face that abort once the frontal match passed (``spoof``): long enough for
+a frame or two the detector misses, too short to swap one face for another."""
+STEP_MATCHES = 2
+"""Matching frames near the baseline each step needs (see the module docstring)."""
 FRONTAL = 0.15
 """How far from the baseline (``|Δp|``) a frame after the steps may be to count as frontal."""
 AFTER_SECONDS = 3.5
@@ -221,10 +240,10 @@ def observe(
     *,
     template: Sequence[float] | None = None,
     min_score: float = MIN_SCORE,
-    embed: bool = True,
+    embed: bool | Callable[[Face], bool] = True,
 ) -> Observation:
-    """Detect, apply the quality gates and (for a quality frame, when ``embed``) embed; with a
-    ``template`` the similarity is computed too."""
+    """Detect, apply the quality gates and (for a quality frame, when ``embed`` is true or
+    answers true for the face) embed; with a ``template`` the similarity is computed too."""
     faces = sorted(engine.detect(image), key=lambda face: face.iod, reverse=True)
     primary = faces[0] if faces else None
     crowd = primary is not None and any(counts_as_second(primary, f) for f in faces[1:])
@@ -240,7 +259,7 @@ def observe(
         return Observation(at, primary, len(faces), False, brightness, hint="face_too_small")
     if brightness < MIN_BRIGHTNESS:
         return Observation(at, primary, len(faces), False, brightness, hint="too_dark")
-    if not embed:
+    if not (embed(primary) if callable(embed) else embed):
         return Observation(at, primary, len(faces), False, brightness)
     crop = engine.crop(image, primary)
     sharpness = float(engine.sharpness(crop))
@@ -363,15 +382,24 @@ class Verification:
         """A quality frame of the frontal match stayed below the threshold."""
         self.last_hint: str | None = None
         self.directions: list[str] = []
+        self.step_hits = 0
+        self.step_misses = 0
+        """Quality frames near the baseline at or above / below the threshold since the
+        previous step's hold."""
         self._outbox: list[Progress] = []
 
     @property
     def min_score(self) -> float:
-        return MIN_SCORE_CHALLENGE if self.phase == "challenge" else MIN_SCORE
+        """The detector score a frame needs to be embedded (the challenge follows the face
+        from :data:`MIN_SCORE_CHALLENGE` on, but embeds only frames that pass this)."""
+        return MIN_SCORE
 
-    @property
-    def wants_embedding(self) -> bool:
-        return self.phase in ("look", "after")
+    def embeds(self, face: Face) -> bool:
+        """Whether a quality frame with ``face`` is embedded: always in the frontal matches,
+        near the baseline during the challenge."""
+        if self.phase != "challenge":
+            return True
+        return abs(face.yaw - self.baseline) <= RETURN_TOLERANCE
 
     def drain(self) -> list[Progress]:
         outbox, self._outbox = self._outbox, []
@@ -406,7 +434,7 @@ class Verification:
         if self.phase == "look":
             return self._look(now, obs, face)
         if self.phase == "challenge":
-            return self._challenge(now, face)
+            return self._challenge(now, obs, face)
         return self._after(now, obs, face)
 
     def _continuity(self, now: float, face: Face | None) -> Result | None:
@@ -418,7 +446,7 @@ class Verification:
             self.last_face, self.last_face_at = face, now
         if previous is None:
             return None
-        broken = now - previous_at > MAX_GAP
+        broken = now - previous_at > (MAX_GAP if self.phase == "look" else CHALLENGE_MAX_GAP)
         if face is not None and iou(previous, face) <= MIN_IOU:
             broken = True
         if not broken:
@@ -468,10 +496,19 @@ class Verification:
             return self.last_hint
         return "timeout" if self.saw_face else "no_face"
 
-    def _challenge(self, now: float, face: Face | None) -> Result | None:
+    def _challenge(self, now: float, obs: Observation, face: Face | None) -> Result | None:
         assert self.challenge is not None
+        if obs.quality and face is not None and obs.similarity is not None:
+            if obs.similarity >= self.policy.threshold:
+                self.step_hits += 1
+            else:
+                self.step_misses += 1
         outcome = self.challenge.feed(now, face)
         for prompt in self.challenge.drain():
+            if prompt.step == "center":  # a hold is done: who was near the baseline around it?
+                if self.step_hits < STEP_MATCHES or self.step_hits < self.step_misses:
+                    return Result(False, "spoof")
+                self.step_hits = self.step_misses = 0
             self._publish(prompt.step, prompt.deadline)
         if outcome == "spoof":
             return Result(False, "spoof")
@@ -536,7 +573,7 @@ def run_check(
                 frame.at,
                 template=machine.template,
                 min_score=machine.min_score,
-                embed=machine.wants_embedding,
+                embed=machine.embeds,
             )
             del frame
             phase = machine.phase

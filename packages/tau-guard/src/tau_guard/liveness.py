@@ -30,10 +30,11 @@ match after the steps); otherwise :meth:`Challenge.feed` answers ``"out_of_time"
 prompt, so the camera never cuts a published step short and the check ends as ``timeout``
 without having shown anything.
 
-The continuity rules (exactly one face, box IoU above 0.3 from frame to frame) and the frontal
-identity match before and after the steps live in :mod:`tau_guard.verify`, which feeds this
-machine. Time is the frames' monotonic timestamps; randomness comes from the ``rng`` the caller
-passes (``random.SystemRandom`` in the worker, a seeded one in tests).
+The continuity rules (exactly one face, box IoU above 0.3 from frame to frame, no gap), the
+frontal identity match before and after the steps and the identity of the frames near the
+baseline between them live in :mod:`tau_guard.verify`, which feeds this machine. Time is the
+frames' monotonic timestamps; randomness comes from the ``rng`` the caller passes
+(``random.SystemRandom`` in the worker, a seeded one in tests).
 """
 
 from __future__ import annotations

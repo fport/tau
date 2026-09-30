@@ -301,9 +301,10 @@ class SimulatedUser:
     ``hold=False`` (turn back as soon as the turn is reached), ``returns=False`` (never turn
     back), ``turn=False`` (never turn), ``photo=True`` (a flat photo rotated instead of a head:
     only ``scale_x`` changes), ``second_face`` (a ``(from, to)`` time window with a second face
-    of ``second_iod``), ``jump_at`` (the box moves away at that time), ``stranger_after`` (the
-    embedding becomes someone else's from that time) and ``stranger_after_centers`` (the same,
-    once that many ``center`` prompts were published: a face swapped in place)."""
+    of ``second_iod``), ``jump_at`` (the box moves away at that time), ``gap`` (a ``(from,
+    to)`` time window without any face), ``stranger_after`` (the embedding becomes someone
+    else's from that time) and ``stranger_after_centers`` (the same, once that many ``center``
+    prompts were published: a face swapped in place)."""
 
     embedding: tuple[float, ...] = OWNER
     fps: float = 30.0
@@ -326,6 +327,7 @@ class SimulatedUser:
     second_face: tuple[float, float] | None = None
     second_iod: float = 60.0
     jump_at: float | None = None
+    gap: tuple[float, float] | None = None
     stranger_after: float | None = None
     stranger_after_centers: int | None = None
     frame_seed: int = 0
@@ -386,6 +388,8 @@ class SimulatedUser:
         if window is not None and window[0] <= self.t < window[1]:
             rows.append(face_row(cx=120.0, cy=200.0, iod=self.second_iod))
             embeddings.append(variant(STRANGER, self.index))
+        if self.gap is not None and self.gap[0] <= self.t < self.gap[1]:
+            rows, embeddings = [], []
         return Scene(rows, embeddings, self.brightness, self.sharpness)
 
     def frames(self) -> Any:

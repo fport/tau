@@ -466,7 +466,7 @@ def drive(user: SimulatedUser, policy: Policy, stop, *, seed: int = 3):
             frame.at,
             template=machine.template,
             min_score=machine.min_score,
-            embed=machine.wants_embedding,
+            embed=machine.embeds,
         )
         result = machine.feed(obs)
         for progress in machine.drain():

@@ -34,9 +34,10 @@ camera library ever loads in a channel process.
   and a reflex loop checks them every 2 s. A lock that comes while a check runs cancels it, so
   its late match counts for nothing. If the loop stops ticking, admission refuses. No check
   starts while the screen is locked.
-- **Presence rechecks.** After a few minutes of idle since the last face match, or after
-  `presence_recheck_minutes`, admission answers `recheck`, and the channel runs a quick passive
-  check. A non-matching face locks, and so does a failed step-up or re-unlock: any check that
+- **Presence rechecks.** After a few minutes of idle since the last check (a face match, or
+  Touch ID in a session unlocked with it), or after `presence_recheck_minutes`, admission
+  answers `recheck`, and the channel runs a quick passive check (Touch ID in a Touch ID
+  session). A non-matching face locks, and so does a failed step-up or re-unlock: any check that
   sees someone else while tau is unlocked.
 - **Cooldown.** Three failed matches (`no_match`, `spoof`, `multiple_faces`) within 10 minutes
   start a 30 s cooldown. The cooldown doubles with each further failure, up to 15 minutes.
@@ -46,8 +47,50 @@ camera library ever loads in a channel process.
   another person. It is rotated at 1 MiB, with 3 files kept. The hub log gets no verdicts and
   no scores.
 
-Touch ID (the unlock fallback, a Touch ID step-up, biometrics-only authorisation of
-re-enrollment and forget) comes with issue 114.
+## Touch ID
+
+Touch ID is the guard's second factor at the Mac (issue 114). It runs in the worker like the
+camera, through LocalAuthentication, so its sheet appears on the Mac's screen, and like the
+face check it can only narrow: it never produces an approval.
+
+- **Two policies.** *Touch ID only* (LocalAuthentication's biometrics policy): no "Use
+  Password…" button, a reuse duration of 0, and the enrolled fingerprint set pinned: its
+  `domainState` (as a sha256) is stored in the encrypted template at enrollment, and a
+  different set (someone who knows the Mac password added a finger) is refused with
+  `touch_id_failed`, before the prompt and again after it. *Touch ID or the password* (the
+  device-owner policy) has no pin: whoever could change the fingerprints knows the password.
+- **Every prompt ends.** Each `LAContext` is used once and invalidated after 30 s, after an
+  answer and at once when the attempt is cancelled.
+- **Unavailable.** A closed lid (the built-in sensor is off), a Mac without a sensor or with no
+  enrolled finger, a disconnected Touch ID keyboard, a lockout after failed tries or a policy
+  that cannot be evaluated give `touch_id_unavailable` for Touch ID only.
+- **Enrollment and forget.** The first enrollment (decided from the Keychain item, never from
+  the template file) uses Touch ID or the password. Re-enrollment, `enroll --add` and `forget`
+  use Touch ID only with the pin when the Mac has Touch ID, refuse while it cannot be used (open
+  the lid), and use the password only on a Mac without Touch ID. An enrollment pins the
+  fingerprints whenever Touch ID is available.
+- **Unlock fallback** (`unlock_fallback`, default `touch_id`). After two failed face unlocks
+  within 10 minutes, or any `camera_*` verdict, the locked status carries `fallback`, and a
+  channel may ask for it (`POST /guard/verify {..., fallback: "touch_id"}`,
+  `Guard.unlock(method="touch_id")`). `touch_id` is Touch ID only; `touch_id_or_password` takes
+  the password too, the opt-in for a closed lid. A pass unlocks with `method = "touch_id"`
+  (status and audit), ends a face cooldown and clears the offer; a Touch ID failure never
+  counts. A Touch ID unlock is presence but not a face: rechecks follow it (and are Touch ID
+  checks in a Touch ID session, so a covered camera does not fail every later turn), while
+  `face_fresh` (for voice) still needs a face.
+- **Step-up** (`step_up`, default `face`). `face`: the head-turn challenge (or a passive match
+  in the freshness window). `face_or_touch_id`: Touch ID only when the face check could not
+  work (`too_dark`, `no_face`, `timeout`, `face_too_small`, `permission_pending` or a
+  `camera_*` verdict); a counted failure never falls back. `touch_id`: Touch ID only, the
+  camera never opens (the accessible choice for an owner who cannot turn their head). `none`:
+  no fresh check, only when both the hub's and the client's `tau.toml` say `none` (the doctor
+  warns).
+- **Audit.** Each prompt writes a `touch_id` record (`policy`, the outcome as `reason`, the
+  attempt's kind as `trigger`), and checks and unlocks carry `method`.
+
+If the fingerprints changed since the enrollment, `tau guard doctor` says so and how to start
+over: remove the template key (`security delete-generic-password -s tau-guard -a
+template-key-v1`), then run `tau guard setup` at the Mac.
 
 ## The face check
 
@@ -123,9 +166,9 @@ the hub to look.
 
 | Route | Body or query | Answer |
 |---|---|---|
-| `GET /guard/status` | `?since=<seq>&wait=<0..25>[&attempt=<id>]` | every `GuardStatus` field plus `enrollment`, `screen`, `step_up_active` and `attempt` |
+| `GET /guard/status` | `?since=<seq>&wait=<0..25>[&attempt=<id>]` | every `GuardStatus` field (`fallback` too) plus `enrollment`, `screen`, `step_up_active` and `attempt` |
 | `POST /guard/admit` | `{channel, session_id, client_id}` | `{allowed, reason, enrollment, state}` |
-| `POST /guard/verify` | `{channel, client_id, kind, request_id?, tool?, policy?}` | `202 {attempt, seq}`, or `409`/`429 {reason, retry_after?}` |
+| `POST /guard/verify` | `{channel, client_id, kind, request_id?, tool?, policy?, fallback?}` | `202 {attempt, seq}`, or `409`/`429 {reason, retry_after?}` |
 | `POST /guard/cancel` | `{client_id, attempt?}` | `{ok}` |
 | `POST /guard/lock` | `{channel, client_id, trigger}` | `{state: "locked"}` |
 | `POST /guard/enroll` | `{client_id, add?}` | `202 {attempt, seq}`; LocalAuthentication first |
@@ -154,8 +197,8 @@ unlock_threshold = 0.50             # 0.45-0.95
 step_up_threshold = 0.55            # 0.45-0.95; step-ups and presence rechecks
 step_up_challenge_fresh_seconds = 120  # 0-600; a step-up this soon after a challenge is passive
 unlock_liveness = "challenge"       # or "none" (the doctor warns: a photo could unlock)
-step_up = "face"                    # face | face_or_touch_id | touch_id | none
-unlock_fallback = "touch_id"        # touch_id | touch_id_or_password | none (issue 114)
+step_up = "face"                    # face | face_or_touch_id | touch_id | none (both configs)
+unlock_fallback = "touch_id"        # touch_id | touch_id_or_password | none
 camera = "builtin"                  # or a camera's AVFoundation uniqueID
 ```
 
@@ -170,7 +213,7 @@ tau guard enroll [--add]            # enroll again, or add samples under other l
 tau guard verify [--explain]        # one check; --explain prints each frame's numbers
 tau guard forget                    # remove template, marker and key; the guard is off
                                     # (exit 1 if the Keychain kept the key; run it again)
-tau guard doctor                    # everything the face guard depends on
+tau guard doctor                    # everything the guard depends on, Touch ID included
 tau guard status [--json]           # the state as the running hub reports it
 tau guard lock                      # lock every guarded channel now
 tau guard log [--since 2h] [--json] # the audit log
@@ -187,8 +230,9 @@ are away from the Mac, remote `tau tui` and `tau chat` and `tau ask` stay locked
 (`fake_worker_command(script)`) that speaks the worker protocol from a JSON script, and fakes
 for the face check: synthetic YuNet rows and embeddings (`face_row`, `identity`, `variant`), a
 `FakeEngine`, a `FakeFrameSource`, a `SimulatedUser` who follows the prompts (with switches for
-every way an attempt must fail), `FakeLocalAuth` and `fake_deps` for running the worker's
-operations in-process. No test opens a camera, a microphone, the Keychain or a Touch ID prompt,
+every way an attempt must fail), `FakeLocalAuth` (Touch ID's state and scripted answers,
+`FINGERPRINTS` and `OTHER_FINGERPRINTS`) and `fake_deps` for running the worker's operations
+in-process. `MacLocalAuth` is tested against a fake `LocalAuthentication` module. No test opens a camera, a microphone, the Keychain or a Touch ID prompt,
 and every macOS call sits behind a protocol and is imported lazily, so the suite runs on Linux.
 
 The real-model tests are opt-in: they fetch SFace and a few public-domain portraits by pinned

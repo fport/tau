@@ -41,10 +41,10 @@ tau is a set of Python packages. `tau-core` holds the agent and the `tau` comman
 
     Everything below applies unchanged; read `tau …` as `uv run tau …` while you are inside the checkout. The repository root holds a `tau.toml`, so it is also your configuration root until you run `tau init` elsewhere. That file puts `brain` and `fast` on Anthropic with budgets and `local` on Ollama, so it needs `ANTHROPIC_API_KEY` in the checkout's `.env`; with another provider, use a root that `tau init` wrote for it.
 
-Once the packages are published, the documented install is one `uv tool` command that puts `tau` on your `PATH` with the TUI included:
+The documented install is one `uv tool` command that puts `tau` on your `PATH` with the TUI, the network (`tau-net`) and sub-taus (`tau-sub`) included:
 
 ```sh
-uv tool install tau-core --with tau-tui
+uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
 tau --help
 ```
 

@@ -43,10 +43,10 @@ tau bir Python paketleri kümesidir. `tau-core` ajanı ve `tau` komutunu barınd
 
     Aşağıdaki her şey aynen geçerli; checkout'un (deponun yerel kopyası) içindeyken `tau …` komutlarını `uv run tau …` olarak oku. Depo kökünde bir `tau.toml` bulunur, yani başka bir yerde `tau init` çalıştırana kadar orası aynı zamanda yapılandırma köküdür. O dosya `brain` ve `fast` rollerini bütçeleriyle Anthropic'e, `local` rolünü de Ollama'ya koyar; bu yüzden checkout'un `.env` dosyasında `ANTHROPIC_API_KEY` gerekir. Başka bir sağlayıcı kullanıyorsan `tau init`'in o sağlayıcı için yazdığı bir kök kullan.
 
-Paketler yayımlandığında belgelenen kurulum, `tau`'yu TUI dahil olarak `PATH`'ine koyan tek bir `uv tool` komutudur:
+Belgelenen kurulum, `tau`'yu TUI, ağ (`tau-net`) ve sub-tau'lar (`tau-sub`) dahil olarak `PATH`'ine koyan tek bir `uv tool` komutudur:
 
 ```sh
-uv tool install tau-core --with tau-tui
+uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
 tau --help
 ```
 

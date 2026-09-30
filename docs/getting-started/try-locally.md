@@ -13,7 +13,7 @@ Before you deploy anything, you can run the whole tau network on one machine: tw
 
 ## Before you start
 
-- tau with `tau-net`, installed as in [Install](build-your-own-tau.md#3-install). Until `tau-net` is on PyPI, that is the **From source** path; run `source /path/to/tau/.venv/bin/activate` in terminal 1 so `tau` works in every directory.
+- tau with `tau-net`, installed as in [Install](build-your-own-tau.md#3-install): from PyPI with `--with tau-net`, or from source. From source, run `source /path/to/tau/.venv/bin/activate` in terminal 1 so `tau` works in every directory.
 - Node.js 22 or newer and [bun](https://bun.sh) (or `npm` and `npx`, which come with Node.js), and `openssl` for the tokens.
 - Free ports: 8821 and 8822 for the spines, 9361 and 9362 for their inspectors, 7921 and 7922 for the two hubs. Pick others if these are taken, and change every place that names them.
 

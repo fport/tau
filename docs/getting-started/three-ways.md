@@ -48,7 +48,7 @@ Checking the key with one small request to anthropic...
 anthropic accepted the key.
 ```
 
-`tau init --yes` asks nothing and sets up the scripted `fake` model, which is enough to try every command. Choose `tr` as the language and the questions after it come in Turkish. The network, cloud mode and sub-taus (`tau-net`, `tau-cloud`, `tau-sub`) install from source until they are on PyPI ([Install](install.md)).
+`tau init --yes` asks nothing and sets up the scripted `fake` model, which is enough to try every command. Choose `tr` as the language and the questions after it come in Turkish. The network and sub-taus come with `uv tool install tau-core --with tau-tui --with tau-net --with tau-sub` ([Install](install.md)); cloud mode adds `tau-cloud`.
 
 Next:
 

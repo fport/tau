@@ -57,13 +57,13 @@ tau henüz erken geliştirme aşamasında. Bugün neyin çalıştığını, neyi
 
 Bu bölümdeki her şey kendi bilgisayarında olur. macOS ya da Linux ve [uv](https://docs.astral.sh/uv/) yeterli; Python 3.12 yoksa uv onu da getirir.
 
-**1. Kur.** Ajan, `tau` komutu ve TUI PyPI'da:
+**1. Kur.** Hepsi PyPI'da: ajan ve `tau` komutu (`tau-core`), TUI (`tau-tui`), ağ (`tau-net`) ve sub-tau'lar (`tau-sub`):
 
 ```sh
-uv tool install tau-core --with tau-tui
+uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
 ```
 
-Ağ, bulut modu ve sub-tau'lar (`tau-net`, `tau-cloud`, `tau-sub`) henüz PyPI'da değil ([145](roadmap/L9-network/145-publish-tau-net-tau-cloud.md)). O zamana kadar her şeyi kaynaktan kur. Son iki satır `tau`'yu bu terminalde PATH'e ekler ve yapılandırmanı depodan ayrı, kendi klasöründe tutar:
+Katkıda bulunanlar bunun yerine depodan çalışır. Son iki satır `tau`'yu bu terminalde PATH'e ekler ve yapılandırmanı depodan ayrı, kendi klasöründe tutar:
 
 ```sh
 git clone https://github.com/fport/tau.git && cd tau
@@ -270,7 +270,7 @@ Her paket kendi başına bir PyPI dağıtımıdır (`tau-<name>`, `tau_<name>` o
 | TauBar: hub'ı çalıştırır, uyku modları | Geliştiriliyor, kaynaktan derleniyor | [L4](roadmap/L4-interface/README.md) |
 | Sahip koruması (Mac'in başında yüz kontrolü, onaylardan sonra step-up) ve tau Desktop | Hazır; bir Mac'te canlı deneme bekleniyor; Touch ID ve uzaktan kilit açma planlı | [L10](roadmap/L10-guard/README.md) |
 | Bulut modu: hub'ın bir Cloudflare Container'ında çalışması | Hazır; ilk canlı çalıştırma bekleniyor | [L9](roadmap/L9-network/README.md) |
-| PyPI sürümleri | `tau-core` ve `tau-tui` yayında; `tau-net`, `tau-cloud` ve `tau-sub` henüz değil | [L8](roadmap/L8-distribution/README.md) |
+| PyPI sürümleri | `tau-core` ve `tau-tui` 0.4.0, `tau-net`, `tau-cloud` ve `tau-sub` 0.1.0 yayında; sırada `tau-guard` var | [L8](roadmap/L8-distribution/README.md) |
 | Herkese açık sub-tau'lar, ziyaretçi sohbetli web sayfaları, kullanıcı adları | Çalışıyor | [L9](roadmap/L9-network/README.md) |
 | Sağlayıcıyı ve anahtarı soran `tau init` | Çalışıyor | [L9](roadmap/L9-network/README.md) |
 | Barındırılan tau'lar ve kendi kurulumun (tau-host): GitHub girişi, tarayıcı uygulaması, sub-tau'lar, web sayfaları | Hazır, ağda da; tau.getporti.com'da yayına geçiş ([165](roadmap/L9-network/165-hosted-go-live.md)) bekleniyor | [L9](roadmap/L9-network/README.md) |

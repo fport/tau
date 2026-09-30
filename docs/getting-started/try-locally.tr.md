@@ -15,7 +15,7 @@ Hiçbir şeyi deploy etmeden (buluta yayına almadan) önce bütün tau ağını
 
 ## Başlamadan önce
 
-- `tau-net` ile birlikte kurulmuş tau; [Kurulum](build-your-own-tau.md#3-install) bölümündeki gibi. `tau-net` PyPI'a çıkana kadar bu **From source** (kaynaktan) yoludur; `tau` her dizinde çalışsın diye 1. terminalde `source /path/to/tau/.venv/bin/activate` çalıştır.
+- `tau-net` ile birlikte kurulmuş tau; [Kurulum](build-your-own-tau.md#3-install) bölümündeki gibi: PyPI'dan `--with tau-net` ile ya da kaynaktan. Kaynaktan kurduysan `tau` her dizinde çalışsın diye 1. terminalde `source /path/to/tau/.venv/bin/activate` çalıştır.
 - Node.js 22 veya daha yenisi ve [bun](https://bun.sh) (ya da Node.js ile gelen `npm` ve `npx`), bir de token'lar için `openssl`.
 - Boş portlar: spine'lar için 8821 ve 8822, onların inspector'ları için 9361 ve 9362, iki hub için 7921 ve 7922. Bunlar doluysa başkalarını seç ve geçtikleri her yeri değiştir.
 

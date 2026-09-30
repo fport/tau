@@ -35,14 +35,11 @@ Harden sshd the way the [phone guide](phone-tailscale-termius.md) does (keys onl
 
 ### 2. Install tau
 
-Until the packages are on PyPI:
-
 ```sh
-git clone https://github.com/fport/tau.git ~/tau
-cd ~/tau && uv sync --all-packages --group dev
+uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
 ```
 
-After the first release: `uv tool install tau-core --with tau-tui`.
+Or from a checkout: `git clone https://github.com/fport/tau.git ~/tau && cd ~/tau && uv sync --all-packages --group dev`.
 
 ### 3. Move configuration and data
 

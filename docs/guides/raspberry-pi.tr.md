@@ -37,14 +37,11 @@ sshd'yi [telefon rehberindeki](phone-tailscale-termius.md) gibi sıkılaştır (
 
 ### 2. tau'yu kur
 
-Paketler PyPI'a çıkana kadar:
-
 ```sh
-git clone https://github.com/fport/tau.git ~/tau
-cd ~/tau && uv sync --all-packages --group dev
+uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
 ```
 
-İlk sürümden sonra: `uv tool install tau-core --with tau-tui`.
+Ya da bir checkout'tan: `git clone https://github.com/fport/tau.git ~/tau && cd ~/tau && uv sync --all-packages --group dev`.
 
 ### 3. Yapılandırmayı ve veriyi taşı
 

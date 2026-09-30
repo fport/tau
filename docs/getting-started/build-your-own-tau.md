@@ -60,33 +60,29 @@ This is **local mode**: the brain runs at home. If you have no machine that can 
 
 ## 3. Install
 
-<!-- verified: run (From PyPI: tau-core + tau-tui 0.3.1 into an isolated uv tool dir; the tau-net line fails today, output below. From source: uv sync in a checkout) -->
+<!-- verified: run (From PyPI: tau-core 0.4.0, tau-tui 0.4.0, tau-net 0.1.0 and tau-sub 0.1.0 into an isolated uv tool dir, 2026-10-01. From source: uv sync in a checkout) -->
 
 `tau-core` holds the agent and the `tau` command, `tau-tui` the full-screen interface and `tau-net` the network (identity, contacts, the spine kit, the universe client).
 
 === "From PyPI"
 
     ```sh
-    uv tool install tau-core --with tau-tui --with tau-net
+    uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
     tau version
+    ```
+
+    ```text
+    tau-core 0.4.0
+    tau-net 0.1.0
+    tau-sub 0.1.0
+    tau-tui 0.4.0
     ```
 
     `uv tool install` puts `tau` on your `PATH` in its own environment and never touches your system Python. Upgrade later with `uv tool upgrade tau-core`.
 
-    !!! warning "tau-net arrives on PyPI with the next release"
-        `tau-core` and `tau-tui` are on PyPI (0.3.1); `tau-net` is not published yet. Today the command above stops with:
-
-        ```text
-          × No solution found when resolving dependencies:
-          ╰─▶ Because tau-net was not found in the package registry and you require
-              tau-net, we can conclude that your requirements are unsatisfiable.
-        ```
-
-        Until the release, `uv tool install tau-core --with tau-tui` covers sections 4 to 7, and the **From source** tab covers everything.
-
 === "From source"
 
-    For contributors, and for everyone until `tau-net` is on PyPI. The repository is private for now, so cloning needs access.
+    For contributors. The repository is private for now, so cloning needs access.
 
     ```sh
     git clone https://github.com/fport/tau.git
@@ -98,11 +94,12 @@ This is **local mode**: the brain runs at home. If you have no machine that can 
     ```
 
     ```text
-    tau-core 0.3.1
+    tau-core 0.4.0
     tau-cloud 0.1.0
     …
     tau-net 0.1.0
-    tau-tui 0.3.1
+    tau-sub 0.1.0
+    tau-tui 0.4.0
     ```
 
     Activating the virtual environment is easier than `uv run tau …` here, because later steps run in other directories and `uv run` only finds the workspace inside the checkout. `TAU_HOME` matters because the checkout holds its own `tau.toml` (the repository's, on Anthropic), and inside the checkout that file would be your configuration. Do both again in every new terminal.
@@ -225,7 +222,7 @@ tau hub stop
 
 ```text
 tau hub is running (pid 49554).
-  Profile: home · Role: hub · Version: 0.3.1
+  Profile: home · Role: hub · Version: 0.4.0
   Started: 30.09.2026 15:07:10 (4 s ago)
   Last heartbeat: 30.09.2026 15:07:10 (4 s ago)
   Control API: http://127.0.0.1:7877
@@ -509,7 +506,6 @@ An `identity.json` restored alone keeps your keys. `tau net status` then shows t
 
 | You see | What it means and what to do |
 |---|---|
-| `tau-net was not found in the package registry` | `tau-net` is not on PyPI yet. Use the **From source** tab of [Install](#3-install). |
 | `tau net: card of tau.example.org unavailable: no answer (TransportError)` | Nothing answered at that address: a typo, or their spine is down. Between local spines, `TAU_NET_ALLOW_INSECURE=1` must be in `.env`, or tau tries `https` and gets the same error. |
 | `tau net: spine answered 401 unauthorized` | `TAU_SPINE_TOKEN` in `.env` is not the spine's `HUB_TOKEN`. Run `tau net spine deploy ~/tau-spine` again; it sets the secret from `.env`. |
 | `tau net: spine unreachable: PUT https://…/hub/card: …` | `TAU_SPINE_URL` is wrong or the spine is not deployed yet. Right after the first deploy on your own domain, Cloudflare may still be setting up the custom domain; wait a minute and try again. |

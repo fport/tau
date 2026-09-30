@@ -50,7 +50,7 @@ Checking the key with one small request to anthropic...
 anthropic accepted the key.
 ```
 
-`tau init --yes` hiçbir şey sormaz ve senaryolu `fake` modeli kurar; her komutu denemek için bu yeterli. Dil olarak `tr` seçersen sonraki sorular Türkçe gelir. Ağ, bulut modu ve sub-tau'lar (`tau-net`, `tau-cloud`, `tau-sub`) PyPI'a çıkana kadar kaynaktan kurulur ([Kurulum](install.md)).
+`tau init --yes` hiçbir şey sormaz ve senaryolu `fake` modeli kurar; her komutu denemek için bu yeterli. Dil olarak `tr` seçersen sonraki sorular Türkçe gelir. Ağ ve sub-tau'lar `uv tool install tau-core --with tau-tui --with tau-net --with tau-sub` ile gelir ([Kurulum](install.md)); bulut modu için `tau-cloud` eklenir.
 
 Sonra:
 

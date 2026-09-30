@@ -62,33 +62,29 @@ Bu **yerel mod**: beyin evde çalışır. Açık kalabilecek bir makinen yoksa [
 
 ## 3. Kurulum { #3-install }
 
-<!-- verified: run (From PyPI: tau-core + tau-tui 0.3.1 into an isolated uv tool dir; the tau-net line fails today, output below. From source: uv sync in a checkout) -->
+<!-- verified: run (From PyPI: tau-core 0.4.0, tau-tui 0.4.0, tau-net 0.1.0 and tau-sub 0.1.0 into an isolated uv tool dir, 2026-10-01. From source: uv sync in a checkout) -->
 
 `tau-core` ajanı ve `tau` komutunu, `tau-tui` tam ekran arayüzü, `tau-net` de ağı (kimlik, kişiler, spine kit'i, evren istemcisi) barındırır.
 
 === "PyPI'dan"
 
     ```sh
-    uv tool install tau-core --with tau-tui --with tau-net
+    uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
     tau version
+    ```
+
+    ```text
+    tau-core 0.4.0
+    tau-net 0.1.0
+    tau-sub 0.1.0
+    tau-tui 0.4.0
     ```
 
     `uv tool install`, `tau`'yu kendi ortamında `PATH`'ine koyar ve sistem Python'una asla dokunmaz. Sonradan `uv tool upgrade tau-core` ile yükselt.
 
-    !!! warning "tau-net bir sonraki sürümle PyPI'a geliyor"
-        `tau-core` ve `tau-tui` PyPI'da (0.3.1); `tau-net` henüz yayımlanmadı. Bugün yukarıdaki komut şununla durur:
-
-        ```text
-          × No solution found when resolving dependencies:
-          ╰─▶ Because tau-net was not found in the package registry and you require
-              tau-net, we can conclude that your requirements are unsatisfiable.
-        ```
-
-        Sürüm çıkana kadar `uv tool install tau-core --with tau-tui` 4. ile 7. bölümleri kapsar, **Kaynaktan** sekmesi de her şeyi.
-
 === "Kaynaktan"
 
-    Katkıda bulunanlar için ve `tau-net` PyPI'a çıkana kadar herkes için. Depo şimdilik özel, bu yüzden klonlamak erişim gerektirir.
+    Katkıda bulunanlar için. Depo şimdilik özel, bu yüzden klonlamak erişim gerektirir.
 
     ```sh
     git clone https://github.com/fport/tau.git
@@ -100,11 +96,12 @@ Bu **yerel mod**: beyin evde çalışır. Açık kalabilecek bir makinen yoksa [
     ```
 
     ```text
-    tau-core 0.3.1
+    tau-core 0.4.0
     tau-cloud 0.1.0
     …
     tau-net 0.1.0
-    tau-tui 0.3.1
+    tau-sub 0.1.0
+    tau-tui 0.4.0
     ```
 
     Burada sanal ortamı etkinleştirmek `uv run tau …` kullanmaktan daha kolay, çünkü sonraki adımlar başka dizinlerde çalışır ve `uv run` çalışma alanını yalnızca checkout'un (deponun yerel kopyası) içinde bulur. `TAU_HOME` önemli, çünkü checkout kendi `tau.toml` dosyasını (deponunkini, Anthropic üzerinde) barındırır ve checkout'un içinde o dosya senin yapılandırman olurdu. İkisini de her yeni terminalde yeniden yap.
@@ -227,7 +224,7 @@ tau hub stop
 
 ```text
 tau hub is running (pid 49554).
-  Profile: home · Role: hub · Version: 0.3.1
+  Profile: home · Role: hub · Version: 0.4.0
   Started: 30.09.2026 15:07:10 (4 s ago)
   Last heartbeat: 30.09.2026 15:07:10 (4 s ago)
   Control API: http://127.0.0.1:7877
@@ -511,7 +508,6 @@ Tek başına geri yüklenen bir `identity.json` anahtarlarını korur. Bu durumd
 
 | Gördüğün | Anlamı ve yapman gereken |
 |---|---|
-| `tau-net was not found in the package registry` | `tau-net` henüz PyPI'da değil. [Kurulum](#3-install) bölümündeki **Kaynaktan** sekmesini kullan. |
 | `tau net: card of tau.example.org unavailable: no answer (TransportError)` | O adreste hiçbir şey yanıt vermedi: ya bir yazım hatası var ya da onların spine'ı çalışmıyor. Yerel spine'lar arasında `.env` içinde `TAU_NET_ALLOW_INSECURE=1` olmalı; yoksa tau `https` dener ve aynı hatayı alır. |
 | `tau net: spine answered 401 unauthorized` | `.env` içindeki `TAU_SPINE_TOKEN`, spine'ın `HUB_TOKEN` değeriyle aynı değil. `tau net spine deploy ~/tau-spine` komutunu yeniden çalıştır; secret'ı `.env` dosyasından ayarlar. |
 | `tau net: spine unreachable: PUT https://…/hub/card: …` | `TAU_SPINE_URL` yanlış ya da spine henüz deploy edilmedi. Kendi alan adında ilk deploy'dan hemen sonra Cloudflare özel alan adını hâlâ kuruyor olabilir; bir dakika bekle ve yeniden dene. |

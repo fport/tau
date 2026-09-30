@@ -55,13 +55,13 @@ tau is in early development. The status table under [Where things are](#where-th
 
 Everything in this part happens on your computer. You need macOS or Linux and [uv](https://docs.astral.sh/uv/), which brings Python 3.12 if you have none.
 
-**1. Install.** The agent, the `tau` command and the TUI are on PyPI:
+**1. Install.** Everything is on PyPI: the agent and the `tau` command (`tau-core`), the TUI (`tau-tui`), the network (`tau-net`) and sub-taus (`tau-sub`):
 
 ```sh
-uv tool install tau-core --with tau-tui
+uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
 ```
 
-The network, cloud mode and sub-taus (`tau-net`, `tau-cloud`, `tau-sub`) are not on PyPI yet ([145](roadmap/L9-network/145-publish-tau-net-tau-cloud.md)). Until they are, install everything from source:
+Contributors work from a checkout instead:
 
 ```sh
 git clone https://github.com/fport/tau.git && cd tau
@@ -266,7 +266,7 @@ Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name
 | TauBar: runs the hub, sleep modes | In progress, built from source | [L4](roadmap/L4-interface/README.md) |
 | Owner guard (face check at the Mac, step-up after approvals) and tau Desktop | Built; live test on a Mac pending; Touch ID and remote unlock planned | [L10](roadmap/L10-guard/README.md) |
 | Cloud mode: the hub in a Cloudflare Container | Built; first live run pending | [L9](roadmap/L9-network/README.md) |
-| PyPI releases | `tau-core` and `tau-tui` published; `tau-net`, `tau-cloud` and `tau-sub` not yet | [L8](roadmap/L8-distribution/README.md) |
+| PyPI releases | `tau-core` and `tau-tui` 0.4.0, `tau-net`, `tau-cloud` and `tau-sub` 0.1.0 published; `tau-guard` next | [L8](roadmap/L8-distribution/README.md) |
 | Public sub-taus, their web pages with visitor chats, handles | Works | [L9](roadmap/L9-network/README.md) |
 | `tau init` asks for your provider and key | Works | [L9](roadmap/L9-network/README.md) |
 | Hosted taus and your own host (tau-host): GitHub sign-in, the browser app, sub-taus, web pages | Built, on the network too; live on tau.getporti.com ([165](roadmap/L9-network/165-hosted-go-live.md)) pending | [L9](roadmap/L9-network/README.md) |

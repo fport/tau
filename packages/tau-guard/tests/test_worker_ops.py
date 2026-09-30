@@ -165,6 +165,17 @@ def test_a_stranger_does_not_pass(session: Session) -> None:
     assert answer["ok"] is False and answer["reason"] == "no_match"
 
 
+def test_a_failed_challenge_names_its_rule(session: Session) -> None:
+    session.enroll()
+    answer = session.run(
+        "verify", session.request("verify", "unlock"), user=SimulatedUser(wrong_way=True)
+    )
+    assert answer["ok"] is False and answer["reason"] == "spoof"
+    assert answer["liveness"] == "overshoot_before_target"
+    outcome = accepted_by_the_hub("verify", session.lines, answer)
+    assert outcome.liveness == "overshoot_before_target"
+
+
 def test_verify_kinds(session: Session) -> None:
     session.enroll()
     recheck = session.run("verify", session.request("verify", "recheck"))
@@ -507,7 +518,7 @@ def test_after_forget_a_running_hub_answers_not_enrolled(tmp_path: Path) -> None
         enrollment="e1",
         created="2026-09-30T12:00:00+00:00",
         model_sha=SFACE_SHA256,
-        calibration=Calibration(1, 0.4, 0.4),
+        calibration=Calibration(1, 30.0, 30.0),
     )
     save_enrollment(config.data_dir / "guard", template, keys.key)
     from tau_guard.testing import match

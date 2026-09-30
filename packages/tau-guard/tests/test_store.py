@@ -29,18 +29,20 @@ from tau_guard.store import (
     MemoryKeyStore,
     StoreError,
     decrypt,
+    encrypt,
     first_enrollment,
     forget,
     load_template,
     macos_keyring,
     new_key,
     read_marker,
+    read_pin,
     save_enrollment,
     template_from,
 )
 from tau_guard.testing import OWNER, variant
 
-CALIBRATION = Calibration(sign=1, left=0.42, right=0.38)
+CALIBRATION = Calibration(sign=1, left=25.0, right=21.0)
 OTHER_SHA = "f" * 64
 
 
@@ -69,6 +71,67 @@ def test_round_trip(tmp_path: Path) -> None:
     assert loaded.enrollment == "e1" and loaded.calibration == CALIBRATION
     assert len(loaded.samples) == 12 and len(loaded.vector) == 128
     assert max(abs(a - b) for a, b in zip(loaded.vector, template.vector, strict=True)) < 1e-6
+
+
+def test_a_template_from_before_degrees_still_loads(tmp_path: Path) -> None:
+    """A template saved with the old yaw-proxy calibration keeps working (issue 127): its sign
+    stays, its amplitudes become the defaults, and nothing asks for a re-enrollment."""
+    guard, keys, _ = enrolled(tmp_path)
+    path = guard / TEMPLATE_FILE
+    payload = json.loads(decrypt(path.read_bytes(), keys.key, SFACE_SHA256))
+    payload["calibration"] = {"sign": -1, "left": 0.42, "right": 0.38}
+    path.write_bytes(encrypt(json.dumps(payload).encode(), keys.key, SFACE_SHA256))
+    loaded = load_template(guard, keys, SFACE_SHA256)
+    assert loaded.calibration == Calibration.default(-1)
+    assert not loaded.calibration.measured
+    assert loaded.domain_state is None and read_pin(guard, keys) is None
+
+
+PIN = "a" * 64
+
+
+def test_the_pin_and_a_calibration_in_degrees_round_trip_in_one_payload(tmp_path: Path) -> None:
+    """Issue 114's pinned fingerprint set and issue 127's calibration in degrees live in the
+    same payload."""
+    guard = tmp_path / "data" / "guard"
+    keys = MemoryKeyStore(new_key())
+    template = template_from(
+        [variant(OWNER, seed) for seed in range(12)],
+        enrollment="e1",
+        created="2026-09-30T12:00:00+00:00",
+        model_sha=SFACE_SHA256,
+        calibration=CALIBRATION,
+        domain_state=PIN,
+    )
+    save_enrollment(guard, template, keys.key)
+    payload = json.loads(decrypt((guard / TEMPLATE_FILE).read_bytes(), keys.key, SFACE_SHA256))
+    assert payload["touch_id"] == {"domain_state": PIN}
+    assert payload["calibration"] == {
+        "unit": "deg",
+        "sign": 1,
+        "left": 25.0,
+        "right": 21.0,
+        "measured": True,
+    }
+    loaded = load_template(guard, keys, SFACE_SHA256)
+    assert loaded.calibration == CALIBRATION and loaded.domain_state == PIN
+    assert read_pin(guard, keys) == PIN
+
+
+def test_a_pinned_template_from_before_degrees_keeps_its_pin(tmp_path: Path) -> None:
+    """A template written between 114 and 127 (a pin, the yaw-proxy calibration) loads with
+    the pin intact and the default calibration, and the pin is still read with the marker's
+    model."""
+    guard, keys, _ = enrolled(tmp_path)
+    path = guard / TEMPLATE_FILE
+    payload = json.loads(decrypt(path.read_bytes(), keys.key, SFACE_SHA256))
+    payload["calibration"] = {"sign": 1, "left": 0.42, "right": 0.38}
+    payload["touch_id"] = {"domain_state": PIN}
+    path.write_bytes(encrypt(json.dumps(payload).encode(), keys.key, SFACE_SHA256))
+    loaded = load_template(guard, keys, SFACE_SHA256)
+    assert loaded.calibration == Calibration.default(1) and loaded.domain_state == PIN
+    assert read_pin(guard, keys) == PIN
+    assert load_template(guard, keys, SFACE_SHA256).payload()["touch_id"] == {"domain_state": PIN}
 
 
 def test_the_file_format_and_modes(tmp_path: Path) -> None:

@@ -21,9 +21,14 @@
   is off afterwards (ADR 0008 decision 4: forget is the off switch). When only the key could
   not be removed, the guard is still off (the marker is gone and ``enabled = false`` is
   written), and the command says so and exits 1.
-- **verify --explain** prints each frame's numbers (detector score, eye distance, brightness,
-  sharpness, yaw proxy, similarity); no frame is saved anywhere. The guard window shows as well
-  (the owner sees the picture the numbers belong to); ``--no-window`` turns it off.
+- **verify --explain** prints each prompt as a highlighted line when it appears
+  (``>>> TURN YOUR HEAD LEFT <<<``) and the numbers of every 3rd frame (``--explain=all``: every
+  frame): the prompt on screen, head yaw, the turn from the frontal baseline and pitch in
+  degrees, the landmarks' fit error, eye distance, detector score, brightness, sharpness and
+  similarity. No frame is saved anywhere. A local check that fails its head-turn challenge
+  names the liveness rule that failed.
+  The guard window shows as well (the owner sees the picture the numbers belong to);
+  ``--no-window`` turns it off.
 - **The guard window** (issue 126): a check this command runs in a local worker shows the
   window when ``[component.guard] window`` is true (the default) and ``--no-window`` is not
   given; the worker falls back to the terminal lines without a GUI session. A check through the
@@ -31,11 +36,12 @@
   window cancels the check (``cancelled``).
 - **doctor** reports the platform, OpenCV's camera order, both models with their pinned sha256
   (and the enrolled and expected SFace sha after a model change), the enrollment,
-  whether the template decrypts, the Keychain key, the modes, the camera device, the camera
-  permission of this terminal and the hub's last camera answer (naming the app each runs
-  under), Touch ID (issue 114: available or why not, the lid, and whether the fingerprints are
-  the ones pinned at enrollment; ``step_up = "none"`` and a Touch ID fallback on a Mac without
-  Touch ID are warnings) and the failures of the last 24 h.
+  whether the template decrypts (and whether its head-turn calibration was measured in degrees
+  or is the default of an enrollment from before issue 127), the Keychain key, the modes, the
+  camera device, the camera permission of this terminal and the hub's last camera answer
+  (naming the app each runs under), Touch ID (issue 114: available or why not, the lid, and
+  whether the fingerprints are the ones pinned at enrollment; ``step_up = "none"`` and a Touch
+  ID fallback on a Mac without Touch ID are warnings) and the failures of the last 24 h.
 - **Touch ID** (issue 114) authorises re-enrollment and ``forget`` when the Mac has it (Touch
   ID only, with the pinned fingerprints); a first enrollment and a Mac without Touch ID take
   the device-owner prompt (Touch ID or the password). A refusal says why and what to do.
@@ -85,6 +91,7 @@ from tau_guard.engine import (
     model_state,
     sface_path,
 )
+from tau_guard.liveness import FAILURES
 from tau_guard.local import LocalWorkerError, run_local
 from tau_guard.state import COUNTED_REASONS
 from tau_guard.store import MARKER_FILE
@@ -102,6 +109,10 @@ SELFTEST_WAIT = 30.0
 FORGET_WAIT = 90.0
 DOCTOR_WINDOW = timedelta(hours=24)
 CHECK_EVENTS = ("verify", "step_up", "recheck")
+PROMPTS = ("look", "turn_left", "turn_right", "center")
+"""The steps ``verify --explain`` highlights (and tags every frame line with)."""
+EXPLAIN_EVERY = 3
+"""``verify --explain`` prints every 3rd frame (``--explain=all``: every frame)."""
 
 
 # -- plumbing ------------------------------------------------------------------------------------
@@ -204,20 +215,32 @@ def _touch_id_hint(reason: object, language: str) -> None:
 class _Printer:
     """Prints each new progress step (and its live hint) once; ``labels`` replaces a step's
     text (an enrollment's ``touch_id`` step is the device-owner prompt: Touch ID or the
-    password)."""
+    password). With ``highlight`` (``verify --explain``) a new prompt gets a line of its own
+    (``>>> TURN YOUR HEAD LEFT <<<``), so it stands out among the frame lines; :attr:`step`
+    is the prompt on screen."""
 
-    def __init__(self, language: str, labels: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, language: str, labels: dict[str, str] | None = None, *, highlight: bool = False
+    ) -> None:
         self.language = language
         self.labels = labels or {}
+        self.highlight = highlight
         self.last: tuple[str, str | None] | None = None
+        self.step: str | None = None
 
     def __call__(self, step: str, hint: str | None) -> None:
         if step not in PROGRESS_STEPS or step in ("starting", "done"):
             return
         if (step, hint) == self.last:
             return
+        new_step = self.last is None or self.last[0] != step
         self.last = (step, hint)
+        self.step = step
         text = t(self.labels.get(step, f"guard.progress.{step}"), self.language)
+        if self.highlight and new_step and step in PROMPTS:
+            click.echo(t(f"guard.cli.verify.prompt.{step}", self.language))
+            if hint not in VERDICT_REASONS:
+                return
         if hint in VERDICT_REASONS:
             text = f"{text} {t(f'guard.verdict.{hint}', self.language)}"
         click.echo(f"  > {text}")
@@ -245,6 +268,9 @@ def _hub_active(ctx: click.Context, config: Config, language: str) -> bool:
 
 
 def _audit_local(config: Config, event: str, answer: dict[str, Any], started: float) -> None:
+    """The audit records of a local run: ``camera_open``, ``touch_id`` and the event itself.
+    A check's record names its method (a local check is the face check) and, for a
+    ``spoof``, the liveness rule that failed, like the hub's records."""
     log = AuditLog(_guard_dir(config))
     camera_ms = answer.get("camera_ms")
     common = {"channel": CLI_CHANNEL, "client_id": process_client_id()}
@@ -262,6 +288,7 @@ def _audit_local(config: Config, event: str, answer: dict[str, Any], started: fl
             **common,
         )
     score = answer.get("score")
+    method = answer.get("method") if isinstance(answer.get("method"), str) else "face"
     log.record(
         event,
         ok=answer.get("ok") is True,
@@ -270,6 +297,7 @@ def _audit_local(config: Config, event: str, answer: dict[str, Any], started: fl
         liveness=answer.get("liveness") if isinstance(answer.get("liveness"), str) else None,
         duration_ms=int((time.monotonic() - started) * 1000),
         trigger="local",
+        method=method if event in CHECK_EVENTS else None,
         **common,
     )
 
@@ -440,25 +468,43 @@ def _enroll(
 # -- verification --------------------------------------------------------------------------------
 
 
-def _explain_line(language: str) -> Callable[[dict[str, Any]], None]:
+def _explain_line(
+    language: str, printer: _Printer, *, every: int = EXPLAIN_EVERY
+) -> Callable[[dict[str, Any]], None]:
+    """Prints every ``every``-th frame row (and every row with a hint or a new phase), tagged
+    with the prompt on screen."""
+    seen = {"rows": 0, "phase": None}
+
     def show(row: dict[str, Any]) -> None:
         def num(key: str, digits: int) -> str:
             value = row.get(key)
             return "-" if value is None else f"{value:.{digits}f}"
 
+        def degrees(key: str) -> str:
+            value = row.get(key)
+            return "-" if value is None else f"{value:+.1f}°"
+
         hint = row.get("hint")
+        index, seen["rows"] = seen["rows"], seen["rows"] + 1
+        new_phase, seen["phase"] = row.get("phase") != seen["phase"], row.get("phase")
+        if index % every and not new_phase and not isinstance(hint, str):
+            return
+        step = printer.step if printer.step in PROMPTS else "look"
         click.echo(
             t(
                 "guard.cli.verify.explain_row",
                 language,
                 t=f"{row.get('t') or 0:6.2f}s",
-                phase=t(f"guard.cli.verify.phase.{row['phase']}", language),
+                step=t(f"guard.cli.verify.tag.{step}", language),
+                yaw=degrees("yaw"),
+                turn=degrees("turn"),
+                pitch=degrees("pitch"),
+                fit=num("fit", 2),
                 faces=row.get("faces") if row.get("faces") is not None else "-",
                 score=num("score", 2),
                 iod=num("iod", 0),
                 brightness=num("brightness", 0),
                 sharpness=num("sharpness", 0),
-                yaw=("-" if row.get("yaw") is None else f"{row['yaw']:+.2f}"),
                 similarity=num("similarity", 2),
                 hint=f"  ({hint})" if isinstance(hint, str) else "",
             )
@@ -467,10 +513,21 @@ def _explain_line(language: str) -> Callable[[dict[str, Any]], None]:
     return show
 
 
-def _verify(ctx: click.Context, config: Config, *, explain: bool, window: bool = True) -> bool:
+def _rule_line(answer: dict[str, Any], language: str) -> None:
+    """The liveness rule a failed local check broke, when the worker named one."""
+    rule = answer.get("liveness")
+    if answer.get("ok") is not True and answer.get("reason") == "spoof" and rule in FAILURES:
+        text = t(f"guard.cli.verify.rule.{rule}", language)
+        click.echo(t("guard.cli.verify.rule", language, rule=text, code=rule), err=True)
+
+
+def _verify(
+    ctx: click.Context, config: Config, *, explain: str | None, window: bool = True
+) -> bool:
+    """One check; ``explain`` is ``None``, ``"frames"`` (every 3rd frame) or ``"all"``."""
     language = config.ui.language
-    printer = _Printer(language)
-    if not explain and _hub_active(ctx, config, language):
+    printer = _Printer(language, highlight=explain is not None)
+    if explain is None and _hub_active(ctx, config, language):
         click.echo(t("guard.cli.via_hub", language))
         _hub_window_note(window, language)
         guard = HubGuard(config, client=_client(ctx, config))
@@ -489,9 +546,15 @@ def _verify(ctx: click.Context, config: Config, *, explain: bool, window: bool =
         return False
     click.echo(t("guard.cli.verify.local", language))
     request = _request(
-        ctx, config, "verify", "unlock", window="check" if window else None, explain=explain
+        ctx,
+        config,
+        "verify",
+        "unlock",
+        window="check" if window else None,
+        explain=explain is not None,
     )
     started = time.monotonic()
+    every = 1 if explain == "all" else EXPLAIN_EVERY
     answer = _run_local(
         ctx,
         config,
@@ -499,7 +562,7 @@ def _verify(ctx: click.Context, config: Config, *, explain: bool, window: bool =
         request,
         timeout=VERIFY_WAIT,
         printer=printer,
-        on_explain=_explain_line(language) if explain else None,
+        on_explain=_explain_line(language, printer, every=every) if explain else None,
     )
     _audit_local(config, "verify", answer, started)
     if explain:
@@ -517,6 +580,7 @@ def _verify(ctx: click.Context, config: Config, *, explain: bool, window: bool =
         return True
     reason = _reason_text(answer.get("reason"), language)
     click.echo(t("guard.cli.verify.failed", language, reason=reason), err=True)
+    _rule_line(answer, language)
     return False
 
 
@@ -556,7 +620,7 @@ def setup_command(ctx: click.Context, model_file: Path | None, no_window: bool) 
     if not enrolled:
         ctx.exit(1)
     click.echo(t("guard.cli.setup.verify", language))
-    if not _verify(ctx, config, explain=False, window=not no_window):
+    if not _verify(ctx, config, explain=None, window=not no_window):
         click.echo(t("guard.cli.setup.verify_failed", language), err=True)
         ctx.exit(1)
     path = _set_enabled(config, True)
@@ -584,12 +648,16 @@ def enroll_command(ctx: click.Context, add: bool, no_window: bool) -> None:
 @help_option()
 @click.option(
     "--explain",
-    is_flag=True,
-    help="Print each frame's numbers (in a local worker; no frame is saved).",
+    type=click.Choice(["frames", "all"]),
+    is_flag=False,
+    flag_value="frames",
+    default=None,
+    help="Run in a local worker and print each prompt and the numbers of every 3rd frame "
+    "(--explain=all: every frame). No frame is saved.",
 )
 @_no_window_option
 @click.pass_context
-def verify_command(ctx: click.Context, explain: bool, no_window: bool) -> None:
+def verify_command(ctx: click.Context, explain: str | None, no_window: bool) -> None:
     config = _config(ctx)
     if _platform(ctx) != "darwin":
         click.echo(t("guard.cli.unsupported", config.ui.language), err=True)
@@ -761,6 +829,9 @@ def _doctor_lines(ctx: click.Context, config: Config) -> list[tuple[str, str, st
     template = details.get("template")
     if template == "ok":
         add("ok", "template", "guard.cli.doctor.template_ok")
+        calibration = details.get("calibration")
+        if calibration in ("measured", "default"):
+            add("ok", "calibration", f"guard.cli.doctor.calibration_{calibration}")
     elif template is not None:
         status = "warn" if template == "not_enrolled" else "fail"
         lines.append((status, "template", _reason_text(template, language)))

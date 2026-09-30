@@ -49,8 +49,9 @@ def test_a_simulated_owner_enrolls() -> None:
     steps = [p.step for p in published if p.hint is None]
     assert [s for s in steps if s in POSES] == list(POSES)
     assert result.calibration is not None and result.calibration.sign == 1
-    assert result.calibration.left == pytest.approx(0.45, abs=0.05)
-    assert result.calibration.right == pytest.approx(0.45, abs=0.05)
+    assert result.calibration.left == pytest.approx(25.0, abs=1.5)  # degrees
+    assert result.calibration.right == pytest.approx(25.0, abs=1.5)
+    assert result.calibration.measured
     assert result.consistency is not None and result.consistency >= LOO_MIN
     assert user.now() - user.start < 20  # guided capture within the camera's 20 s
     for i, a in enumerate(result.samples):
@@ -59,20 +60,20 @@ def test_a_simulated_owner_enrolls() -> None:
 
 
 def test_the_calibration_follows_the_camera() -> None:
-    result, _ = enroll(SimulatedUser(sign=-1, amplitude=0.6, duration=25))
+    result, _ = enroll(SimulatedUser(sign=-1, amplitude=35.0, duration=25))
     assert result.ok and result.calibration is not None
-    assert result.calibration.sign == -1 and result.calibration.left == pytest.approx(0.6, abs=0.05)
+    assert result.calibration.sign == -1 and result.calibration.left == pytest.approx(35.0, abs=1.5)
 
 
 def test_a_small_turn_gets_turn_more_and_then_fails_without_a_calibration() -> None:
-    result, published = enroll(SimulatedUser(amplitude=0.1, duration=25))
+    result, published = enroll(SimulatedUser(amplitude=5.0, duration=25))
     assert "turn_more" in [p.step for p in published]
     assert not result.ok and result.reason == "timeout"
 
 
 def test_turn_more_is_heeded() -> None:
-    # 0.15 is too small; the user turns 1.5 x further when nudged, which reaches the floor
-    result, published = enroll(SimulatedUser(amplitude=0.15, duration=25))
+    # 9 degrees is too small; the user turns 1.5 x further when nudged, which reaches the floor
+    result, published = enroll(SimulatedUser(amplitude=9.0, duration=25))
     assert "turn_more" in [p.step for p in published]
     assert result.ok and result.calibration is not None
 
@@ -145,13 +146,28 @@ def test_adding_samples_under_other_light() -> None:
     machine = Enrollment(
         existing_vector=mean_vector(old),
         existing_samples=old,
-        existing_calibration=Calibration(1, 0.5, 0.3),
+        existing_calibration=Calibration(1, 30.0, 20.0),
     )
     result, _ = enroll(SimulatedUser(duration=25), machine)
     assert result.ok and len(result.samples) > len(old)
     assert result.samples[: len(old)] == tuple(old)
     assert result.calibration is not None
-    assert result.calibration.left == pytest.approx(0.475, abs=0.03)
+    assert result.calibration.left == pytest.approx(27.5, abs=1.0)
+    assert result.calibration.right == pytest.approx(22.5, abs=1.0)
+
+
+def test_adding_replaces_a_calibration_from_before_degrees() -> None:
+    old = [variant(OWNER, 1000 + i) for i in range(12)]
+    from tau_guard.engine import mean_vector
+
+    machine = Enrollment(
+        existing_vector=mean_vector(old),
+        existing_samples=old,
+        existing_calibration=Calibration.default(1),  # read from a yaw-proxy template
+    )
+    result, _ = enroll(SimulatedUser(duration=25), machine)
+    assert result.ok and result.calibration is not None and result.calibration.measured
+    assert result.calibration.left == pytest.approx(25.0, abs=1.5)
 
 
 def test_adding_someone_elses_samples_is_refused() -> None:
@@ -170,7 +186,7 @@ def test_adding_with_a_flipped_turn_is_refused() -> None:
     machine = Enrollment(
         existing_vector=mean_vector(old),
         existing_samples=old,
-        existing_calibration=Calibration(-1, 0.4, 0.4),
+        existing_calibration=Calibration(-1, 25.0, 25.0),
     )
     result, _ = enroll(SimulatedUser(duration=25), machine)
     assert not result.ok and result.reason == "timeout"

@@ -67,9 +67,9 @@ A client sends its own `step_up` and `unlock_liveness` with every check, and the
 |---|---|---|
 | `tau guard setup [--model-file FILE] [--no-window]` | installs SFace (download pinned by sha256, or `FILE`), enrolls, runs one check, writes `[component.guard] enabled = true` | at the Mac only (macOS, no `SSH_CONNECTION`); through the hub when a guarded hub runs, else a local worker |
 | `tau guard enroll [--add] [--no-window]` | enrolls again behind Touch ID (the Mac password only without Touch ID) and pins the fingerprint set; `--add` adds samples to the template (other light) | at the Mac only |
-| `tau guard verify [--explain] [--no-window]` | one check with the head-turn challenge; `--explain` runs it in a local worker and prints each frame's numbers (no frame is saved; the guard window shows too); exit 1 when it fails | macOS (exit 2 elsewhere); through the hub when a guarded hub runs, so a passed check unlocks tau, else a local worker |
+| `tau guard verify [--explain[=all]] [--no-window]` | one check with the head-turn challenge; `--explain` runs it in a local worker, prints each prompt as a highlighted line (`>>> TURN YOUR HEAD LEFT <<<`) and every 3rd frame's numbers (`=all`: every frame): the prompt on screen, head yaw, turn from the frontal baseline and pitch in degrees, the landmarks' fit error, eye distance, detector score, brightness, sharpness, similarity. No frame is saved; the guard window shows too. A local check that fails its challenge names the liveness rule. Exit 1 when it fails | macOS (exit 2 elsewhere); through the hub when a guarded hub runs, so a passed check unlocks tau, else a local worker |
 | `tau guard forget` | removes the template, the marker and the Keychain key behind Touch ID (the Mac password only without Touch ID), and writes `enabled = false`; exit 1 when the Keychain kept the key (run it again) | at the Mac only, always a local worker |
-| `tau guard doctor` | checks platform, worker, OpenCV, the YuNet and SFace files, enrollment, template, Keychain, modes, liveness, camera, the terminal's camera permission, failures and the app holding the hub's camera grant; exit 1 on a `fail` | anywhere |
+| `tau guard doctor` | checks platform, worker, OpenCV, the YuNet and SFace files, enrollment, template, the head-turn calibration (measured in degrees, or the default of an enrollment from before degrees), Keychain, modes, liveness, camera, the terminal's camera permission, Touch ID (available or why not, the lid, whether the fingerprints are the pinned ones), failures and the app holding the hub's camera grant; exit 1 on a `fail` | anywhere |
 | `tau guard status [--json]` | the state as the running hub reports it (`GET /guard/status`); without an active guard prints `off`; exit 0 when no hub runs, 1 on a hub error | anywhere |
 | `tau guard lock` | locks every guarded channel (`POST /guard/lock`, trigger `command`) | anywhere; also over SSH |
 | `tau guard log [--since WHEN] [--json]` | the audit log; `WHEN` is a duration (`30m`, `2h`, `7d`) or an ISO date or time | anywhere |
@@ -153,7 +153,7 @@ A refused turn yields a notice and `TurnEnd("locked")`: nothing is appended to t
 | `no_match` | a quality frame did not match the template | yes |
 | `no_face` | no face was seen | no |
 | `multiple_faces` | a second face big enough to count | yes |
-| `spoof` | the head-turn challenge failed (overshoot, a step not done in time, a face gone, movement during a pause, a cancel while a prompt was up) | yes |
+| `spoof` | the head-turn challenge failed; the audit's `liveness` names the rule (see below) | yes |
 | `timeout` | the check ran out of time | no |
 | `cancelled` | cancelled by the caller or by a lock | no |
 | `too_dark`, `face_too_small` | the frames never passed the quality gates (also live hints) | no |
@@ -165,6 +165,38 @@ A refused turn yields a notice and `TurnEnd("locked")`: nothing is appended to t
 | `locked` | a step-up while locked | – |
 | `touch_id_unavailable`, `touch_id_failed` | Touch ID missing (closed lid, no sensor, lockout) or not confirmed; a changed fingerprint set also gives `touch_id_failed` until `tau guard enroll --add` pins it again | no |
 | `unsupported_platform`, `unavailable`, `busy`, `error` | not macOS; no hub or bad answer; another check runs; anything else | no |
+
+### Head-turn challenge
+
+The head's yaw comes from `cv2.solvePnP`: YuNet's five landmarks fitted to a generic 3D head, seen by a camera whose focal length is the frame width. Everything is in degrees relative to the median yaw of the attempt's frontal frames, so a seat off to the side works.
+
+| | |
+|---|---|
+| steps | 2 for an unlock, 3 for a step-up, left or right at random |
+| pause before each prompt | random 0.3–0.9 s |
+| time per step | 4 s from the prompt |
+| turn | at least `max(12°, 0.5 × the calibrated turn)` the asked way |
+| hold | random 0.3–0.6 s; the turn may sag 3° while held |
+| return | within 6° of the frontal yaw, or past it |
+| frames that count | landmarks fit the head within 0.10 eye distances (1.5 × the frontal fit when larger); a 3-frame running median |
+
+An enrollment calibrates the sign of a left turn and the owner's range to each side. One made before degrees (issue 127) keeps working: its sign stays and a 12° turn is asked each way; `tau guard enroll` measures the owner's own range.
+
+### Liveness rules (`liveness` of a `spoof`)
+
+| Rule | When |
+|---|---|
+| `overshoot_before_target` | 8° or more the wrong way before the turn is held |
+| `oscillation` | more than 3 reversals of direction (6° each) within one step |
+| `moved_between_prompts` | more than 10° from the frontal yaw while no prompt is up (20° on the far side of a return swing) |
+| `no_turn` | the turn never reached its target in time |
+| `too_slow` | the turn reached its target but was not held in time |
+| `no_return` | the head did not come back in time |
+| `face_lost` | the face was gone for more than 0.2 s, or its box jumped |
+| `step_identity` | the frames near the centre around a turn did not match the owner |
+| `abandoned` | cancelled, or locked, while a head-turn prompt was up |
+
+A flat photo turned about the vertical axis reads at most about 10° while it is turned up to 50° (across sizes, seats and a 15° tilt; a few degrees when it faces the camera squarely), and turned further its landmarks stop fitting a head. A head reads the full angle.
 
 ### Progress steps
 
@@ -251,8 +283,10 @@ An **attempt** is `{id, kind, step, seq, deadline, hint, done, ok, reason, metho
 | `ok`, `reason` | yes | the outcome and its verdict reason |
 | `duration_ms` | yes | how long it took |
 | `score` | no | the similarity score, rounded to 2 decimals |
-| `liveness` | no | `challenge` when the check passed the head-turn challenge |
+| `liveness` | no | `challenge` or `passive` for a face match; for a `spoof`, the liveness rule that failed |
 | `request_id`, `tool` | no | the tier-2 call a step-up belonged to |
+| `method` | no | `face` or `touch_id`: on a check, the method that passed or the one that was tried; on an `unlock`, how the owner unlocked |
+| `policy` | no | on a `touch_id` record (one LocalAuthentication prompt): `biometrics` (Touch ID only) or `device_owner` (Touch ID or the password); that record's `reason` is the prompt's outcome (`ok`, `failed`, `cancelled`, `unavailable`, `timeout`, `changed`) and its `trigger` the attempt's kind |
 
 A record never holds an embedding, a frame or anything about another person. Strings are cut to 128 characters and non-printable characters become `?`, so a caller's label cannot drive the terminal that prints the log. The hub log gets no verdicts and no scores.
 
@@ -263,7 +297,7 @@ Under `TAU_DATA_DIR/guard/`, mode `0700`, left out of backups and never pushed b
 | File | What it is |
 |---|---|
 | `enrolled` | the public marker, JSON `{"v": 1, "enrollment": "<id>", "model": "<sha256>", "created": "<iso>"}`; nothing biometric. While it exists the guard is active |
-| `owner.face.v1.bin` | the template, `0600`, written atomically: `b"TAUG1" \| nonce(12) \| AES-GCM(payload)` with `b"tau-guard/v1\|" + model_sha256` as associated data. The payload holds the renormalised mean embedding, the samples and the head-turn calibration |
+| `owner.face.v1.bin` | the template, `0600`, written atomically: `b"TAUG1" \| nonce(12) \| AES-GCM(payload)` with `b"tau-guard/v1\|" + model_sha256` as associated data. The payload holds the renormalised mean embedding, the samples, the head-turn calibration (in degrees) and, when Touch ID was available at enrollment, the pinned fingerprint set (a sha256 of LocalAuthentication's `domainState`) |
 | `models/face_recognition_sface_2021dec.onnx` | SFace, installed by `tau guard setup`, sha256-checked at every load |
 | `audit.jsonl` (+ `.1`, `.2`) | the audit log |
 | `failures.json` | the failure count and cooldown, `0600` |

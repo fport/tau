@@ -107,7 +107,7 @@ macOS kamerayı bir programa değil, bir uygulamaya verir. Korumanın kontroller
 
 TUI opak bir kilit ekranıyla açılır; oturumlarından hiçbir şey arkadan görünmez.
 
-- Boş satırda **Enter** bir kontrol başlatır. Kameraya bak, sonra istemleri izle ("Turn your head left.", "Look straight at the camera again."); [koruma penceresi](#the-guard-window) onları kamera görüntünle birlikte büyük gösterir. Her istem sana 3,5 saniye verir.
+- Boş satırda **Enter** bir kontrol başlatır. Kameraya bak, sonra istemleri izle ("Turn your head left.", "Look straight at the camera again."); [koruma penceresi](#the-guard-window) onları kamera görüntünle birlikte büyük gösterir. Her istem sana 4 saniye verir. 15-20 derecelik belirgin bir dönüş yeterli; geri dönerken merkezi biraz geçmen sorun değil.
 - **Esc** süren bir kontrolü iptal eder, **ctrl+q** çıkar. tau kilitliyken yalnızca `/help`, `/lang`, `/guard` ve `/quit` çalışır. Yazdığın diğer her şey gönderilmez ve alanda kalır.
 - Başarılı bir kontrolden sonra `Unlocked (face). Failed attempts since the last unlock: 0.` görürsün. 0'dan büyük bir sayı, sen yokken birinin ya da bir şeyin denediği anlamına gelir. `tau guard log` ne zaman olduğunu gösterir.
 
@@ -187,7 +187,7 @@ Kızılötesi bir kamera olmadan 2B bir web kamerası kontrolü bir kasa değil,
 
 - **hesabında kabuğu (shell) olan herkesi.** `tau.toml`'u düzenleyebilir, `.env`'i okuyabilir ya da tau'yu korumasız başlatabilirler. Hesabı Mac'in ekran kilidi ve FileVault korur; koruma tau'nun pencerelerini korur;
 - gerçek zamanlı bir deepfake'i, 3B bir maskeyi ya da tek yumurta ikizini. Yakın akrabalar da yabancılardan daha yüksek puan alır;
-- başını çevirdiğin iyi bir döngüsel videoyu. Doğal baş çevirmelerin sentetik klipleri denemelerde iki adımlı kilit açma kontrollerinin yüzde 4-16'sını (üç adımlı step-up'ların yüzde 1-7'sini) geçti; bekleme süresi denemeleri saatte yaklaşık ona sınırlar;
+- başını çevirdiğin iyi bir döngüsel videoyu. Doğal baş çevirmelerin sentetik klipleri denemelerde iki adımlı kilit açma kontrollerinin yüzde 4-16'sını (üç adımlı step-up'ların yüzde 1-9'unu) geçti; bekleme süresi denemeleri saatte yaklaşık ona sınırlar;
 - seni kameraya bakmaya zorlayan birini.
 
 Bu yüzden koruma her zaman yalnızca kendi onayına **ek olarak** istenir, asla onun yerine değil.
@@ -218,7 +218,7 @@ uv run tau doctor          # guard satırı hub'ın korumayı çalıştırıp ç
 
 **"The guard cannot be reached."** Hiçbir hub çalışmıyor ya da koruma servisi olmadan çalışıyor. Başlat (TauBar → Run the hub ya da `tau hub run`) ve `tau.toml`'daki `[components.hub] services` listesinin boş olduğunu ya da `guard` içerdiğini denetle.
 
-**Seni tanımıyor.** Daha iyi ışık dene, kameraya dön, şapkanı çıkar. `tau guard verify --explain` her karenin sayılarını (yüzler, dedektör puanı, göz mesafesi, parlaklık, netlik, baş dönüşü, benzerlik) hiçbir kareyi kaydetmeden yazar. Sonra başarısız olan ışıkta örnek ekle: `tau guard enroll --add`. Yüz modeli değiştiyse `tau guard enroll` ile yeniden kaydol.
+**Seni tanımıyor.** Daha iyi ışık dene, kameraya dön, şapkanı çıkar. `tau guard verify --explain` her istemi vurgulu bir satır olarak (`>>> TURN YOUR HEAD LEFT <<<`) gösterir ve her üç kareden birinin sayılarını (yüzler, dedektör puanı, göz mesafesi, parlaklık, netlik, derece cinsinden baş yaw'ı ve dönüşün, benzerlik) hiçbir kareyi kaydetmeden yazar; `--explain=all` her kareyi yazar. Baş çevirmeler başarısız olursa geçilemeyen kuralı söyler, örneğin dönüş yeterince büyük değilse `no_turn`. Sonra başarısız olan ışıkta örnek ekle: `tau guard enroll --add`. Yüz modeli değiştiyse `tau guard enroll` ile yeniden kaydol.
 
 **Çok fazla başarısız deneme.** Bekle. `tau guard status` bekleme süresinin ne zamana kadar sürdüğünü gösterir.
 

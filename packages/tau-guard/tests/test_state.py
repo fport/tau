@@ -355,7 +355,8 @@ def test_cancelling_at_a_head_turn_prompt_is_a_counted_failure(clock: FakeClock,
     assert record is not None and record["reason"] == "spoof" and record["ok"] is False
     effects = m.drain()
     assert effects.kill == [(attempt.id, "cancelled")]  # the worker still stops
-    assert ("verify", "spoof") in [(e["event"], e.get("reason")) for e in effects.audit]
+    audited = [(e["event"], e.get("reason"), e.get("liveness")) for e in effects.audit]
+    assert ("verify", "spoof", "abandoned") in audited
 
 
 @pytest.mark.parametrize("step", ["starting", "look"])
@@ -753,6 +754,30 @@ def test_a_success_the_policy_excludes_is_an_error(
     record = run_kind(m, kind, outcome, **policy)
     assert (record["ok"], record["reason"]) == ((True, "match") if ok else (False, "error"))
     assert m.state == "unlocked"  # an error is not a counted failure
+
+
+def test_the_audit_names_the_liveness_rule_and_the_method(clock: FakeClock) -> None:
+    """A check's record carries the rule a ``spoof`` broke (issue 127) next to the method
+    tried (issue 114); a Touch ID unlock names its method and no rule."""
+    m = machine(clock)
+    run_kind(m, "unlock", Outcome(False, "spoof", liveness="oscillation"))
+    run_kind(m, "unlock", Outcome(False, "camera_busy"))  # the fallback is offered now
+    touch = m.request("unlock", channel="tui", client_id="c1", method="touch_id")
+    assert not isinstance(touch, Refusal) and m.finish(touch.id, TOUCH_ID)
+    audit = m.drain().audit
+    checks = [
+        (e["event"], e["reason"], e.get("liveness"), e.get("method"))
+        for e in audit
+        if e["event"] in ("verify", "unlock")
+    ]
+    assert checks == [
+        ("verify", "spoof", "oscillation", "face"),
+        ("verify", "camera_busy", None, "face"),
+        ("verify", "match", None, "touch_id"),
+        ("unlock", "match", None, "touch_id"),
+    ]
+    (prompt,) = [e for e in audit if e["event"] == "touch_id"]
+    assert prompt["policy"] == "biometrics" and "liveness" not in prompt
 
 
 def test_a_passive_step_up_passes_only_inside_the_challenge_window(clock: FakeClock) -> None:

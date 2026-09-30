@@ -18,6 +18,7 @@ from tau_core import Config
 from tau_core.hub import HubClient
 from tau_core.i18n import t
 from tau_guard import cli_face, worker
+from tau_guard.audit import AuditLog
 from tau_guard.cli import guard
 from tau_guard.cli_face import responsible_app
 from tau_guard.engine import SFACE_SHA256
@@ -253,7 +254,7 @@ def test_enroll_through_a_running_hub(tmp_path: Path, model_ok: list) -> None:
 # -- verify ----------------------------------------------------------------------------------------
 
 
-def test_verify_explain_prints_every_frame_and_saves_nothing(
+def test_verify_explain_highlights_the_prompts_and_saves_nothing(
     tmp_path: Path, model_ok: list
 ) -> None:
     config = fresh(tmp_path)
@@ -262,17 +263,76 @@ def test_verify_explain_prints_every_frame_and_saves_nothing(
     before = {p for p in (config.data_dir).rglob("*") if p.is_file()}
     result = invoke(config, "verify", "--explain", runner=runner)
     assert result.exit_code == 0, result.output
-    rows = [line for line in result.output.splitlines() if "det=" in line]
+    lines = result.output.splitlines()
+    rows = [line for line in lines if "det=" in line]
     assert len(rows) > 20
     assert all("eyes=" in r and "light=" in r and "sharp=" in r and "yaw=" in r for r in rows)
-    assert any("match=0." in r for r in rows)
+    assert all("turn=" in r and "pitch=" in r and "fit=" in r for r in rows)
+    assert any("match=0." in r for r in rows) and any("°" in r for r in rows)
+    prompts = [line for line in lines if line.startswith(">>> ")]
+    assert prompts[0] == t("guard.cli.verify.prompt.look")
+    turns = [
+        p
+        for p in prompts
+        if p in (t("guard.cli.verify.prompt.turn_left"), t("guard.cli.verify.prompt.turn_right"))
+    ]
+    assert len(turns) == 2 and t("guard.cli.verify.prompt.center") in prompts
+    tags = {t(f"guard.cli.verify.tag.{step}") for step in ("turn_left", "turn_right")}
+    assert any(tag in row for row in rows for tag in tags)  # each row names the prompt
     assert t("guard.cli.verify.nothing_saved") in result.output
     assert runner.calls[-1][1]["explain"] is True
     after = {p for p in (config.data_dir).rglob("*") if p.is_file()}
     assert {p.name for p in after - before} <= set()  # only audit.jsonl grew
+    every = invoke(config, "verify", "--explain=all", runner=runner)
+    assert every.exit_code == 0, every.output
+    all_rows = [line for line in every.output.splitlines() if "det=" in line]
+    assert len(all_rows) > 2.5 * len(rows)  # every frame instead of every 3rd
     turkish = invoke(config, "verify", "--explain", runner=runner, env={"TAU_LANG": "tr"})
     label = t("guard.cli.verify.explain_row", "tr").split("{score}")[0].split()[-1]
     assert label in turkish.output and "det=" not in turkish.output
+    assert t("guard.cli.verify.prompt.look", "tr") in turkish.output
+
+
+def test_a_failed_local_check_names_the_liveness_rule(tmp_path: Path, model_ok: list) -> None:
+    config = fresh(tmp_path)
+    runner = InProcess()
+    assert invoke(config, "enroll", runner=runner).exit_code == 0
+    runner.users = [SimulatedUser(wrong_way=True)]
+    result = invoke(config, "verify", runner=runner)
+    assert result.exit_code == 1
+    rule = t("guard.cli.verify.rule.overshoot_before_target")
+    line = t("guard.cli.verify.rule", rule=rule, code="overshoot_before_target")
+    assert t("guard.verdict.spoof") in result.output and line in result.output
+    runner.users = [SimulatedUser(returns=False)]
+    result = invoke(config, "verify", "--explain", runner=runner)
+    assert "(no_return)" in result.output
+    entries = AuditLog(config.data_dir / "guard").read()
+    assert [e.get("liveness") for e in entries if e["event"] == "verify"][-2:] == [
+        "overshoot_before_target",
+        "no_return",
+    ]
+
+
+def test_an_explain_run_audits_the_rule_and_the_method(tmp_path: Path, model_ok: list) -> None:
+    """A local check's record carries both the liveness rule (issue 127) and the method (issue
+    114), and ``tau guard log`` shows both."""
+    config = fresh(tmp_path)
+    runner = InProcess()
+    assert invoke(config, "enroll", runner=runner).exit_code == 0
+    runner.users = [SimulatedUser(returns=False)]
+    assert invoke(config, "verify", "--explain", runner=runner).exit_code == 1
+    assert invoke(config, "verify", "--explain", runner=runner).exit_code == 0
+    entries = AuditLog(config.data_dir / "guard").read()
+    checks = [e for e in entries if e["event"] == "verify"]
+    assert [(e["ok"], e["reason"], e["liveness"], e["method"]) for e in checks] == [
+        (False, "spoof", "no_return", "face"),
+        (True, "match", "challenge", "face"),
+    ]
+    (enroll,) = [e for e in entries if e["event"] == "enroll"]
+    assert "method" not in enroll  # only a check names its method, as in the hub's records
+    lines = invoke(config, "log", runner=runner).output.splitlines()
+    failed = [line for line in lines if "spoof (no_return)" in line]
+    assert len(failed) == 1 and "face" in failed[0].split("  ")
 
 
 def test_verify_through_a_running_hub(tmp_path: Path) -> None:
@@ -361,6 +421,7 @@ def selftest_answer(**details: Any) -> dict[str, Any]:
         "sface": "ok",
         "keychain": "ok",
         "template": "ok",
+        "calibration": "measured",
         "camera": {"device": "MacBook Pro Camera", "others": 1, "permission": 3},
     }
     return {
@@ -404,6 +465,7 @@ def test_doctor_covers_every_item(tmp_path: Path) -> None:
         "sface",
         "enrollment",
         "template",
+        "calibration",
         "keychain",
         "modes",
         "camera",
@@ -421,7 +483,16 @@ def test_doctor_covers_every_item(tmp_path: Path) -> None:
     for sha in (YUNET_SHA256, SFACE_SHA256):
         assert f"sha256 {sha[:12]}" in result.output  # the doctor shows the model sha
     assert t("guard.cli.doctor.failures", count=1) in result.output
+    assert t("guard.cli.doctor.calibration_measured") in result.output
     assert calls[0]["data_dir"] == str(config.data_dir)
+
+
+def test_doctor_says_when_an_enrollment_predates_degrees(tmp_path: Path) -> None:
+    config = cli_config(tmp_path)
+    result, _ = doctor(config, selftest_answer(calibration="default"))
+    assert "ok   calibration:" in result.output  # it keeps working: no re-enrollment forced
+    assert "fail calibration" not in result.output
+    assert t("guard.cli.doctor.calibration_default") in result.output
 
 
 def test_doctor_reports_problems(tmp_path: Path) -> None:

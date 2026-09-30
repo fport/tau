@@ -34,7 +34,7 @@ from tau_guard.engine import (
     mean_vector,
     sface_path,
 )
-from tau_guard.liveness import Calibration
+from tau_guard.liveness import MAX_FIT, Calibration
 from tau_guard.testing import FakeFrameSource
 from tau_guard.verify import (
     STEP_UP_THRESHOLD,
@@ -193,13 +193,13 @@ def test_a_turned_still_fails_the_challenge(
     yaws: list[float] = []
 
     def explain(obs: Any, phase: str, machine: Any) -> None:
-        if obs.primary is not None:
+        if obs.primary is not None and obs.primary.pose.fits(machine.limit):
             yaws.append(obs.primary.yaw)
 
     result = run_check(
         Policy("unlock", UNLOCK_THRESHOLD, 2),
         template,
-        Calibration(1, 0.45, 0.45),
+        Calibration.default(),
         engine,
         FakeFrameSource(lambda: warp_frames(images["obama"], kind)),
         rng=random.Random(seed),
@@ -207,8 +207,22 @@ def test_a_turned_still_fails_the_challenge(
         explain=explain,
     )
     spread = max(yaws) - min(yaws) if yaws else 0.0
-    print(f"\n{kind} seed {seed}: {result.reason}; yaw proxy spread {spread:.3f}")
+    print(f"\n{kind} seed {seed}: {result.reason} ({result.liveness}); yaw spread {spread:.1f} deg")
     assert not result.ok and result.reason == "spoof"
+
+
+def test_real_portraits_fit_the_generic_head(
+    engine: OpenCvFaceEngine, images: dict[str, Any]
+) -> None:
+    """YuNet's landmarks on real faces fit the generic head model, and the yaw follows the
+    turned portrait (obama2 looks about 14 degrees to its right per MediaPipe's head pose)."""
+    poses = {}
+    for name, image in images.items():
+        face = max(engine.detect(image), key=lambda f: f.iod)
+        poses[name] = face.pose
+    print("\n" + "  ".join(f"{n}: yaw {p.yaw:+.1f} fit {p.fit:.3f}" for n, p in poses.items()))
+    assert all(pose.fits(MAX_FIT * 1.2) for pose in poses.values())
+    assert poses["obama2"].yaw < -5 and abs(poses["obama"].yaw) < 8
 
 
 def face_patch(engine: OpenCvFaceEngine, image: Any, iod: float) -> Any:

@@ -105,7 +105,7 @@ macOS grants the camera to an app, not to a program. The guard's checks run in a
 
 The TUI opens on an opaque lock screen, so nothing of your sessions shows through.
 
-- **Enter** on an empty line starts a check. Look at the camera, then follow the prompts ("Turn your head left.", "Look straight at the camera again."); the [guard window](#the-guard-window) shows them large, with your camera picture. Each prompt gives you 3.5 seconds.
+- **Enter** on an empty line starts a check. Look at the camera, then follow the prompts ("Turn your head left.", "Look straight at the camera again."); the [guard window](#the-guard-window) shows them large, with your camera picture. Each prompt gives you 4 seconds. A clear turn of 15 to 20 degrees is enough; swinging a little past the centre on the way back is fine.
 - **Esc** cancels a running check, and **ctrl+q** quits. Only `/help`, `/lang`, `/guard` and `/quit` work while tau is locked. Anything else you type is not sent and stays in the field.
 - After a successful check you see `Unlocked (face). Failed attempts since the last unlock: 0.` A number above 0 means someone, or something, tried while you were away. `tau guard log` shows when.
 
@@ -185,7 +185,7 @@ Without an infrared camera, a 2D webcam check is a presence and convenience fact
 
 - **anyone with a shell in your account.** They can edit `tau.toml`, read `.env` or start tau without the guard. The Mac's screen lock and FileVault protect the account; the guard protects tau's windows;
 - a real-time deepfake, a 3D mask or an identical twin. Close relatives also score higher than strangers;
-- a good looping video of you turning your head. Synthetic clips of natural head turns passed 4 to 16 % of the two-step unlock checks in testing (1 to 7 % of the three-step step-ups); the cooldown limits the attempts to about ten an hour;
+- a good looping video of you turning your head. Synthetic clips of natural head turns passed 4 to 16 % of the two-step unlock checks in testing (1 to 9 % of the three-step step-ups); the cooldown limits the attempts to about ten an hour;
 - someone forcing you to look at the camera.
 
 That is why the guard is only ever required **in addition** to your own approval, never instead of it.
@@ -216,7 +216,7 @@ uv run tau doctor          # its guard line says whether the hub runs the guard 
 
 **"The guard cannot be reached."** No hub runs, or it runs without the guard service. Start it (TauBar → Run the hub, or `tau hub run`) and check that `[components.hub] services` in `tau.toml` is empty or lists `guard`.
 
-**It does not recognize you.** Try better light, face the camera, take off a cap. `tau guard verify --explain` prints each frame's numbers (faces, detector score, eye distance, brightness, sharpness, head turn, similarity) without saving a frame. Then add samples under the light that fails: `tau guard enroll --add`. After a change of face model, enroll again with `tau guard enroll`.
+**It does not recognize you.** Try better light, face the camera, take off a cap. `tau guard verify --explain` shows each prompt as a highlighted line (`>>> TURN YOUR HEAD LEFT <<<`) and prints the numbers of every third frame (faces, detector score, eye distance, brightness, sharpness, head yaw and your turn in degrees, similarity) without saving a frame; `--explain=all` prints every frame. When the head turns fail, it names the rule that failed, for example `no_turn` when the turn was not big enough. Then add samples under the light that fails: `tau guard enroll --add`. After a change of face model, enroll again with `tau guard enroll`.
 
 **Too many failed attempts.** Wait. `tau guard status` shows until when the cooldown runs.
 

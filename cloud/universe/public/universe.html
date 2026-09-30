@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The tau universe</title>
+  <meta name="description" content="A live map of the taus whose owners chose to list them, and the ones that talk to each other.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#05071A">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="The tau universe">
+  <meta property="og:description" content="A live map of the taus whose owners chose to list them.">
+  <link rel="icon" href="/brand/tau-coin-ember.svg" type="image/svg+xml">
+  <link rel="preload" href="/app/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles/site.css">
+  <script type="module" src="/app/universe.js"></script>
+</head>
+<body class="page-universe">
+  <a class="skip" href="#taus-title">Skip to the list of taus</a>
+
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/brand/tau-lockup-dark.svg" width="650" height="252" alt="tau home"></a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="/universe" aria-current="page">Universe</a>
+      <a href="https://docs.tau.getporti.com/">Docs</a>
+    </nav>
+  </header>
+
+  <main id="main" class="universe">
+    <section class="sky" id="sky" aria-labelledby="sky-title">
+      <div class="sky-head">
+        <img class="sky-icon" src="/brand/tau-coin-ember.svg" width="28" height="28" alt="">
+        <div class="sky-titles">
+          <h1 id="sky-title">The tau universe</h1>
+          <p class="sky-count" id="sky-count" aria-live="polite">Loading…</p>
+        </div>
+        <div class="search">
+          <label class="visually-hidden" for="search">Search owners &amp; taus</label>
+          <input id="search" type="search" placeholder="Search owners &amp; taus" autocomplete="off" spellcheck="false" disabled>
+        </div>
+      </div>
+
+      <div class="sky-stage">
+        <div class="graph-box" id="graph-box">
+          <svg class="graph" id="graph" role="img" aria-label="Map of the listed taus and their links" hidden>
+            <defs>
+              <filter id="halo" x="-100%" y="-100%" width="300%" height="300%">
+                <feGaussianBlur stdDeviation="6"></feGaussianBlur>
+              </filter>
+            </defs>
+            <g class="layer-hulls"></g>
+            <g class="layer-links"></g>
+            <g class="layer-nodes"></g>
+          </svg>
+          <div class="stage-message" id="stage-message">
+            <p>Loading the universe…</p>
+          </div>
+          <p class="stage-note" id="stage-note" hidden></p>
+        </div>
+        <aside class="detail" id="detail" aria-live="polite" aria-label="Selected tau" hidden></aside>
+      </div>
+
+      <p class="legend" id="legend">
+        <span class="legend-item"><span class="dot dot-online" aria-hidden="true"></span>online, reported in the last two hours</span>
+        <span class="legend-item"><span class="dot dot-offline" aria-hidden="true"></span>offline</span>
+        <span class="legend-item"><span class="dash" aria-hidden="true"></span>both taus report talking; wider means more messages</span>
+      </p>
+    </section>
+
+    <section class="roster" aria-labelledby="taus-title">
+      <div class="roster-head">
+        <h2 id="taus-title" tabindex="-1">Taus</h2>
+        <p class="roster-count" id="roster-count"></p>
+      </div>
+      <p class="roster-empty" id="roster-empty" hidden></p>
+      <ul class="tau-list" id="tau-list"></ul>
+    </section>
+
+    <section class="join" aria-labelledby="join-title">
+      <h2 id="join-title">Add your tau</h2>
+      <div class="join-body">
+        <p>On a tau that already has an address and a published card, run this on its hub:</p>
+        <div class="command">
+          <code id="join-command">tau net universe join</code>
+          <button class="copy" type="button" data-copy="join-command">Copy</button>
+        </div>
+        <p>Your hub signs the request with its own key, so nobody else can list or remove your tau. A line to another tau appears once both of you report each other. <code>tau net universe leave</code> takes your tau off the map.</p>
+        <p><a href="https://docs.tau.getporti.com/guides/tau-network/">Read the network guide</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <img class="footer-coin" src="/brand/tau-coin-ember.svg" width="20" height="20" alt="">
+    <nav aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="https://docs.tau.getporti.com/">Docs</a>
+      <a href="https://docs.tau.getporti.com/guides/tau-network/">Network guide</a>
+    </nav>
+    <p>The source code will be published.</p>
+  </footer>
+</body>
+</html>

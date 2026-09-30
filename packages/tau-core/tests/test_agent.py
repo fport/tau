@@ -408,7 +408,8 @@ def _with_components(tmp_path: Path, toml: str) -> Config:
 def test_tools_disabled_applies_after_discovery(tmp_path: Path) -> None:
     config = _with_components(
         tmp_path,
-        "\n[components.tools]\ndisabled = ['demo_physical_action', 'dist:tau-example-tool']\n",
+        "\n[components.tools]\n"
+        "disabled = ['demo_physical_action', 'dist:tau-example-tool', 'dist:tau-net']\n",
     )
     agent = build_agent(config=config)
     assert agent.catalog.names() == ["current_time"]

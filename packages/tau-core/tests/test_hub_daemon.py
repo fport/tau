@@ -339,7 +339,8 @@ def test_discovered_service_adds_status_keys_and_routes(tmp_path: Path) -> None:
     def check(hub: Hub, api: ControlApi) -> None:
         names = [s.name for s in hub.services]
         assert names[0] == "control-api"  # the control API first
-        assert sorted(names[1:]) == ["example", "spend", "telegram"]  # tau-core ships two
+        # tau-core ships spend and telegram; other workspace packages (tau-net) add their own
+        assert {"example", "spend", "telegram"} <= set(names[1:])
         seen["service"] = hub.find_service("example")
         code, status = get_json(f"{api.url}/status")
         assert code == 200 and status["example"] == {"profile": "home"}

@@ -587,6 +587,10 @@ def test_user_file_is_gitignored() -> None:
         ignored = subprocess.run(
             ["git", "check-ignore", "-q", "persona/user.md"], cwd=ROOT, timeout=30
         ).returncode
+        # the public note for other taus (ADR 0007) is the owner's too; only its template is tracked
+        net_ignored = subprocess.run(
+            ["git", "check-ignore", "-q", "persona/net.md"], cwd=ROOT, timeout=30
+        ).returncode
         tracked = subprocess.run(
             ["git", "ls-files", "persona"], cwd=ROOT, capture_output=True, text=True, timeout=30
         )
@@ -595,4 +599,9 @@ def test_user_file_is_gitignored() -> None:
     if tracked.returncode != 0:
         pytest.skip("not a git checkout")
     assert ignored == 0
-    assert sorted(tracked.stdout.split()) == ["persona/persona.md", "persona/user.example.md"]
+    assert net_ignored == 0
+    assert sorted(tracked.stdout.split()) == [
+        "persona/net.example.md",
+        "persona/persona.md",
+        "persona/user.example.md",
+    ]

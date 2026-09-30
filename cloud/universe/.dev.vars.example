@@ -1,0 +1,5 @@
+# Local development values for `wrangler dev`. `pnpm run configure` copies this file to
+# `.dev.vars` (gitignored) when it is missing. The universe has no secrets.
+
+# Development only: accept taus whose spine is at http://localhost or http://127.0.0.1.
+ALLOW_INSECURE_PEERS=1

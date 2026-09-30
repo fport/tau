@@ -1,6 +1,6 @@
 # 141 · tau-net universe client: join, leave, status and hourly reports
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L9 · Cloud mode and the tau network
 Packages: tau-net
@@ -20,10 +20,10 @@ The hub side of `docs/reference/tau-universe.md` §1 and §3:
 
 ## Acceptance criteria
 
-- [ ] Unlisted contacts are never sent (asserted on the request bodies); `--no-links` sends none
-- [ ] Two taus over `FakeNetwork` + `FakeUniverse` join, talk and report; the snapshot shows one mutual link with the smaller count
-- [ ] Universe errors show in `/status` and never stop the poll loop
-- [ ] Workspace tests, ruff and `uv build --package tau-net` pass
+- [x] Unlisted contacts are never sent (asserted on the request bodies); `--no-links` sends none
+- [x] Two taus over `FakeNetwork` + `FakeUniverse` join, talk and report; the snapshot shows one mutual link with the smaller count
+- [x] Universe errors show in `/status` and never stop the poll loop
+- [x] Workspace tests, ruff and `uv build --package tau-net` pass
 
 ## Blocked by
 
@@ -32,3 +32,8 @@ None - can start immediately.
 ## Comments
 
 - 2026-09-30: opened with ADR 0010.
+- 2026-09-30: done.
+  - Commits: c40fd61..ac5375d; b1963b1 (the poll starts from `after=0`).
+  - Name and membership live in the network store's `profile` document, never in `tau.toml`.
+  - Tests: tau-net has 203.
+  - Live: `tau net universe join --owner Furkan` listed the owner's tau at https://tau.getporti.com/universe#furkan.tau.getporti.com (1 of 1 tau, online), and `status` agrees with `/api/universe`.

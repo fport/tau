@@ -277,23 +277,21 @@ pub fn pty_resize(
 }
 
 /// A ⌘-clicked link in the terminal: http and https only, opened in the default browser.
+/// What is opened is the URL as parsed and checked, never the raw text from the page.
 #[tauri::command]
 pub fn open_link(url: String) -> Result<(), String> {
-    if !is_web_link(&url) {
-        return Err(format!("Only http and https links are opened, not {url}"));
-    }
-    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|err| err.to_string())
+    let link =
+        web_link(&url).ok_or_else(|| format!("Only http and https links are opened, not {url}"))?;
+    tauri_plugin_opener::open_url(link, None::<&str>).map_err(|err| err.to_string())
 }
 
-/// `http://` or `https://` with a host; nothing else (no `file:`, no app schemes).
-pub fn is_web_link(url: &str) -> bool {
-    match tauri::Url::parse(url) {
-        Ok(parsed) => {
-            matches!(parsed.scheme(), "http" | "https")
-                && parsed.host_str().is_some_and(|h| !h.is_empty())
-        }
-        Err(_) => false,
-    }
+/// The canonical form of an `http://` or `https://` URL with a host; `None` for anything else
+/// (no `file:`, no app schemes).
+pub fn web_link(url: &str) -> Option<String> {
+    let parsed = tauri::Url::parse(url).ok()?;
+    let web = matches!(parsed.scheme(), "http" | "https")
+        && parsed.host_str().is_some_and(|h| !h.is_empty());
+    web.then(|| parsed.as_str().to_string())
 }
 
 #[cfg(test)]
@@ -302,8 +300,14 @@ mod tests {
 
     #[test]
     fn opens_only_web_links() {
-        assert!(is_web_link("https://example.com/docs"));
-        assert!(is_web_link("http://localhost:8000/"));
+        assert_eq!(
+            web_link("https://example.com/docs").as_deref(),
+            Some("https://example.com/docs")
+        );
+        assert_eq!(
+            web_link("http://localhost:8000/").as_deref(),
+            Some("http://localhost:8000/")
+        );
         for url in [
             "file:///etc/passwd",
             "javascript:alert(1)",
@@ -312,8 +316,26 @@ mod tests {
             "https://",
             "not a url",
         ] {
-            assert!(!is_web_link(url), "{url}");
+            assert_eq!(web_link(url), None, "{url}");
         }
+    }
+
+    #[test]
+    fn opens_the_url_that_was_checked_not_the_raw_text() {
+        // The parser drops outer spaces and control characters and inner tabs and newlines;
+        // what is opened is that parsed form.
+        assert_eq!(
+            web_link(" https://example.com/a b\n").as_deref(),
+            Some("https://example.com/a%20b")
+        );
+        assert_eq!(
+            web_link("https://exa\tmple.com/").as_deref(),
+            Some("https://example.com/")
+        );
+        assert_eq!(
+            web_link("HTTPS://Example.COM").as_deref(),
+            Some("https://example.com/")
+        );
     }
 
     #[test]

@@ -7,7 +7,9 @@
 - :class:`UrllibTransport` is the standard library over the network: no proxy for loopback
   hosts, redirects are never followed (a redirect would carry the bearer token elsewhere) and
   answers are capped in size.
-- :class:`SpineClient` adds the base URL and ``Authorization: Bearer <token>``.
+- :class:`SpineClient` adds the base URL and ``Authorization: Bearer <token>``;
+  :meth:`SpineClient.doorbell` builds the WebSocket doorbell of ``GET /hub/ws``
+  (:mod:`tau_net.doorbell`).
   :meth:`SpineClient.request` never raises for an HTTP status (it returns a
   :class:`SpineResponse`); :meth:`SpineClient.call` raises :class:`SpineError` for a non-2xx
   answer and returns the parsed JSON. Both raise :class:`SpineUnreachable` (a
@@ -28,7 +30,10 @@ import urllib.parse
 import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from tau_net.doorbell import WebSocketDoorbell
 
 __all__ = [
     "DEFAULT_TIMEOUT",
@@ -367,6 +372,13 @@ class SpineClient:
         data = self.call("POST", "/hub/ack", json={"seqs": [int(seq) for seq in seqs]})
         deleted = data.get("deleted") if isinstance(data, dict) else None
         return deleted if isinstance(deleted, int) else 0
+
+    def doorbell(self) -> WebSocketDoorbell:
+        """A (not yet connected) :class:`~tau_net.doorbell.WebSocketDoorbell` for this spine's
+        ``GET /hub/ws``. It connects directly, without the transport or a proxy."""
+        from tau_net.doorbell import WebSocketDoorbell
+
+        return WebSocketDoorbell(self.url, self._token)
 
     # -- cloud mode: state ---------------------------------------------------------------------
 

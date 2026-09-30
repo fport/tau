@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bun run configure [--route HOST] [--client-id ID] [--signup open|LOGINS]
+// bun run configure [--route HOST] [--client-id ID] [--signup open|closed|LOGINS]
 //                    [--universe HOST|off] [--universe-service NAME] [--force]
 //
 // Writes the gitignored `wrangler.jsonc` from wrangler.example.jsonc, and `.dev.vars` from
@@ -9,7 +9,8 @@
 //                       "routes": [{ "pattern": HOST, "custom_domain": true }]
 //                     and sets PUBLIC_HOST to HOST (the zone must be on your Cloudflare account)
 // --client-id ID      the client id of your GitHub OAuth App (GITHUB_CLIENT_ID)
-// --signup VALUE      who may create an account: "open", or a comma list of GitHub logins
+// --signup VALUE      who may create an account: "open", "closed" (nobody new), or a comma
+//                     list of GitHub logins
 // --universe VALUE    the universe hosted taus join (UNIVERSE): a host, or "off" for none;
 //                     without it, the host's own public host (where the universe is the front door)
 // --universe-service NAME   the universe Worker as the service binding UNIVERSE_SERVICE, when it
@@ -33,7 +34,7 @@ const HOST = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
 const usage =
-  "Usage: configure [--route HOST] [--client-id ID] [--signup open|LOGINS] [--universe HOST|off] [--universe-service NAME] [--force]";
+  "Usage: configure [--route HOST] [--client-id ID] [--signup open|closed|LOGINS] [--universe HOST|off] [--universe-service NAME] [--force]";
 const options = { route: null, clientId: null, signup: null, universe: null, universeService: null, force: false };
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
@@ -82,11 +83,11 @@ if (options.clientId !== null && !/^[A-Za-z0-9._-]{4,64}$/.test(options.clientId
 if (options.signup !== null) {
   const raw = options.signup.trim();
   const logins = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  if (raw !== "open" && !logins.every((login) => LOGIN.test(login))) {
-    console.error('--signup takes "open" or a comma list of GitHub logins.');
+  if (raw !== "open" && raw !== "closed" && !logins.every((login) => LOGIN.test(login))) {
+    console.error('--signup takes "open", "closed" or a comma list of GitHub logins.');
     process.exit(2);
   }
-  options.signup = raw === "open" ? "open" : logins.join(",");
+  options.signup = raw === "open" ? "open" : raw === "closed" ? "" : logins.join(",");
 }
 
 if (options.universe !== null) {

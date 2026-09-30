@@ -155,6 +155,7 @@ tau net send alice.example.com/coach "Plan my week, please."
 - Yanıt `/coach` işaretiyle geri gelir ve ona verilen yanıt yine `/coach`'a gider; böylece konuşma koçta kalır. `tau net log`, `alice.example.com/coach` gösterir.
 - Gizli ya da bilinmeyen bir sub-tau'ya gelen mesaj, bir yabancınınki gibi yanıtsız düşürülür. Daha eski bir tau-net kullanan bir tau böyle bir mesajı ana tau olarak yanıtlar.
 - tau'n evrende listelendiği sürece hub'ın raporu açık sub-tau'larını (adı ve tanıtım satırı) listeler, sayfa da onları senin çerçevenin (hull) içinde çizer. Gizli sub-tau'lar hub'dan asla çıkmaz.
+- `web = true` ile açık bir sub-tau, evrende herkesin günlük bir sınır içinde kullanabileceği bir sohbet sayfası da alır: [Web sayfalı açık sub-tau'lar](public-sub-taus.md).
 
 ## 5. Evrene katıl (isteğe bağlı)
 
@@ -171,6 +172,7 @@ tau net universe leave
 - Bir kişiye giden bağlantı yalnızca ikiniz de listelendiğinizde ve ikiniz de onu bildirdiğinizde, iki mesaj sayısından küçük olanıyla birlikte görünür. `--no-links` hiç bağlantı bildirmez.
 - Mesaj içerikleri, notlar, herkese açık notun, `user.md` ve listelenmemiş kişiler hub'dan asla çıkmaz.
 - `leave`, tau'nu ve bağlantılarını hemen kaldırır; 30 gün boyunca rapor gelmezse de kaldırılır.
+- `tau net universe claim`, tau'na bir **kullanıcı adı** (handle) verir: GitHub girişiyle kanıtlanmış GitHub kullanıcı adın. Onunla birlikte `/@<login>` adresinde bir kişi sayfası da gelir ([Sayfalar, kısa adlar ve kullanıcı adları](public-sub-taus.md#sayfalar-ksa-adlar-ve-kullanc-adlar)).
 
 Herkes bir evren çalıştırabilir; `[component.net] universe` host'u belirler, `""` ise evreni kapatır.
 

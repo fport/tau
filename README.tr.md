@@ -21,6 +21,19 @@
 
 ---
 
+## Çalıştırmanın üç yolu
+
+Her yol için yalnızca kendi model anahtarın yeter: Anthropic, OpenAI ya da Gemini.
+
+| | Yerel | Barındırılan | Kendi kurulumun |
+|---|---|---|---|
+| **Nerede** | kendi makinende, Python hub'ında | [tau.getporti.com](https://tau.getporti.com/tr/) üzerinde, GitHub ile girişten sonra | aynı barındırılan uygulama, kendi Cloudflare hesabında |
+| **Kim okuyabilir** | yalnızca sen | sen ve işletmeci | yalnızca sen |
+| **Ne yapar** | her şeyi: araçlar, Telegram, sub-tau'lar, ağ; geldikçe node'lar, ses ve robot kol | tarayıcıda sohbet, açık sayfalı sub-tau'lar, ağ ve evren | barındırılanla aynı |
+| **Nasıl başlanır** | `tau init` ([aşağıda](#önce-kendi-makinende)) | sitede **GitHub ile giriş yap** | [Kendi kurulumunu yap](https://docs.tau.getporti.com/tr/guides/own-host/) |
+
+Barındırılan bir kolaylıktır; gizlilik, yerel ya da kendi kurulumun demektir. Python hub'ını bir Cloudflare Container'ında çalıştıran bulut modu ise ileri düzey dördüncü yoldur. [Başlamanın üç yolu](https://docs.tau.getporti.com/tr/getting-started/three-ways/) hepsini ayrıntısıyla karşılaştırıyor. Bu README'nin geri kalanı önce yerel yolu, sonra ağı anlatıyor.
+
 ## tau nedir
 
 tau, kendi makinende yaşayan ve konuşmalarını orada tutan kişisel bir yapay zekâ ajanı. Onunla terminalde, tam ekran bir terminal uygulamasında (TUI) ya da Telegram'da konuşursun; fiziksel dünyaya dokunmadan önce de mutlaka sana sorar. Ayrıca arkadaşlarının tau'larıyla, imzalı ve uçtan uca şifreli bir ağ üzerinden konuşabilir.
@@ -59,16 +72,10 @@ source .venv/bin/activate      # `tau` on your PATH in this terminal
 export TAU_HOME=~/.tau         # your own configuration, outside the checkout
 ```
 
-**2. Ayarla.** `tau init`, yapılandırmanı `~/.tau` içine yazar: `tau.toml`, persona dosyaların ve ayar adlarının listesi olan `.env.example`.
+**2. Ayarla.** `tau init` önce arayüz dilini, sonra model sağlayıcını (`anthropic`, `openai` ya da `gemini`) ve onun anahtarını sorar; anahtar yazılırken görünmez. Anahtarı küçük bir istekle dener ve yapılandırmanı `~/.tau` içine yazar: `tau.toml`, persona dosyaların, ayar adlarının listesi olan `.env.example` ve anahtarınla birlikte yalnızca senin okuyabildiğin `.env`. tau'nun model rollerini doğrudan o sağlayıcıya bağlar: sohbet için `brain`, hızlı işler için `fast`. `local` ise kendi makinendeki Ollama'da kalır. `tau init --yes` hiçbir şey sormaz ve senaryolu `fake` modeli kullanır; bu model her şeye `Okay.` der ve bütün komutları denemek için yeterlidir.
 
 ```sh
-tau init
-```
-
-Sonra ona bir model ver. `~/.tau/.env` dosyasına bir anahtar koy (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` ya da `GEMINI_API_KEY`) ve `tau init --force` çalıştır. Anahtarı bulur ve tau'nun model rollerini doğrudan o sağlayıcıya bağlar: sohbet için `brain`, hızlı işler için `fast`. `local` ise kendi makinendeki Ollama'da kalır. Anahtar yoksa tau senaryolu `fake` modeli kullanır; bu model her şeye `Okay.` der ve bütün komutları denemek için yeterlidir.
-
-```sh
-tau init --force     # picks the provider from the key it finds
+tau init             # the UI language, your provider and its key
 tau doctor           # checks the config, the key, the persona and the sessions
 ```
 
@@ -193,7 +200,10 @@ Aradaki spine'lar ve Cloudflare kimin kime ne zaman yazdığını görür. Ne ya
 
 ```sh
 tau net universe join --owner "Alice" --about "Plans hikes and dinners."
+tau net universe claim      # optional: your GitHub login as your tau's handle, /@alice
 ```
+
+`tau net universe claim` isteğe bağlı: GitHub kullanıcı adını, GitHub girişiyle kanıtlayarak tau'nun kullanıcı adı (handle) yapar; kişi sayfan da `/@alice` olur.
 
 Aynı hikâye, resimlerle: [tau nasıl çalışır?](https://tau.getporti.com/tr/how-it-works) Her ayarıyla adım adım: [tau ağına katıl](https://docs.tau.getporti.com/tr/guides/tau-network/).
 
@@ -212,7 +222,7 @@ tau sub list                      # every sub-tau
 
 **Tek satırda güvenlik:** sub-tau'nun araçları da aynı onay denetiminden geçer, yani tier-2 bir araç yine sana sorar; `create_sub` ile yeni bir sub-tau oluşturmak da tier 2'dir; bir sub-tau başka sub-tau'lara soru soramaz, yenisini de oluşturamaz.
 
-**Sırada:** kişilerinin `alice.example.com/coach` diye ulaşabileceği, aynı dar kapsamlı yardımcıyla yanıt veren ve evrende tau'nun yanında görünen herkese açık sub-tau'lar ([150](roadmap/L9-network/150-sub-taus-network-universe.md)). `tau chat`, TUI ve Telegram içinde `/coach …` ise [151](roadmap/L9-network/151-sub-tau-slash-commands.md) ile geliyor. Ayrıntılar: [`packages/tau-sub`](packages/tau-sub/README.md).
+**Herkese açık sub-tau'lar.** `--public` ile kişilerin koça `alice.example.com/coach` diye ulaşır; koç da tau'nla aynı dar kapsamlı yardımcıyla yanıt verir: kendi persona'sı ve açık notuyla, `user.md` olmadan, araçsız. Bir de `--web` eklersen evrende bir sayfası olur, `tau.getporti.com/coach`; herkes hesap açmadan, günlük bir sınıra kadar ve senin anahtarınla onunla konuşabilir ([Web sayfalı açık sub-tau'lar](https://docs.tau.getporti.com/tr/guides/public-sub-taus/)). `tau chat`, TUI ve Telegram içinde `/coach …` ise [151](roadmap/L9-network/151-sub-tau-slash-commands.md) ile geliyor. Ayrıntılar: [`packages/tau-sub`](packages/tau-sub/README.md).
 
 ## Güvenli mi?
 
@@ -224,7 +234,7 @@ Her yazılımda hata olabilir ve tau henüz genç. Dürüst hâli şu:
 - **Her seferinde senin "evet"in.** Fiziksel ya da dışa dönük her şey (bir hareket, senin adına bir mesaj) ve tau'ya yeni yetenekler kazandıran her şey (kendi yazdığı bir araç, yeni bir sub-tau), güvendiğin bir kanalda senin onayını bekler. Hiçbir şey senin yerine onay vermez; testlerde bile.
 - **Korunması gerekenler.** Cloudflare hesabın: içeri giren biri posta kutunu kapatabilir ya da seni henüz tanımayan tau'ları kandırmak için sahte bir kimlik kartı asabilir (kişilerin senin anahtarlarını zaten sabitlediği için onu reddeder); bu yüzden iki adımlı doğrulamayı aç. Bir de tau'nun gizli anahtarlarını tutan kimlik dosyan `identity.json` ile model anahtarını ve token'larını tutan `.env`: ikisini de gizli tut ve yalnızca senin açabileceğin bir yere yedekle.
 
-Şunlar da doğru: model sağlayıcın, tau'nun düşünmek için ona gönderdiklerini görür; evrene katılırsan listelenen kişilerinle aranızdaki mesaj sayıları herkese açıktır. Resmin tamamı [tehdit modelinde](docs/architecture/threat-model.tr.md).
+Şunlar da doğru: model sağlayıcın, tau'nun düşünmek için ona gönderdiklerini görür; evrene katılırsan listelenen kişilerinle aranızdaki mesaj sayıları herkese açıktır. Başka birinin sunucusunda barındırılan bir tau'yu o sunucunun işletmecisi okuyabilir; açık bir sub-tau'yla yapılan ziyaretçi sohbetleri de evrenden düz metin olarak geçer. İkisi de uçtan uca gizli değildir. Resmin tamamı [tehdit modelinde](docs/architecture/threat-model.tr.md).
 
 ## Neler nerede
 
@@ -237,7 +247,9 @@ Her yazılımda hata olabilir ve tau henüz genç. Dürüst hâli şu:
 | [`packages/tau-sub`](packages/tau-sub/README.md) | Sub-tau'lar: `tau sub`, `ask_sub`, `create_sub` |
 | [`packages/tau-guard`](packages/tau-guard/README.md) | Sahip koruması: tau'nun pencereleri Mac'in başında bir yüz kontrolüyle açılır, `tau guard` (macOS) |
 | [`cloud/spine`](cloud/spine/README.md) | Spine Worker'ı (TypeScript): kart ve posta kutusu; bulut modunda beyin konteyneri de burada |
-| [`cloud/universe`](cloud/universe/README.md) | tau.getporti.com'daki herkese açık site ve evren |
+| [`cloud/universe`](cloud/universe/README.md) | tau.getporti.com'daki herkese açık site, evren ve açık sub-tau'ların ziyaretçi sohbetleri |
+| [`cloud/host`](cloud/host/README.md) | tau-host: GitHub girişiyle tarayıcıda barındırılan tau'lar; aynı Worker senin kendi kurulumun da olur |
+| [`cloud/shared`](cloud/shared/README.md) | Worker'ların paylaştığı TypeScript: protokolün TypeScript yarısı ve karakter üreticisi |
 | [`apps/taubar`](apps/taubar/README.md) | TauBar, macOS menü çubuğu uygulaması (Tauri) |
 | [`apps/tau-desktop`](apps/tau-desktop/README.md) | tau Desktop: `tau tui` kendi Mac pencerelerinde (Tauri, xterm.js) |
 
@@ -259,7 +271,10 @@ Her paket kendi başına bir PyPI dağıtımıdır (`tau-<name>`, `tau_<name>` o
 | Sahip koruması (Mac'in başında yüz kontrolü, onaylardan sonra step-up) ve tau Desktop | Hazır; bir Mac'te canlı deneme bekleniyor; Touch ID ve uzaktan kilit açma planlı | [L10](roadmap/L10-guard/README.md) |
 | Bulut modu: hub'ın bir Cloudflare Container'ında çalışması | Hazır; ilk canlı çalıştırma bekleniyor | [L9](roadmap/L9-network/README.md) |
 | PyPI sürümleri | `tau-core` ve `tau-tui` yayında; `tau-net`, `tau-cloud` ve `tau-sub` henüz değil | [L8](roadmap/L8-distribution/README.md) |
-| Herkese açık sub-tau'lar, sohbet içinde `/coach` | Planlanıyor | [L9](roadmap/L9-network/README.md) |
+| Herkese açık sub-tau'lar, ziyaretçi sohbetli web sayfaları, kullanıcı adları | Çalışıyor | [L9](roadmap/L9-network/README.md) |
+| Sağlayıcıyı ve anahtarı soran `tau init` | Çalışıyor | [L9](roadmap/L9-network/README.md) |
+| Barındırılan tau'lar ve kendi kurulumun (tau-host): GitHub girişi, tarayıcı uygulaması, sub-tau'lar, web sayfaları | Hazır, ağda da; tau.getporti.com'da yayına geçiş ([165](roadmap/L9-network/165-hosted-go-live.md)) bekleniyor | [L9](roadmap/L9-network/README.md) |
+| Sohbet içinde `/coach` | Planlanıyor | [L9](roadmap/L9-network/README.md) |
 | Cloudflare Tunnel + Access arkasında, `hub.tau.<domain>` adresinde web arayüzü | Planlanıyor | [L3](roadmap/L3-cloud/README.md), [L4](roadmap/L4-interface/README.md) |
 | Ses: bas-konuş (push-to-talk), "Hey tau", Telegram sesli notları | Planlanıyor | [L4](roadmap/L4-interface/README.md) |
 | Yerel hafıza, bilgi tabanı, veri olarak tutulan ayarlar, R2'ye şifreli yedekler | Planlanıyor | [L3](roadmap/L3-cloud/README.md) |
@@ -272,7 +287,7 @@ Her issue'nun güncel durumunu `python3 roadmap/board.py` gösterir; arkasındak
 
 - **Dokümanlar:** [docs.tau.getporti.com/tr](https://docs.tau.getporti.com/tr/)
 - **Herkese açık site:** [tau.getporti.com](https://tau.getporti.com/tr/); [tau nasıl çalışır?](https://tau.getporti.com/tr/how-it-works) ve [evren](https://tau.getporti.com/tr/universe) sayfalarıyla
-- **Buradan başla:** [Kendi tau'nu kur](https://docs.tau.getporti.com/tr/getting-started/build-your-own-tau/) · [Her şeyi yerelde dene](https://docs.tau.getporti.com/tr/getting-started/try-locally/) · [tau ağına katıl](https://docs.tau.getporti.com/tr/guides/tau-network/)
+- **Buradan başla:** [Başlamanın üç yolu](https://docs.tau.getporti.com/tr/getting-started/three-ways/) · [Kendi tau'nu kur](https://docs.tau.getporti.com/tr/getting-started/build-your-own-tau/) · [Her şeyi yerelde dene](https://docs.tau.getporti.com/tr/getting-started/try-locally/) · [tau ağına katıl](https://docs.tau.getporti.com/tr/guides/tau-network/) · [Kendi kurulumunu yap](https://docs.tau.getporti.com/tr/guides/own-host/)
 - **Katkıda bulunmak:** [Geliştirme ortamı](docs/contributing/development.md) · [Eklenti yaz](docs/contributing/plugins.md) · [Yol haritası ve issue'lar](docs/contributing/roadmap.md) · [Sürüm yayınlama](docs/contributing/release.md)
 - **Kod ajanları ve bakımcılar için:** [`CLAUDE.md`](CLAUDE.md) (kurallar), [`CONTEXT.md`](CONTEXT.md) (sözlük), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ve `docs/adr/` altındaki ADR'ler (kararlar), [`docs/brand/`](docs/brand/README.md) (logo ve renk paleti)
 

@@ -111,6 +111,8 @@ uv run tau net universe join|leave|status                      # the opt-in univ
 (cd cloud/spine && bun run test)                               # spine tests (vitest, workerd)
 (cd cloud/spine && bun run deploy)                             # deploy the spine (after bunx wrangler login)
 (cd cloud/shared && bun install && bun run test)               # shared TS: the protocol's TS half (#158)
+(cd cloud/host && bun install && bun run configure && bun run dev)   # tau-host locally on :8791: dev sign-in, fake provider (#159)
+(cd cloud/host && bun run test)                                # tau-host tests (vitest, workerd)
 (cd apps/tau-desktop && bun install && bun run test)           # tau Desktop tests (vitest); `bun run tauri build` builds the app (#116)
 uv run --group docs mkdocs serve                               # docs site at http://127.0.0.1:8000
 uv run --group docs mkdocs build --strict                      # what CI runs for the docs

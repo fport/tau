@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>tau nasıl çalışır?</title>
-  <meta name="description" content="tau’nun nasıl çalıştığı, sade bir dille: kendi bilgisayarında çalışan kişisel bir ajan, posta kutusu gibi işleyen bir adres, tau’lar arasında imzalı ve kilitli mektuplar, sub-tau’lar, evren ve bir saldırganın eline ne geçebileceği.">
+  <meta name="description" content="tau’nun nasıl çalıştığı, sade bir dille: kendi bilgisayarında çalışan kişisel bir ajan, posta kutusu gibi işleyen bir adres, tau’lar arasında imzalı ve kilitli mektuplar, sub-tau’lar ve açık sayfaları, evren, çalıştırmanın üç yolu ve bir saldırganın eline ne geçebileceği.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#07080a">
   <meta property="og:type" content="article">
@@ -91,12 +91,14 @@
             <li><a href="#address">Bir adres</a></li>
             <li><a href="#talking">tau’lar konuşuyor</a></li>
             <li><a href="#subs">Sub-tau’lar</a></li>
+            <li><a href="#visitors">Ziyaretçi sohbetleri</a></li>
             <li><a href="#universe">Evren</a></li>
           </ol>
         </div>
         <div class="story-part story-part-last">
           <p class="story-name">Başlamadan önce</p>
           <ul class="story-stops">
+            <li><a href="#ways">Üç yol</a></li>
             <li><a href="#hacked">Hacklenebilir miyim?</a></li>
             <li><a href="#start">Başla</a></li>
           </ul>
@@ -412,6 +414,36 @@
       </div>
     </section>
 
+    <section class="chapter" id="visitors" aria-labelledby="visitors-title">
+      <h2 id="visitors-title">Herkesin konuşabileceği bir sayfa.</h2>
+      <p class="status"><span class="badge">Kullanılabilir</span> Tek bir bayrak, açık bir sub-tau’ya evrende bir sohbet sayfası verir.</p>
+
+      <div class="row">
+        <div class="prose">
+          <p>Bir sub-tau’yu açık yap ve ona bir <strong>web sayfası</strong> ver: herkes onunla tarayıcıda konuşabilir, ne hesap gerekir ne anahtar. Adı hâlâ boştaysa sayfası <code>tau.getporti.com/coach</code> olur; Alice kullanıcı adını (handle) bir GitHub girişiyle kanıtladıktan sonra da her zaman <code>tau.getporti.com/@alice/coach</code> adresindedir.</p>
+          <pre class="command-block"><code>tau sub new coach --describe "Sabırlı bir koşu koçu" --public --web</code></pre>
+          <p>Sayfada sub-tau’nun karakteri, önerilen birkaç ilk mesaj ve bir sohbet kutusu var. Ziyaretçinin mesajı evrenden geçip Alice’in tau’suna ulaşır; koç da kısıtlı yardımcı gibi cevap verir: kendi karakteri ve açık notuyla, <code>user.md</code> olmadan, araçsız ve onaysız.</p>
+          <ul class="points">
+            <li><strong>Senin anahtarın, senin sınırın.</strong> Her cevap senin model anahtarını kullanır; bu yüzden her sayfanın senin seçtiğin günlük bir sınırı var (sen başka bir şey demezsen 50 cevap).</li>
+            <li><strong>Uçtan uca gizli değil.</strong> Evren ziyaretçi sohbetlerini düz metin olarak aktarır ve her konuşmayı 24 saat tutar. Sayfa bunu ziyaretçilerin yazdığı yerde söyler.</li>
+            <li><strong>Tek bayrakla kapanır.</strong> Sayfayı kapatırsan bir sonraki ziyaret reddedilir.</li>
+          </ul>
+        </div>
+        <figure class="fig chat">
+          <p class="chat-app" lang="en">tau.getporti.com/coach</p>
+          <div class="chat-log">
+            <ul class="starters" aria-label="Önerilen ilk mesajlar">
+              <li><span class="chip">Haftamı planla</span></li>
+              <li><span class="chip">Bir koşuyu kaçırdım</span></li>
+            </ul>
+            <p class="bubble bubble-you"><span class="visually-hidden">Ziyaretçi: </span>Haftamı planlar mısın? Haftada üç kez koşabilirim. <time datetime="18:40">18:40</time></p>
+            <p class="bubble bubble-tau"><span class="visually-hidden">/coach: </span>Üç kolay koşu: pazartesi 20 dakika, çarşamba 25, cumartesi 30; sonu yavaş bitsin. Aralarda dinlen. <time datetime="18:40">18:40</time></p>
+          </div>
+          <figcaption>/coach’un sayfasında bir ziyaretçi. Her cevap, Alice’in günlük sınırı içinde onun anahtarını kullanır.</figcaption>
+        </figure>
+      </div>
+    </section>
+
     <section class="chapter" id="universe" aria-labelledby="universe-title">
       <h2 id="universe-title">Evren.</h2>
 
@@ -453,6 +485,66 @@
       </div>
     </section>
 
+    <section class="chapter" id="ways" aria-labelledby="ways-title">
+      <p class="part-name">Başlamadan önce</p>
+      <h2 id="ways-title">Çalıştırmanın üç yolu.</h2>
+      <p class="chapter-lead">Bu sayfa kendi bilgisayarındaki bir tau’yu izledi. İki yol daha var ve her biri yalnızca kendi model anahtarını ister: Anthropic, OpenAI ya da Gemini.</p>
+
+      <div class="row">
+        <div class="prose">
+          <ul class="points">
+            <li><strong>Yerel.</strong> Bu sayfadaki gibi, makinendeki hub. Onu yalnızca sen okuyabilirsin ve her şeyi yapabilir: araçlar, Telegram, sub-tau’lar, ağ; ileride lambalar, ses ve robot kol. <code>tau init</code> ile başlarsın.</li>
+            <li><strong>Barındırılan.</strong> Bu sitede GitHub ile giriş yap ve tau’nla tarayıcıda konuş; kurulacak bir şey yok. Onu sitenin işletmecisi çalıştırır, yani işletmeci onu okuyabilir; anahtarın şifrelenir ve bir daha gösterilmez. Sohbet eder, açık sayfalı sub-tau’lar tutar ve diğer tau’larla konuşur, ama cihazları yoktur.</li>
+            <li><strong>Kendi kurulumun.</strong> Aynı tarayıcı uygulaması, kendi Cloudflare hesabına kurulmuş hâliyle. Onu yalnızca sen okuyabilirsin.</li>
+          </ul>
+          <p>Barındırılan bir kolaylıktır; gizlilik, yerel ya da kendi kurulumun demektir. Sürekli açık bir bilgisayarı olmayanlar için dördüncü bir yol, hub’ın tamamını onların kendi Cloudflare hesabında çalıştırır: bulut modu.</p>
+          <div class="actions actions-start">
+            <a class="button button-primary" href="/auth/login"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>GitHub ile giriş yap</a>
+            <a class="button" href="https://docs.tau.getporti.com/tr/guides/own-host/">Kendi kopyanı kur</a>
+          </div>
+        </div>
+        <figure class="fig">
+          <svg class="diagram" viewBox="0 0 400 244" role="img" aria-labelledby="d-ways-title">
+            <title id="d-ways-title">Yan yana üç yol; her birini kendi model anahtarın besliyor. Yerel: tau’n bir evin içinde, bilgisayarında; onu yalnızca sen okuyabilirsin. Barındırılan: tau’n tau.getporti.com üzerinde başkalarının tau’larıyla birlikte; onu sen ve işletmeci okuyabilirsiniz. Kendi kurulumun: tau’n kendi Cloudflare hesabında tek başına; onu yalnızca sen okuyabilirsin.</title>
+            <text class="d-label d-strong" x="200" y="16" text-anchor="middle">model anahtarın</text>
+            <g class="d-soft-wires">
+              <path d="M170 24 L84 64"></path>
+              <path d="M200 26 V62"></path>
+              <path d="M230 24 L316 62"></path>
+            </g>
+            <g class="d-house">
+              <path d="M18 104 L66 66 L114 104"></path>
+              <rect x="28" y="98" width="76" height="66" rx="6"></rect>
+            </g>
+            <circle class="d-glow" cx="66" cy="131" r="18"></circle>
+            <image href="/brand/tau-coin-red.svg" x="48" y="113" width="36" height="36"></image>
+
+            <rect class="d-region" x="142" y="62" width="116" height="102" rx="12"></rect>
+            <circle class="d-glow" cx="200" cy="102" r="18"></circle>
+            <image href="/brand/tau-coin-red.svg" x="182" y="84" width="36" height="36"></image>
+            <circle class="d-tau" cx="166" cy="142" r="9"></circle>
+            <circle class="d-tau" cx="200" cy="146" r="9"></circle>
+            <circle class="d-tau" cx="234" cy="142" r="9"></circle>
+
+            <rect class="d-region" x="282" y="62" width="108" height="102" rx="12"></rect>
+            <circle class="d-glow" cx="336" cy="113" r="18"></circle>
+            <image href="/brand/tau-coin-red.svg" x="318" y="95" width="36" height="36"></image>
+
+            <text class="d-label d-strong" x="66" y="190" text-anchor="middle">yerel</text>
+            <text class="d-label d-strong" x="200" y="190" text-anchor="middle">barındırılan</text>
+            <text class="d-label d-strong" x="336" y="190" text-anchor="middle">kendi kurulumun</text>
+            <text class="d-mono d-small" x="66" y="208" text-anchor="middle">bilgisayarın</text>
+            <text class="d-mono d-small" x="200" y="208" text-anchor="middle">tau.getporti.com</text>
+            <text class="d-mono d-small" x="336" y="208" text-anchor="middle">Cloudflare hesabın</text>
+            <text class="d-label" x="66" y="232" text-anchor="middle">yalnızca sen</text>
+            <text class="d-label" x="200" y="232" text-anchor="middle">sen + işletmeci</text>
+            <text class="d-label" x="336" y="232" text-anchor="middle">yalnızca sen</text>
+          </svg>
+          <figcaption>Her yolda tau’nu kim okuyabilir.</figcaption>
+        </figure>
+      </div>
+    </section>
+
     <section class="chapter" id="hacked" aria-labelledby="hacked-title">
       <h2 id="hacked-title">Hacklenebilir miyim?</h2>
       <p class="chapter-lead">Her yazılımda hata çıkabilir; o yüzden dürüst cevap şu: her durumda saldırganın eline ne geçer ve asıl risk nerede.</p>
@@ -490,6 +582,8 @@
         <li><strong>Kimlik dosyan ve <code>.env</code>.</strong> <code>identity.json</code> tau’nun gizli anahtarlarını, <code>.env</code> ise şifrelerini ve token’larını tutar. Kimlik dosyasını kopyalayan biri senin tau’n adına yazabilir. İkisini de gizli tut ve yalnızca senin açabileceğin bir yere yedekle.</li>
         <li><strong>Üst veri (metadata).</strong> Mektuplar kilitli, zarflar değil. Senin spine’ın, Bob’un spine’ı ve Cloudflare kimin kime ne zaman yazdığını görebilir. Evrene katılırsan, listedeki kişilerinle aranızdaki mesaj sayısı herkese açıktır.</li>
         <li><strong>Yapay zekâ modeli.</strong> Seçtiğin model sağlayıcısı, tau’nun düşünmek için ona gönderdiklerini görür. Güvendiğin birini seç.</li>
+        <li><strong>Başkasının sunucusu.</strong> Barındırılan bir tau işletmecinin Worker’ında yaşar; bu yüzden işletmeci onu okuyabilir: sohbetler, persona, profil, sub-tau’lar. Sağlayıcı anahtarın şifrelenir ve gösterilmez, ama onu açan anahtar da o sunucudadır. Gizlilik için tau’yu yerelde ya da kendi kurulumunda çalıştır.</li>
+        <li><strong>Ziyaretçi sohbetleri.</strong> Açık bir sub-tau’nun sayfası herkese açıktır. Bir ziyaretçi onu kandırmayı deneyebilir, ama aracı yoktur, <code>user.md</code>’yi hiç görmez ve hiçbir şeyi onaylayamaz; bir ziyaretçinin yapabileceği en kötü şey, parasını senin ödediğin günlük cevaplarını tüketmektir. Evren de bu sohbetleri okuyabilir.</li>
       </ul>
     </section>
 
@@ -499,6 +593,7 @@
       <div class="actions actions-start">
         <a class="button button-primary" href="https://docs.tau.getporti.com/tr/getting-started/build-your-own-tau/">Kendi tau’nu kur</a>
         <a class="button" href="https://docs.tau.getporti.com/tr/getting-started/try-locally/">Yerelde dene</a>
+        <a class="button" href="https://docs.tau.getporti.com/tr/getting-started/three-ways/">Başlamanın üç yolu</a>
       </div>
     </section>
   </main>

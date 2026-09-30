@@ -46,27 +46,33 @@ Commands:
 ```text
 Usage: tau init [OPTIONS]
 
-  Set up a configuration root: tau.toml from the shipped template (provider
-  picked from the credentials present in the environment or <home>/.env:
-  anthropic, openai, gemini, bedrock, else fake), persona/persona.md,
-  persona/user.example.md, persona/user.md (from the example, unless it
-  exists) and .env.example (the variable names). Existing files are kept
-  unless --force is given; user.md and .env.example are never overwritten.
+  Set up a configuration root: tau.toml from the shipped template,
+  persona/persona.md, persona/user.example.md, persona/user.md (from the
+  example, unless it exists) and .env.example (the variable names). The
+  provider is picked from the credentials present in the environment or
+  <home>/.env (anthropic, openai, gemini, bedrock). Without any, tau init asks
+  for a provider (anthropic, openai or gemini) and its key with hidden input,
+  checks the key with one small request to the provider (--no-check skips it)
+  and appends it to <home>/.env, which is kept at mode 0600; a key the
+  provider refuses writes nothing. --yes asks nothing and falls back to the
+  scripted 'fake' provider. Existing files are kept unless --force is given;
+  user.md and .env.example are never overwritten.
 
 Options:
   -h, --help       Show this help and exit.
   --home DIR       Configuration root to create (default: TAU_HOME, else
                    ~/.tau).
   --provider NAME  Provider for the brain and fast roles (default: the first
-                   with credentials).
+                   with credentials, else asked).
   --language LANG  UI language, en | tr (asked when not given, unless --yes).
   --profile NAME   Write TAU_PROFILE=NAME into <home>/.env (appended; an
                    existing value is kept).
-  -y, --yes        Ask nothing; use defaults for what is not given.
+  --no-check       Do not check a typed key with a request to the provider.
+  -y, --yes        Ask nothing; use defaults for what is not given (no key).
   --force          Overwrite an existing tau.toml and persona.md.
 ```
 
-`--provider`; `anthropic`, `openai`, `gemini`, `bedrock` ya da `fake` değerlerini kabul eder. Yazdığı model id'leri paketle birlikte gelen bir tablodan gelir; böylece tau-core'un Python kodu hiçbir modelin adını anmaz. `--provider` verilmezse `ANTHROPIC_API_KEY` ayarlıysa `anthropic` seçilir, sonra `openai` (`OPENAI_API_KEY`), sonra `gemini` (`GEMINI_API_KEY` ya da `GOOGLE_API_KEY`), sonra `bedrock` (AWS kimlik bilgileri), hiçbiri yoksa `fake`.
+`--provider`; `anthropic`, `openai`, `gemini`, `bedrock` ya da `fake` değerlerini kabul eder. Yazdığı model id'leri paketle birlikte gelen bir tablodan gelir; böylece tau-core'un Python kodu hiçbir modelin adını anmaz. `--provider` verilmezse `ANTHROPIC_API_KEY` ayarlıysa `anthropic` seçilir, sonra `openai` (`OPENAI_API_KEY`), sonra `gemini` (`GEMINI_API_KEY` ya da `GOOGLE_API_KEY`), sonra `bedrock` (AWS kimlik bilgileri). Hiçbiri yoksa `--yes` `fake` seçer; `--yes` yoksa sorar.
 
 - Yalnızca `brain` ve `fast` rollerinin `provider` ve `model_id` değerlerini yeniden yazar; `anthropic` şablonu geldiği gibi yazar.
 - `budget` tabloları kalır (tau onları her sağlayıcı için uygular) ve `local` Ollama'da kalır (`qwen3.5:9b`, `failover = "fast"`).
@@ -74,6 +80,14 @@ Options:
 ```text
 Provider: anthropic. ANTHROPIC_API_KEY was found in the environment or ~/.tau/.env. tau.toml caps brain and fast with budgets tau enforces itself (`tau spend` shows them), and local uses Ollama on this machine, falling back to fast when it is not running.
 ```
+
+**Sağlayıcı anahtarı** ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §7). Kimlik bilgisi olmayan bir makinede etkileşimli çalıştırma önce arayüz dilini, sonra sağlayıcıyı (`anthropic`, `openai` ya da `gemini`; varsayılan `anthropic`) ve onun anahtarını gizli girişle sorar. Anahtarı olmayan bir `--provider anthropic|openai|gemini` yalnızca anahtarı sorar.
+
+- Anahtar, sağlayıcının model listesine tek bir `GET` ile denenir; anahtar URL'de değil, bir istek başlığında gider ve yönlendirmeler izlenmez. `--no-check` denemeyi atlar.
+- Reddedilen bir anahtar (`401`/`403`), başka bir durum kodu ya da yanıtsızlık stderr'de açıklanır; hiçbir şey yazılmaz ve çıkış kodu 1'dir.
+- Anahtar `<home>/.env` dosyasına `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` ya da `GEMINI_API_KEY` olarak yazılır: yeni dosya `0600` izniyle oluşturulur; var olan dosya `0600` iznine çekilir ve satır, diğerlerine dokunulmadan sona eklenir. Zaten değeri olan bir ad korunur.
+- Boş bırakılan anahtar atlanır: `tau.toml` o sağlayıcı için yazılır ve bir not, sonra eklenecek değişkenin adını verir.
+- Sorular ve notlar seçilen arayüz dilini izler (mesaj tablosunun `init.*` anahtarları); anahtar asla çıktıda, argv'de ya da bir logda görünmez.
 
 Başarıda çıkış kodu 0'dır; var olan her dosyayı olduğu gibi bıraktığında da.
 

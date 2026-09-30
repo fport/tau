@@ -118,47 +118,41 @@ Bu **yerel mod**: beyin evde çalışır. Açık kalabilecek bir makinen yoksa [
 
 ## 4. Yapılandır: `tau init`, bir model anahtarı, `tau doctor`
 
-<!-- verified: run (clean TAU_HOME and TAU_DATA_DIR; a dummy ANTHROPIC_API_KEY for the second part, since tau doctor never calls the model; paths shortened to ~) -->
+<!-- verified: run (clean TAU_HOME and TAU_DATA_DIR; the key check answered by a test double, since the page has no real key; tau doctor never calls the model; paths shortened to ~) -->
 
-`tau init`, **yapılandırma kökünü** (varsayılan olarak `~/.tau`) yazar: `tau.toml` (her rolü hangi sağlayıcının ve modelin karşıladığı), `persona/` (tau'nun karakteri ve senin hakkındaki bilgiler) ve `.env.example` (her ayarın adı). Tek bir soru sorar: arayüz dili.
+`tau init`, **yapılandırma kökünü** (varsayılan olarak `~/.tau`) yazar: `tau.toml` (her rolü hangi sağlayıcının ve modelin karşıladığı), `persona/` (tau'nun karakteri ve senin hakkındaki bilgiler) ve `.env.example` (her ayarın adı). Önce arayüz dilini sorar; bu makinede henüz model anahtarı olmadığı için ardından sağlayıcını ve onun anahtarını. [Anthropic](https://console.anthropic.com), OpenAI ya da Gemini hesabının anahtarını hazır tut; anahtar gizli yazılır ve asla gösterilmez.
 
 ```sh
 tau init
 ```
 
 ```text
-Provider: fake. No model credentials were found in the environment or ~/.tau/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY to ~/.tau/.env (names are in ~/.tau/.env.example) and run `tau init --force`, or edit tau.toml.
-UI language (en, tr) [en]: en
+UI language (en, tr) [en]: tr
+Ortamda ya da ~/.tau/.env içinde model anahtarı bulunamadı. tau'nun bir sağlayıcıdan anahtara ihtiyacı var (`tau init --yes` anahtarsız, senaryolu 'fake' sağlayıcıyı kurar).
+Sağlayıcı (anthropic, openai, gemini) [anthropic]: anthropic
+ANTHROPIC_API_KEY (gizli; boş bırakırsan atlanır):
+Anahtar anthropic sağlayıcısına tek bir küçük istekle deneniyor...
+anthropic anahtarı kabul etti.
 wrote ~/.tau/tau.toml
 wrote ~/.tau/persona/persona.md
 wrote ~/.tau/persona/user.example.md
 wrote ~/.tau/persona/user.md
 wrote ~/.tau/.env.example
-Configuration root: ~/.tau (UI language: en).
+ANTHROPIC_API_KEY, ~/.tau/.env dosyasına yazıldı (izin 0600)
+Configuration root: ~/.tau (UI language: tr).
 Next: edit persona/user.md, then run `tau doctor` and `tau chat`.
 ```
 
-Şimdi ona bir model ver. Kimlik bilgileri `tau.toml` içinde değil, her zaman `~/.tau/.env` içinde yaşar. Dosyayı oluştur, erişimini kendine kısıtla ve anahtarını herhangi bir editörle ekle:
+Deneme, sağlayıcının model listesi için tek bir istektir; ücretsizdir ve anahtar bir istek başlığında gider. Sağlayıcının reddettiği bir anahtar `tau init`'i hiçbir şey yazmadan durdurur; doğru anahtarla yeniden çalıştır. `--no-check` isteği atlar; internete erişimi olmayan bir makine içindir. Anahtar `tau.toml` içine değil, `~/.tau/.env` dosyasına gider: dosya `0600` izniyle oluşturulur (yalnızca sen okuyabilirsin), var olan bir `.env` ise diğer satırlarını korur.
+
+!!! tip "Henüz anahtar yok ya da anahtar zaten `.env` içinde"
+    Anahtar sorusunda Enter'a basarak onu atla: `tau.toml` o sağlayıcı için yazılır, anahtarı sonra `~/.tau/.env` dosyasına eklersin. `tau init --yes` hiçbir şey sormaz ve senaryolu `fake` sağlayıcıyı kurar; arayüzü denemek için yeterlidir. Ortamda ya da `~/.tau/.env` içinde zaten bulunan bir anahtar soru sorulmadan bulunur ve kullanılır; elle bir anahtar ekledikten sonra `tau init --force`, `brain` ve `fast` rollerini onun sağlayıcısına geçirir. `--force`, `tau.toml` ve `persona.md` dosyalarını yeniden yazar; `user.md` dosyasına ve `.env` içindeki mevcut satırlara asla dokunmaz.
 
 ```sh
-touch ~/.tau/.env && chmod 600 ~/.tau/.env
-nano ~/.tau/.env              # or any editor
-```
-
-```sh
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-OpenAI ya da Gemini anahtarıyla bunun yerine `OPENAI_API_KEY=sk-...` ya da `GEMINI_API_KEY=...` yaz. `tau init --force` komutunu bir kez daha çalıştır. Anahtarı bulur ve `brain` ile `fast` rollerini o sağlayıcıya geçirir. `--force`, `tau.toml` ve `persona.md` dosyalarını yeniden yazar; `user.md` ya da `.env` dosyalarına asla dokunmaz.
-
-```sh
-tau init --force
 tau doctor
 ```
 
 ```text
-Provider: anthropic. ANTHROPIC_API_KEY was found in the environment or ~/.tau/.env. tau.toml caps brain and fast with budgets tau enforces itself (`tau spend` shows them), and local uses Ollama on this machine, falling back to fast when it is not running.
-…
 ok   config: ~/.tau/tau.toml loaded
 ok   role brain: provider 'anthropic', credentials present
 ok   role fast: provider 'anthropic', credentials present
@@ -174,7 +168,7 @@ info telegram: not configured (TELEGRAM_BOT_TOKEN is not set)
 12 checks: 10 ok, 0 warnings, 0 failed
 ```
 
-`tau doctor` modeli asla çağırmaz; bu yüzden yanlış yazılmış bir anahtar ancak ilk mesajda ortaya çıkar. Konuşmadan önce iki şey daha:
+`tau doctor` modeli asla çağırmaz. `tau init` yazdığın anahtarı denedi; `.env` dosyasına elle koyduğun bir anahtar ise ancak ilk mesajda ortaya çıkar. Konuşmadan önce iki şey daha:
 
 - `~/.tau/persona/user.md` içinde **tau'ya kendinden bahset**: sana nasıl hitap edeceğini, şehrini, saatlerini. Bu dosya özeldir, hub'dan asla çıkmaz ve başka bir tau'ya asla gösterilmez.
 - **Harcama üst sınırları** zaten açık: `brain` ayda 15 $ harcayabilir (sonra `fast` yanıt verir), `fast` ise günde 1 $. tau her yanıtı fiyatlandırır ve sınırları kendisi uygular; `tau spend` harcamayı, `tau.toml` da sınırları gösterir ([Modeller ve bütçeler](../guides/models-and-budgets.md)). Sağlayıcının konsolunda da aylık bir limit belirle.

@@ -58,7 +58,18 @@ tau --help
 tau init
 ```
 
-It asks one question, the UI language (`en` or `tr`), and then writes:
+It asks the UI language (`en` or `tr`). When it finds no model key in the environment or `~/.tau/.env`, it then asks which provider you use (`anthropic`, `openai` or `gemini`) and that provider's key, typed hidden. It checks the key with one small request to the provider (the list of models, which costs nothing) and writes it to `~/.tau/.env`, which it keeps at mode `0600`:
+
+```text
+UI language (en, tr) [en]: en
+No model key was found in the environment or ~/.tau/.env. tau needs a key from one provider (`tau init --yes` sets up the scripted 'fake' provider without one).
+Provider (anthropic, openai, gemini) [anthropic]: anthropic
+ANTHROPIC_API_KEY (hidden; empty skips):
+Checking the key with one small request to anthropic...
+anthropic accepted the key.
+```
+
+A key the provider refuses, or a check that gets no answer, stops `tau init` before it writes anything; `--no-check` skips the request. An empty key skips the key: the configuration is written for that provider, and you add the key to `.env` later. `--yes` asks nothing and keeps the old behaviour: it picks the provider from the credentials it finds, else `fake`. Then `tau init` writes:
 
 | File | What it is |
 |---|---|
@@ -67,8 +78,9 @@ It asks one question, the UI language (`en` or `tr`), and then writes:
 | `persona/user.example.md` | A made-up example of the facts file. |
 | `persona/user.md` | Your copy of the example. Edit it; it is the only place for real facts about you. |
 | `.env.example` | The names of every credential and setting `tau doctor` knows about. Your real values go into `.env` next to it. |
+| `.env` | Your key, when you typed one (mode `0600`, appended to an existing file without touching its other lines). |
 
-`tau init` picks the provider from the credentials it can see: Anthropic (`ANTHROPIC_API_KEY`), then OpenAI (`OPENAI_API_KEY`), then Gemini (`GEMINI_API_KEY` or `GOOGLE_API_KEY`), then Bedrock, else `fake`. It writes that provider's models for `brain` and `fast`, keeps the budgets tau enforces for them ($15 a month for `brain`, $1 a day for `fast`), and puts `local` on Ollama with `fast` as its failover. With no credentials at all you get a working configuration on the `fake` provider and a note saying so. Existing files are kept unless you pass `--force`; `user.md` and `.env.example` are never overwritten.
+When credentials are already there, `tau init` picks the provider from them and asks nothing about keys: Anthropic (`ANTHROPIC_API_KEY`), then OpenAI (`OPENAI_API_KEY`), then Gemini (`GEMINI_API_KEY` or `GOOGLE_API_KEY`), then Bedrock. It writes that provider's models for `brain` and `fast`, keeps the budgets tau enforces for them ($15 a month for `brain`, $1 a day for `fast`), and puts `local` on Ollama with `fast` as its failover. `tau init --yes` with no credentials at all gives you a working configuration on the `fake` provider and a note saying so. Existing files are kept unless you pass `--force`; `user.md` and `.env.example` are never overwritten.
 
 !!! note "Where is the root?"
     tau looks for `tau.toml` in this order: the `--home DIR` option, the `TAU_HOME` variable, the current directory when it holds a `tau.toml`, then `~/.tau`. Mutable state (sessions, logs, hub files) lives elsewhere, in `TAU_DATA_DIR`, default `~/.local/share/tau`. See [Environment variables](../reference/environment.md).

@@ -79,9 +79,29 @@ tau init
 Seçenek verilmezse sihirbaz:
 
 1. Yapılandırma kökünü belirler (`TAU_HOME`, yoksa `~/.tau`).
-2. Ortamda ve `<root>/.env` içinde model kimlik bilgilerini arar.
-3. Arayüz dilini sorar: `en` ya da `tr`.
-4. `tau.toml`, `persona/persona.md`, `persona/user.example.md`, `persona/user.md` ve `.env.example` dosyalarını yazar.
+2. Ortamda ve `<root>/.env` içinde model kimlik bilgilerini arar. Bulursa o sağlayıcıyı kullanır ve anahtar hakkında bir şey sormaz.
+3. Arayüz dilini sorar: `en` ya da `tr`. Bundan sonraki sorular o dildedir.
+4. Hiçbir yerde kimlik bilgisi yoksa sağlayıcıyı (`anthropic`, `openai` ya da `gemini`) ve onun anahtarını sorar; anahtar gizli yazılır. Anahtarı sağlayıcıya tek bir küçük istekle dener: ücretsiz olan model listesi; anahtar yalnızca bir istek başlığında gider. Sağlayıcının reddettiği bir anahtar ya da yanıt alamayan bir deneme, `tau init`'i hiçbir şey yazılmadan durdurur. Boş bırakılan anahtar bu adımı atlar.
+5. `tau.toml`, `persona/persona.md`, `persona/user.example.md`, `persona/user.md` ve `.env.example` dosyalarını yazar, ardından anahtarı `<root>/.env` dosyasının sonuna ekler. Dosya `0600` izniyle oluşturulur ya da bu izne çekilir; diğer satırları olduğu gibi kalır, orada zaten ayarlı bir anahtar korunur.
+
+Kimlik bilgisi olmayan bir makinede ilk çalıştırma şöyle görünür (anahtar asla gösterilmez):
+
+```text
+UI language (en, tr) [en]: tr
+Ortamda ya da <root>/.env içinde model anahtarı bulunamadı. tau'nun bir sağlayıcıdan anahtara ihtiyacı var (`tau init --yes` anahtarsız, senaryolu 'fake' sağlayıcıyı kurar).
+Sağlayıcı (anthropic, openai, gemini) [anthropic]: openai
+OPENAI_API_KEY (gizli; boş bırakırsan atlanır):
+Anahtar openai sağlayıcısına tek bir küçük istekle deneniyor...
+openai anahtarı kabul etti.
+wrote <root>/tau.toml
+wrote <root>/persona/persona.md
+wrote <root>/persona/user.example.md
+wrote <root>/persona/user.md
+wrote <root>/.env.example
+OPENAI_API_KEY, <root>/.env dosyasına yazıldı (izin 0600)
+Configuration root: <root> (UI language: tr).
+Next: edit persona/user.md, then run `tau doctor` and `tau chat`.
+```
 
 Her seçimin bir bayrağı var, böylece bir betik onu soru sormadan çalıştırabilir:
 
@@ -95,13 +115,16 @@ tau init --home ~/.tau --provider anthropic --language en --profile home --yes
 | `--provider NAME` | `brain` ve `fast` rolleri için sağlayıcı: `anthropic`, `openai`, `gemini`, `bedrock` ya da `fake`. Varsayılan: bu sırayla, kimlik bilgisi olan ilki. Yalnızca `brain` ve `fast` rollerinin `provider` ve `model_id` değerleri değişir; bütçeler ve `local` (Ollama; ulaşılamazsa `fast`'e failover yapar) geldiği gibi kalır. |
 | `--language LANG` | Arayüz dili, `en` ya da `tr`. Verilmezse sorulur, `--yes` varsa sorulmaz. |
 | `--profile NAME` | `<root>/.env` içinde ayarlı değilse oraya `TAU_PROFILE=NAME` ekler. |
-| `-y`, `--yes` | Hiçbir şey sorma; verilmeyen her şey için varsayılanları kullan. |
+| `--no-check` | Yazılan anahtarı sağlayıcıya bir istekle deneme (örneğin internete erişimi olmayan bir makinede). |
+| `-y`, `--yes` | Hiçbir şey sorma; verilmeyen her şey için varsayılanları kullan. Anahtar sorulmaz; hiç kimlik bilgisi yoksa roller `fake` kullanır. |
 | `--force` | Mevcut bir `tau.toml` ve `persona.md` dosyasının üzerine yaz. `user.md` ve `.env.example` asla ezilmez. |
 
-Hiçbir yerde kimlik bilgisi olmayan bir çalıştırma şöyle biter (yollar kısaltılmıştır):
+`--provider anthropic`, `openai` ya da `gemini` verilir ve onun anahtarı yoksa `tau init` anahtarı da sorar (`--yes` yoksa). `bedrock` ve `fake` hiç sormaz: Bedrock'un kimlik bilgileri `.env` dosyasına elle girilir.
+
+Hiçbir yerde kimlik bilgisi yokken `tau init --yes` şöyle biter (yollar kısaltılmıştır):
 
 ```text
-Provider: fake. No model credentials were found in the environment or <root>/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY to <root>/.env (names are in <root>/.env.example) and run `tau init --force`, or edit tau.toml.
+Provider: fake. No model credentials were found in the environment or <root>/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY to <root>/.env (names are in <root>/.env.example) and run `tau init --force`, run `tau init --force` without --yes to type a key, or edit tau.toml.
 wrote <root>/tau.toml
 wrote <root>/persona/persona.md
 wrote <root>/persona/user.example.md
@@ -169,7 +192,7 @@ Sağlayıcının anahtarını `.env` dosyasına koy, sonra rolleri ona göre `ta
     ```
 
 ```sh
-tau init --force          # picks anthropic > openai > gemini > bedrock > fake from what .env now holds
+tau init --force          # picks anthropic > openai > gemini > bedrock from what .env now holds, else asks
 tau doctor
 ```
 

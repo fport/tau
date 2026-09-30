@@ -77,9 +77,29 @@ tau init
 Without options the wizard:
 
 1. Resolves the configuration root (`TAU_HOME`, else `~/.tau`).
-2. Looks for model credentials in the environment and in `<root>/.env`.
-3. Asks for the UI language, `en` or `tr`.
-4. Writes `tau.toml`, `persona/persona.md`, `persona/user.example.md`, `persona/user.md` and `.env.example`.
+2. Looks for model credentials in the environment and in `<root>/.env`. When it finds some, it uses that provider and asks nothing about keys.
+3. Asks for the UI language, `en` or `tr`. The questions after this one are in that language.
+4. With no credentials anywhere, asks for the provider (`anthropic`, `openai` or `gemini`) and its key, typed hidden. It checks the key with one small request to the provider, a list of its models that costs nothing; the key travels only in a request header. A key the provider refuses, or a check that gets no answer, stops `tau init` before anything is written. An empty key skips this step.
+5. Writes `tau.toml`, `persona/persona.md`, `persona/user.example.md`, `persona/user.md` and `.env.example`, then appends the key to `<root>/.env`. The file is created with mode `0600`, or set to it; its other lines stay as they are, and a key already set there is kept.
+
+A first run on a machine without credentials looks like this (the key is never shown):
+
+```text
+UI language (en, tr) [en]: en
+No model key was found in the environment or <root>/.env. tau needs a key from one provider (`tau init --yes` sets up the scripted 'fake' provider without one).
+Provider (anthropic, openai, gemini) [anthropic]: openai
+OPENAI_API_KEY (hidden; empty skips):
+Checking the key with one small request to openai...
+openai accepted the key.
+wrote <root>/tau.toml
+wrote <root>/persona/persona.md
+wrote <root>/persona/user.example.md
+wrote <root>/persona/user.md
+wrote <root>/.env.example
+wrote OPENAI_API_KEY to <root>/.env (mode 0600)
+Configuration root: <root> (UI language: en).
+Next: edit persona/user.md, then run `tau doctor` and `tau chat`.
+```
 
 Every choice has a flag, so a script can run it without questions:
 
@@ -93,13 +113,16 @@ tau init --home ~/.tau --provider anthropic --language en --profile home --yes
 | `--provider NAME` | Provider for the `brain` and `fast` roles: `anthropic`, `openai`, `gemini`, `bedrock` or `fake`. Default: the first one with credentials, in that order. Only the `provider` and `model_id` of `brain` and `fast` change; the budgets and `local` (Ollama, failing over to `fast`) stay as shipped. |
 | `--language LANG` | UI language, `en` or `tr`. Asked when omitted, unless `--yes`. |
 | `--profile NAME` | Appends `TAU_PROFILE=NAME` to `<root>/.env` if it is not set there. |
-| `-y`, `--yes` | Ask nothing; use defaults for whatever is not given. |
+| `--no-check` | Do not check a typed key with a request to the provider (for example on a machine without internet access). |
+| `-y`, `--yes` | Ask nothing; use defaults for whatever is not given. No key is asked, so with no credentials the roles use `fake`. |
 | `--force` | Overwrite an existing `tau.toml` and `persona.md`. `user.md` and `.env.example` are never overwritten. |
 
-A run with no credentials anywhere ends like this (paths shortened):
+With `--provider anthropic`, `openai` or `gemini` and no key for it, `tau init` asks for the key as well (unless `--yes`). `bedrock` and `fake` never ask: Bedrock's credentials go into `.env` by hand.
+
+`tau init --yes` with no credentials anywhere ends like this (paths shortened):
 
 ```text
-Provider: fake. No model credentials were found in the environment or <root>/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY to <root>/.env (names are in <root>/.env.example) and run `tau init --force`, or edit tau.toml.
+Provider: fake. No model credentials were found in the environment or <root>/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY to <root>/.env (names are in <root>/.env.example) and run `tau init --force`, run `tau init --force` without --yes to type a key, or edit tau.toml.
 wrote <root>/tau.toml
 wrote <root>/persona/persona.md
 wrote <root>/persona/user.example.md
@@ -167,7 +190,7 @@ Put the key of your provider in `.env`, then let `tau init --force` rewrite the 
     ```
 
 ```sh
-tau init --force          # picks anthropic > openai > gemini > bedrock > fake from what .env now holds
+tau init --force          # picks anthropic > openai > gemini > bedrock from what .env now holds, else asks
 tau doctor
 ```
 

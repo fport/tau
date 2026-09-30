@@ -60,7 +60,18 @@ tau --help
 tau init
 ```
 
-Tek bir soru sorar, arayüz dilini (`en` ya da `tr`), ardından şunları yazar:
+Arayüz dilini (`en` ya da `tr`) sorar. Ortamda ya da `~/.tau/.env` içinde model anahtarı bulamazsa hangi sağlayıcıyı kullandığını (`anthropic`, `openai` ya da `gemini`) ve o sağlayıcının anahtarını sorar; anahtar gizli yazılır. Anahtarı sağlayıcıya tek bir küçük istekle dener (model listesi; ücretsizdir) ve `~/.tau/.env` dosyasına yazar, dosyanın iznini `0600` tutar:
+
+```text
+UI language (en, tr) [en]: tr
+Ortamda ya da ~/.tau/.env içinde model anahtarı bulunamadı. tau'nun bir sağlayıcıdan anahtara ihtiyacı var (`tau init --yes` anahtarsız, senaryolu 'fake' sağlayıcıyı kurar).
+Sağlayıcı (anthropic, openai, gemini) [anthropic]: anthropic
+ANTHROPIC_API_KEY (gizli; boş bırakırsan atlanır):
+Anahtar anthropic sağlayıcısına tek bir küçük istekle deneniyor...
+anthropic anahtarı kabul etti.
+```
+
+Sağlayıcının reddettiği bir anahtar ya da yanıt alamayan bir deneme, `tau init`'i hiçbir şey yazmadan durdurur; `--no-check` isteği atlar. Boş bırakılan anahtar atlanır: yapılandırma o sağlayıcı için yazılır, anahtarı sonra `.env` dosyasına eklersin. `--yes` hiçbir şey sormaz ve eski davranışı korur: sağlayıcıyı bulduğu kimlik bilgilerinden seçer, hiçbiri yoksa `fake`. Ardından `tau init` şunları yazar:
 
 | Dosya | Nedir |
 |---|---|
@@ -69,8 +80,9 @@ Tek bir soru sorar, arayüz dilini (`en` ya da `tr`), ardından şunları yazar:
 | `persona/user.example.md` | Bilgi dosyasının uydurma bir örneği. |
 | `persona/user.md` | Örneğin senin kopyan. Onu düzenle; senin hakkındaki gerçek bilgilerin tek yeri burası. |
 | `.env.example` | `tau doctor`'ın bildiği her kimlik bilgisinin ve ayarın adı. Gerçek değerlerin hemen yanındaki `.env` dosyasına gider. |
+| `.env` | Yazdıysan anahtarın (izin `0600`; var olan bir dosyanın diğer satırlarına dokunmadan sonuna eklenir). |
 
-`tau init`, sağlayıcıyı görebildiği kimlik bilgilerine göre seçer: önce Anthropic (`ANTHROPIC_API_KEY`), sonra OpenAI (`OPENAI_API_KEY`), sonra Gemini (`GEMINI_API_KEY` ya da `GOOGLE_API_KEY`), sonra Bedrock, hiçbiri yoksa `fake`. O sağlayıcının modellerini `brain` ve `fast` için yazar, tau'nun onlar için uyguladığı bütçeleri korur (`brain` için ayda 15 $, `fast` için günde 1 $) ve `local` rolünü, failover'ı (ulaşılamazsa devredeceği rol) `fast` olacak şekilde Ollama'ya koyar. Hiç kimlik bilgisi yoksa `fake` sağlayıcı üzerinde çalışan bir yapılandırma ve bunu söyleyen bir not alırsın. `--force` vermediğin sürece mevcut dosyalar korunur; `user.md` ve `.env.example` asla üzerine yazılmaz.
+Kimlik bilgileri zaten varsa `tau init` sağlayıcıyı onlardan seçer ve anahtar sormaz: önce Anthropic (`ANTHROPIC_API_KEY`), sonra OpenAI (`OPENAI_API_KEY`), sonra Gemini (`GEMINI_API_KEY` ya da `GOOGLE_API_KEY`), sonra Bedrock. O sağlayıcının modellerini `brain` ve `fast` için yazar, tau'nun onlar için uyguladığı bütçeleri korur (`brain` için ayda 15 $, `fast` için günde 1 $) ve `local` rolünü, failover'ı (ulaşılamazsa devredeceği rol) `fast` olacak şekilde Ollama'ya koyar. Hiç kimlik bilgisi yokken `tau init --yes`, `fake` sağlayıcı üzerinde çalışan bir yapılandırma ve bunu söyleyen bir not verir. `--force` vermediğin sürece mevcut dosyalar korunur; `user.md` ve `.env.example` asla üzerine yazılmaz.
 
 !!! note "Kök nerede?"
     tau, `tau.toml` dosyasını şu sırayla arar: `--home DIR` seçeneği, `TAU_HOME` değişkeni, içinde bir `tau.toml` varsa geçerli dizin, sonra `~/.tau`. Değişen durum (oturumlar, loglar, hub dosyaları) başka bir yerde, `TAU_DATA_DIR` altında yaşar; varsayılanı `~/.local/share/tau`. Bkz. [Ortam değişkenleri](../reference/environment.md).

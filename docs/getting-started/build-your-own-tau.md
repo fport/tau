@@ -116,47 +116,41 @@ This is **local mode**: the brain runs at home. If you have no machine that can 
 
 ## 4. Configure: `tau init`, a model key, `tau doctor`
 
-<!-- verified: run (clean TAU_HOME and TAU_DATA_DIR; a dummy ANTHROPIC_API_KEY for the second part, since tau doctor never calls the model; paths shortened to ~) -->
+<!-- verified: run (clean TAU_HOME and TAU_DATA_DIR; the key check answered by a test double, since the page has no real key; tau doctor never calls the model; paths shortened to ~) -->
 
-`tau init` writes the **configuration root**, `~/.tau` by default: `tau.toml` (which provider and model serve each role), `persona/` (tau's character and the facts about you) and `.env.example` (the names of every setting). It asks one question, the UI language.
+`tau init` writes the **configuration root**, `~/.tau` by default: `tau.toml` (which provider and model serve each role), `persona/` (tau's character and the facts about you) and `.env.example` (the names of every setting). It asks the UI language, then, since this machine has no model key yet, your provider and its key. Have the key of your [Anthropic](https://console.anthropic.com), OpenAI or Gemini account at hand; the key is typed hidden and never shown.
 
 ```sh
 tau init
 ```
 
 ```text
-Provider: fake. No model credentials were found in the environment or ~/.tau/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY to ~/.tau/.env (names are in ~/.tau/.env.example) and run `tau init --force`, or edit tau.toml.
 UI language (en, tr) [en]: en
+No model key was found in the environment or ~/.tau/.env. tau needs a key from one provider (`tau init --yes` sets up the scripted 'fake' provider without one).
+Provider (anthropic, openai, gemini) [anthropic]: anthropic
+ANTHROPIC_API_KEY (hidden; empty skips):
+Checking the key with one small request to anthropic...
+anthropic accepted the key.
 wrote ~/.tau/tau.toml
 wrote ~/.tau/persona/persona.md
 wrote ~/.tau/persona/user.example.md
 wrote ~/.tau/persona/user.md
 wrote ~/.tau/.env.example
+wrote ANTHROPIC_API_KEY to ~/.tau/.env (mode 0600)
 Configuration root: ~/.tau (UI language: en).
 Next: edit persona/user.md, then run `tau doctor` and `tau chat`.
 ```
 
-Now give it a model. Credentials live in `~/.tau/.env`, never in `tau.toml`. Create the file, keep it private, and add your key with any editor:
+The check is one request for the provider's list of models, which costs nothing, with the key in a request header. A key the provider refuses stops `tau init` before it writes anything, so run it again with the right one; `--no-check` skips the request, for a machine without internet access. The key goes into `~/.tau/.env`, never into `tau.toml`: the file is created with mode `0600` (only you can read it), and an existing `.env` keeps its other lines.
+
+!!! tip "No key yet, or a key in `.env` already"
+    Press Enter at the key prompt to skip it: `tau.toml` is written for that provider, and you add the key to `~/.tau/.env` later. `tau init --yes` asks nothing and sets up the scripted `fake` provider, enough to try the interface. A key that is already in the environment or in `~/.tau/.env` is found and used without a question; after adding one by hand, `tau init --force` switches the `brain` and `fast` roles to its provider. `--force` rewrites `tau.toml` and `persona.md`, and never touches `user.md` or the lines already in `.env`.
 
 ```sh
-touch ~/.tau/.env && chmod 600 ~/.tau/.env
-nano ~/.tau/.env              # or any editor
-```
-
-```sh
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-With an OpenAI or Gemini key, write `OPENAI_API_KEY=sk-...` or `GEMINI_API_KEY=...` instead. Run `tau init --force` once more. It finds the key and switches the `brain` and `fast` roles to that provider. `--force` rewrites `tau.toml` and `persona.md`, and never touches `user.md` or `.env`.
-
-```sh
-tau init --force
 tau doctor
 ```
 
 ```text
-Provider: anthropic. ANTHROPIC_API_KEY was found in the environment or ~/.tau/.env. tau.toml caps brain and fast with budgets tau enforces itself (`tau spend` shows them), and local uses Ollama on this machine, falling back to fast when it is not running.
-…
 ok   config: ~/.tau/tau.toml loaded
 ok   role brain: provider 'anthropic', credentials present
 ok   role fast: provider 'anthropic', credentials present
@@ -172,7 +166,7 @@ info telegram: not configured (TELEGRAM_BOT_TOKEN is not set)
 12 checks: 10 ok, 0 warnings, 0 failed
 ```
 
-`tau doctor` never calls the model, so a mistyped key shows up only at the first message. Two more things before you talk:
+`tau doctor` never calls the model. `tau init` checked the key you typed; a key you put into `.env` by hand shows up only at the first message. Two more things before you talk:
 
 - **Tell tau about yourself** in `~/.tau/persona/user.md`: how to address you, your city, your hours. It is private and never leaves the hub, and it is never shown to another tau.
 - **Spend caps** are on already: `brain` may spend $15 a month (then `fast` answers), `fast` $1 a day. tau prices every answer and keeps the caps itself; `tau spend` shows the spend and `tau.toml` the caps ([Models and budgets](../guides/models-and-budgets.md)). Set a monthly limit in the provider's console as well.

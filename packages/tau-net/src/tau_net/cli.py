@@ -5,6 +5,9 @@ Every command reads ``tau.toml`` and ``.env`` like the rest of tau (``--home``, 
 help texts and error lines are English. Exit codes: 0 ok, 1 error with one line on stderr,
 2 when the configuration itself cannot be loaded.
 
+Nothing here writes ``tau.toml``: the card name (``tau net init --name``, ``tau net name``) is
+the owner's profile in the network store (:mod:`tau_net.profile`).
+
 Tests pass a transport through the click context object (``obj={"net_transport": ...}``);
 ``net_env`` and ``net_model_factory`` work the same way.
 """
@@ -22,7 +25,7 @@ from tau_core import Config, ConfigError, t
 from tau_core.cli import help_option
 
 from tau_net import strings as _strings  # noqa: F401  (registers the message keys)
-from tau_net.config import COMPONENT, NetConfigError, NetSettings
+from tau_net.config import NetConfigError
 from tau_net.contacts import PENDING_IN, ContactError
 from tau_net.encoding import AddressError
 from tau_net.envelope import EnvelopeError
@@ -122,7 +125,7 @@ def net() -> None:
     name="init",
     help="Create this tau's network identity (an Ed25519 signing key and an X25519 box key) "
     "under TAU_DATA_DIR/net/identity.json. An existing identity is never overwritten. "
-    "--name sets the display name on the card in tau.toml.",
+    "--name sets the display name on the card in the network profile (never tau.toml).",
     short_help="Create the network identity.",
 )
 @help_option()
@@ -148,8 +151,8 @@ def init_command(ctx: click.Context, name: str | None) -> None:
         except OSError as exc:
             _fail(ctx, NetError(f"cannot write {path}: {exc.strerror or exc}"))
     if name is not None:
-        saved = _run(ctx, lambda: _save_name(config, name))
-        say("net.init.name_saved", name=name.strip(), path=saved)
+        profile = _run(ctx, lambda: node.update_profile(name=name))
+        say("net.name.saved", name=profile.name, store=node.store.describe())
     say("net.keys.sign", key=identity.sign_key)
     say("net.keys.box", key=identity.box_key)
     click.echo()
@@ -159,20 +162,30 @@ def init_command(ctx: click.Context, name: str | None) -> None:
     say("net.init.step_publish")
 
 
-def _save_name(config: Config, name: str) -> Any:
-    """Write ``[component.net] name`` into ``tau.toml`` (comments and layout survive)."""
-    from tau_core.settings import load_document, save_document
+@net.command(
+    name="name",
+    help="Set the display name on the card (1 to 80 characters). It is kept in the network "
+    "profile under TAU_DATA_DIR/net (net.profile on the spine in cloud mode), never in "
+    "tau.toml, and wins over [component.net] name. Publish it with `tau net publish`.",
+    short_help="Set the card's display name.",
+)
+@help_option()
+@click.argument("name", nargs=-1, required=True)
+@click.pass_context
+def name_command(ctx: click.Context, name: tuple[str, ...]) -> None:
+    config = _config(ctx)
+    say = _Say(config)
+    node = _node(ctx, config)
+    profile = _run(ctx, lambda: node.update_profile(name=" ".join(name)))
+    say("net.name.saved", name=profile.name, store=node.store.describe())
+    say("net.name.publish")
 
-    NetSettings.from_mapping({**config.component(COMPONENT), "name": name})  # validates
-    doc = load_document(config.home)
-    component = doc.get("component")
-    if component is None:
-        doc["component"] = {COMPONENT: {"name": name.strip()}}
-    elif component.get(COMPONENT) is None:
-        component[COMPONENT] = {"name": name.strip()}
-    else:
-        component[COMPONENT]["name"] = name.strip()
-    return save_document(config.home, doc)
+
+def _display_name(node: NetNode) -> str:
+    try:
+        return node.display_name()
+    except SpineError:
+        return node.settings.name
 
 
 @net.command(
@@ -187,7 +200,7 @@ def status_command(ctx: click.Context) -> None:
     config = _config(ctx)
     say = _Say(config)
     node = _node(ctx, config)
-    say("net.status.name", name=node.settings.name)
+    say("net.status.name", name=_display_name(node))
     if node.identity is None:
         say("net.status.identity_missing")
     else:

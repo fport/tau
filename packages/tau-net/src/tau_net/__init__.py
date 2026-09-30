@@ -24,6 +24,7 @@ Public API (other packages import these names, ``tau_net.spine`` and ``tau_net.t
     NetworkTurns, FRAME, build_frame, sanitize, is_no_reply
     UniverseClient, UniverseError, UniverseUnreachable, DEFAULT_UNIVERSE, UNIVERSE_CONTEXT
     NetNode, Handled, NetError, NetNotConfigured, open_node
+    NetProfile
     NetService, make_service, doctor_check
     TOOLS
 """
@@ -78,6 +79,7 @@ from tau_net.identity import (
 )
 from tau_net.node import Handled, NetError, NetNode, NetNotConfigured, open_node
 from tau_net.peers import CardError, Delivery, DeliveryError, PeerCard, PeerClient
+from tau_net.profile import NetProfile
 from tau_net.service import NetService, doctor_check, make_service
 from tau_net.spine import (
     SpineClient,
@@ -137,6 +139,7 @@ __all__ = [
     "NetError",
     "NetNode",
     "NetNotConfigured",
+    "NetProfile",
     "NetService",
     "NetSettings",
     "NetStore",

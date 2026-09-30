@@ -1,12 +1,17 @@
-"""The network's state: contacts, sessions, seen ids, the network log and the poll cursor.
+"""The network's state: contacts, sessions, seen ids, the log, the cursor, counts, the profile.
 
-:class:`NetStore` keeps five documents (§6.7) behind a small backend:
+:class:`NetStore` keeps seven documents (§6.7) behind a small backend:
 
 - :class:`FileBackend` (``[component.net] store = "file"``, the default) writes them under
-  ``TAU_DATA_DIR/net/``: ``contacts.json``, ``sessions.json``, ``seen.json``, ``log.jsonl`` and
-  ``cursor``, atomically, files 0600 in a 0700 directory.
+  ``TAU_DATA_DIR/net/``: ``contacts.json``, ``sessions.json``, ``seen.json``, ``log.jsonl``,
+  ``cursor``, ``counts.json`` and ``profile.json``, atomically, files 0600 in a 0700 directory.
 - :class:`SpineBackend` (``store = "spine"``, cloud mode) keeps them in the spine's state API
-  under ``net.contacts``, ``net.sessions``, ``net.seen``, ``net.log`` and ``net.cursor``.
+  under ``net.contacts``, ``net.sessions``, ``net.seen``, ``net.log``, ``net.cursor``,
+  ``net.counts`` and ``net.profile``.
+
+``counts`` is ``{peer: {"in": n, "out": n}}``: the ``message`` envelopes handled from and sent
+to each contact, which a universe report sums up. ``profile`` holds the owner's personal
+values (:mod:`tau_net.profile`): the card name and the universe membership.
 
 Documents are read again on every access (nothing is cached), so ``tau net accept`` in a
 terminal and the running hub see each other's writes; read-modify-write steps hold a
@@ -20,7 +25,7 @@ import logging
 import os
 import tempfile
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
@@ -28,6 +33,7 @@ from typing import Any, Protocol, TypeVar
 from tau_net.spine import SpineClient
 
 __all__ = [
+    "DIRECTIONS",
     "DOCUMENTS",
     "LOG_LIMIT",
     "SEEN_LIMIT",
@@ -40,7 +46,8 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-DOCUMENTS = ("contacts", "sessions", "seen", "log", "cursor")
+DOCUMENTS = ("contacts", "sessions", "seen", "log", "cursor", "counts", "profile")
+DIRECTIONS = ("in", "out")
 STORE_KINDS = ("file", "spine")
 LOG_LIMIT = 500
 SEEN_LIMIT = 1000
@@ -90,6 +97,8 @@ class FileBackend:
         "seen": "seen.json",
         "log": "log.jsonl",
         "cursor": "cursor",
+        "counts": "counts.json",
+        "profile": "profile.json",
     }
 
     def __init__(self, root: Path):
@@ -172,7 +181,7 @@ class SpineBackend:
 
 
 class NetStore:
-    """Typed access to the five documents. Thread-safe within one process."""
+    """Typed access to the seven documents. Thread-safe within one process."""
 
     def __init__(self, backend: DocumentBackend):
         self.backend = backend
@@ -276,3 +285,45 @@ class NetStore:
     def save_cursor(self, seq: int) -> None:
         with self.lock:
             self.backend.write("cursor", int(seq))
+
+    # -- message counts ------------------------------------------------------------------------
+
+    def counts(self) -> dict[str, dict[str, int]]:
+        """``peer → {"in": n, "out": n}``: ``message`` envelopes handled from and sent to it."""
+        counts: dict[str, dict[str, int]] = {}
+        for peer, entry in self._dict("counts").items():
+            if isinstance(peer, str) and isinstance(entry, dict):
+                counts[peer] = {d: _count(entry.get(d)) for d in DIRECTIONS}
+        return counts
+
+    def count_message(self, address: str, direction: str) -> None:
+        """One more ``message`` from (``in``) or to (``out``) ``address``."""
+        if direction not in DIRECTIONS:
+            raise ValueError(f"direction must be one of {', '.join(DIRECTIONS)}")
+        with self.lock:
+            counts = self.counts()
+            entry = counts.setdefault(address, dict.fromkeys(DIRECTIONS, 0))
+            entry[direction] += 1
+            self.backend.write("counts", counts)
+
+    # -- the owner's profile -------------------------------------------------------------------
+
+    def profile(self) -> dict[str, Any]:
+        """The raw ``profile`` document (:class:`tau_net.profile.NetProfile` types it)."""
+        return self._dict("profile")
+
+    def update_profile(self, changes: Mapping[str, Any]) -> dict[str, Any]:
+        """Merge ``changes`` into the profile (a ``None`` value removes the key); returns it."""
+        with self.lock:
+            profile = self.profile()
+            for key, value in changes.items():
+                if value is None:
+                    profile.pop(key, None)
+                else:
+                    profile[key] = value
+            self.backend.write("profile", profile)
+            return profile
+
+
+def _count(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0

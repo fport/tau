@@ -25,9 +25,13 @@ NET_MESSAGES: dict[str, dict[str, str]] = {
         "en": "The identity comes from TAU_NET_IDENTITY; no file was written.",
         "tr": "Kimlik TAU_NET_IDENTITY değişkeninden geliyor; dosya yazılmadı.",
     },
-    "net.init.name_saved": {
-        "en": "Card name set to {name} in {path}.",
-        "tr": "Kart adı {path} içinde {name} olarak ayarlandı.",
+    "net.name.saved": {
+        "en": "Card name set to {name} in the network profile ({store}).",
+        "tr": "Kart adı ağ profilinde {name} olarak ayarlandı ({store}).",
+    },
+    "net.name.publish": {
+        "en": "Publish it with `tau net publish`; the hub also publishes it when it starts.",
+        "tr": "`tau net publish` ile yayımla; hub da başlarken yayımlar.",
     },
     "net.init.next": {"en": "Next steps:", "tr": "Sonraki adımlar:"},
     "net.init.step_env": {

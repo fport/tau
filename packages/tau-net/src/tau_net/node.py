@@ -19,6 +19,10 @@ envelope (:meth:`NetNode.handle`):
 Any failure is logged and the envelope is dropped; the caller acknowledges it either way. A
 reply to a given envelope always gets the same id, so an envelope handled again after a crash
 cannot deliver a second reply (the recipient's spine answers ``duplicate``).
+
+Every ``message`` handled from an accepted contact and every one delivered to a contact adds one
+to the store's ``counts`` document (only when its log entry is new, so nothing is counted
+twice). The card name comes from the owner's profile (:mod:`tau_net.profile`).
 """
 
 from __future__ import annotations
@@ -59,6 +63,7 @@ from tau_net.envelope import (
 )
 from tau_net.identity import Identity, identity_path, load_or_none
 from tau_net.peers import CardError, Delivery, DeliveryError, PeerCard, PeerClient
+from tau_net.profile import NetProfile, check_profile_changes
 from tau_net.spine import SpineClient, Transport, Update
 from tau_net.store import FileBackend, NetStore, SpineBackend
 from tau_net.turns import NetworkTurns
@@ -218,10 +223,26 @@ class NetNode:
     def _now(self) -> int:
         return int(self.clock())
 
+    # -- the owner's profile -------------------------------------------------------------------
+
+    def profile(self) -> NetProfile:
+        """The owner's profile from the store (read again every time)."""
+        return NetProfile.from_json(self.store.profile())
+
+    def update_profile(self, **changes: Any) -> NetProfile:
+        """Validate ``changes`` (:class:`~tau_net.config.NetConfigError`) and write them to the
+        profile; ``None`` removes a key."""
+        checked = check_profile_changes(changes)
+        return NetProfile.from_json(self.store.update_profile(checked))
+
+    def display_name(self) -> str:
+        """The card name: the profile's, else ``[component.net] name``, else ``tau``."""
+        return self.profile().name or self.settings.name
+
     # -- the card ------------------------------------------------------------------------------
 
     def wanted_card(self) -> dict[str, str]:
-        return self.require_identity().public_fields(self.settings.name)
+        return self.require_identity().public_fields(self.display_name())
 
     def card_matches(self, card: Mapping[str, Any] | None) -> bool:
         if not card:
@@ -269,7 +290,7 @@ class NetNode:
             ts=self._now(),
         )
         delivery = self.peers.deliver(address, envelope)
-        self.store.append_log(
+        logged = self.store.append_log(
             {
                 "ts": payload.ts,
                 "direction": "out",
@@ -280,8 +301,17 @@ class NetNode:
                 "text": content.get("text", ""),
             }
         )
+        if logged and kind == "message":
+            self._count_message(address, "out")
         logger.info("net: sent %s %s to %s (%s)", kind, payload.id, address, delivery.status)
         return delivery
+
+    def _count_message(self, address: str, direction: str) -> None:
+        """One more message in the ``counts`` document; a failure is only a warning."""
+        try:
+            self.store.count_message(address, direction)
+        except Exception as exc:
+            logger.warning("net: could not count a message with %s: %s", address, exc)
 
     def _fetch_card(self, address: str) -> PeerCard:
         try:
@@ -319,7 +349,7 @@ class NetNode:
             self._deliver_or_raise(
                 f"{address} is a contact now",
                 lambda: self._send(
-                    address, card.box_key, "contact_accept", {"name": self.settings.name}
+                    address, card.box_key, "contact_accept", {"name": self.display_name()}
                 ),
             )
         else:
@@ -329,7 +359,7 @@ class NetNode:
                     address,
                     card.box_key,
                     "contact_request",
-                    {"name": self.settings.name, "text": note},
+                    {"name": self.display_name(), "text": note},
                 ),
             )
         return contact
@@ -344,7 +374,7 @@ class NetNode:
         self._deliver_or_raise(
             f"{address} is a contact now",
             lambda: self._send(
-                address, contact.box_key or "", "contact_accept", {"name": self.settings.name}
+                address, contact.box_key or "", "contact_accept", {"name": self.display_name()}
             ),
         )
         return contact
@@ -459,7 +489,7 @@ class NetNode:
                 self._notify_request(sender, clean_name(name), content["text"])
             elif transition.action == "send_accept":
                 try:
-                    self._send(sender, box_key, "contact_accept", {"name": self.settings.name})
+                    self._send(sender, box_key, "contact_accept", {"name": self.display_name()})
                 except (DeliveryError, EnvelopeError) as exc:
                     logger.warning("net: could not answer the request of %s: %s", sender, exc)
         elif kind == "contact_accept":
@@ -476,7 +506,8 @@ class NetNode:
             if transition.action != "turn" or transition.contact is None:
                 return _drop(transition.reason, sender, kind, id=payload.id), None
             history = [e for e in self.store.log(address=sender) if e.get("id") != payload.id]
-            self.store.append_log(entry)
+            if self.store.append_log(entry):
+                self._count_message(sender, "in")
             job = self._turn_job(transition.contact, payload.id, payload.thread, payload.hops)
             if job is not None:
                 job.text = content["text"]

@@ -32,6 +32,7 @@ def invoke(monkeypatch: pytest.MonkeyPatch):
 
 def test_init_creates_keeps_and_names(tmp_path: Path, network, invoke) -> None:
     tau = make_tau(tmp_path, network, ALICE, with_identity=False)
+    toml = (tau.config.home / "tau.toml").read_bytes()
     result = invoke(tau, "init")
     assert result.exit_code == 0, result.output
     path = identity_path(tau.config.data_dir)
@@ -44,8 +45,16 @@ def test_init_creates_keeps_and_names(tmp_path: Path, network, invoke) -> None:
     assert again.exit_code == 0
     assert f"An identity already exists at {path}; it was kept." in again.output
     assert path.read_bytes() == before
+    assert "Card name set to Alice's own tau in the network profile (file " in again.output
+    # the name is runtime data in the network store, never tau.toml
+    assert (tau.config.home / "tau.toml").read_bytes() == toml
+    profile = json.loads((tau.net_dir / "profile.json").read_text())
+    assert profile["name"] == "Alice's own tau"
+    assert stat.S_IMODE((tau.net_dir / "profile.json").stat().st_mode) == 0o600
     config = Config.load(tau.config.home, env={"TAU_DATA_DIR": str(tau.config.data_dir)})
-    assert config.component("net")["name"] == "Alice's own tau"
+    assert config.component("net")["name"] == "Alice's tau"  # the fallback stays as it was
+    card = invoke(tau, "card")
+    assert json.loads(card.output.split("\n", 1)[1])["name"] == "Alice's own tau"
 
 
 def test_init_with_an_identity_from_the_environment(tmp_path: Path, network, invoke) -> None:

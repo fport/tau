@@ -19,6 +19,7 @@ The network half of ADR 0012:
 - [ ] `tau net send alice.example.com/coach "…"` reaches Alice's public `coach`; a private one is dropped and logged
 - [ ] The universe snapshot carries `subs` per tau; the page shows them as small nodes in the owner's hull and in the tau cards
 - [ ] Protocol pages updated (`tau-network.md`, `tau-universe.md`)
+- [ ] Cloud mode: the brain image installs tau-sub; `tau cloud push|pull` carry `persona/subs/*.md`
 
 ## Blocked by
 

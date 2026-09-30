@@ -5,7 +5,11 @@ import {
   buildSnapshot,
   isOnline,
   ONLINE_WINDOW_SECONDS,
+  personView,
+  type PublicSub,
   type ReportRow,
+  subPage,
+  subView,
   type TauRow,
   tauView,
 } from "../src/snapshot";
@@ -25,6 +29,10 @@ function tau(address: string, joinedAt: number, lastSeen = NOW): TauRow {
 
 function report(reporter: string, peer: string, messages: number): ReportRow {
   return { reporter, peer, messages };
+}
+
+function sub(name: string, about: string, extra: Partial<PublicSub> = {}): PublicSub {
+  return { name, about, web: false, starters: [], first_seen: NOW, slug: null, ...extra };
 }
 
 describe("buildSnapshot", () => {
@@ -106,18 +114,20 @@ describe("buildSnapshot", () => {
   it("lists each tau's sub-taus by name, and none when it reported none", () => {
     const withSubs: TauRow = {
       ...tau("a.example", 1),
-      subs: [
-        { name: "landing", about: "Copy." },
-        { name: "coach", about: "Runs." },
-      ],
+      subs: [sub("landing", "Copy."), sub("coach", "Runs.", { web: true, slug: "coach" })],
     };
     const snap = buildSnapshot("u", NOW, [withSubs, tau("b.example", 2)], []);
     expect(snap.taus.map((t) => t.subs)).toEqual([
-      [
-        { name: "coach", about: "Runs." },
-        { name: "landing", about: "Copy." },
-      ],
+      [sub("coach", "Runs.", { web: true, slug: "coach" }), sub("landing", "Copy.")],
       [],
+    ]);
+    expect(Object.keys(snap.taus[0]!.subs[0]!)).toEqual([
+      "name",
+      "about",
+      "web",
+      "starters",
+      "first_seen",
+      "slug",
     ]);
     expect(tauView(snap, "a.example")?.subs.map((sub) => sub.name)).toEqual(["coach", "landing"]);
   });
@@ -133,8 +143,12 @@ describe("buildSnapshot", () => {
       "joined_at",
       "last_seen",
       "online",
+      "handle",
       "subs",
     ]);
+    expect(snap.taus[0]!.handle).toBeNull();
+    const named = buildSnapshot("u", NOW, [{ ...row, handle: "alice" }], []);
+    expect(named.taus[0]!.handle).toBe("alice");
   });
 });
 
@@ -158,5 +172,95 @@ describe("tauView", () => {
 
   it("is null for a tau that is not listed", () => {
     expect(tauView(snap, "z.example")).toBeNull();
+  });
+});
+
+describe("person and sub-tau views", () => {
+  const coach = () =>
+    sub("coach", "Runs.", { web: true, starters: ["Plan my week"], slug: "coach" });
+  const alice: TauRow = {
+    ...tau("alice.example", 1),
+    owner: "Alice",
+    handle: "alice",
+    subs: [coach(), sub("landing", "Copy.")],
+  };
+  const bob: TauRow = { ...tau("bob.example", 2, NOW - 3 * 3_600), handle: "bob" };
+  const carol: TauRow = { ...tau("carol.example", 3), subs: [sub("arm", "Arm.")] };
+  const reports = [
+    report("alice.example", "bob.example", 5),
+    report("bob.example", "alice.example", 4),
+    report("alice.example", "carol.example", 2),
+    report("carol.example", "alice.example", 9),
+  ];
+  const snap = buildSnapshot("u.example", NOW, [alice, bob, carol], reports);
+
+  it("give a sub-tau its short page, else its page under the handle, else none", () => {
+    expect(subPage("u.example", "alice", sub("coach", "", { slug: "coach" }))).toEqual({
+      path: "/coach",
+      url: "https://u.example/coach",
+    });
+    expect(subPage("u.example", "alice", sub("landing", ""))).toEqual({
+      path: "/@alice/landing",
+      url: "https://u.example/@alice/landing",
+    });
+    expect(subPage("u.example", null, sub("arm", ""))).toEqual({ path: null, url: null });
+  });
+
+  it("build a person page: GitHub, counts, sub-taus with pages, linked taus", () => {
+    expect(personView(snap, "alice.example", false)).toEqual({
+      handle: "alice",
+      github: "https://github.com/alice",
+      building_since: 1,
+      counts: { subs: 2, links: 2, messages: 6 },
+      address: "alice.example",
+      name: "alice.example tau",
+      owner: "Alice",
+      about: "",
+      joined_at: 1,
+      last_seen: NOW,
+      online: true,
+      hosted: false,
+      subs: [
+        { ...coach(), path: "/coach", url: "https://u.example/coach" },
+        {
+          ...sub("landing", "Copy."),
+          path: "/@alice/landing",
+          url: "https://u.example/@alice/landing",
+        },
+      ],
+      links: [
+        { peer: "bob.example", messages: 4, name: "bob.example tau", handle: "bob", online: false },
+        {
+          peer: "carol.example",
+          messages: 2,
+          name: "carol.example tau",
+          handle: null,
+          online: true,
+        },
+      ],
+    });
+  });
+
+  it("have no person page for a tau without a handle, or one not listed", () => {
+    expect(personView(snap, "carol.example", false)).toBeNull();
+    expect(personView(snap, "nobody.example", false)).toBeNull();
+  });
+
+  it("build a sub-tau page with its owner", () => {
+    const [tauA, , tauC] = snap.taus;
+    expect(subView("u.example", tauA!, "coach", true)).toEqual({
+      ...coach(),
+      path: "/coach",
+      url: "https://u.example/coach",
+      online: true,
+      hosted: true,
+      owner: { handle: "alice", name: "alice.example tau", address: "alice.example" },
+    });
+    expect(subView("u.example", tauC!, "arm", false)).toMatchObject({
+      path: null,
+      url: null,
+      owner: { handle: null, name: "carol.example tau", address: "carol.example" },
+    });
+    expect(subView("u.example", tauA!, "arm", false)).toBeNull();
   });
 });

@@ -3,7 +3,7 @@
 import { createScheduledController, reset, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { RATE_LIMIT_PER_HOUR, SCHEMA_V1, SCHEMA_VERSION } from "../src/directory";
+import { RATE_LIMIT_PER_HOUR, SCHEMA_V1, SCHEMA_V2, SCHEMA_VERSION } from "../src/directory";
 import worker from "../src/index";
 import {
   ALICE,
@@ -33,6 +33,22 @@ function joinInput(address: string, ts: number, now = ts) {
   return { address, ts, now, name: `${address} tau`, sign_key: "k", owner: "", about: "" };
 }
 
+/** A sub-tau as a report lists it, after normalizeSubs. */
+function reported(name: string, about = "", extra: { web?: boolean; starters?: string[] } = {}) {
+  return { name, about, web: false, starters: [] as string[], ...extra };
+}
+
+/** Drops every table and rebuilds the schema as version `version` left it. */
+function rebuild(sql: SqlStorage, version: 1 | 2): void {
+  for (const table of ["taus", "reports", "clocks", "hits", "slugs", "nonces", "schema_version"]) {
+    sql.exec(`DROP TABLE IF EXISTS ${table}`);
+  }
+  for (const statement of SCHEMA_V1) sql.exec(statement);
+  if (version >= 2) for (const statement of SCHEMA_V2) sql.exec(statement);
+  sql.exec("CREATE TABLE schema_version (version INTEGER NOT NULL)");
+  sql.exec("INSERT INTO schema_version (version) VALUES (?)", version);
+}
+
 async function count(table: string): Promise<number> {
   return runInDurableObject(directory(), (_instance, state) => {
     const row = state.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).one();
@@ -46,7 +62,7 @@ describe("Directory RPC", () => {
       state.storage.sql.exec<{ version: number }>("SELECT version FROM schema_version").one(),
     );
     expect(version.version).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(2);
+    expect(SCHEMA_VERSION).toBe(3);
   });
 
   it("upgrades a version 1 database: taus keep their rows and get no sub-taus", async () => {
@@ -54,12 +70,7 @@ describe("Directory RPC", () => {
     await runInDurableObject(d, (instance, state) => {
       const sql = state.storage.sql;
       // Rebuild the database exactly as version 1 left it, with one tau in it.
-      for (const table of ["taus", "reports", "clocks", "hits", "schema_version"]) {
-        sql.exec(`DROP TABLE IF EXISTS ${table}`);
-      }
-      for (const statement of SCHEMA_V1) sql.exec(statement);
-      sql.exec("CREATE TABLE schema_version (version INTEGER NOT NULL)");
-      sql.exec("INSERT INTO schema_version (version) VALUES (1)");
+      rebuild(sql, 1);
       sql.exec(
         `INSERT INTO taus (address, name, sign_key, owner, about, joined_at, last_seen)
          VALUES ('old.example', 'Old tau', 'k', 'O', 'from v1', ?, ?)`,
@@ -82,6 +93,7 @@ describe("Directory RPC", () => {
         joined_at: T,
         last_seen: T,
         online: true,
+        handle: null,
         subs: [],
       },
     ]);
@@ -94,10 +106,60 @@ describe("Directory RPC", () => {
         name: "Old tau",
         sign_key: "k",
         links: [],
-        subs: [{ name: "coach", about: "Coach." }],
+        subs: [reported("coach", "Coach.")],
       }),
     ).toEqual({ ok: true, visible_links: 0 });
-    expect((await d.tau("old.example", T + 2))?.subs).toEqual([{ name: "coach", about: "Coach." }]);
+    expect((await d.tau("old.example", T + 2))?.subs).toEqual([
+      { ...reported("coach", "Coach."), first_seen: T + 2, slug: "coach" },
+    ]);
+  });
+
+  it("upgrades a version 2 database: taus and sub-taus stay, slugs go first come", async () => {
+    const d = directory();
+    await runInDurableObject(d, (instance, state) => {
+      const sql = state.storage.sql;
+      rebuild(sql, 2);
+      const insert = (address: string, joined: number, subs: unknown) =>
+        sql.exec(
+          `INSERT INTO taus (address, name, sign_key, owner, about, joined_at, last_seen, subs)
+           VALUES (?, ?, 'k', 'O', '', ?, ?, ?)`,
+          address,
+          `${address} tau`,
+          joined,
+          T + 50,
+          JSON.stringify(subs),
+        );
+      // Bob joined later but sorts first by address: the slug still goes to Alice.
+      insert("bob.example", T + 10, [{ name: "coach", about: "Bob's coach." }]);
+      insert("alice.example", T, [
+        { name: "coach", about: "Alice's coach." },
+        { name: "universe", about: "A reserved name." },
+        { name: "app", about: "A reserved sub-tau name." },
+      ]);
+      sql.exec("INSERT INTO reports (reporter, peer, messages) VALUES ('alice.example', 'bob.example', 3)");
+      sql.exec("INSERT INTO reports (reporter, peer, messages) VALUES ('bob.example', 'alice.example', 4)");
+      (instance as unknown as { migrate(): void }).migrate();
+    });
+    const snap = await d.snapshot("u.example", T + 60);
+    expect(snap.taus.map((tau) => [tau.address, tau.handle, tau.subs])).toEqual([
+      [
+        "alice.example",
+        null,
+        [
+          { ...reported("coach", "Alice's coach."), first_seen: T + 50, slug: "coach" },
+          { ...reported("universe", "A reserved name."), first_seen: T + 50, slug: null },
+        ],
+      ],
+      [
+        "bob.example",
+        null,
+        [{ ...reported("coach", "Bob's coach."), first_seen: T + 50, slug: null }],
+      ],
+    ]);
+    expect(snap.links).toEqual([{ a: "alice.example", b: "bob.example", messages: 3 }]);
+    expect(await d.sub({ slug: "coach" }, "u.example", T + 60)).toMatchObject({
+      owner: { address: "alice.example" },
+    });
   });
 
   it("reads stored sub-taus defensively", async () => {
@@ -105,10 +167,12 @@ describe("Directory RPC", () => {
     await d.join(joinInput("a.example", T));
     await runInDurableObject(d, (_instance, state) => {
       state.storage.sql.exec(
-        `UPDATE taus SET subs = '[{"name":"ok","about":"fine"},{"name":1},"x"]'`,
+        `UPDATE taus SET subs = '[{"name":"ok","about":"fine","web":"yes","starters":["a",1]},{"name":1},"x"]'`,
       );
     });
-    expect((await d.tau("a.example", T))?.subs).toEqual([{ name: "ok", about: "fine" }]);
+    expect((await d.tau("a.example", T))?.subs).toEqual([
+      { name: "ok", about: "fine", web: false, starters: ["a"], first_seen: T, slug: null },
+    ]);
     await runInDurableObject(d, (_instance, state) => {
       state.storage.sql.exec("UPDATE taus SET subs = 'not json'");
     });
@@ -228,7 +292,7 @@ describe("hourly cron", () => {
     const d = directory();
     await d.join(joinInput("a.example", T - 3_700, T - 3_700));
     await d.join(joinInput("b.example", T - 100, T - 100));
-    expect(await d.prune(T)).toEqual({ taus: 0, reports: 0, hits: 1, clocks: 1 });
+    expect(await d.prune(T)).toEqual({ taus: 0, reports: 0, hits: 1, clocks: 1, nonces: 0 });
     expect(await count("hits")).toBe(1);
     expect(await d.lastTs("b.example")).toBe(T - 100);
     expect(await d.lastTs("a.example")).toBeNull();

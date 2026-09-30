@@ -3,29 +3,39 @@
  *
  * It keeps its own SQLite database:
  *
- *   taus     the joined taus (address, card name and sign_key, owner, about, times, and
- *            the public sub-taus of the last report as JSON)
+ *   taus     the joined taus (address, card name and sign_key, owner, about, times, the
+ *            handle with the GitHub id that claimed it, and the public sub-taus of the last
+ *            report as JSON)
  *   reports  the links each tau reported last, towards taus joined at that moment
+ *   slugs    the short pages `/<name>`: each name belongs to the first tau that reported a
+ *            public sub-tau with it, until that tau leaves or expires
  *   clocks   the last accepted `ts` per address (the replay guard; survives a leave)
+ *   nonces   the nonces of accepted claims, for the claim window (their replay guard)
  *   hits     one row per accepted request (the rate limit)
  *
  * The Worker parses and verifies every request (size, shape, universe, clock window, card,
- * signature) before it calls join / report / leave. Those methods judge what needs the
- * stored state, in the reference's order (`ts` still newer than the last accepted one,
- * joined, rate limit), and apply the effect in the same synchronous transaction, so two
- * requests can never both pass the replay guard.
+ * signature, and for a claim the GitHub account) before it calls join / report / leave /
+ * claim. Those methods judge what needs the stored state, in the reference's order (not a
+ * replay, joined, rate limit, and for a claim the handle rules), and apply the effect in the
+ * same synchronous transaction, so two requests can never both pass the replay guard.
  *
  * Every time is passed in (`now`), so the object has no clock of its own.
  */
 
 import { DurableObject } from "cloudflare:workers";
+import { hostedHandle } from "./address";
 import type { UniverseEnv } from "./env";
-import type { ReportedSub } from "./protocol";
+import { CLAIM_WINDOW_SECONDS, RESERVED_SUB_NAMES, type ReportedSub } from "./protocol";
+import { isSlugCandidate } from "./routes";
 import {
   buildSnapshot,
+  personView,
+  type PersonView,
   type PublicSub,
   type ReportRow,
   type Snapshot,
+  subView,
+  type SubView,
   type TauRow,
   tauView,
   type TauView,
@@ -37,7 +47,7 @@ export const TAU_RETENTION_SECONDS = 30 * 86_400;
 /** Clocks older than this can go: the ±300 s window already refuses anything older. */
 export const CLOCK_RETENTION_SECONDS = 3_600;
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** Version 1, kept as it shipped: a fresh database runs it, then every later step. */
 export const SCHEMA_V1 = [
@@ -66,15 +76,45 @@ export const SCHEMA_V1 = [
 ];
 
 /** v2: the public sub-taus of each tau's last report, `[{"name", "about"}]` as JSON. */
-const SCHEMA_V2 = ["ALTER TABLE taus ADD COLUMN subs TEXT NOT NULL DEFAULT '[]'"];
+export const SCHEMA_V2 = ["ALTER TABLE taus ADD COLUMN subs TEXT NOT NULL DEFAULT '[]'"];
 
-const TAU_COLUMNS = "address, name, owner, about, joined_at, last_seen, subs";
+/**
+ * v3 (ADR 0013 §6): a handle per tau (unique; the GitHub id that claimed it beside it), the
+ * slugs, and the claim nonces. Each stored sub-tau gains `web`, `starters` and `first_seen`
+ * (`upgradeSubsToV3`).
+ */
+export const SCHEMA_V3 = [
+  "ALTER TABLE taus ADD COLUMN handle TEXT",
+  "ALTER TABLE taus ADD COLUMN github_id TEXT",
+  "CREATE UNIQUE INDEX taus_handle ON taus (handle)",
+  `CREATE TABLE slugs (
+    name TEXT PRIMARY KEY,
+    address TEXT NOT NULL,
+    claimed_at INTEGER NOT NULL
+  )`,
+  "CREATE INDEX slugs_address ON slugs (address)",
+  `CREATE TABLE nonces (
+    address TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    ts INTEGER NOT NULL,
+    PRIMARY KEY (address, nonce)
+  )`,
+  "CREATE INDEX nonces_ts ON nonces (ts)",
+];
+
+const TAU_COLUMNS = "address, name, owner, about, joined_at, last_seen, handle, subs";
 
 /** A `taus` row as stored: `subs` is JSON text. */
-type StoredTau = Omit<TauRow, "subs"> & { subs: string };
+type StoredTau = Omit<TauRow, "subs" | "handle"> & { handle: string | null; subs: string };
 
-/** The stored JSON of `subs`, read defensively: anything unexpected counts as none. */
-function readSubs(text: string): PublicSub[] {
+/** A sub-tau as stored in the `subs` JSON; the slug lives in its own table. */
+type StoredSub = Omit<PublicSub, "slug">;
+
+/**
+ * The stored JSON of `subs`, read defensively: anything unexpected counts as none, and a
+ * field a v2 row lacks gets its default (`first_seen` falls back to `firstSeen`).
+ */
+function readSubs(text: string, firstSeen: number): StoredSub[] {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -82,22 +122,32 @@ function readSubs(text: string): PublicSub[] {
     return [];
   }
   if (!Array.isArray(value)) return [];
-  return value.flatMap((item: unknown) =>
-    typeof item === "object" &&
-    item !== null &&
-    typeof (item as PublicSub).name === "string" &&
-    typeof (item as PublicSub).about === "string"
-      ? [{ name: (item as PublicSub).name, about: (item as PublicSub).about }]
-      : [],
-  );
-}
-
-function toRow(stored: StoredTau): TauRow {
-  return { ...stored, subs: readSubs(stored.subs) };
+  return value.flatMap((item: unknown): StoredSub[] => {
+    if (typeof item !== "object" || item === null) return [];
+    const sub = item as Record<string, unknown>;
+    if (typeof sub.name !== "string" || typeof sub.about !== "string") return [];
+    const starters = Array.isArray(sub.starters)
+      ? sub.starters.filter((starter): starter is string => typeof starter === "string")
+      : [];
+    return [
+      {
+        name: sub.name,
+        about: sub.about,
+        web: sub.web === true,
+        starters,
+        first_seen: Number.isSafeInteger(sub.first_seen) ? (sub.first_seen as number) : firstSeen,
+      },
+    ];
+  });
 }
 
 /** Why the Directory refused a request; the Worker maps it to the reference's status. */
-export type Refusal = "stale" | "not_joined" | "rate_limited";
+export type Refusal =
+  | "stale"
+  | "not_joined"
+  | "rate_limited"
+  | "handle_taken"
+  | "handle_mismatch";
 
 export type Outcome<T extends object> = ({ ok: true } & T) | { ok: false; error: Refusal };
 
@@ -116,6 +166,8 @@ export interface JoinInput extends Signed {
   /** Already sanitised. */
   owner: string;
   about: string;
+  /** The handle of an address hosted on the universe's own host (`hostedHandle`). */
+  handle?: string | null;
 }
 
 export interface ReportInput extends Signed {
@@ -124,15 +176,36 @@ export interface ReportInput extends Signed {
   links: { peer: string; messages: number }[];
   /** Already normalised (`normalizeSubs`); absent means none. Replaces the stored list. */
   subs?: ReportedSub[];
+  /** As in JoinInput. */
+  handle?: string | null;
 }
 
 export type LeaveInput = Signed;
+
+export interface ClaimInput extends Signed {
+  /** The universe's own host, to recognise hosted addresses. */
+  universe: string;
+  nonce: string;
+  /** The GitHub login (lower case) and id signed in on the claim page, from tau-host. */
+  handle: string;
+  github_id: string;
+}
+
+export interface Claimed {
+  handle: string;
+  /** The address the handle was taken from (same GitHub account), or null. */
+  moved_from: string | null;
+}
+
+/** A sub-tau page: by its slug, or by its tau's handle and its name. */
+export type SubRef = { slug: string } | { handle: string; name: string };
 
 export interface Pruned {
   taus: number;
   reports: number;
   hits: number;
   clocks: number;
+  nonces: number;
 }
 
 export class Directory extends DurableObject<UniverseEnv> {
@@ -155,9 +228,37 @@ export class Directory extends DurableObject<UniverseEnv> {
     this.ctx.storage.transactionSync(() => {
       if (current < 1) for (const statement of SCHEMA_V1) this.sql.exec(statement);
       if (current < 2) for (const statement of SCHEMA_V2) this.sql.exec(statement);
+      if (current < 3) {
+        for (const statement of SCHEMA_V3) this.sql.exec(statement);
+        this.upgradeSubsToV3();
+      }
       this.sql.exec("DELETE FROM schema_version");
       this.sql.exec("INSERT INTO schema_version (version) VALUES (?)", SCHEMA_VERSION);
     });
+  }
+
+  /**
+   * Gives every stored sub-tau its v3 fields (not web, no starters, first seen at the tau's
+   * last report), drops reserved names, and hands out slugs first come by `joined_at`, as
+   * if every tau had reported in the order it joined.
+   */
+  private upgradeSubsToV3(): void {
+    const rows = this.sql
+      .exec<{ address: string; subs: string; last_seen: number }>(
+        "SELECT address, subs, last_seen FROM taus ORDER BY joined_at, address",
+      )
+      .toArray();
+    for (const row of rows) {
+      const subs = readSubs(row.subs, row.last_seen).filter(
+        (sub) => !RESERVED_SUB_NAMES.has(sub.name),
+      );
+      this.sql.exec(
+        "UPDATE taus SET subs = ? WHERE address = ?",
+        JSON.stringify(subs),
+        row.address,
+      );
+      this.claimSlugs(row.address, subs, row.last_seen);
+    }
   }
 
   /** The last accepted `ts` of an address, or null (the Worker's early stale check). */
@@ -168,8 +269,17 @@ export class Directory extends DurableObject<UniverseEnv> {
     return rows[0]?.ts ?? null;
   }
 
+  /** Whether a claim nonce of this address was accepted (the Worker's early stale check). */
+  nonceUsed(address: string, nonce: string): boolean {
+    return (
+      this.sql
+        .exec("SELECT 1 FROM nonces WHERE address = ? AND nonce = ?", address, nonce)
+        .toArray().length > 0
+    );
+  }
+
   join(input: JoinInput): Outcome<object> {
-    return this.accept(input, false, () => {
+    return this.accept(input, { joined: false }, () => {
       this.sql.exec(
         `INSERT INTO taus (address, name, sign_key, owner, about, joined_at, last_seen)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -184,12 +294,13 @@ export class Directory extends DurableObject<UniverseEnv> {
         input.ts,
         input.ts,
       );
-      return {};
+      if (input.handle) this.bindHosted(input.address, input.handle);
+      return { ok: true };
     });
   }
 
   report(input: ReportInput): Outcome<{ visible_links: number }> {
-    return this.accept(input, true, () => {
+    return this.accept(input, { joined: true }, () => {
       const wanted = new Map<string, number>();
       for (const link of input.links) {
         if (link.peer !== input.address) wanted.set(link.peer, link.messages);
@@ -230,31 +341,77 @@ export class Directory extends DurableObject<UniverseEnv> {
           messages,
         );
       }
+      const subs = this.withFirstSeen(input.address, input.subs ?? [], input.ts);
       this.sql.exec(
         "UPDATE taus SET name = ?, sign_key = ?, last_seen = ?, subs = ? WHERE address = ?",
         input.name,
         input.sign_key,
         input.ts,
-        JSON.stringify(input.subs ?? []),
+        JSON.stringify(subs),
         input.address,
       );
-      return { visible_links: this.view(input.address, input.now)?.links.length ?? 0 };
+      this.claimSlugs(input.address, subs, input.ts);
+      if (input.handle) this.bindHosted(input.address, input.handle);
+      return {
+        ok: true,
+        visible_links: this.view(input.address, input.now)?.links.length ?? 0,
+      };
     });
   }
 
   leave(input: LeaveInput): Outcome<object> {
-    return this.accept(input, true, () => {
+    return this.accept(input, { joined: true }, () => {
       this.forget([input.address]);
-      return {};
+      return { ok: true };
+    });
+  }
+
+  /**
+   * Binds `handle` to the claiming tau (ADR 0013 §6). One handle maps to one address:
+   *
+   * - a handle held by another tau under the same GitHub id moves here;
+   * - a handle held under another GitHub id, or by a tau hosted on this universe (whose
+   *   address is the handle), is refused with `handle_taken`;
+   * - a hosted tau can only claim its own handle (`handle_mismatch` otherwise);
+   * - the claiming tau's earlier handle, if any, is released.
+   */
+  claim(input: ClaimInput): Outcome<Claimed> {
+    return this.accept(input, { joined: true, nonce: input.nonce }, (): Outcome<Claimed> => {
+      const own = hostedHandle(input.address, input.universe);
+      if (own !== null && own !== input.handle) return { ok: false, error: "handle_mismatch" };
+      const holder = this.sql
+        .exec<{ address: string; github_id: string | null }>(
+          "SELECT address, github_id FROM taus WHERE handle = ?",
+          input.handle,
+        )
+        .toArray()[0];
+      let movedFrom: string | null = null;
+      if (holder !== undefined) {
+        const otherAccount = holder.github_id !== null && holder.github_id !== input.github_id;
+        if (otherAccount) return { ok: false, error: "handle_taken" };
+        if (holder.address !== input.address) {
+          const hosted = hostedHandle(holder.address, input.universe) === input.handle;
+          if (hosted || holder.github_id === null) return { ok: false, error: "handle_taken" };
+          this.sql.exec(
+            "UPDATE taus SET handle = NULL, github_id = NULL WHERE address = ?",
+            holder.address,
+          );
+          movedFrom = holder.address;
+        }
+      }
+      this.sql.exec(
+        "UPDATE taus SET handle = ?, github_id = ? WHERE address = ?",
+        input.handle,
+        input.github_id,
+        input.address,
+      );
+      return { ok: true, handle: input.handle, moved_from: movedFrom };
     });
   }
 
   /** The public snapshot. */
   snapshot(universe: string, now: number): Snapshot {
-    const taus = this.sql
-      .exec<StoredTau>(`SELECT ${TAU_COLUMNS} FROM taus`)
-      .toArray()
-      .map(toRow);
+    const taus = this.loadTaus("1 = 1");
     const reports = this.sql
       .exec<ReportRow>("SELECT reporter, peer, messages FROM reports")
       .toArray();
@@ -266,7 +423,30 @@ export class Directory extends DurableObject<UniverseEnv> {
     return this.view(address, now);
   }
 
-  /** The hourly cron: taus silent for 30 days, old rate-limit rows and old clocks. */
+  /** The person page of a handle, or null when no joined tau has it. */
+  person(handle: string, universe: string, now: number): PersonView | null {
+    const address = this.addressOfHandle(handle);
+    if (address === null) return null;
+    const snapshot = this.neighbourhood(address, now, universe);
+    return personView(snapshot, address, hostedHandle(address, universe) !== null);
+  }
+
+  /** A sub-tau page, or null when the slug or handle is unknown or the tau lists no such sub. */
+  sub(ref: SubRef, universe: string, now: number): SubView | null {
+    const found = this.findSub(ref);
+    if (found === null) return null;
+    const [tau] = buildSnapshot(universe, now, [found.row], []).taus;
+    const hosted = hostedHandle(found.row.address, universe) !== null;
+    return tau === undefined ? null : subView(universe, tau, found.name, hosted);
+  }
+
+  /** Whether a person page (`{handle}`) or a sub-tau page exists, for the page routes. */
+  pageExists(ref: { handle: string } | SubRef): boolean {
+    if ("slug" in ref || "name" in ref) return this.findSub(ref) !== null;
+    return this.addressOfHandle(ref.handle) !== null;
+  }
+
+  /** The hourly cron: taus silent for 30 days, old rate-limit rows, clocks and nonces. */
   prune(now: number): Pruned {
     return this.ctx.storage.transactionSync(() => {
       const expired = this.sql
@@ -283,23 +463,32 @@ export class Directory extends DurableObject<UniverseEnv> {
       const clocks = this.sql
         .exec("DELETE FROM clocks WHERE ts < ? RETURNING ts", now - CLOCK_RETENTION_SECONDS)
         .toArray().length;
-      return { taus: expired.length, reports, hits, clocks };
+      const nonces = this.sql
+        .exec("DELETE FROM nonces WHERE ts < ? RETURNING ts", now - CLAIM_WINDOW_SECONDS)
+        .toArray().length;
+      return { taus: expired.length, reports, hits, clocks, nonces };
     });
   }
 
   /**
    * The checks that need stored state, in the reference's order, then the effect; all in
-   * one transaction. A refusal writes nothing.
+   * one transaction. The replay guard is the address's last `ts`, or for a claim its nonce
+   * (a claim may be up to an hour old, older than the tau's last report). The effect may
+   * still refuse (the handle rules) before it writes. A refusal writes nothing.
    */
   private accept<T extends object>(
     input: Signed,
-    mustBeJoined: boolean,
-    effect: () => T,
+    rules: { joined: boolean; nonce?: string },
+    effect: () => Outcome<T>,
   ): Outcome<T> {
     return this.ctx.storage.transactionSync((): Outcome<T> => {
-      const last = this.lastTs(input.address);
-      if (last !== null && input.ts <= last) return { ok: false, error: "stale" };
-      if (mustBeJoined && !this.isJoined(input.address)) return { ok: false, error: "not_joined" };
+      if (rules.nonce === undefined) {
+        const last = this.lastTs(input.address);
+        if (last !== null && input.ts <= last) return { ok: false, error: "stale" };
+      } else if (this.nonceUsed(input.address, rules.nonce)) {
+        return { ok: false, error: "stale" };
+      }
+      if (rules.joined && !this.isJoined(input.address)) return { ok: false, error: "not_joined" };
       const recent = this.sql
         .exec<{ n: number }>(
           "SELECT COUNT(*) AS n FROM hits WHERE address = ? AND at > ?",
@@ -308,14 +497,25 @@ export class Directory extends DurableObject<UniverseEnv> {
         )
         .one().n;
       if (recent >= RATE_LIMIT_PER_HOUR) return { ok: false, error: "rate_limited" };
-      this.sql.exec(
-        `INSERT INTO clocks (address, ts) VALUES (?, ?)
-         ON CONFLICT (address) DO UPDATE SET ts = excluded.ts`,
-        input.address,
-        input.ts,
-      );
+      const outcome = effect();
+      if (!outcome.ok) return outcome;
+      if (rules.nonce === undefined) {
+        this.sql.exec(
+          `INSERT INTO clocks (address, ts) VALUES (?, ?)
+           ON CONFLICT (address) DO UPDATE SET ts = excluded.ts`,
+          input.address,
+          input.ts,
+        );
+      } else {
+        this.sql.exec(
+          "INSERT INTO nonces (address, nonce, ts) VALUES (?, ?, ?)",
+          input.address,
+          rules.nonce,
+          input.ts,
+        );
+      }
       this.sql.exec("INSERT INTO hits (address, at) VALUES (?, ?)", input.address, input.now);
-      return { ok: true, ...effect() };
+      return outcome;
     });
   }
 
@@ -323,15 +523,114 @@ export class Directory extends DurableObject<UniverseEnv> {
     return this.sql.exec("SELECT 1 FROM taus WHERE address = ?", address).toArray().length > 0;
   }
 
+  private addressOfHandle(handle: string): string | null {
+    const rows = this.sql
+      .exec<{ address: string }>("SELECT address FROM taus WHERE handle = ?", handle)
+      .toArray();
+    return rows[0]?.address ?? null;
+  }
+
   /**
-   * Deletes taus and the links they reported; returns the reports deleted. Other taus'
-   * reports about them stay: a link needs both ends joined, so it simply stops being
-   * mutual, and each reporter's next report drops the peer (only joined peers are kept).
+   * A tau hosted on the universe's own host has the handle of its address: tau-host proved
+   * it with a GitHub sign-in. It takes the handle from any other tau.
+   */
+  private bindHosted(address: string, handle: string): void {
+    this.sql.exec(
+      "UPDATE taus SET handle = NULL, github_id = NULL WHERE handle = ? AND address != ?",
+      handle,
+      address,
+    );
+    this.sql.exec("UPDATE taus SET handle = ? WHERE address = ?", handle, address);
+  }
+
+  /** The reported sub-taus with `first_seen` kept from the stored list, or `ts` when new. */
+  private withFirstSeen(address: string, subs: readonly ReportedSub[], ts: number): StoredSub[] {
+    const row = this.sql
+      .exec<{ subs: string; last_seen: number }>(
+        "SELECT subs, last_seen FROM taus WHERE address = ?",
+        address,
+      )
+      .toArray()[0];
+    const before = new Map(
+      (row === undefined ? [] : readSubs(row.subs, row.last_seen)).map((sub) => [
+        sub.name,
+        sub.first_seen,
+      ]),
+    );
+    return subs.map((sub) => ({
+      name: sub.name,
+      about: sub.about,
+      web: sub.web,
+      starters: sub.starters,
+      first_seen: before.get(sub.name) ?? ts,
+    }));
+  }
+
+  /** First come: each free, unreserved name of `subs` becomes this tau's slug. */
+  private claimSlugs(address: string, subs: readonly StoredSub[], at: number): void {
+    for (const sub of subs) {
+      if (!isSlugCandidate(sub.name)) continue;
+      this.sql.exec(
+        `INSERT INTO slugs (name, address, claimed_at) VALUES (?, ?, ?)
+         ON CONFLICT (name) DO NOTHING`,
+        sub.name,
+        address,
+        at,
+      );
+    }
+  }
+
+  /** Rows of `taus` matching `where`, with their sub-taus' slugs. */
+  private loadTaus(where: string, ...params: SqlStorageValue[]): TauRow[] {
+    const stored = this.sql
+      .exec<StoredTau>(`SELECT ${TAU_COLUMNS} FROM taus WHERE ${where}`, ...params)
+      .toArray();
+    if (stored.length === 0) return [];
+    const slugs = new Set(
+      this.sql
+        .exec<{ name: string; address: string }>(
+          "SELECT name, address FROM slugs WHERE address IN (SELECT value FROM json_each(?))",
+          JSON.stringify(stored.map((row) => row.address)),
+        )
+        .toArray()
+        .map((row) => `${row.address}\n${row.name}`),
+    );
+    return stored.map((row) => ({
+      ...row,
+      subs: readSubs(row.subs, row.last_seen).map((sub) => ({
+        ...sub,
+        slug: slugs.has(`${row.address}\n${sub.name}`) ? sub.name : null,
+      })),
+    }));
+  }
+
+  /** The tau of a sub-tau page and the sub-tau's name, when the tau lists it. */
+  private findSub(ref: SubRef): { row: TauRow; name: string } | null {
+    let rows: TauRow[];
+    let name: string;
+    if ("slug" in ref) {
+      name = ref.slug;
+      rows = this.loadTaus("address = (SELECT address FROM slugs WHERE name = ?)", ref.slug);
+    } else {
+      name = ref.name;
+      rows = this.loadTaus("handle = ?", ref.handle);
+    }
+    const row = rows[0];
+    if (row === undefined || !(row.subs ?? []).some((sub) => sub.name === name)) return null;
+    return { row, name };
+  }
+
+  /**
+   * Deletes taus, the links they reported and their slugs; returns the reports deleted.
+   * Other taus' reports about them stay: a link needs both ends joined, so it simply stops
+   * being mutual, and each reporter's next report drops the peer (only joined peers are
+   * kept). A handle goes with its tau's row.
    */
   private forget(addresses: string[]): number {
     if (addresses.length === 0) return 0;
     const list = JSON.stringify(addresses);
     this.sql.exec("DELETE FROM taus WHERE address IN (SELECT value FROM json_each(?))", list);
+    this.sql.exec("DELETE FROM slugs WHERE address IN (SELECT value FROM json_each(?))", list);
     return this.sql
       .exec(
         `DELETE FROM reports WHERE reporter IN (SELECT value FROM json_each(?))
@@ -342,10 +641,10 @@ export class Directory extends DurableObject<UniverseEnv> {
   }
 
   /**
-   * A tau and its links, through the same snapshot rule as the whole universe: the rows
-   * from and about the tau, and the taus on both ends.
+   * The rows from and about a tau, and the taus on both ends, through the same snapshot
+   * rule as the whole universe.
    */
-  private view(address: string, now: number): TauView | null {
+  private neighbourhood(address: string, now: number, universe = ""): Snapshot {
     const reports = this.sql
       .exec<ReportRow>(
         "SELECT reporter, peer, messages FROM reports WHERE reporter = ? OR peer = ?",
@@ -358,13 +657,15 @@ export class Directory extends DurableObject<UniverseEnv> {
       ends.add(report.reporter);
       ends.add(report.peer);
     }
-    const taus = this.sql
-      .exec<StoredTau>(
-        `SELECT ${TAU_COLUMNS} FROM taus WHERE address IN (SELECT value FROM json_each(?))`,
-        JSON.stringify([...ends]),
-      )
-      .toArray()
-      .map(toRow);
-    return tauView(buildSnapshot("", now, taus, reports), address);
+    const taus = this.loadTaus(
+      "address IN (SELECT value FROM json_each(?))",
+      JSON.stringify([...ends]),
+    );
+    return buildSnapshot(universe, now, taus, reports);
+  }
+
+  /** A tau and its visible links. */
+  private view(address: string, now: number): TauView | null {
+    return tauView(this.neighbourhood(address, now), address);
   }
 }

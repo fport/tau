@@ -1,12 +1,12 @@
 /**
  * The signed request payloads of §1 of docs/reference/tau-universe.md: validation and the
- * sanitising of the free-text fields.
+ * sanitising of the free-text fields. `claim` (ADR 0013 §6) binds a handle to a tau.
  */
 
 import { isAddress } from "./address";
 import { isObject } from "./http";
 
-export const KINDS = ["join", "report", "leave"] as const;
+export const KINDS = ["join", "report", "leave", "claim"] as const;
 export type Kind = (typeof KINDS)[number];
 
 export const MAX_OWNER_CHARS = 60;
@@ -16,6 +16,31 @@ export const MAX_LINKS = 500;
 export const MAX_SUBS = 20;
 /** A sub-tau name (ADR 0012): a slug shown as `/name`. */
 export const SUB_NAME = /^[a-z][a-z0-9-]{1,30}$/;
+/**
+ * Sub-tau names that never reach the universe (ADR 0013 §3): they would collide with the
+ * paths under an address (`<address>/net/inbox`, tau-host's `/app`, …). A report that lists
+ * one is still valid; the universe drops that entry.
+ */
+export const RESERVED_SUB_NAMES: ReadonlySet<string> = new Set([
+  "net",
+  "app",
+  "api",
+  "auth",
+  "claim",
+  "hub",
+]);
+/** A web sub-tau suggests at most this many first messages, each 1–80 characters. */
+export const MAX_STARTERS = 4;
+export const MAX_STARTER_CHARS = 80;
+/** A claim's single-use token: base64url or hex, 8–128 characters. */
+export const NONCE = /^[A-Za-z0-9_-]{8,128}$/;
+/** The clock window of join, report and leave, in seconds. */
+export const CLOCK_WINDOW_SECONDS = 300;
+/**
+ * The clock window of a claim: the owner opens the claim link and signs in with GitHub in
+ * between, so it is valid for an hour. Its nonce, not its `ts`, guards against replay.
+ */
+export const CLAIM_WINDOW_SECONDS = 3_600;
 /** Card names are 1–80 characters on the spine (`PUT /hub/card`). */
 export const MAX_NAME_CHARS = 80;
 
@@ -36,6 +61,10 @@ export interface JoinPayload extends Common {
 export interface ReportedSub {
   name: string;
   about: string;
+  /** Visitors can talk to it on its page (ADR 0013 §5); absent means false. */
+  web: boolean;
+  /** Suggested first messages; absent means none. */
+  starters: string[];
 }
 
 export interface ReportPayload extends Common {
@@ -49,7 +78,14 @@ export interface LeavePayload extends Common {
   kind: "leave";
 }
 
-export type Payload = JoinPayload | ReportPayload | LeavePayload;
+/** Binds the GitHub account signed in on the claim page to this tau (ADR 0013 §6). */
+export interface ClaimPayload extends Common {
+  kind: "claim";
+  /** Single use: a second claim with the same nonce is refused. */
+  nonce: string;
+}
+
+export type Payload = JoinPayload | ReportPayload | LeavePayload | ClaimPayload;
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; detail: string };
 
@@ -122,12 +158,19 @@ export function parsePayload(value: unknown): Parsed<Payload> {
     }
     case "leave":
       return { ok: true, value: { ...common, kind: "leave" } };
+    case "claim":
+      if (typeof p.nonce !== "string" || !NONCE.test(p.nonce)) {
+        return { ok: false, detail: "nonce must be 8-128 base64url characters" };
+      }
+      return { ok: true, value: { ...common, kind: "claim", nonce: p.nonce } };
   }
 }
 
 /**
- * The optional `subs` of a report: at most 20 `{name, about}` items, each name a sub-tau
- * name and each about 0–200 characters (a missing about is empty). Absent means none.
+ * The optional `subs` of a report: at most 20 `{name, about, web?, starters?}` items, each
+ * name a sub-tau name, each about 0–200 characters (a missing about is empty), `web` a
+ * boolean (missing is false) and `starters` at most 4 strings of 1–80 characters (missing is
+ * none). Absent means none.
  */
 export function parseSubs(value: unknown): Parsed<ReportedSub[]> {
   if (value === undefined) return { ok: true, value: [] };
@@ -143,21 +186,57 @@ export function parseSubs(value: unknown): Parsed<ReportedSub[]> {
     }
     const about = optionalText(item, "about", MAX_ABOUT_CHARS);
     if (!about.ok) return { ok: false, detail: `sub ${about.detail}` };
-    subs.push({ name: item.name, about: about.value });
+    if (item.web !== undefined && typeof item.web !== "boolean") {
+      return { ok: false, detail: "sub web must be a boolean" };
+    }
+    const starters = parseStarters(item.starters);
+    if (!starters.ok) return starters;
+    subs.push({
+      name: item.name,
+      about: about.value,
+      web: item.web === true,
+      starters: starters.value,
+    });
   }
   return { ok: true, value: subs };
 }
 
+function parseStarters(value: unknown): Parsed<string[]> {
+  if (value === undefined) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false, detail: "sub starters must be a list" };
+  if (value.length > MAX_STARTERS) {
+    return { ok: false, detail: `sub starters must have at most ${MAX_STARTERS} items` };
+  }
+  for (const starter of value as unknown[]) {
+    if (typeof starter !== "string" || starter === "" || charCount(starter) > MAX_STARTER_CHARS) {
+      return {
+        ok: false,
+        detail: `every sub starter must be a string of 1-${MAX_STARTER_CHARS} characters`,
+      };
+    }
+  }
+  return { ok: true, value: value as string[] };
+}
+
 /**
- * The sub-taus a report stores: a repeated name keeps its last entry, every about line is
- * sanitised, and the list is ordered by name.
+ * The sub-taus a report stores: a reserved name is dropped, a repeated name keeps its last
+ * entry, every about line and starter is sanitised (a starter left empty goes), and the list
+ * is ordered by name.
  */
 export function normalizeSubs(subs: readonly ReportedSub[]): ReportedSub[] {
-  const byName = new Map<string, string>();
-  for (const sub of subs) byName.set(sub.name, sanitizeText(sub.about, MAX_ABOUT_CHARS));
-  return [...byName.entries()]
-    .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
-    .map(([name, about]) => ({ name, about }));
+  const byName = new Map<string, ReportedSub>();
+  for (const sub of subs) {
+    if (RESERVED_SUB_NAMES.has(sub.name)) continue;
+    byName.set(sub.name, {
+      name: sub.name,
+      about: sanitizeText(sub.about, MAX_ABOUT_CHARS),
+      web: sub.web,
+      starters: sub.starters
+        .map((starter) => sanitizeText(starter, MAX_STARTER_CHARS))
+        .filter((starter) => starter !== ""),
+    });
+  }
+  return [...byName.values()].sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
 }
 
 // C0 and C1 control characters (newlines and tabs included), plus the bidirectional

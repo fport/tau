@@ -57,6 +57,7 @@ describe("POST /api/join", () => {
         joined_at: ts,
         last_seen: ts,
         online: true,
+        handle: null,
         subs: [],
       },
     ]);
@@ -198,10 +199,16 @@ describe("public sub-taus in reports", () => {
     for (const tau of [ALICE, BOB]) expect((await send("join", tau)).status).toBe(200);
   });
 
-  const aliceIn = async () => (await snapshot()).taus.find((t) => t.address === ALICE.address);
+  const aliceIn = async () => {
+    const tau = (await snapshot()).taus.find((t) => t.address === ALICE.address);
+    // Name and about only: the fields of ADR 0013 have their own tests below.
+    return tau && { ...tau, subs: tau.subs.map(({ name, about }) => ({ name, about })) };
+  };
 
   it("stores the reported sub-taus per tau, ordered by name, in the snapshot and /api/taus", async () => {
+    const ts = nextTs(ALICE.address);
     const res = await send("report", ALICE, {
+      ts,
       subs: [
         { name: "landing", about: "Writes landing-page copy." },
         { name: "coach", about: "A patient running coach." },
@@ -209,10 +216,26 @@ describe("public sub-taus in reports", () => {
     });
     expect(res.status).toBe(200);
     const expected = [
-      { name: "coach", about: "A patient running coach." },
-      { name: "landing", about: "Writes landing-page copy." },
+      {
+        name: "coach",
+        about: "A patient running coach.",
+        web: false,
+        starters: [],
+        first_seen: ts,
+        slug: "coach",
+      },
+      {
+        name: "landing",
+        about: "Writes landing-page copy.",
+        web: false,
+        starters: [],
+        first_seen: ts,
+        slug: "landing",
+      },
     ];
-    expect((await aliceIn())?.subs).toEqual(expected);
+    expect((await snapshot()).taus.find((t) => t.address === ALICE.address)?.subs).toEqual(
+      expected,
+    );
     expect((await snapshot()).taus.find((t) => t.address === BOB.address)?.subs).toEqual([]);
     const tau = (await (await universe(`/api/taus/${ALICE.address}`)).json()) as {
       subs: unknown;
@@ -448,6 +471,7 @@ describe("GET /api/taus/<address>", () => {
       "joined_at",
       "last_seen",
       "online",
+      "handle",
       "subs",
       "links",
     ]);
@@ -672,8 +696,10 @@ describe("POST checks, in the reference's order", () => {
   });
 
   it("400 stale, both ways of the 300 s window", async () => {
-    for (const ts of [nowSeconds() - 301, nowSeconds() + 301]) {
-      const res = await send("join", ALICE, { ts });
+    // Read the clock right before each request; +302, because the Worker's clock may tick
+    // once between here and its check.
+    for (const offset of [-301, 302]) {
+      const res = await send("join", ALICE, { ts: nowSeconds() + offset });
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "stale" });
     }

@@ -27,7 +27,15 @@ function tau(address: string, subs: string[] = [], owner = ""): PublicTau {
     joined_at: 1,
     last_seen: 1,
     online: true,
-    subs: subs.map((name) => ({ name, about: `About ${name}.` })),
+    handle: null,
+    subs: subs.map((name) => ({
+      name,
+      about: `About ${name}.`,
+      web: false,
+      starters: [],
+      first_seen: 1,
+      slug: null,
+    })),
   };
 }
 

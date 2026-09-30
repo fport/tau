@@ -13,7 +13,16 @@ import lockup from "../../../docs/brand/tau-lockup-dark.svg?raw";
 import mark from "../../../docs/brand/tau-mark.svg?raw";
 import icon from "../../../docs/brand/tau-app-icon.svg?raw";
 import coin from "../../../docs/brand/tau-coin.svg?raw";
-import { baseUrl, isAddress, universeHost } from "../src/address";
+import {
+  authorityOf,
+  baseUrl,
+  handleOfAddress,
+  hostedHandle,
+  hostOf,
+  isAddress,
+  isHandle,
+  universeHost,
+} from "../src/address";
 import { b64uDecode, b64uEncode, signedMessage, verifyEd25519 } from "../src/crypto";
 import {
   charCount,
@@ -60,11 +69,54 @@ describe("addresses", () => {
     expect(isAddress("tau..example")).toBe(false);
   });
 
+  it("accept host/@handle with a GitHub login in lower case", () => {
+    for (const address of [
+      "tau.example.com/@alice",
+      "tau.example.com/@a",
+      "127.0.0.1:8790/@bob-2",
+      `tau.example.com/@${"a".repeat(39)}`,
+    ]) {
+      expect(isAddress(address), address).toBe(true);
+    }
+    for (const address of [
+      "tau.example.com/@",
+      "tau.example.com/@Alice",
+      "tau.example.com/@-alice",
+      "tau.example.com/@alice-",
+      "tau.example.com/@al_ice",
+      `tau.example.com/@${"a".repeat(40)}`,
+      "tau.example.com/alice",
+      "tau.example.com/@alice/coach",
+      "tau.example.com/@alice/",
+      "/@alice",
+    ]) {
+      expect(isAddress(address), address).toBe(false);
+    }
+    expect(isHandle("alice")).toBe(true);
+    expect(isHandle("a-b-c")).toBe(true);
+    expect(isHandle("Alice")).toBe(false);
+    expect(isHandle("")).toBe(false);
+  });
+
+  it("split an address into its host, authority and handle", () => {
+    expect(hostOf("tau.example.com:8443/@alice")).toBe("tau.example.com");
+    expect(hostOf("127.0.0.1:8790")).toBe("127.0.0.1");
+    expect(authorityOf("tau.example.com:8443/@alice")).toBe("tau.example.com:8443");
+    expect(handleOfAddress("tau.example.com/@alice")).toBe("alice");
+    expect(handleOfAddress("tau.example.com")).toBeNull();
+    expect(hostedHandle("tau.example.com/@alice", "tau.example.com")).toBe("alice");
+    expect(hostedHandle("tau.example.com/@alice", "other.example")).toBeNull();
+    expect(hostedHandle("tau.example.com", "tau.example.com")).toBeNull();
+    expect(hostedHandle("127.0.0.1:8790/@alice", "127.0.0.1:8790")).toBe("alice");
+  });
+
   it("use http only for loopback hosts with insecure peers allowed", () => {
     expect(baseUrl("127.0.0.1:8790", true)).toBe("http://127.0.0.1:8790");
     expect(baseUrl("localhost:8790", true)).toBe("http://localhost:8790");
     expect(baseUrl("127.0.0.1:8790", false)).toBe("https://127.0.0.1:8790");
     expect(baseUrl("tau.example.com", true)).toBe("https://tau.example.com");
+    expect(baseUrl("localhost:8790/@alice", true)).toBe("http://localhost:8790/@alice");
+    expect(baseUrl("tau.example.com/@alice", true)).toBe("https://tau.example.com/@alice");
   });
 
   it("name the universe by UNIVERSE, else by the request host", () => {
@@ -93,6 +145,21 @@ describe("payloads", () => {
       ok: true,
       value: { ...base, kind: "leave" },
     });
+    expect(parsePayload({ ...base, kind: "claim", nonce: "AAECAwQFBgcICQoLDA0ODw" })).toEqual({
+      ok: true,
+      value: { ...base, kind: "claim", nonce: "AAECAwQFBgcICQoLDA0ODw" },
+    });
+  });
+
+  it("parse a claim's nonce: 8-128 base64url or hex characters", () => {
+    const claim = (nonce: unknown) => parsePayload({ ...base, kind: "claim", nonce });
+    for (const nonce of ["abcdefgh", "0123456789abcdef", "A-_z".repeat(32)]) {
+      expect(claim(nonce).ok, nonce).toBe(true);
+    }
+    for (const nonce of [undefined, 7, "", "short", "has space!", "a".repeat(129), "a+b/cdefg="]) {
+      expect(claim(nonce).ok, String(nonce)).toBe(false);
+    }
+    expect(parsePayload({ ...base, kind: "join", address: "tau.example/@alice" }).ok).toBe(true);
   });
 
   it("parse a report's sub-taus: absent is none, the name rule, at most 20", () => {
@@ -100,8 +167,8 @@ describe("payloads", () => {
     expect(parseSubs([{ name: "coach", about: "A", extra: 1 }, { name: "ab" }])).toEqual({
       ok: true,
       value: [
-        { name: "coach", about: "A" },
-        { name: "ab", about: "" },
+        { name: "coach", about: "A", web: false, starters: [] },
+        { name: "ab", about: "", web: false, starters: [] },
       ],
     });
     expect(parseSubs([{ name: `a${"b".repeat(30)}`, about: "" }]).ok).toBe(true);
@@ -119,17 +186,47 @@ describe("payloads", () => {
     expect(parseSubs(Array.from({ length: 20 }, (_, i) => ({ name: `s${i}x` }))).ok).toBe(true);
   });
 
+  it("parse a sub-tau's web flag and starters", () => {
+    const starters = ["Plan my week", "🦊".repeat(80), "x", "How do I start?"];
+    expect(parseSubs([{ name: "coach", about: "", web: true, starters }])).toEqual({
+      ok: true,
+      value: [{ name: "coach", about: "", web: true, starters }],
+    });
+    expect(parseSubs([{ name: "coach", web: false, starters: [] }]).ok).toBe(true);
+    for (const bad of [
+      { web: "yes" },
+      { web: 1 },
+      { web: null },
+      { starters: "hi" },
+      { starters: [""] },
+      { starters: [7] },
+      { starters: ["x".repeat(81)] },
+      { starters: ["a", "b", "c", "d", "e"] },
+    ]) {
+      expect(parseSubs([{ name: "coach", ...bad }]).ok, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
   it("normalise sub-taus: the last entry of a name wins, sanitised, ordered by name", () => {
+    const sub = (name: string, about: string, starters: string[] = []) => ({
+      name,
+      about,
+      web: false,
+      starters,
+    });
     expect(
       normalizeSubs([
-        { name: "zeta", about: "z" },
-        { name: "alpha", about: "one" },
-        { name: "alpha", about: "two\u0007 lines\n" },
+        sub("zeta", "z"),
+        sub("alpha", "one"),
+        sub("alpha", "two\u0007 lines\n", [" Hi\nthere ", "\u0000", "ok"]),
       ]),
-    ).toEqual([
-      { name: "alpha", about: "two lines" },
-      { name: "zeta", about: "z" },
-    ]);
+    ).toEqual([sub("alpha", "two lines", ["Hi there", "ok"]), sub("zeta", "z")]);
+  });
+
+  it("drop the sub-tau names ADR 0013 reserves", () => {
+    const names = ["net", "app", "api", "auth", "claim", "hub", "coach", "universe"];
+    const subs = names.map((name) => ({ name, about: "", web: false, starters: [] }));
+    expect(normalizeSubs(subs).map((sub) => sub.name)).toEqual(["coach", "universe"]);
   });
 
   it("count characters the way Python does", () => {

@@ -3,7 +3,9 @@
 import { env, exports } from "cloudflare:workers";
 import { vi } from "vitest";
 import { b64uDecode, b64uEncode } from "../src/crypto";
-import { directoryOf } from "../src/env";
+import { directoryOf, type UniverseEnv } from "../src/env";
+import worker from "../src/index";
+import type { Snapshot } from "../src/snapshot";
 
 /** The universe under test answers as this host (UNIVERSE is empty in the tests). */
 export const UNIVERSE = "universe.example";
@@ -111,7 +113,13 @@ export function payloadOf(
   };
   if (kind === "join") Object.assign(base, { owner: "", about: "" });
   if (kind === "report") base.links = [];
+  if (kind === "claim") base.nonce = newNonce();
   return { ...base, ...overrides };
+}
+
+/** A fresh claim nonce: 16 random bytes, base64url. */
+export function newNonce(): string {
+  return b64uEncode(crypto.getRandomValues(new Uint8Array(16)));
 }
 
 /** A signed request body. */
@@ -189,25 +197,121 @@ export function directory() {
   return directoryOf(env);
 }
 
-export interface SnapshotBody {
-  universe: string;
-  generated_at: number;
-  stats: { taus: number; online: number; messages: number };
-  taus: {
-    address: string;
-    name: string;
-    owner: string;
-    about: string;
-    joined_at: number;
-    last_seen: number;
-    online: boolean;
-    subs: { name: string; about: string }[];
-  }[];
-  links: { a: string; b: string; messages: number }[];
-}
+export type SnapshotBody = Snapshot;
 
 export async function snapshot(): Promise<SnapshotBody> {
   const res = await universe("/api/universe");
   if (res.status !== 200) throw new Error(`snapshot: ${res.status}`);
   return (await res.json()) as SnapshotBody;
+}
+
+/** A request to the universe under test with bindings added or replaced (HOST, ASSETS). */
+export function universeWith(
+  bindings: Partial<UniverseEnv>,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  return worker.fetch(new Request(`https://${UNIVERSE}${path}`, init), { ...env, ...bindings });
+}
+
+/** A GitHub account tau-host knows, signed in with the cookie `tau_session=<session>`. */
+export interface Account {
+  handle: string;
+  github_id: number;
+  session: string;
+}
+
+export const GITHUB_ALICE: Account = { handle: "alice", github_id: 1001, session: "s-alice" };
+export const GITHUB_BOB: Account = { handle: "bob", github_id: 1002, session: "s-bob" };
+
+/**
+ * A fake tau-host behind the `HOST` binding. It answers `GET /api/host/whoami` from its
+ * sessions, serves the cards of the hosted taus it is given, and answers every other path
+ * with a marker response. It records every request it gets.
+ */
+export class FakeHost {
+  readonly requests: Request[] = [];
+  readonly sessions = new Map<string, Account>();
+  readonly cards = new Map<string, Record<string, unknown>>();
+  /** Replaces the whoami answer when set. */
+  whoami: (() => Response) | null = null;
+
+  constructor(...accounts: Account[]) {
+    for (const account of accounts) this.sessions.set(account.session, account);
+  }
+
+  /** Serves the card of a hosted tau at `/@<handle>/.well-known/tau.json`. */
+  hosts(tau: Tau): this {
+    this.cards.set(new URL(`https://${tau.address}`).pathname, card(tau));
+    return this;
+  }
+
+  readonly binding = {
+    fetch: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const request = new Request(input, init);
+      this.requests.push(request.clone());
+      return this.answer(request);
+    },
+    connect: () => {
+      throw new Error("no sockets in tests");
+    },
+  } as unknown as Fetcher;
+
+  private answer(request: Request): Response {
+    const url = new URL(request.url);
+    if (url.pathname === "/api/host/whoami") {
+      if (this.whoami !== null) return this.whoami();
+      const cookie = request.headers.get("cookie") ?? "";
+      const session = /(?:^|;\s*)tau_session=([^;]+)/.exec(cookie)?.[1];
+      const account = session === undefined ? undefined : this.sessions.get(session);
+      if (account === undefined) return Response.json({ error: "not_signed_in" }, { status: 401 });
+      return Response.json({ handle: account.handle, github_id: account.github_id });
+    }
+    const known = url.pathname.endsWith("/.well-known/tau.json")
+      ? this.cards.get(url.pathname.slice(0, -"/.well-known/tau.json".length))
+      : undefined;
+    if (known !== undefined) return Response.json(known);
+    return new Response(`tau-host ${request.method} ${url.pathname}${url.search}`, {
+      status: 299,
+      headers: { "x-served-by": "tau-host", "content-type": "text/plain" },
+    });
+  }
+}
+
+/** Signs and posts a join, report or leave to a universe with a (fake) tau-host behind it. */
+export async function sendVia(
+  host: FakeHost,
+  kind: "join" | "report" | "leave",
+  tau: Tau,
+  overrides: Record<string, unknown> = {},
+): Promise<Response> {
+  return universeWith({ HOST: host.binding }, `/api/${kind}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(await signed(kind, tau, overrides)),
+  });
+}
+
+/** Signs a claim for `tau` and posts it as the claim page would, signed in as `account`. */
+export async function sendClaim(
+  host: FakeHost | null,
+  tau: Tau,
+  options: {
+    account?: Account | null;
+    overrides?: Record<string, unknown>;
+    origin?: string | null;
+    wire?: Wire;
+  } = {},
+): Promise<Response> {
+  const wire = options.wire ?? (await signed("claim", tau, options.overrides ?? {}));
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  const origin = options.origin === undefined ? `https://${UNIVERSE}` : options.origin;
+  if (origin !== null) headers.origin = origin;
+  if (options.account) headers.cookie = `lang=en; tau_session=${options.account.session}`;
+  const bindings: Partial<UniverseEnv> = host === null ? {} : { HOST: host.binding };
+  return universeWith(bindings, "/api/claim", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(wire),
+  });
 }

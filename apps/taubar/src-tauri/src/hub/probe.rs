@@ -7,7 +7,7 @@ use super::launch::{Launch, LaunchdAgent, LAUNCHD_LABEL};
 use serde::Serialize;
 use serde_json::Value;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -50,24 +50,61 @@ pub fn probe_lock(path: &Path) -> LockProbe {
     LockProbe { held: true, pid }
 }
 
-/// `GET http://127.0.0.1:<port><path>` → (status, body). HTTP/1.1 with `Connection: close`;
-/// the hub's control API answers and closes.
-pub fn http_get(port: u16, path: &str, timeout: Duration) -> Result<(u16, String), String> {
+/// The most TauBar reads of one answer from the control API.
+const MAX_ANSWER: usize = 1024 * 1024;
+
+/// Send `request` to `127.0.0.1:<port>` and read the whole answer (until the server closes,
+/// at most [`MAX_ANSWER`]). `timeout` bounds the whole exchange, not each read: before every
+/// read the socket timeout is lowered to the time left, so a listener that drips one byte at
+/// a time cannot stretch a request far past `timeout` (a squatter on the port would otherwise
+/// keep "Lock now" or a supervisor step waiting for minutes).
+fn exchange(port: u16, request: &[u8], timeout: Duration) -> Result<Vec<u8>, String> {
+    let deadline = Instant::now() + timeout;
+    let left = || deadline.saturating_duration_since(Instant::now());
+    let late = || format!("no complete answer within {timeout:?}");
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let mut stream = TcpStream::connect_timeout(&addr, timeout).map_err(|e| e.to_string())?;
-    stream.set_read_timeout(Some(timeout)).ok();
-    stream.set_write_timeout(Some(timeout)).ok();
-    write!(
-        stream,
+    if left().is_zero() {
+        return Err(late());
+    }
+    stream.set_write_timeout(Some(left())).ok();
+    stream.write_all(request).map_err(|e| e.to_string())?;
+    let mut raw = Vec::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let rest = left();
+        if rest.is_zero() {
+            return Err(late());
+        }
+        stream
+            .set_read_timeout(Some(rest))
+            .map_err(|e| e.to_string())?;
+        match stream.read(&mut buf) {
+            Ok(0) => return Ok(raw),
+            Ok(n) => {
+                let room = MAX_ANSWER - raw.len();
+                raw.extend_from_slice(&buf[..n.min(room)]);
+                if raw.len() == MAX_ANSWER {
+                    return Ok(raw);
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                return Err(late());
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+}
+
+/// `GET http://127.0.0.1:<port><path>` → (status, body). HTTP/1.1 with `Connection: close`;
+/// the hub's control API answers and closes. `timeout` bounds the whole request.
+pub fn http_get(port: u16, path: &str, timeout: Duration) -> Result<(u16, String), String> {
+    let request = format!(
         "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: application/json\r\n\
          Connection: close\r\n\r\n"
-    )
-    .map_err(|e| e.to_string())?;
-    let mut raw = Vec::new();
-    stream
-        .take(1024 * 1024)
-        .read_to_end(&mut raw)
-        .map_err(|e| e.to_string())?;
+    );
+    let raw = exchange(port, request.as_bytes(), timeout)?;
     parse_http_response(&raw)
 }
 
@@ -146,7 +183,8 @@ pub fn parse_http_response_full(raw: &[u8]) -> Result<HttpResponse, String> {
 
 /// `POST http://127.0.0.1:<port><path>` with a JSON `body` and extra `headers` → the whole
 /// answer. HTTP/1.1 with `Connection: close`; `Content-Type: application/json`, no `Origin`.
-/// A redirect comes back as an answer like any other: nothing here follows it.
+/// A redirect comes back as an answer like any other: nothing here follows it. `timeout`
+/// bounds the whole request.
 pub fn http_post(
     port: u16,
     path: &str,
@@ -174,16 +212,7 @@ pub fn http_post(
     let mut bytes = request.into_bytes();
     bytes.extend_from_slice(body);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let mut stream = TcpStream::connect_timeout(&addr, timeout).map_err(|e| e.to_string())?;
-    stream.set_read_timeout(Some(timeout)).ok();
-    stream.set_write_timeout(Some(timeout)).ok();
-    stream.write_all(&bytes).map_err(|e| e.to_string())?;
-    let mut raw = Vec::new();
-    stream
-        .take(1024 * 1024)
-        .read_to_end(&mut raw)
-        .map_err(|e| e.to_string())?;
+    let raw = exchange(port, &bytes, timeout)?;
     parse_http_response_full(&raw)
 }
 
@@ -454,6 +483,45 @@ mod tests {
         let request = server.join().unwrap();
         assert!(request.starts_with("GET /health HTTP/1.1\r\n"));
         assert!(request.contains(&format!("Host: 127.0.0.1:{port}\r\n")));
+    }
+
+    /// A listener that answers one byte every 50 ms, for up to ten seconds, and stops when
+    /// the client goes away.
+    fn drip_server() -> (u16, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let Ok((mut conn, _)) = listener.accept() else {
+                return;
+            };
+            for byte in b"HTTP/1.1 200 OK\r\nX-Pad: ".iter().chain(&[b'a'; 200]) {
+                if conn.write_all(&[*byte]).is_err() {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+        (port, server)
+    }
+
+    #[test]
+    fn a_dripping_answer_cannot_stretch_a_request_past_its_timeout() {
+        let timeout = Duration::from_millis(300);
+        let (port, server) = drip_server();
+        let start = Instant::now();
+        let err = http_post(port, "/guard/lock", &[], b"{}", timeout).unwrap_err();
+        let took = start.elapsed();
+        assert!(took < timeout * 2, "http_post took {took:?}");
+        assert!(err.contains("no complete answer within"), "{err}");
+        server.join().unwrap();
+
+        let (port, server) = drip_server();
+        let start = Instant::now();
+        let err = http_get(port, "/status", timeout).unwrap_err();
+        let took = start.elapsed();
+        assert!(took < timeout * 2, "http_get took {took:?}");
+        assert!(err.contains("no complete answer within"), "{err}");
+        server.join().unwrap();
     }
 
     #[test]

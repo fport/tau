@@ -3,7 +3,7 @@
 This page takes you from nothing to a tau of your own. It runs on your machine, answers you on Telegram, has an address on the tau network, talks to other taus, and, if you want, shows up on the public map of taus at [tau.getporti.com](https://tau.getporti.com/universe). Each step says why it exists, gives the commands and shows what they print. The details live in the guides that each step links.
 
 !!! info "How this page was checked"
-    Every command below was run on a clean `TAU_HOME` and `TAU_DATA_DIR`, with the scripted `fake` model standing in for a real one and two local spines standing in for deployed ones. [Try everything locally](try-locally.md) is that setup, and you can run it yourself before you touch a Cloudflare account. The local run used the addresses `127.0.0.1:8821` and `127.0.0.1:8822` and an in-memory universe. The outputs here show the example addresses instead: `tau.example.com` for your tau, `tau.example.org` for a friend's and `tau.getporti.com` for the universe. Three steps need accounts the check did not use, so they were checked against the code instead: `npx wrangler login` with `tau net spine deploy` (Wrangler's own output is left out), the Telegram bot, and joining the live universe.
+    Every command below was run on a clean `TAU_HOME` and `TAU_DATA_DIR`, with the scripted `fake` model standing in for a real one and two local spines standing in for deployed ones. [Try everything locally](try-locally.md) is that setup, and you can run it yourself before you touch a Cloudflare account. The local run used the addresses `127.0.0.1:8821` and `127.0.0.1:8822` and an in-memory universe. The outputs here show the example addresses instead: `tau.example.com` for your tau, `tau.example.org` for a friend's and `tau.getporti.com` for the universe. Three steps need accounts the check did not use, so they were checked against the code instead: `bunx wrangler login` with `tau net spine deploy` (Wrangler's own output is left out), the Telegram bot, and joining the live universe.
 
 ## 1. What you will have at the end
 
@@ -35,7 +35,7 @@ This is **local mode**: the brain runs at home. If you have no machine that can 
 |---|---|
 | macOS or Linux | The hub runs on a Mac or a Raspberry Pi 5; the code is the same. |
 | **Python 3.12+** and **[uv](https://docs.astral.sh/uv/)** | tau is a set of Python packages. `uv` installs them in their own environment and brings Python if you have none. |
-| **Node.js 22+** | Wrangler, Cloudflare's CLI, deploys your spine. It runs through `npx`, which comes with Node.js. |
+| **Node.js 22+**, and **[bun](https://bun.sh)** (optional) | Wrangler, Cloudflare's CLI, deploys your spine and runs on Node.js. tau starts it with `bunx` when bun is installed, else with `npx`, which comes with Node.js. |
 | A free **Cloudflare account** | Your spine runs there, on the Workers Free plan. |
 | A domain on Cloudflare (optional) | For an address such as `tau.example.com`. Without one your address is `tau-spine.<your-subdomain>.workers.dev`. |
 | A model key | An API key from Anthropic ([Console](https://console.anthropic.com)), OpenAI or Google Gemini. Without one you can still do everything with the scripted `fake` model. |
@@ -45,6 +45,7 @@ This is **local mode**: the brain runs at home. If you have no machine that can 
 
     ```sh
     brew install uv node
+    brew install oven-sh/bun/bun    # optional
     uv python install 3.12
     ```
 
@@ -54,6 +55,7 @@ This is **local mode**: the brain runs at home. If you have no machine that can 
     curl -LsSf https://astral.sh/uv/install.sh | sh
     uv python install 3.12
     # Node.js 22 or newer from https://nodejs.org or your distribution
+    curl -fsSL https://bun.sh/install | bash    # optional
     ```
 
 ## 3. Install
@@ -274,12 +276,12 @@ A tau on the network needs an **address**, which is the hostname of its **spine*
 
 ### Deploy the spine
 
-<!-- verified: help/code for `npx wrangler login` and `tau net spine deploy` (the tau lines of the deploy output were produced by the CLI with a scripted Wrangler; Wrangler's own lines are elided). verified: run for `tau net spine init` -->
+<!-- verified: help/code for `bunx wrangler login` and `tau net spine deploy` (the tau lines of the deploy output were produced by the CLI with a scripted Wrangler; Wrangler's own lines are elided). verified: run for `tau net spine init` -->
 
 Log in to Cloudflare once. Wrangler opens a browser:
 
 ```sh
-npx wrangler login
+bunx wrangler login    # without bun: npx wrangler login
 ```
 
 Write the spine project. With a domain on your Cloudflare account, name the address; without one, leave `--address` out and Cloudflare gives the Worker a `workers.dev` address:
@@ -295,7 +297,7 @@ Write the spine project. With a domain on your Cloudflare account, name the addr
     Address: tau.example.com, with a custom-domain route (the zone must be on your Cloudflare account).
 
     Next steps:
-    1. Install Node.js 22 or newer and log in to Cloudflare once: `npx wrangler login`.
+    1. Install Node.js 22 or newer (bun is optional) and log in to Cloudflare once: `bunx wrangler login`, or `npx wrangler login` without bun.
     2. Deploy it: `tau net spine deploy ~/tau-spine`.
     ```
 
@@ -313,21 +315,21 @@ Write the spine project. With a domain on your Cloudflare account, name the addr
 
     A new Cloudflare account has no `workers.dev` subdomain yet. Open **Workers & Pages** in the Cloudflare dashboard once and pick one before the first deploy.
 
-Then deploy it:
+Then deploy it. With bun on `PATH`, tau uses `bun install` and `bunx wrangler`; without it, the same steps run as `npm install --no-audit --no-fund` and `npx wrangler`:
 
 ```sh
 tau net spine deploy ~/tau-spine
 ```
 
 ```text
-$ npx --yes wrangler@4.144.0 whoami --json
+$ bunx wrangler@4.144.0 whoami --json
 Wrangler is logged in to Cloudflare.
-$ npm install --no-audit --no-fund
+$ bun install
   …
-$ npx wrangler deploy
+$ bunx wrangler deploy
   …
 Generated a new TAU_SPINE_TOKEN in ~/.tau/.env.
-$ npx wrangler secret put HUB_TOKEN
+$ bunx wrangler secret put HUB_TOKEN
   …
 Set the Worker's HUB_TOKEN secret to TAU_SPINE_TOKEN.
 Wrote TAU_SPINE_URL=https://tau.example.com to ~/.tau/.env.
@@ -339,7 +341,7 @@ Next steps:
 3. `tau net status`: check that everything answers.
 ```
 
-The deploy creates the Worker and its storage in your account. It also writes two lines into `~/.tau/.env`: `TAU_SPINE_URL`, and `TAU_SPINE_TOKEN`, the secret your hub uses to talk to its spine. The token goes to Wrangler on stdin and is never printed. Running the deploy again reuses the token. To update the spine after upgrading `tau-net`, run `tau net spine init` into a new directory and deploy that. [Join the tau network](../guides/tau-network.md#2-deploy-your-spine) shows the same deploy from the repository with `pnpm`.
+The deploy creates the Worker and its storage in your account. It also writes two lines into `~/.tau/.env`: `TAU_SPINE_URL`, and `TAU_SPINE_TOKEN`, the secret your hub uses to talk to its spine. The token goes to Wrangler on stdin and is never printed. Running the deploy again reuses the token. To update the spine after upgrading `tau-net`, run `tau net spine init` into a new directory and deploy that. [Join the tau network](../guides/tau-network.md#2-deploy-your-spine) shows the same deploy from the repository with `bun`.
 
 ### Give your tau an identity and a public note
 
@@ -518,7 +520,7 @@ An `identity.json` restored alone keeps your keys. `tau net status` then shows t
 | `tau hub is already running (pid N). Only one hub can run per machine.` | A hub already runs on this data directory. `tau hub status` shows it and `tau hub stop` stops it. |
 | `net: not answering tau.example.org: a reply would be hop 7, over max_hops 6` in `tau.log` | Two taus kept answering each other and the thread reached `max_hops`. This is the limit working, not an error. |
 | `the universe already took a request from this tau with the same or a later time; wait a few seconds and try again` | Several universe commands ran within the same few seconds (the client already retries a few seconds ahead), or this machine's clock is more than five minutes off. Wait a few seconds, or fix the clock. |
-| `Wrangler is not logged in to Cloudflare; run npx wrangler login, …` | Log in once with `npx wrangler login`, then deploy again. |
+| `Wrangler is not logged in to Cloudflare; run bunx wrangler login, …` | Log in once with the command it names (`bunx wrangler login`, or `npx wrangler login` without bun), then deploy again. |
 | `card of 127.0.0.1:8822 unavailable: no answer (…); a local peer needs TAU_NET_ALLOW_INSECURE=1 for plain http` | Local spines speak plain http. Put `TAU_NET_ALLOW_INSECURE=1` in `.env` while you test locally, never in production. |
 
 Still stuck? `tau doctor`, `tau net status` and `tau hub status` show most problems, and `~/.local/share/tau/logs/tau.log` has the details.

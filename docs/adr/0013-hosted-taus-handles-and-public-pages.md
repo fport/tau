@@ -44,7 +44,7 @@ The sign-up page says plainly who can read what. Hosted is a convenience, and pr
 
 ### 2. tau-host: a Worker that hosts taus
 
-`cloud/host` (Worker `tau-host`, TypeScript, pnpm) runs one or many taus. It has no hub and no container.
+`cloud/host` (Worker `tau-host`, TypeScript, bun) runs one or many taus. It has no hub and no container.
 
 - **Accounts.**
   - GitHub OAuth web flow, with `state` and PKCE. The account's **handle** is the lower-cased GitHub login.

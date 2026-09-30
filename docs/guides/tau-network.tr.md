@@ -17,40 +17,40 @@ Tasarım [ADR 0007](../adr/0007-cloud-mode-and-tau-network.md) ve [ADR 0010](../
 
 ## 1. Önce yerelde dene (isteğe bağlı)
 
-[Her şeyi yerelde dene](../getting-started/try-locally.md), tek bir makinede iki tau ve iki spine çalıştırır; ne Cloudflare hesabı ne model anahtarı gerekir. Aşağıdaki deploy ile aynı spine kit'ini kullanır, `npx wrangler dev` ile çalıştırılır.
+[Her şeyi yerelde dene](../getting-started/try-locally.md), tek bir makinede iki tau ve iki spine çalıştırır; ne Cloudflare hesabı ne model anahtarı gerekir. Aşağıdaki deploy ile aynı spine kit'ini kullanır, `bunx wrangler dev` ile çalıştırılır.
 
 ## 2. Spine'ını deploy et { #2-deploy-your-spine }
 
-Node.js 22 veya daha yenisine ve bir Cloudflare hesabına ihtiyacın var; Workers Free planı yeterli. Kişiler tau'nu adresiyle tanır, bu yüzden adresi herhangi bir kişi eklemeden önce seç.
+Node.js 22 veya daha yenisine ve bir Cloudflare hesabına ihtiyacın var; Workers Free planı yeterli. [bun](https://bun.sh) isteğe bağlı: bun `PATH` üzerindeyse tau `bun install` ve `bunx wrangler` kullanır, değilse `npm install` ve `npx wrangler`. Wrangler her iki durumda da Node.js üzerinde çalışır. Kişiler tau'nu adresiyle tanır, bu yüzden adresi herhangi bir kişi eklemeden önce seç.
 
 === "Spine kit'iyle"
 
     Spine `tau-net` içinde gelir, dolayısıyla bu yol depo olmadan da çalışır:
 
     ```sh
-    npx wrangler login                                        # once, in a browser
+    bunx wrangler login                                       # once, in a browser (npx without bun)
     tau net spine init ~/tau-spine --address tau.example.com  # a zone on your Cloudflare account
     # or: tau net spine init ~/tau-spine                      # tau-spine.<your-subdomain>.workers.dev
     tau net spine deploy ~/tau-spine
     ```
 
     - `tau net spine init DIR`, yeni ya da boş bir dizine bir Wrangler projesi yazar: `wrangler.jsonc` (yerel mod), paketlenmiş `worker.js`, Wrangler sürümü sabitlenmiş bir `package.json`, `.gitignore` ve bir `README.md`. `--address`, `ADDRESS` değişkenini ve özel alan adı (custom domain) rotasını ayarlar.
-    - `tau net spine deploy DIR`, Wrangler oturumunu kontrol eder, `npm install` ve `npx wrangler deploy` çalıştırır, eksikse `<TAU_HOME>/.env` içinde `TAU_SPINE_TOKEN` oluşturur, onu Worker'ın `HUB_TOKEN` secret'ı olarak ayarlar (stdin üzerinden, asla ekrana yazdırmadan) ve `TAU_SPINE_URL` değerini aynı `.env` dosyasına yazar.
+    - `tau net spine deploy DIR`, Wrangler oturumunu kontrol eder, `bun install` ve `bunx wrangler deploy` çalıştırır (bun yoksa `npm install` ve `npx wrangler deploy`), eksikse `<TAU_HOME>/.env` içinde `TAU_SPINE_TOKEN` oluşturur, onu Worker'ın `HUB_TOKEN` secret'ı olarak ayarlar (stdin üzerinden, asla ekrana yazdırmadan) ve `TAU_SPINE_URL` değerini aynı `.env` dosyasına yazar.
     - `tau-net`'i yükselttikten sonra spine'ı güncellemek için `tau net spine init` komutunu yeni bir dizine çalıştır ve onu deploy et. Worker adını ve depolamasını korur.
 
     `tau-net` README'si ve [evren referansının 4. bölümü](../reference/tau-universe.md#4-the-spine-kit-tau-net-spine) kit'i eksiksiz anlatır.
 
 === "Kaynaktan"
 
-    Katkıda bulunanlar depodaki `cloud/spine` dizininden, Node.js 24 ve pnpm 10 ile deploy eder:
+    Katkıda bulunanlar depodaki `cloud/spine` dizininden, bun ile (ve Wrangler'ın üzerinde çalıştığı Node.js 24 ile) deploy eder:
 
     ```sh
     cd cloud/spine
-    pnpm install
-    pnpm run configure                       # writes the gitignored wrangler.jsonc and .dev.vars
-    pnpm exec wrangler login
-    pnpm run deploy                          # creates the Worker and its storage (no D1 needed)
-    pnpm exec wrangler secret put HUB_TOKEN  # paste a long random value; your hub needs the same
+    bun install
+    bun run configure                        # writes the gitignored wrangler.jsonc and .dev.vars
+    bunx wrangler login
+    bun run deploy                           # creates the Worker and its storage (no D1 needed)
+    bunx wrangler secret put HUB_TOKEN       # paste a long random value; your hub needs the same
     ```
 
     Deploy, Worker'ın URL'sini yazdırır; onun host'u senin adresindir. Kendi alan adın için `cloud/spine/wrangler.jsonc` dosyasına bir rota ekle ve yeniden deploy et:
@@ -67,7 +67,7 @@ Node.js 22 veya daha yenisine ve bir Cloudflare hesabına ihtiyacın var; Worker
     TAU_SPINE_TOKEN=<the same value as HUB_TOKEN>
     ```
 
-    `pnpm dev` aynı spine'ı yerelde `http://127.0.0.1:8787` adresinde çalıştırır; [`cloud/spine/README.md`](https://github.com/fport/tau/blob/main/cloud/spine/README.md) bunu, iki yerel tau için ikinci bir spine'ı ve bulut modu deploy'unu gösterir.
+    `bun run dev` aynı spine'ı yerelde `http://127.0.0.1:8787` adresinde çalıştırır; [`cloud/spine/README.md`](https://github.com/fport/tau/blob/main/cloud/spine/README.md) bunu, iki yerel tau için ikinci bir spine'ı ve bulut modu deploy'unu gösterir.
 
 Yerel mod, Workers Free planının sınırları içinde kalır.
 

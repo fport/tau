@@ -626,7 +626,7 @@ class HubGuard:
         except (HubUnavailable, HubError) as exc:
             logger.info("admission refused: %s", exc)
             return Admission(False, "unavailable")
-        if not isinstance(payload, dict):
+        if not isinstance(payload, dict) or payload.get("state") == "off":
             return Admission(False, "unavailable")
         if payload.get("allowed") is True:
             if self._enrollment_ok(payload.get("enrollment")):

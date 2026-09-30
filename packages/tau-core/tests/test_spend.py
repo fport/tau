@@ -211,3 +211,46 @@ def test_spend_service_adds_status_and_route(
     assert payload["roles"]["fast"]["exhausted"] is True
     (source,) = sources
     assert source()["spend"]["roles"]["brain"]["spend_usd"] == 0.42  # the refreshed cache
+
+
+def test_spend_needs_the_control_token_over_http(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+    import json
+    import urllib.error
+    import urllib.request
+
+    config = proxy_config(tmp_path)
+    for name, value in ENV.items():
+        monkeypatch.setenv(name, value)
+    service = SpendService(config)
+    service.tracker._fetch = FakeProxy()  # type: ignore[attr-defined]
+    api = ControlApi(0, lambda: {}, hub_dir=tmp_path / "hub")
+
+    class Hub:
+        def add_status_source(self, source) -> None:
+            pass
+
+        def find_service(self, name: str):
+            return api if name == "control-api" else None
+
+    asyncio.run(service.start(Hub()))  # type: ignore[arg-type]
+    token = api.write_token()
+    api.serve()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def get(headers: dict[str, str]) -> int:
+        request = urllib.request.Request(f"{api.url}/spend", headers=headers)
+        try:
+            with opener.open(request, timeout=5) as response:
+                assert json.loads(response.read())["proxy"] == URL
+                return response.status
+        except urllib.error.HTTPError as exc:
+            return exc.code
+
+    try:
+        assert get({}) == 403
+        assert get({"X-Tau-Token": token}) == 200
+    finally:
+        api.shutdown()

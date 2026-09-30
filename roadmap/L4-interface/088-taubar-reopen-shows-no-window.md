@@ -22,3 +22,5 @@ None - can start immediately.
 ## Comments
 
 - 2026-09-30: found while installing TauBar on the user's Mac. The icon was hidden by Hidden Bar (a menu bar manager that pushes items left of its separator off screen, x = -2595), so the window was the only other way in.
+- 2026-09-30: narrowed. Since 091 a second launch reaches the running TauBar, which calls `open_settings` (`show()` + `set_focus()` on the existing `settings` window), yet CGWindowList reports that window `onscreen false`. An accessory app (`ActivationPolicy::Accessory`) may need to activate itself, or switch to `Regular` while the window is open, before macOS orders its window front. Verify by hand on the user's Mac.
+

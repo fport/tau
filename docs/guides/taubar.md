@@ -43,7 +43,8 @@ TauBar's window; after that it lives in the menu bar.
 !!! note "No τ in the menu bar?"
     On a MacBook with a notch, macOS hides menu bar icons that do not fit next to the notch, and
     the newest go first. Open TauBar again (Spotlight, Finder or `open -a TauBar`): its window
-    appears with every switch and a Quit button. Make room by quitting other menu bar apps or
+    appears with every switch and a Quit button. Only one TauBar ever runs: a second launch
+    hands over to the running one and exits. Make room by quitting other menu bar apps or
     switching some off under **System Settings → Menu Bar → Allow in the Menu Bar**.
     A menu bar manager such as Hidden Bar hides everything left of its separator: expand it and
     Cmd-drag the τ to the right of the separator.
@@ -109,6 +110,7 @@ air.
 The **Launch at login** checkbox registers TauBar through `SMAppService` (System Settings →
 General → Login Items → Open at Login), not through a launchd agent: on some Macs launchd pends
 the automatic start of user agents indefinitely (see
-[Run tau as a service](hub-service.md#macos-taubar-default)). Install TauBar in `/Applications`
-before ticking it, since the login item points at the app's current location. With **Run the
-hub** ticked, this is also how the hub starts at login.
+[Run tau as a service](hub-service.md#macos-taubar-default)). The login item points at the app's
+current location, so TauBar turns it on only when it runs from `/Applications` (or
+`~/Applications`) and otherwise says so. With **Run the hub** ticked, this is also how the hub
+starts at login.

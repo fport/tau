@@ -37,6 +37,13 @@ const HUB_TICK: Duration = Duration::from_secs(1);
 
 pub fn run() {
     let app = tauri::Builder::default()
+        // One TauBar per user (roadmap 091). A second launch, from Spotlight, Finder,
+        // `open -n` or the build folder of a checkout, hands over to the running TauBar and
+        // exits before it touches the hub or the sleep assertion; the running one shows its
+        // window. Registered first, as the plugin requires.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            open_settings(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![

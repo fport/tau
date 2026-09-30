@@ -45,7 +45,16 @@ pnpm tauri build          # → src-tauri/target/release/bundle/macos/TauBar.app
 ```
 
 `pnpm tauri dev` runs it with hot reload for development. Launch at login needs the built
-`.app` (see below), so test that part with a build.
+`.app` installed in `/Applications` (see below), so test that part with an installed build.
+
+Only one TauBar runs at a time (`tauri-plugin-single-instance`, keyed by the bundle id): a
+second launch, whether from Spotlight, Finder, `open -n` or the build folder, hands over to the
+running TauBar, which shows its window, and exits before it touches the hub or the sleep
+assertion. To run a development build, quit the installed TauBar first. Opening the build
+folder's `TauBar.app` registers that copy with LaunchServices, and Spotlight may then prefer
+it; after testing, `lsregister -u src-tauri/target/release/bundle/macos/TauBar.app` (the tool
+lives in `/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/`)
+removes it again.
 
 ### Signing
 
@@ -188,8 +197,10 @@ the Mac it was built on, launchd pended every automatic spawn of user agents (ro
 057 and 052), and `tauri-plugin-autostart` offers only a LaunchAgent or an AppleScript login
 item.
 
-The registration points at the app where it is when you tick the box, so install TauBar.app in
-`/Applications` first. With **Run the hub** ticked, this is also how the hub starts at login.
+The registration points at the app where it is when you tick the box, so TauBar only turns it
+on when it runs from `/Applications` or `~/Applications`; a copy anywhere else (the build folder
+of a checkout, Downloads) shows "Launch at login needs TauBar.app installed in /Applications"
+instead. With **Run the hub** ticked, this is also how the hub starts at login.
 
 Verified on macOS 26.3.1: ticking the box registers TauBar (status `Enabled`), unticking removes
 it (`NotRegistered`). Not verified yet: that it actually starts at the next login, because

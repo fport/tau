@@ -6,10 +6,12 @@
 //! a LaunchAgent or an AppleScript login item. The registration belongs to the system, so the
 //! checkbox reads its state from `SMAppService` instead of TauBar's settings file.
 //!
-//! `SMAppService.mainApp` registers the bundle at its current path, so install TauBar.app
-//! where it will stay (`/Applications`) before ticking the box.
+//! `SMAppService.mainApp` registers the bundle at its current path, so TauBar refuses to turn
+//! the login item on unless it runs from `/Applications` or `~/Applications`: a login item that
+//! points at the build folder of a checkout breaks when the folder is rebuilt (roadmap 091).
 
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -88,11 +90,74 @@ mod imp {
     pub fn open_system_settings() {}
 }
 
-pub use imp::{open_system_settings, set, status};
+pub use imp::{open_system_settings, status};
+
+/// Turn the login item on or off. Turning it on needs TauBar to run from an installed copy
+/// (see [`installed_bundle`]); turning it off always works.
+pub fn set(enabled: bool) -> Result<LoginItemStatus, String> {
+    if enabled {
+        let exe = std::env::current_exe().map_err(|err| err.to_string())?;
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        installed_bundle(&exe, &home)?;
+    }
+    imp::set(enabled)
+}
+
+/// The app bundle `exe` belongs to, when that bundle is installed directly in `/Applications`
+/// or `<home>/Applications`; otherwise the message the user sees.
+pub fn installed_bundle(exe: &Path, home: &Path) -> Result<PathBuf, String> {
+    let bundle = exe
+        .ancestors()
+        .find(|path| path.extension().is_some_and(|ext| ext == "app"))
+        .ok_or_else(|| {
+            format!(
+                "Launch at login needs TauBar.app installed in /Applications; this TauBar is not \
+                 an app bundle ({}).",
+                exe.display()
+            )
+        })?;
+    let folder = bundle.parent().unwrap_or(Path::new(""));
+    if folder == Path::new("/Applications") || folder == home.join("Applications") {
+        return Ok(bundle.to_path_buf());
+    }
+    Err(format!(
+        "Launch at login needs TauBar.app installed in /Applications; this copy runs from {}. \
+         Quit it, install TauBar.app in /Applications and open that one.",
+        bundle.display()
+    ))
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_installed_bundle_may_register_for_login() {
+        let home = Path::new("/Users/someone");
+        let installed = Path::new("/Applications/TauBar.app/Contents/MacOS/taubar");
+        assert_eq!(
+            installed_bundle(installed, home),
+            Ok(PathBuf::from("/Applications/TauBar.app"))
+        );
+        let per_user = Path::new("/Users/someone/Applications/TauBar.app/Contents/MacOS/taubar");
+        assert_eq!(
+            installed_bundle(per_user, home),
+            Ok(PathBuf::from("/Users/someone/Applications/TauBar.app"))
+        );
+        for elsewhere in [
+            "/path/to/tau/apps/taubar/src-tauri/target/release/bundle/macos/TauBar.app/Contents/MacOS/taubar",
+            "/Applications/Tools/TauBar.app/Contents/MacOS/taubar",
+            "/Users/someone/Downloads/TauBar.app/Contents/MacOS/taubar",
+        ] {
+            let err = installed_bundle(Path::new(elsewhere), home).unwrap_err();
+            assert!(err.contains("needs TauBar.app installed in /Applications"), "{err}");
+            assert!(err.contains("TauBar.app"), "{err}");
+        }
+        let bare = installed_bundle(Path::new("/path/to/target/debug/taubar"), home).unwrap_err();
+        assert!(bare.contains("not an app bundle"), "{bare}");
+    }
 
     #[test]
     fn checkbox_state() {

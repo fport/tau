@@ -25,7 +25,7 @@ Ardından gelen kararların hepsi [ADR 0006](../adr/0006-private-first-topology.
 | Hub'da kalır | Cloudflare'e ulaşır |
 |---|---|
 | `persona/user.md`, `.env` | Access kimliği olarak e-postan |
-| oturumlar, ayarlar, hafıza, bilgi tabanı | `tau.<your-domain>` için istek metadata'sı (Access logları) |
+| oturumlar, ayarlar, hafıza, bilgi tabanı | `hub.tau.<your-domain>` için istek metadata'sı (Access logları) |
 | onay kararı ve cihaz başına anahtar | [yedekleri](backups.md) kurarsan, özel bir R2 bucket'ında `age` ile şifrelenmiş bir yedek paketi |
 | tünelin kimlik bilgisi dosyası (`~/.cloudflared/<UUID>.json`) | tünelin varlığı ve DNS kaydı |
 
@@ -60,7 +60,7 @@ Tailscale Serve yerel bir portu, Tailscale'in makinenin MagicDNS adı için verd
 !!! note "Not"
     Serve yalnızca tailnet içindir. Portu önünde hiçbir kimlik kontrolü olmadan bütün internete açan `tailscale funnel` komutunu **kullanma**.
 
-## B seçeneği: `tau.<your-domain>` adresinde Cloudflare Tunnel + Access
+## B seçeneği: `hub.tau.<your-domain>` adresinde Cloudflare Tunnel + Access
 
 DNS'i Cloudflare'de olan bir alan adına (ücretsiz bir zone yeterli) ve Zero Trust'ı etkin bir Cloudflare hesabına ihtiyacın var (ücretsiz plan 50 kullanıcıya kadar kapsar). Bir alan adının nameserver'larını Cloudflare'e taşımak [yol haritası issue 022](https://github.com/fport/tau/blob/main/roadmap/L3-cloud/022-move-dns-to-cloudflare.md); önce onu yap ve e-posta kayıtlarını elle doğrula.
 
@@ -105,12 +105,12 @@ tunnel: <UUID>
 credentials-file: /Users/<you>/.cloudflared/<UUID>.json
 
 ingress:
-  - hostname: tau.<your-domain>
+  - hostname: hub.tau.<your-domain>
     service: http://127.0.0.1:8000
   - service: http_status:404
 ```
 
-Son kural zorunludur: `tau.<your-domain>` olmayan her şey `cloudflared`'ın kendisinden 404 alır. Dosyayı doğrula:
+Son kural zorunludur: `hub.tau.<your-domain>` olmayan her şey `cloudflared`'ın kendisinden 404 alır. Dosyayı doğrula:
 
 ```sh
 cloudflared tunnel ingress validate
@@ -121,21 +121,21 @@ cloudflared tunnel ingress validate
 ### B.4 DNS'i yönlendir ve çalıştır
 
 ```sh
-cloudflared tunnel route dns tau tau.<your-domain>     # a proxied CNAME to <UUID>.cfargotunnel.com
+cloudflared tunnel route dns tau hub.tau.<your-domain>     # a proxied CNAME to <UUID>.cfargotunnel.com
 cloudflared tunnel run tau
 ```
 
-Yer tutucu sunucu çalışırken `https://tau.<your-domain>` artık onu her yerden gösterir. **Burada dur ve tüneli çalışır hâlde bırakmadan önce B.5'i yap**: bu noktada hostname herkese açık ve kimlik doğrulamasız.
+Yer tutucu sunucu çalışırken `https://hub.tau.<your-domain>` artık onu her yerden gösterir. **Burada dur ve tüneli çalışır hâlde bırakmadan önce B.5'i yap**: bu noktada hostname herkese açık ve kimlik doğrulamasız.
 
 ### B.5 Önüne Access koy
 
 Cloudflare panosunda **Zero Trust**'ı aç.
 
 1. **Giriş yöntemi.** **Integrations → Identity providers → Add new identity provider → One-time PIN.** Yapılandırılacak bir IdP (kimlik sağlayıcı) yok: Access girişte sana e-postayla bir kod gönderir. (Google, GitHub ya da başka bir IdP'yi sonra ekleyebilirsin.)
-2. **Uygulama.** **Access controls → Applications → Create new application → Self-hosted and private**, sonra **Add public hostname**; alt alan adı olarak `tau`, alan adı olarak `<your-domain>` seç. İçin rahat edeceği bir oturum süresi ver; zaten kilidini açtığın bir telefonda 24 saat makul bir başlangıç.
+2. **Uygulama.** **Access controls → Applications → Create new application → Self-hosted and private**, sonra **Add public hostname**; alt alan adı olarak `hub.tau` yaz, alan adı olarak `<your-domain>` seç. İçin rahat edeceği bir oturum süresi ver; zaten kilidini açtığın bir telefonda 24 saat makul bir başlangıç.
 3. **Politika.** **Allow** eylemli ve tek bir **Include** kuralı olan bir politika ekle: seçici **Emails**, değer senin e-posta adresin. Başka hiçbir şey. Bu uygulamanın Allow politikasında `Everyone` asla görünmemeli.
 4. **İsteğe bağlı cihaz kuralı.** Ayrıca kayıtlı bir cihaz şartı koymak için **Warp** ya da **Gateway** seçicisiyle bir **Require** kuralı ekle (cihaz duruşu kontrolleri etkinleştirildiğinde görünür) ve telefona Cloudflare One istemcisini kur. Bu, "senin e-postan"ı "senin cihazındaki senin e-postan"a çevirir.
-5. Kaydet. `https://tau.<your-domain>` adresini gizli bir pencerede aç: Access giriş sayfası gelir; e-postanı gir, e-postadaki PIN'i yapıştır ve ancak ondan sonra yer tutucu sayfa gelir.
+5. Kaydet. `https://hub.tau.<your-domain>` adresini gizli bir pencerede aç: Access giriş sayfası gelir; e-postanı gir, e-postadaki PIN'i yapıştır ve ancak ondan sonra yer tutucu sayfa gelir.
 
 !!! warning "Reddetme yolunu da doğrula"
     Politikada olmayan ikinci bir e-postayla giriş yap. Hesabın erişimi olmadığını söylemeli. Sayfaya ulaşıyorsa politika yanlıştır; arkasına gerçek bir şey koymadan önce düzelt.

@@ -59,7 +59,7 @@ The reasoning is written down in [ADR 0006](adr/0006-private-first-topology.md);
 
     ---
 
-    One hostname, `tau.<your-domain>`, through an outbound Cloudflare Tunnel and behind Cloudflare Access. Or Tailscale Serve when you have no domain.
+    One private hostname, `hub.tau.<your-domain>`, through an outbound Cloudflare Tunnel and behind Cloudflare Access. Or Tailscale Serve when you have no domain.
 
     [:octicons-arrow-right-24: Private deployment](guides/private-deployment.md)
 

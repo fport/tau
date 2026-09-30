@@ -61,7 +61,7 @@ Gerekçe [ADR 0006](adr/0006-private-first-topology.md)'da yazılı; sade anlat�
 
     ---
 
-    Tek bir hostname, `tau.<your-domain>`; dışa doğru bir Cloudflare Tunnel üzerinden ve Cloudflare Access arkasında. Alan adın yoksa Tailscale Serve.
+    Tek bir özel hostname, `hub.tau.<your-domain>`; dışa doğru bir Cloudflare Tunnel üzerinden ve Cloudflare Access arkasında. Alan adın yoksa Tailscale Serve.
 
     [:octicons-arrow-right-24: Özel dağıtım](guides/private-deployment.md)
 

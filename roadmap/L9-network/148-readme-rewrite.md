@@ -1,6 +1,6 @@
 # 148 · A README a newcomer understands, in English and Turkish
 
-Status: ready-for-agent
+Status: done
 Type: AFK
 Layer: L9 · Cloud mode and the tau network
 Packages: docs
@@ -20,8 +20,8 @@ Keep a short status table of what works today and what is planned, and move the 
 
 ## Acceptance criteria
 
-- [ ] Both READMEs follow that order and link the live site and docs
-- [ ] Nothing in them contradicts the docs; no personal value
+- [x] Both READMEs follow that order and link the live site and docs
+- [x] Nothing in them contradicts the docs; no personal value
 
 ## Blocked by
 
@@ -31,3 +31,8 @@ Keep a short status table of what works today and what is planned, and move the 
 ## Comments
 
 - 2026-09-30: opened at the owner's request.
+- 2026-09-30: done.
+  - Commits: 7b83fa0, 5005702, 3266771.
+  - Structure: what tau is (a Mermaid overview with no LiteLLM node) → first on your own machine → together with other taus (the Alice and Bob example, what the other tau can and cannot see, the universe) → sub-taus → is it safe → where things are (packages, and a status table from the board) → links.
+  - `README.tr.md` is its Turkish twin and links the Turkish site and docs pages. Every relative link resolves and every live URL answers 200.
+  - Also fixed while merging: the tiers reference lists the Telegram approver, and the private deployment guide and the docs home use `hub.tau.<your-domain>` (ADR 0010).

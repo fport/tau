@@ -23,7 +23,7 @@ The [threat model page](../architecture/threat-model.md) has the table of what a
 | Stays on the hub | Reaches Cloudflare |
 |---|---|
 | `persona/user.md`, `.env` | your email, as the Access identity |
-| sessions, settings, memory, knowledge base | request metadata for `tau.<your-domain>` (Access logs) |
+| sessions, settings, memory, knowledge base | request metadata for `hub.tau.<your-domain>` (Access logs) |
 | the approval decision and the per-device key | an `age`-encrypted backup bundle in a private R2 bucket, if you set up [backups](backups.md) |
 | the tunnel credentials file (`~/.cloudflared/<UUID>.json`) | the tunnel's existence and its DNS record |
 
@@ -58,7 +58,7 @@ Tailscale Serve exposes a local port to your tailnet over HTTPS, with a certific
 !!! note
     Serve is tailnet-only. Do **not** use `tailscale funnel`, which publishes the port to the whole internet without any identity check in front of it.
 
-## Option B: Cloudflare Tunnel + Access at `tau.<your-domain>`
+## Option B: Cloudflare Tunnel + Access at `hub.tau.<your-domain>`
 
 You need a domain whose DNS is on Cloudflare (a free zone is enough) and a Cloudflare account with Zero Trust enabled (the free plan covers up to 50 users). Moving a domain's nameservers to Cloudflare is [roadmap issue 022](https://github.com/fport/tau/blob/main/roadmap/L3-cloud/022-move-dns-to-cloudflare.md); do it first and verify your mail records by hand.
 
@@ -103,12 +103,12 @@ tunnel: <UUID>
 credentials-file: /Users/<you>/.cloudflared/<UUID>.json
 
 ingress:
-  - hostname: tau.<your-domain>
+  - hostname: hub.tau.<your-domain>
     service: http://127.0.0.1:8000
   - service: http_status:404
 ```
 
-The last rule is required: anything that is not `tau.<your-domain>` gets a 404 from `cloudflared` itself. Validate the file:
+The last rule is required: anything that is not `hub.tau.<your-domain>` gets a 404 from `cloudflared` itself. Validate the file:
 
 ```sh
 cloudflared tunnel ingress validate
@@ -119,21 +119,21 @@ Port 8000 is the placeholder from Option A; it becomes the web UI's port when `t
 ### B.4 Route DNS and run
 
 ```sh
-cloudflared tunnel route dns tau tau.<your-domain>     # a proxied CNAME to <UUID>.cfargotunnel.com
+cloudflared tunnel route dns tau hub.tau.<your-domain>     # a proxied CNAME to <UUID>.cfargotunnel.com
 cloudflared tunnel run tau
 ```
 
-With the placeholder server running, `https://tau.<your-domain>` now shows it, from anywhere. **Stop here and do B.5 before you leave it running**: at this point the hostname is public and unauthenticated.
+With the placeholder server running, `https://hub.tau.<your-domain>` now shows it, from anywhere. **Stop here and do B.5 before you leave it running**: at this point the hostname is public and unauthenticated.
 
 ### B.5 Put Access in front of it
 
 In the Cloudflare dashboard, open **Zero Trust**.
 
 1. **Login method.** **Integrations → Identity providers → Add new identity provider → One-time PIN.** No IdP to configure: Access emails you a code at login. (You can add Google, GitHub or another IdP later.)
-2. **Application.** **Access controls → Applications → Create new application → Self-hosted and private**, then **Add public hostname** and select `tau` as the subdomain and `<your-domain>` as the domain. Give it a session duration you are comfortable with; 24 hours is a reasonable start on a phone you unlock anyway.
+2. **Application.** **Access controls → Applications → Create new application → Self-hosted and private**, then **Add public hostname** and enter `hub.tau` as the subdomain and `<your-domain>` as the domain. Give it a session duration you are comfortable with; 24 hours is a reasonable start on a phone you unlock anyway.
 3. **Policy.** Add a policy with action **Allow** and one **Include** rule: selector **Emails**, value your email address. Nothing else. `Everyone` must not appear in an Allow policy for this application.
 4. **Optional device rule.** To require an enrolled device as well, add a **Require** rule with the **Warp** or **Gateway** selector (it appears once the device posture checks are enabled) and install the Cloudflare One client on the phone. This turns "your email" into "your email on your device".
-5. Save. Open `https://tau.<your-domain>` in a private window: you get the Access login page, enter your email, paste the PIN from the mail, and only then the placeholder.
+5. Save. Open `https://hub.tau.<your-domain>` in a private window: you get the Access login page, enter your email, paste the PIN from the mail, and only then the placeholder.
 
 !!! warning "Verify the deny path too"
     Log in with a second email that is not in the policy. It must say the account does not have access. If it reaches the page, the policy is wrong; fix it before anything real sits behind it.

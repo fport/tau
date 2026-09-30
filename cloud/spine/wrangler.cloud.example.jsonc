@@ -1,0 +1,84 @@
+// tau spine, cloud mode (opt-in, ADR 0007).
+//
+// Everything local mode has, plus the brain: the Python hub (`tau cloud run`) as a
+// Cloudflare Container this Worker manages. Life data then lives in your own Cloudflare
+// account: sessions and small state in D1, `tau.toml` and persona files in KV.
+// Needs the Workers Paid plan (Containers) and a running Docker to build the image.
+//
+// `pnpm run configure --cloud` copies this file to the gitignored `wrangler.jsonc`.
+// No resource ids or personal hostnames belong here.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Same Worker name and D1 database as local mode: switching keeps the address and data.
+  "name": "tau-spine",
+  "main": "src/index.ts",
+  // The newest date the test runtime (@cloudflare/vitest-pool-workers) supports.
+  "compatibility_date": "2026-08-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    // `cloud` turns on /hub/state, /hub/files, /hub/sessions and /hub/brain.
+    "TAU_MODE": "cloud",
+    // The tau's address; empty = the host of the request URL (see wrangler.example.jsonc).
+    "ADDRESS": "",
+    "ALLOW_INSECURE_PEERS": "0",
+    // "1": the cron pings the brain every minute so it never sleeps. The Telegram poller
+    // runs inside the container, so a sleeping brain would miss messages. Costs memory
+    // time for the whole month (see README).
+    "KEEP_AWAKE": "1",
+    // The spine's public URL, handed to the container as TAU_SPINE_URL so the brain can
+    // reach its store API. Set it to your deployed URL before `pnpm run deploy:cloud`,
+    // for example "https://tau-spine.<your-subdomain>.workers.dev".
+    "SPINE_URL": ""
+  },
+  "kv_namespaces": [{ "binding": "TAU" }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tau-spine",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Reserved for media (photos, voice notes) in a later issue; provisioned on deploy.
+  // R2 has to be enabled on the account once (dashboard > R2).
+  "r2_buckets": [{ "binding": "MEDIA" }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "SIGNAL", "class_name": "HubSignal" },
+      // The brain container is driven through its Durable Object (one instance).
+      { "name": "BRAIN", "class_name": "TauBrain" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["HubSignal"] },
+    // A separate tag, so a spine deployed in local mode first can switch to cloud mode.
+    { "tag": "v2", "new_sqlite_classes": ["TauBrain"] }
+  ],
+  "containers": [
+    {
+      "class_name": "TauBrain",
+      // Relative to this file's directory (cloud/spine).
+      "image": "./container/Dockerfile",
+      // The repository root, so the Dockerfile can copy packages/tau-*. The Dockerfile
+      // copies only those directories.
+      "image_build_context": "../..",
+      // basic = 1/4 vCPU, 1 GiB memory, 4 GB disk. The Python hub (Strands, the model
+      // SDKs, the Telegram poller) needs more than the 256 MiB of `lite`, and it is idle
+      // most of the time, so more CPU would only raise the always-on memory bill.
+      "instance_type": "basic",
+      // One brain per tau: there is exactly one hub.
+      "max_instances": 1
+    }
+  ],
+  // `wrangler dev` only: the address a local hub and other local spines use.
+  "dev": { "ip": "127.0.0.1", "port": 8787 },
+  "triggers": {
+    // Every minute: prune the mailbox and replay guard, and keep the brain awake.
+    "crons": ["* * * * *"]
+  }
+  // Custom domain (optional): "routes": [{ "pattern": "tau.example.com", "custom_domain": true }]
+  // plus ADDRESS = "tau.example.com" and SPINE_URL = "https://tau.example.com".
+}

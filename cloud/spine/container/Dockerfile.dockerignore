@@ -1,0 +1,15 @@
+# The build context is the repository root; send only the Python packages the brain
+# installs, never `.env`, `.venv`, `.git` or anything else.
+#
+# Docker reads this file when the Dockerfile is given by path
+# (`docker build -f cloud/spine/container/Dockerfile .`). The Dockerfile itself only
+# copies these three directories.
+*
+!packages/tau-core
+!packages/tau-net
+!packages/tau-cloud
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/*.pyc
+**/tests

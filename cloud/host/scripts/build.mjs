@@ -18,6 +18,7 @@ import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { copyFonts } from "../../shared/fonts.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const client = join(root, "client");
@@ -53,6 +54,8 @@ await build({
 
 copyFileSync(join(client, "host.css"), join(out, "host.css"));
 copyFileSync(theme, join(out, "theme.css"));
+// theme.css asks for its fonts next to it (fonts/*.woff2).
+if (theme === sharedTheme) copyFonts(join(out, "fonts"));
 
 const from = (path) => path.slice(join(root, "..").length + 1);
-console.log(`Built public/app/assets/ (app.js, visit.js, host.css; theme from ${from(theme)}, character from ${from(character)}).`);
+console.log(`Built public/app/assets/ (app.js, visit.js, host.css, fonts; theme from ${from(theme)}, character from ${from(character)}).`);

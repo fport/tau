@@ -143,7 +143,7 @@ Other commands:
 |---|---|
 | `bun run test` | the Vitest suite in the Workers runtime: API, Directory (and its schema upgrades), snapshot builder, handles, claims and slugs with a fake tau-host, the visitor chat (the universe's card and inbox, the Relay, hosted sub-taus with a fake tau-host, hub-run ones with a fake spine and answers built with `cloud/shared/net`), the page routes and forwarding, the page's layout data, pages in both languages, the language choice, the script's strings, brand copies |
 | `bun run typecheck` | `tsc --noEmit` for the Worker and for the page script |
-| `bun run build` | bundles the page scripts into `public/static/` and copies the theme and its web fonts (`scripts/fonts.mjs`; `wrangler dev` and `wrangler deploy` run it too) |
+| `bun run build` | bundles the page scripts into `public/static/` and copies the theme and its web fonts (`cloud/shared/fonts.mjs`; `wrangler dev` and `wrangler deploy` run it too) |
 | `bun run identity [--out FILE \| --dev] [--force]` | makes the universe's network identity: writes the secret to `.universe-identity` (mode 0600) or, with `--dev`, to `.dev.vars`, and prints only the public keys |
 | `bun run sync-brand` | copies the brand files from `docs/brand/` into `public/brand/`; `--check` only reports differences |
 | `bun run types` | regenerates `worker-configuration.d.ts` (the `Env` type) from `wrangler.example.jsonc` |

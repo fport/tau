@@ -2,7 +2,7 @@
   "name": "tau-cloud-shared",
   "version": "0.1.0",
   "private": true,
-  "description": "Code shared by tau's Workers and imported by relative path: the tau network protocol's TypeScript half (net/)",
+  "description": "Code shared by tau's Workers and imported by relative path: the tau network protocol's TypeScript half (net/), the ember sigils (character.ts), the hard theme (theme.css) and its web fonts (fonts.mjs)",
   "type": "module",
   "scripts": {
     "test": "vitest run",
@@ -11,6 +11,9 @@
     "bundle-check": "wrangler deploy --dry-run --config net/test/bundle/wrangler.jsonc"
   },
   "dependencies": {
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource/chakra-petch": "^5.3.0",
     "@noble/ciphers": "2.4.0"
   },
   "devDependencies": {

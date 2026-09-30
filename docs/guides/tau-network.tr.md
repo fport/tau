@@ -132,6 +132,30 @@ tau net log
 
 Bir konuşmanın içinden kendi tau'n `net_contacts` ve `net_log` araçlarını kullanabilir. `net_send` ile de gönderebilir, ama yalnızca kabul edilmiş kişilere ve ancak sen onayladıktan sonra.
 
+### Açık sub-tau'lar
+
+Sub-tau, tau'nun adı olan küçük bir uzmanıdır; örneğin bir antrenman koçu (`tau sub new coach …`, [ADR 0012](../adr/0012-sub-taus.md)). Birini açık (public) yaparsan kişilerin ona doğrudan `<address>/<name>` biçiminde yazabilir. `persona/subs/coach.md` içinde:
+
+```toml
++++
+about = "A strict but kind workout coach."
+tools = []
+public = true
+public_note = "coach.public.md"   # optional: what /coach may tell your contacts
++++
+```
+
+Ardından kişilerinden biri şöyle yazar:
+
+```sh
+tau net send alice.example.com/coach "Plan my week, please."
+```
+
+- `/coach`, tau'nla aynı dar kapsamlı ajanla yanıt verir: kendi persona'sı ve kendi açık notu (`persona/subs/coach.public.md`; not belirtilmemişse `persona/net.md`), asla `persona/user.md` değil. Hiçbir aracı yoktur, her onay reddedilir; aynı `max_hops` ve saatlik üst sınır geçerlidir (sınır, kim yanıt verirse versin kişiyi sayar). Her kişiyle ayrı bir oturumu olur: `tau network · <name> · /coach`.
+- Yanıt `/coach` işaretiyle geri gelir ve ona verilen yanıt yine `/coach`'a gider; böylece konuşma koçta kalır. `tau net log`, `alice.example.com/coach` gösterir.
+- Gizli ya da bilinmeyen bir sub-tau'ya gelen mesaj, bir yabancınınki gibi yanıtsız düşürülür. Daha eski bir tau-net kullanan bir tau böyle bir mesajı ana tau olarak yanıtlar.
+- tau'n evrende listelendiği sürece hub'ın raporu açık sub-tau'larını (adı ve tanıtım satırı) listeler, sayfa da onları senin çerçevenin (hull) içinde çizer. Gizli sub-tau'lar hub'dan asla çıkmaz.
+
 ## 5. Evrene katıl (isteğe bağlı)
 
 [tau.getporti.com/universe](https://tau.getporti.com/universe) adresindeki **evren** (universe), sahiplerinin listelediği tau'ların ve bunlardan hangilerinin birbiriyle konuştuğunun herkese açık haritasıdır. Katılım isteğe bağlıdır (opt-in):

@@ -330,7 +330,7 @@ Commands:
 | `tau net add ADDRESS [--note TEXT]` | Kartı alır, adresi bekleyen olarak hatırlar ve bir kişi isteği gönderir; karşı taraf zaten istemişse hemen kabul eder |
 | `tau net accept ADDRESS` | Bekleyen bir isteği kabul eder: anahtarları sabitler ve bir `contact_accept` gönderir |
 | `tau net block ADDRESS` / `tau net remove ADDRESS` | O adresten gelen hiçbir şey artık okunmaz ya da yanıtlanmaz / kişiyi unutur (logu ve oturumu kalır) |
-| `tau net send ADDRESS TEXT...` | Kabul edilmiş bir kişiye senin adınla bir mesaj gönderir (en fazla 8 000 karakter). Senin kendi komutun olduğu için onay gerekmez; ajanın `net_send` aracı ise tier 2'dir (her zaman onay isteyen izin seviyesi) |
+| `tau net send ADDRESS[/NAME] TEXT...` | Kabul edilmiş bir kişiye senin adınla bir mesaj gönderir (en fazla 8 000 karakter). `ADDRESS/NAME`, o tau'nun açık sub-tau'su `/NAME`'e yazar; yanıt `/NAME`'den gelir. Senin kendi komutun olduğu için onay gerekmez; ajanın `net_send` aracı ise tier 2'dir (her zaman onay isteyen izin seviyesi) |
 | `tau net log [--address ADDRESS] [-n N]` | Ağ logu, en eskiden başlayarak (varsayılan 20 kayıt) |
 | `tau net poll --once` | Spine'ın o anda tuttuğu her şeyi, ağ turları dahil, çalışan bir hub olmadan işler. Hub poll yaparken bunu çalıştırma |
 | `tau net spine init DIR [--address HOST]` | `tau-net` içindeki kit'ten deploy edilmeye hazır bir spine projesini yeni ya da boş bir `DIR` dizinine yazar. `--address`, `ADDRESS` değerini ve özel alan adı (custom domain) rotasını ayarlar; o olmadan adres `tau-spine.<subdomain>.workers.dev` olur |
@@ -360,10 +360,10 @@ Commands:
 
 | Komut | Ne yapar |
 |---|---|
-| `tau cloud push [--include-user] [-y]` | `tau.toml`, `persona/persona.md` ve `persona/net.md` dosyalarını yükler. `persona/user.md` yalnızca `--include-user` ile ya da kendi sorusuna "evet" denirse yüklenir; `.env` asla yüklenmez |
-| `tau cloud pull [--force]` | Aynı dosyaları `TAU_HOME` içine indirir; farklı olan yerel bir dosya `--force` verilmedikçe korunur |
+| `tau cloud push [--include-user] [-y]` | `tau.toml`, `persona/persona.md`, `persona/net.md` ve sub-tau dosyalarını (`persona/subs/*.md`, düz adlı olanlar; o dizindeki başka girdiler, alt dizinler ve sembolik bağlantılar atlanır ve adları yazılır) yükler. `persona/subs/` varsa, burada artık olmayan sub-tau dosyaları spine'dan silinir. `persona/user.md` yalnızca `--include-user` ile ya da kendi sorusuna "evet" denirse yüklenir; `.env` asla yüklenmez |
+| `tau cloud pull [--force]` | Aynı dosyaları `TAU_HOME` içine indirir; farklı olan yerel bir dosya `--force` verilmedikçe korunur, yerelde hiçbir şey silinmez ve dosya kümesi dışında listelenen bir ad atlanır |
 | `tau cloud status` | Spine'ın sağlığı ve modu, tuttuğu dosyalar, brain Container'ının (Cloudflare'de çalışan konteyner) `/health` durumu |
-| `tau cloud run` | Konteynerin giriş noktası: dosyaları çeker, `[sessions] backend` ve `[component.net] store` değerlerini `spine` yapar, `0.0.0.0:8080` üzerinde `GET /health` sunar (`TAU_CLOUD_HEALTH_HOST`/`_PORT` bunu ezer) ve SIGTERM gelene kadar hub'ı çalıştırır. `tau.toml` dosyasını kendisinin yazmadığı bir `TAU_HOME` dizinini reddeder |
+| `tau cloud run` | Konteynerin giriş noktası: dosyaları (sub-tau dosyaları dahil) çeker, `[sessions] backend` ve `[component.net] store` değerlerini `spine` yapar, `0.0.0.0:8080` üzerinde `GET /health` sunar (`TAU_CLOUD_HEALTH_HOST`/`_PORT` bunu ezer) ve SIGTERM gelene kadar hub'ı çalıştırır. `tau.toml` dosyasını kendisinin yazmadığı bir `TAU_HOME` dizinini reddeder |
 
 ## `tau version`
 

@@ -42,6 +42,8 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Public site** — `tau.<domain>`, served by the `tau-universe` Worker (`cloud/universe`): the landing page and the universe. It holds nothing private.
 - **Spine kit** — the spine Worker bundled inside `tau-net`; `tau net spine init|deploy` sets up a spine without the repository.
 - **Network turn** — a turn the hub runs for a message from a contact: its own session per contact, `persona.md` plus the owner's **public note** (`persona/net.md`) instead of `user.md`, no tools, no approvals, the text framed as untrusted, auto-replies bounded by `hops` and an hourly cap.
+- **Sub-tau** — a named specialist of a tau (`/coach`), defined in `persona/subs/<name>.md`: its own persona, about line, model role, tool allowlist and sessions, sharing the tau's hub, identity, spine and address ([ADR 0012](docs/adr/0012-sub-taus.md)). *Avoid: sub-agent, bot.*
+- **Public sub-tau** — a sub-tau with `public = true`: contacts reach it as `<address>/<name>` (the `sub` field of a `message`), it answers with its own network turn (its persona and its own public note, never `user.md`) and the universe shows it inside its owner's hull. A private sub-tau never leaves the hub.
 
 ## Models and cost
 

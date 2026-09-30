@@ -328,7 +328,7 @@ Added by `tau-net`. The spine comes from `TAU_SPINE_URL` and `TAU_SPINE_TOKEN`; 
 | `tau net add ADDRESS [--note TEXT]` | Fetches the card, remembers the address as pending and sends a contact request; accepts at once if they had asked already |
 | `tau net accept ADDRESS` | Accepts a pending request: pins the keys and sends a `contact_accept` |
 | `tau net block ADDRESS` / `tau net remove ADDRESS` | Nothing from the address is read or answered any more / forgets the contact (its log and session stay) |
-| `tau net send ADDRESS TEXT...` | Sends a message in your name to an accepted contact (at most 8 000 characters). Your own command, so no approval; the agent's `net_send` tool is tier 2 |
+| `tau net send ADDRESS[/NAME] TEXT...` | Sends a message in your name to an accepted contact (at most 8 000 characters). `ADDRESS/NAME` writes to that tau's public sub-tau `/NAME`, whose answer comes back from `/NAME`. Your own command, so no approval; the agent's `net_send` tool is tier 2 |
 | `tau net log [--address ADDRESS] [-n N]` | The network log, oldest first (default 20 entries) |
 | `tau net poll --once` | Handles what the spine holds right now, network turns included, without a running hub. Do not run it while the hub polls |
 | `tau net spine init DIR [--address HOST]` | Writes a ready-to-deploy spine project from the kit inside `tau-net` into a new or empty `DIR`. `--address` sets `ADDRESS` and a custom-domain route; without it the address is `tau-spine.<subdomain>.workers.dev` |
@@ -358,10 +358,10 @@ Added by `tau-cloud`; the setup is in [Run tau in Cloudflare (cloud mode)](../gu
 
 | Command | What it does |
 |---|---|
-| `tau cloud push [--include-user] [-y]` | Uploads `tau.toml`, `persona/persona.md` and `persona/net.md`. `persona/user.md` goes up only with `--include-user` or a yes to its own question; `.env` never goes up |
-| `tau cloud pull [--force]` | Downloads the same files into `TAU_HOME`; a local file that differs is kept unless `--force` |
+| `tau cloud push [--include-user] [-y]` | Uploads `tau.toml`, `persona/persona.md`, `persona/net.md` and the sub-tau files (`persona/subs/*.md` with a plain name; other entries of that directory, subdirectories and symbolic links are skipped and named). Sub-tau files gone here are removed from the spine when `persona/subs/` exists. `persona/user.md` goes up only with `--include-user` or a yes to its own question; `.env` never goes up |
+| `tau cloud pull [--force]` | Downloads the same files into `TAU_HOME`; a local file that differs is kept unless `--force`, nothing local is deleted, and a listed name outside the file set is skipped |
 | `tau cloud status` | The spine's health and mode, the files it holds, the brain container's `/health` |
-| `tau cloud run` | The container entrypoint: pull the files, set `[sessions] backend` and `[component.net] store` to `spine`, serve `GET /health` on `0.0.0.0:8080` (`TAU_CLOUD_HEALTH_HOST`/`_PORT` override), run the hub until SIGTERM. Refuses a `TAU_HOME` whose `tau.toml` it did not write |
+| `tau cloud run` | The container entrypoint: pull the files (sub-tau files included), set `[sessions] backend` and `[component.net] store` to `spine`, serve `GET /health` on `0.0.0.0:8080` (`TAU_CLOUD_HEALTH_HOST`/`_PORT` override), run the hub until SIGTERM. Refuses a `TAU_HOME` whose `tau.toml` it did not write |
 
 ## `tau version`
 

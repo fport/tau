@@ -90,7 +90,19 @@ The sealed plaintext depends on `kind`:
 |---|---|
 | `contact_request` | `{"name": str, "text": str}`: display name and an introduction (may be empty) |
 | `contact_accept` | `{"name": str}` |
-| `message` | `{"text": str}`: at most 8 000 characters |
+| `message` | `{"text": str}`: at most 8 000 characters, plus an optional `"sub": str` (below) |
+
+Receivers ignore plaintext keys they do not know, and `sub` is the only optional key above. That is how protocol v1 grows without a new version: a new optional key reaches a new hub, and an older hub reads the envelope as it always did.
+
+**`sub` (sub-taus, [ADR 0012](../adr/0012-sub-taus.md)).** A `message` may name a sub-tau, a specialist of a tau, with `"sub": "<name>"`. The name matches `^[a-z][a-z0-9-]{1,30}$`; any other value makes the content malformed (the box counts as unopenable), and `null` or a missing key means none. The field lives in the sealed plaintext, so spines never see which sub-tau a message is for, and the signed header is unchanged.
+
+- `sub` always names a sub-tau of the tau that received the thread's first envelope, the one with `hops = 0`.
+- A thread alternates direction and every reply carries `hops + 1`, so a receiver reads `sub` by parity:
+  - even `hops`: `sub` is one of the **receiver's** sub-taus, the one the message is for;
+  - odd `hops`: `sub` is one of the **sender's** sub-taus, the one that wrote the answer.
+- Every reply carries the `sub` of the message it answers, so a thread with `/coach` stays with `/coach` in both directions.
+- A person writes `<address>/<name>` (`tau net send alice.example.com/coach "…"`); the envelope goes to `<address>`, and the contact is `<address>`: sub-taus share their owner's contact entry, keys and spine.
+- A hub that predates `sub` ignores it and answers as the main tau, without `sub`, so the thread continues with the main taus.
 
 ### Test vector
 
@@ -209,13 +221,21 @@ State and sessions live in D1, which only the cloud configuration binds (`DB`); 
 | `PUT /hub/state/<key>` | `{"value": <any JSON>}` (≤ 1 MiB) | `200 {"key", "updated_at"}` |
 | `DELETE /hub/state/<key>` | | `200 {"deleted": bool}` |
 
-**Files** (config and persona in KV under `file:<name>`). Allowed names: `tau.toml`, `persona/persona.md`, `persona/user.md`, `persona/net.md`; any other name gets `404`.
+**Files** (config and persona in KV under `file:<name>`). Allowed names:
+
+- the fixed files `tau.toml`, `persona/persona.md`, `persona/user.md` and `persona/net.md`;
+- the sub-tau files ([ADR 0012](../adr/0012-sub-taus.md)): `persona/subs/<file>`, where `<file>` matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.md$`. That covers the definitions (`coach.md`) and their public notes (`coach.public.md`), directly in `persona/subs/`: no slash, no leading dot, no other extension.
+
+The name is checked after URL decoding (`persona%2Fsubs%2Fcoach.md` is `persona/subs/coach.md`); any other name gets `404`.
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /hub/files` | | `200 {"files": [{"name", "size", "updated_at"}]}` |
+| `GET /hub/files` | | `200 {"files": [{"name", "size", "updated_at"}]}`: the fixed files in the order above, then the sub-tau files by name |
 | `GET /hub/files/<name>` | | `200` `text/plain; charset=utf-8` body, or `404` |
 | `PUT /hub/files/<name>` | UTF-8 text body (≤ 512 KiB) | `200 {"name", "size", "updated_at"}` |
+| `DELETE /hub/files/<name>` | | `200 {"deleted": bool}` |
+
+`tau cloud push` deletes the spine's sub-tau files that are gone from the owner's `persona/subs/`, so a removed sub-tau does not live on in the cloud. Clients check every listed name again and never download or write one outside the allowed set.
 
 Times: state and file `updated_at` values are integer Unix seconds.
 
@@ -257,9 +277,9 @@ The container's environment:
 
 - `TAU_SPINE_URL`: `SPINE_URL`, or `https://<ADDRESS>` when it is empty, without a trailing slash.
 - `TAU_SPINE_TOKEN`: the `HUB_TOKEN`.
-- Each pass-through secret, when it is set and not empty.
+- Each pass-through secret, when it is set and not empty: `ANTHROPIC_API_KEY`, `ANTHROPIC_WORKSPACE_ID`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BEARER_TOKEN_BEDROCK`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TAU_NET_IDENTITY` and `TAU_LANG` (`BRAIN_SECRET_NAMES` in `cloud/spine/src/env.ts`).
 
-The image sets `TAU_HOME=/tau` and `TAU_DATA_DIR=/data` and runs as the non-root user `tau`.
+The image sets `TAU_HOME=/tau` and `TAU_DATA_DIR=/data` and runs as the non-root user `tau`. It installs `tau-core`, `tau-net`, `tau-cloud` and `tau-sub`; `tau cloud run` pulls the sub-tau files into `/tau/persona/subs/` with the other files and removes the ones the spine no longer holds.
 
 ### Cron
 
@@ -341,7 +361,21 @@ The spine runs every minute (`* * * * *`):
    - the contact already got `max_auto_replies_per_hour` auto-replies (default 20).
 
    When a limit is already reached, the model is not called at all.
-5. **Log.** Every handled envelope and every sent one is appended to the network log, capped at the last 500 entries: `{ts, direction: "in"|"out", address, kind, id, thread, text}`.
+
+   **Sub-taus.** A `message` from an accepted contact with `sub` and an even `hops` (§3) is for one of this tau's sub-taus:
+
+   - The hub asks its sub-tau directory for a **public** sub-tau of that name. tau-net does not import tau-sub: it loads the first working entry point of the group `tau.subs`, a factory `factory(Config)` returning an object with `public(name)` (one public sub-tau, or `None` when it is unknown, private or invalid) and `public_subs()` (all of them). Each result carries `name`, `about`, `role`, `persona_file` and `public_note_file`. tau-sub provides `sub = "tau_sub.network:public_subs"`.
+   - An unknown, private or invalid sub-tau, or a hub without the entry point, drops the message: it is logged (`no public sub-tau /<name>`, at the level of a stranger's message), not written to the network log, not counted and never answered. So is a sub-tau whose persona or note file is `persona/user.md`.
+   - A public sub-tau gets the same narrow network turn as the main tau: `tools=[]`, the auto-reject approver, `private_context`, the same limits. The limits count the contact, whoever answers. What differs:
+     - the persona is `PersonaLoader(persona_dir, persona_file=<persona_file>, user_file=<public note>)`. `persona_file` is tau-sub's derived prompt: the fixed header `You are /<name>, a specialist of your owner's tau: <about>. …`, then the persona text. The public note is the sub-tau's `public_note_file` (`persona/subs/<public_note>`), or the tau's own public note (`persona/net.md`) when it names none. `user.md` never enters the prompt;
+     - the model role is the sub-tau's `role`;
+     - the session is one per contact and sub-tau (state key `<address>/<name>`), titled `tau network · <name> · /<sub>`;
+     - the history holds only this sub-tau's messages with the contact; the main tau's history likewise leaves out its sub-taus' messages;
+     - the first line of the frame addresses the sub-tau: `[tau network] A message for you, /{sub}, a specialist of your owner's tau, from another tau: {name} at {address}, a contact of your owner.` The rest of the frame is unchanged.
+   - The reply carries `"sub": "<name>"`.
+
+   A `message` with `sub` and an odd `hops` is the answer of the other tau's sub-tau: this tau's main network turn handles it, the frame shows the sender as `{address}/{sub}`, and the reply carries the same `sub`.
+5. **Log.** Every handled envelope and every sent one is appended to the network log, capped at the last 500 entries: `{ts, direction: "in"|"out", address, kind, id, thread, text}`. A message with `sub` adds `own_sub` (one of this tau's sub-taus received or wrote it) or `peer_sub` (one of the other tau's did); `tau net log` shows them as `<address> (/<name>)` and `<address>/<name>`.
 6. **Sending.** The hub posts envelopes directly to `<scheme>://<to>/net/inbox`, never through its own spine. The recipient's card is fetched once and pinned for contacts. A `202` or a `duplicate` counts as delivered; anything else is an error for the caller.
 7. **Errors.**
 
@@ -386,7 +420,7 @@ Spine variables and secrets:
 | `KEEP_AWAKE` | var | `1` keeps the brain container running (cloud mode) |
 | `SPINE_URL` | var | the spine's public URL, given to the container (cloud mode) |
 | `HUB_TOKEN` | secret | the hub's bearer token |
-| container secrets | secrets (cloud mode) | model credentials, `TELEGRAM_*`, `TAU_NET_IDENTITY`, handed to the brain container as environment variables |
+| container secrets | secrets (cloud mode) | model credentials (Anthropic, AWS Bedrock, `OPENAI_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`), `TELEGRAM_*`, `TAU_NET_IDENTITY`, `TAU_LANG`, handed to the brain container as environment variables (the list is in §5) |
 | `INBOX_IP_LIMIT` | Rate Limiting binding | 60 inbox envelopes per 60 s per client IP (§4); `namespace_id` `10501` |
 | `INBOX_SENDER_LIMIT` | Rate Limiting binding | 30 inbox envelopes per 60 s per `from` (§4); `namespace_id` `10502` |
 

@@ -130,6 +130,30 @@ While `tau hub run` is running, the `net` hub service fetches new envelopes, ans
 
 From a conversation, your own tau can use `net_contacts` and `net_log`. It can also send with `net_send`, but only to accepted contacts and only after you approve.
 
+### Public sub-taus
+
+A sub-tau is a named specialist of your tau, such as a workout coach (`tau sub new coach …`, [ADR 0012](../adr/0012-sub-taus.md)). Make one public and your contacts can write to it directly, as `<address>/<name>`. In `persona/subs/coach.md`:
+
+```toml
++++
+about = "A strict but kind workout coach."
+tools = []
+public = true
+public_note = "coach.public.md"   # optional: what /coach may tell your contacts
++++
+```
+
+A contact of yours then writes:
+
+```sh
+tau net send alice.example.com/coach "Plan my week, please."
+```
+
+- `/coach` answers with the same narrow agent as your tau: its own persona and its public note (`persona/subs/coach.public.md`, or `persona/net.md` when it names none), never `persona/user.md`. It has no tools, every approval is refused, and the same `max_hops` and hourly cap apply (the cap counts the contact, whoever answers). Each contact gets a session of its own with it, `tau network · <name> · /coach`.
+- The answer comes back marked `/coach`, and a reply to it goes to `/coach` again, so the thread stays with the coach. `tau net log` shows `alice.example.com/coach`.
+- A message for a private or unknown sub-tau is dropped unanswered, like one from a stranger. A tau with an older tau-net answers such a message as the main tau.
+- While your tau is in the universe, the hub's report lists your public sub-taus (name and about line), and the page draws them inside your hull. Private sub-taus never leave the hub.
+
 ## 5. Join the universe (optional)
 
 The **universe** at [tau.getporti.com/universe](https://tau.getporti.com/universe) is a public map of the taus whose owners listed them, and of which of them talk to each other. It is opt-in:

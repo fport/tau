@@ -66,7 +66,7 @@ describe("pages", () => {
     expectSecurityHeaders(res);
     const page = await res.text();
     expect(page).toContain("The tau universe");
-    expect(page).toContain('<script type="module" src="/app/universe.js"></script>');
+    expect(page).toContain('<script type="module" src="/static/universe.js"></script>');
   });
 
   it("answers HEAD for the pages", async () => {
@@ -186,7 +186,8 @@ describe("pages in two languages", () => {
   });
 
   it("keeps each language's links in that language, the docs included", async () => {
-    const asset = /^\/(brand|styles|app)\//;
+    // Assets, and the sign-in (tau-host's, one path for both languages).
+    const asset = /^\/(brand|styles|static|auth)\//;
     for (const [en, tr] of TWINS) {
       for (const href of hrefs(await html(tr))) {
         const where = `${tr}: ${href}`;

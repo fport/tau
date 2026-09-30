@@ -406,7 +406,8 @@ a.crumb:hover {
 }
 
 .hud-floor {
-  stroke: url("#hud-floor");
+  /* Its stroke is the page's own gradient, set as an attribute (url(#…) in a stylesheet is
+     resolved against the stylesheet in some browsers). */
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }

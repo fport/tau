@@ -2,8 +2,8 @@
 
 tau-core's :func:`tau_core.guard.config_problem` already locks the guard for a non-bool
 ``enabled`` or an unknown key. Here every known knob is checked too: a value out of range or of
-the wrong type makes the service ``unavailable`` with the reason in the log and ``tau doctor``;
-it never falls back to a weaker value.
+the wrong type makes the service ``unavailable`` (reason ``config``, which ``/status`` and
+``tau doctor`` show) with each problem in the hub log; it never falls back to a weaker value.
 
 | key | default | range or values |
 |---|---|---|

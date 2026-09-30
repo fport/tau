@@ -789,6 +789,26 @@ def test_doctor_check_off_and_broken(tmp_path: Path) -> None:
         ({"pid": 1}, "warn", "no guard service"),
         ({"guard": {"state": "off"}}, "warn", "reports the guard off"),
         ({"guard": {"state": "locked", "enrolled": True}}, "ok", "reports it locked"),
+        (
+            {"guard": {"state": "unavailable", "available": False, "reason": "config"}},
+            "fail",
+            "reports it unavailable (config)",
+        ),
+        (
+            {"guard": {"state": "unavailable", "reason": "\x1b[2Jforged"}},
+            "fail",
+            "unavailable (unknown)",
+        ),
+        (
+            {"guard": {"state": "locked", "available": False, "reason": "reflex_stalled"}},
+            "warn",
+            "cannot check it right now (reflex_stalled)",
+        ),
+        (
+            {"guard": {"state": "unlocked", "available": True, "reason": "screen_unknown"}},
+            "warn",
+            "cannot read the screen lock",
+        ),
     ],
 )
 def test_doctor_check_against_the_hub(

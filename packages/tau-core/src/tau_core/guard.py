@@ -42,6 +42,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import secrets
 import sys
 import threading
@@ -973,8 +974,23 @@ def guard_doctor_check(
     state = block.get("state")
     if state == "off" or state not in GUARD_STATES:
         return Check("guard", "warn", t("doctor.guard.hub_off", language) + note)
+    raw_reason = block.get("reason")
+    reason = raw_reason if isinstance(raw_reason, str) and _REASON.match(raw_reason) else None
+    if state == "unavailable":
+        text = t("doctor.guard.unavailable", language, reason=reason or "unknown")
+        return Check("guard", "fail", text + note)
+    if block.get("available") is False:
+        text = t("doctor.guard.not_available", language, reason=reason or "unknown")
+        return Check("guard", "warn", text + note)
     text = t("doctor.guard.ok", language, state=t(f"guard.state.{state}", language))
+    if reason == "screen_unknown":
+        return Check("guard", "warn", f"{text} {t('doctor.guard.screen_unknown', language)}{note}")
     return Check("guard", "ok", text + note)
+
+
+_REASON = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+"""What a ``/status`` guard reason may look like before a doctor line shows it (the open
+``/status`` is unauthenticated: no control characters reach the terminal)."""
 
 
 # -- messages ----------------------------------------------------------------------------------
@@ -1215,6 +1231,24 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
     "doctor.guard.ok": {
         "en": "active; the hub reports it {state}",
         "tr": "etkin; hub durumunu {state} olarak bildiriyor",
+    },
+    "doctor.guard.unavailable": {
+        "en": "active, but the hub reports it unavailable ({reason}); guarded channels stay "
+        "locked. The hub log has the details.",
+        "tr": "etkin ama hub onu kullanılamaz bildiriyor ({reason}); korunan kanallar kilitli "
+        "kalır. Ayrıntılar hub günlüğünde.",
+    },
+    "doctor.guard.not_available": {
+        "en": "active, but the hub cannot check it right now ({reason}); guarded channels are "
+        "refused until it can",
+        "tr": "etkin ama hub şu an onu denetleyemiyor ({reason}); denetleyene kadar korunan "
+        "kanallar reddedilir",
+    },
+    "doctor.guard.screen_unknown": {
+        "en": "(The hub cannot read the screen lock, as when it runs outside a GUI session; an "
+        "unlock then lasts at most idle_lock_minutes.)",
+        "tr": "(Hub ekran kilidini okuyamıyor, örneğin grafik oturumun dışında çalışırken; bir "
+        "açılış o zaman en fazla idle_lock_minutes sürer.)",
     },
 }
 

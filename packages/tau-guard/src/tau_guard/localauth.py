@@ -21,7 +21,9 @@ Two policies:
 ``unavailable`` when the Mac has Touch ID that cannot be used now (the lid is closed, so the
 built-in sensor is off, a Touch ID keyboard is disconnected, or Touch ID is locked out after
 failed tries); ``none`` when there is no sensor or no enrolled finger. A closed lid makes the
-biometrics policy ``unavailable`` whatever else is attached (``touch_id_unavailable``).
+biometrics policy ``unavailable`` whatever else is attached (``touch_id_unavailable``) on a Mac
+that has Touch ID; a Mac that reports no sensor stays ``none`` with the lid closed, so its
+re-enrollment and ``forget`` keep the device-owner policy.
 
 **Time limit.** Every ``LAContext`` is used once and invalidated in a ``finally``: after
 :data:`LA_TIMEOUT` (30 s) without an answer (``timeout``), at once when the attempt is
@@ -184,6 +186,9 @@ def _invalidate(context: Any) -> None:
 def _classify(
     can: bool, kind: int, code: int | None, lid: bool | None, state: str | None
 ) -> Biometry:
+    no_sensor = not can and code in (_NOT_AVAILABLE, _NOT_PAIRED) and kind != TOUCH_ID
+    if no_sensor:  # a Mac without Touch ID, whatever the lid does
+        return Biometry("none", "no_sensor", clamshell=lid)
     if lid is True:
         return Biometry("unavailable", "clamshell", clamshell=True)
     if can:
@@ -195,9 +200,7 @@ def _classify(
     if code == _DISCONNECTED:
         return Biometry("unavailable", "disconnected", clamshell=lid)
     if code in (_NOT_AVAILABLE, _NOT_PAIRED):
-        if kind == TOUCH_ID:
-            return Biometry("unavailable", "not_available", clamshell=lid)
-        return Biometry("none", "no_sensor", clamshell=lid)
+        return Biometry("unavailable", "not_available", clamshell=lid)
     if code == _PASSCODE_NOT_SET:
         return Biometry("unavailable", "no_passcode", clamshell=lid)
     return Biometry("unavailable", "error", clamshell=lid)

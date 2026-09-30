@@ -154,7 +154,10 @@ def test_available_touch_id_reports_the_fingerprint_set_without_a_prompt() -> No
     ("code", "kind", "lid", "state", "detail"),
     [
         (None, 1, True, "unavailable", "clamshell"),  # the built-in sensor is off
-        (-6, 0, True, "unavailable", "clamshell"),
+        (-6, 1, True, "unavailable", "clamshell"),
+        (-4, 0, True, "unavailable", "clamshell"),  # "not available in closed clamshell mode"
+        (-6, 0, True, "none", "no_sensor"),  # a laptop without Touch ID, lid closed
+        (-12, 0, True, "none", "no_sensor"),
         (-7, 1, False, "none", "not_enrolled"),
         (-6, 1, False, "unavailable", "not_available"),
         (-6, 0, None, "none", "no_sensor"),

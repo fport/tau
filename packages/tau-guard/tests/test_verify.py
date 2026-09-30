@@ -291,3 +291,223 @@ def test_a_recheck_is_a_quick_passive_strict_match() -> None:
     )
     assert result.ok and result.liveness == "passive"
     assert user.now() - user.start < 0.2  # three frames at 30 fps
+
+
+# -- the camera's time limit -----------------------------------------------------------------------
+
+
+class _Clock:
+    def __init__(self, t: float) -> None:
+        self.t = t
+
+    def __call__(self) -> float:
+        return self.t
+
+
+class _Capture:
+    """A ``cv2.VideoCapture`` over :class:`Frame` values: each read moves the camera's clock to
+    the frame's time (warm-up reads come first)."""
+
+    def __init__(self, clock: _Clock, frames) -> None:
+        self.clock = clock
+        self.frames = iter(frames)
+        self.released = False
+
+    def isOpened(self) -> bool:  # noqa: N802 (cv2's name)
+        return True
+
+    def read(self):
+        frame = next(self.frames, None)
+        if frame is None:
+            return False, None
+        self.clock.t = frame.at
+        return True, frame.image
+
+    def set(self, *args) -> bool:
+        return True
+
+    def release(self) -> None:
+        self.released = True
+
+
+class _Devices:
+    def devices(self) -> list:
+        from tau_guard.camera import BUILTIN_TYPE, Device
+
+        return [Device("47B4B64B-0000-4000-8000-000000000001", "Camera", BUILTIN_TYPE, "bltn")]
+
+
+class _Allowed:
+    def status(self) -> int:
+        return 3
+
+    def request(self) -> None:
+        raise AssertionError("no permission request when access is allowed")
+
+
+def capped_camera(frames, *, start: float = 100.0):
+    """The real :class:`~tau_guard.camera.AVFoundationCamera` (its 20 s cap included) over
+    synthetic frames from ``start`` on."""
+    from tau_guard.camera import AVFoundationCamera
+
+    clock = _Clock(start)
+    capture = _Capture(clock, frames)
+    camera = AVFoundationCamera(
+        devices=_Devices(), permission=_Allowed(), capture=lambda index: capture, clock=clock
+    )
+    return camera, capture
+
+
+def endless(image_at, *, start: float = 100.0, fps: float = 30.0, seconds: float = 90.0):
+    return (Frame(image_at(i), start + (i + 1) / fps) for i in range(int(seconds * fps)))
+
+
+@pytest.mark.parametrize("kind", ["recheck", "unlock", "step_up"])
+@pytest.mark.parametrize("timeout", [15, 30, 60])
+def test_a_verify_timeout_beyond_the_camera_cap_still_counts_a_stranger(
+    kind: str, timeout: int
+) -> None:
+    from tau_guard.camera import MAX_OPEN_SECONDS
+
+    camera, capture = capped_camera(endless(lambda i: scene(embeddings=[variant(STRANGER, i)])))
+    policy = policy_for(request(kind, settings={"verify_timeout_seconds": timeout}))
+    published: list[Progress] = []
+    result = run_check(
+        policy, OWNER, CAL, FakeEngine(), camera, rng=random.Random(1), emit=published.append
+    )
+    assert result.reason == "no_match" and not result.ok  # counted, whatever the timeout
+    assert camera.open_seconds is not None
+    assert camera.open_seconds <= MAX_OPEN_SECONDS + 0.05 and capture.released
+    assert published[0].deadline <= camera.stops_at  # the prompt shows the real end
+
+
+def test_a_hint_survives_the_camera_cap() -> None:
+    camera, _ = capped_camera(endless(lambda i: scene([face_row(iod=30)])))
+    policy = policy_for(request("unlock", settings={"verify_timeout_seconds": 30}))
+    result = run_check(policy, OWNER, CAL, FakeEngine(), camera, rng=random.Random(1), emit=print)
+    assert result.reason == "face_too_small"
+    camera, _ = capped_camera(endless(lambda i: scene(brightness=20)))
+    result = run_check(policy, OWNER, CAL, FakeEngine(), camera, rng=random.Random(1), emit=print)
+    assert result.reason == "too_dark"
+
+
+def late_owner(match_after: float, **switches) -> SimulatedUser:
+    """An owner the camera cannot see well (blurred) for ``match_after`` seconds."""
+
+    class Late(SimulatedUser):
+        def scene(self) -> Scene:
+            image = super().scene()
+            if self.t - self.start < match_after:
+                image.sharpness = 5.0
+            return image
+
+    return Late(duration=40, **switches)
+
+
+@pytest.mark.parametrize("seed", range(6))
+@pytest.mark.parametrize(
+    ("match_after", "steps", "reason", "turns"),
+    [
+        (4.0, 3, "match", 3),
+        (9.0, 3, "timeout", 2),  # the last step and the match after it would outlast the camera
+        (13.0, 2, "timeout", 1),
+        (16.5, 2, "timeout", 0),  # not even the first step fits
+    ],
+)
+def test_no_prompt_is_published_that_the_camera_cap_would_cut(
+    seed: int, match_after: float, steps: int, reason: str, turns: int
+) -> None:
+    user = late_owner(match_after)
+    camera, _ = capped_camera(user.frames(), start=user.start - 0.2)
+    published: list[Progress] = []
+
+    def emit(progress: Progress) -> None:
+        published.append(progress)
+        user.on_progress(progress)
+
+    policy = Policy("unlock" if steps == 2 else "step_up", 0.5, steps, timeout=30)
+    result = run_check(policy, OWNER, CAL, FakeEngine(), camera, rng=random.Random(seed), emit=emit)
+    assert result.reason == reason
+    prompts = [p for p in published if p.step.startswith("turn_")]
+    assert len(prompts) == turns
+    assert all(p.deadline is not None and p.deadline <= camera.stops_at for p in prompts)
+
+
+def test_a_quick_owner_passes_under_the_camera_cap() -> None:
+    for steps in (2, 3):
+        user = SimulatedUser(duration=40)
+        camera, _ = capped_camera(user.frames(), start=user.start - 0.2)
+        result = run_check(
+            Policy("step_up" if steps == 3 else "unlock", 0.55, steps),
+            OWNER,
+            CAL,
+            FakeEngine(),
+            camera,
+            rng=random.Random(4),
+            emit=user.on_progress,
+        )
+        assert result.ok and result.liveness == "challenge"
+
+
+def drive(user: SimulatedUser, policy: Policy, stop, *, seed: int = 3):
+    """A :class:`Verification` of the owner's template, fed ``user``'s frames one by one like
+    :func:`run_check`, ended with :meth:`Verification.end` as soon as ``stop(machine)`` holds
+    (the frames stopped)."""
+    from tau_guard.verify import Verification
+
+    machine = Verification(policy, OWNER, CAL, random.Random(seed))
+    engine = FakeEngine()
+    for frame in user.frames():
+        if stop(machine):
+            return machine, machine.end()
+        obs = observe(
+            engine,
+            frame.image,
+            frame.at,
+            template=machine.template,
+            min_score=machine.min_score,
+            embed=machine.wants_embedding,
+        )
+        result = machine.feed(obs)
+        for progress in machine.drain():
+            user.on_progress(progress)
+        if result is not None:
+            return machine, result
+    return machine, machine.end()
+
+
+CHALLENGE = Policy("unlock", 0.5, 2)
+
+
+def test_frames_that_stop_during_a_published_step_count_as_spoof() -> None:
+    def pending(machine) -> bool:
+        return machine.phase == "challenge" and machine.challenge.pending
+
+    for index in (0, 1):
+        machine, result = drive(
+            SimulatedUser(),
+            CHALLENGE,
+            lambda m, index=index: pending(m) and m.challenge.index == index,
+        )
+        assert result.reason == "spoof"
+
+
+def test_frames_that_stop_between_steps_or_after_them() -> None:
+    def pause(machine) -> bool:
+        challenge = machine.challenge
+        return machine.phase == "challenge" and challenge.phase == "pause" and challenge.index == 1
+
+    assert drive(SimulatedUser(), CHALLENGE, pause)[1].reason == "timeout"
+    assert drive(SimulatedUser(), CHALLENGE, lambda m: m.phase == "after")[1].reason == "no_match"
+
+
+def test_frames_that_stop_during_the_frontal_match() -> None:
+    def quality(machine) -> bool:
+        return machine.saw_quality
+
+    owner = drive(SimulatedUser(), CHALLENGE, quality)[1]
+    assert owner.reason == "timeout"  # every quality frame matched: nothing to count
+    stranger = drive(SimulatedUser(embedding=STRANGER), CHALLENGE, quality)[1]
+    assert stranger.reason == "no_match"  # counted, however early the frames stopped
+    dark = drive(SimulatedUser(brightness=30), CHALLENGE, lambda m: m.frames >= 20)[1]
+    assert dark.reason == "too_dark"

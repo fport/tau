@@ -21,7 +21,14 @@ works. Enrollment calibrates the sign of a left turn and the owner's amplitude t
 **Failing.** ``Δp`` more than 0.15 the other way at any time in a step (the wrong direction, or
 swinging past the centre on the way back) aborts at once with ``spoof``; so does a step that is
 not done by its deadline (no turn, no hold, no return, too late). Every challenge failure is a
-counted failure: a looping clip cannot retry for free until its turns happen to fit.
+counted failure (and so is abandoning a published step: :mod:`tau_guard.state`), so a looping
+clip cannot skip the prompts it does not fit.
+
+**The camera's time limit.** Given ``until`` (when the frames stop), a prompt is published only
+when its step can end before then (the last one with ``reserve`` seconds more, for the frontal
+match after the steps); otherwise :meth:`Challenge.feed` answers ``"out_of_time"`` before the
+prompt, so the camera never cuts a published step short and the check ends as ``timeout``
+without having shown anything.
 
 The continuity rules (exactly one face, box IoU above 0.3 from frame to frame) and the frontal
 identity match before and after the steps live in :mod:`tau_guard.verify`, which feeds this
@@ -139,7 +146,8 @@ def draw_directions(rng: random.Random, steps: int) -> list[str]:
 class Challenge:
     """The steps after the frontal match. :meth:`feed` takes each frame's time and the one
     face in view (``None`` for a frame without one) and answers ``None`` (going on),
-    ``"passed"`` or ``"spoof"``; :attr:`prompts` collects what to publish."""
+    ``"passed"``, ``"spoof"`` or ``"out_of_time"`` (the next prompt would outlast ``until``);
+    :attr:`prompts` collects what to publish."""
 
     def __init__(
         self,
@@ -148,6 +156,9 @@ class Challenge:
         baseline: float,
         rng: random.Random,
         now: float,
+        *,
+        until: float | None = None,
+        reserve: float = 0.0,
     ) -> None:
         if not directions or any(d not in DIRECTIONS for d in directions):
             raise ValueError("a challenge needs turn_left or turn_right steps")
@@ -155,6 +166,8 @@ class Challenge:
         self.calibration = calibration
         self.baseline = baseline
         self.rng = rng
+        self.until = until
+        self.reserve = reserve
         self.index = 0
         self.prompts: list[Prompt] = []
         self.published_at: list[float] = []
@@ -165,9 +178,20 @@ class Challenge:
     def direction(self) -> str:
         return self.directions[self.index]
 
+    @property
+    def pending(self) -> bool:
+        """A published step is not done yet (its prompt is on the owner's screen)."""
+        return self.phase in ("step", "return")
+
+    def _fits(self, now: float) -> bool:
+        if self.until is None:
+            return True
+        last = self.index == len(self.directions) - 1
+        return now + STEP_SECONDS + (self.reserve if last else 0.0) <= self.until
+
     def _pause(self, now: float) -> None:
         self.phase = "pause"
-        self.until = now + self.rng.uniform(*PAUSE_RANGE)
+        self.resume = now + self.rng.uniform(*PAUSE_RANGE)
         self.deadline: float | None = None
         self.armed = False
         self.reached_at: float | None = None
@@ -185,8 +209,10 @@ class Challenge:
 
     def feed(self, now: float, face: Face | None) -> str | None:
         if self.phase == "pause":
-            if now < self.until:
+            if now < self.resume:
                 return None
+            if not self._fits(now):
+                return "out_of_time"
             self._publish(now)
         assert self.deadline is not None
         if now > self.deadline:

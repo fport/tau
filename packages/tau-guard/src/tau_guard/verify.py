@@ -33,9 +33,27 @@ whose IoU with the previous frame's is 0.3 or less, or a face gone for more than
 with ``spoof``. Before the first match such a jump only starts the match over.
 
 **Verdicts.** ``match`` (with ``score``, the median of the matching similarities, and
-``liveness``), ``no_match`` (quality frames but no match), ``too_dark`` or ``face_too_small``
-(the last hint, when no frame ever passed the gates), ``no_face``, ``multiple_faces``,
-``spoof`` or ``timeout`` (the camera stopped delivering frames before the end).
+``liveness``), ``no_match`` (quality frames below the threshold and no match), ``too_dark`` or
+``face_too_small`` (the last hint, when no frame ever passed the gates), ``no_face``,
+``multiple_faces``, ``spoof`` or ``timeout``.
+
+**When the frames stop.** The camera stops after 20 s whatever ``verify_timeout_seconds`` says
+(:data:`tau_guard.camera.MAX_OPEN_SECONDS`), and a read can fail. The check knows when the
+frames stop (the source's ``stops_at``): the frontal match's deadline never lies beyond it, and
+a head-turn prompt is published only when its step (the last one with the frontal match after
+it) can end before it; a challenge that no longer fits ends as ``timeout`` before its next
+prompt. When the frames stop anyway (:meth:`Verification.end`), the verdict is the one the
+phase would have reached at its deadline:
+
+- during the frontal match, ``no_match`` once a quality frame stayed below the threshold
+  (``timeout`` when the few quality frames all matched), else the hint, ``timeout`` or
+  ``no_face``;
+- during a published step ``spoof``, as for a step past its deadline; in the pause before a
+  prompt ``timeout``;
+- during the frontal match after the steps ``no_match``.
+
+So a longer ``verify_timeout_seconds`` never turns a stranger's counted failure into an
+uncounted ``timeout``, and closing the lid does not skip an unwelcome prompt for free.
 
 :class:`Verification` is a pure state machine over :class:`Observation` values; :func:`run_check`
 drives it with a frame source and a face engine. Frames are dropped as soon as they are
@@ -316,11 +334,15 @@ class Verification:
         template: Sequence[float],
         calibration: Calibration,
         rng: random.Random,
+        *,
+        until: float | None = None,
     ) -> None:
         self.policy = policy
         self.template = tuple(template)
         self.calibration = calibration
         self.rng = rng
+        self.until = until
+        """When the frames stop (the camera's cap), on the frames' clock; ``None``: unknown."""
         self.phase = "look"
         self.start: float | None = None
         self.deadline = 0.0
@@ -337,6 +359,8 @@ class Verification:
         self.frames = 0
         self.saw_face = False
         self.saw_quality = False
+        self.missed = False
+        """A quality frame of the frontal match stayed below the threshold."""
         self.last_hint: str | None = None
         self.directions: list[str] = []
         self._outbox: list[Progress] = []
@@ -360,6 +384,8 @@ class Verification:
     def _begin(self, now: float) -> None:
         self.start = now
         self.deadline = now + self.policy.timeout
+        if self.until is not None:
+            self.deadline = min(self.deadline, self.until)
         self._publish("look", self.deadline)
 
     def feed(self, obs: Observation) -> Result | None:
@@ -408,6 +434,7 @@ class Verification:
             self._publish("look", self.deadline, self.hints.published)
         if obs.quality and face is not None and obs.similarity is not None:
             self.saw_quality = True
+            self.missed = self.missed or obs.similarity < self.policy.threshold
             self.yaws.append(face.yaw)
             if self.matcher.feed(obs.similarity):
                 self.before = self.matcher.score
@@ -416,7 +443,13 @@ class Verification:
                 self.baseline = statistics.median(self.yaws[-WINDOW:])
                 self.directions = draw_directions(self.rng, self.policy.steps)
                 self.challenge = Challenge(
-                    self.directions, self.calibration, self.baseline, self.rng, now
+                    self.directions,
+                    self.calibration,
+                    self.baseline,
+                    self.rng,
+                    now,
+                    until=self.until,
+                    reserve=AFTER_SECONDS,
                 )
                 self.phase = "challenge"
                 return None
@@ -425,8 +458,12 @@ class Verification:
         return None
 
     def _look_failure(self) -> str:
-        if self.saw_quality:
+        """``no_match`` once a quality frame did not match (it counts); ``timeout`` when every
+        quality frame matched but there were too few (the frames stopped early)."""
+        if self.missed:
             return "no_match"
+        if self.saw_quality:
+            return "timeout"
         if self.last_hint in ("too_dark", "face_too_small"):
             return self.last_hint
         return "timeout" if self.saw_face else "no_face"
@@ -438,6 +475,8 @@ class Verification:
             self._publish(prompt.step, prompt.deadline)
         if outcome == "spoof":
             return Result(False, "spoof")
+        if outcome == "out_of_time":
+            return Result(False, "timeout")
         if outcome == "passed":
             self.phase = "after"
             self.deadline = now + AFTER_SECONDS
@@ -457,12 +496,16 @@ class Verification:
         return None
 
     def end(self) -> Result:
-        """The frames stopped (the camera's time limit or a read failure) before a verdict."""
+        """The frames stopped (the camera's time limit or a read failure) before a verdict:
+        the verdict the phase would have reached at its deadline."""
         if self.frames == 0:
             return Result(False, "camera_busy")
-        if self.phase == "look" and not self.saw_face:
-            return Result(False, self.last_hint if self.last_hint == "too_dark" else "no_face")
-        return Result(False, "timeout")
+        if self.phase == "look":
+            return Result(False, self._look_failure())
+        if self.phase == "challenge":
+            assert self.challenge is not None
+            return Result(False, "spoof" if self.challenge.pending else "timeout")
+        return Result(False, "no_match")
 
 
 Explain = Callable[[Observation, str, "Verification"], None]
@@ -480,9 +523,12 @@ def run_check(
     explain: Explain | None = None,
 ) -> Result:
     """Open ``source``, run one :class:`Verification` over its frames and close it again."""
-    machine = Verification(policy, template, calibration, rng)
     result: Result | None = None
     with opened(source) as frames:
+        until = getattr(source, "stops_at", None)
+        if isinstance(until, bool) or not isinstance(until, int | float):
+            until = None
+        machine = Verification(policy, template, calibration, rng, until=until)
         for frame in frames:
             obs = observe(
                 engine,

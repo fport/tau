@@ -19,9 +19,10 @@
   ``camera_denied``; ``3`` goes on.
 - **Frames.** 640x480, the first :data:`WARMUP_FRAMES` frames are dropped (exposure), the
   camera stays open for at most :data:`MAX_OPEN_SECONDS` (counted from the open, warm-up
-  included), and :func:`opened` releases it in ``finally`` on every path. The worker turns
-  SIGTERM into an exception, so a kill from the hub releases it too; after SIGKILL the system
-  stops the capture with the process.
+  included, whatever ``verify_timeout_seconds`` says; :attr:`AVFoundationCamera.stops_at` tells
+  the check when the frames stop), and :func:`opened` releases it in ``finally`` on every path.
+  The worker turns SIGTERM into an exception, so a kill from the hub releases it too; after
+  SIGKILL the system stops the capture with the process.
 
 :class:`FrameSource` is the seam: :class:`AVFoundationCamera` is the real source, and tests
 pass fakes (``tau_guard.testing``). Issue 043 may reuse the source. pyobjc and cv2 load lazily.
@@ -333,6 +334,12 @@ class AVFoundationCamera:
                 cap.release()
             finally:
                 self.closed_at = self._clock()
+
+    @property
+    def stops_at(self) -> float | None:
+        """When :meth:`read` stops delivering frames (the :data:`MAX_OPEN_SECONDS` cap), on
+        the frames' clock; ``None`` before the open. The check plans its steps around it."""
+        return self._deadline if self.opened_at is not None else None
 
     @property
     def open_seconds(self) -> float | None:

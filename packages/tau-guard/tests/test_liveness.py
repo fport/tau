@@ -91,11 +91,11 @@ def test_prompts_carry_a_deadline_three_and_a_half_seconds_after_publication() -
 
 def test_a_random_pause_comes_before_each_prompt() -> None:
     challenge = Challenge(["turn_left", "turn_right"], CAL, 0.0, random.Random(5), 10.0)
-    assert PAUSE_RANGE[0] <= challenge.until - 10.0 <= PAUSE_RANGE[1]
+    assert PAUSE_RANGE[0] <= challenge.resume - 10.0 <= PAUSE_RANGE[1]
     pauses = set()
     for seed in range(20):
         c = Challenge(["turn_left"], CAL, 0.0, random.Random(seed), 0.0)
-        pauses.add(round(c.until, 3))
+        pauses.add(round(c.resume, 3))
     assert len(pauses) > 10
 
 
@@ -116,7 +116,7 @@ def run_frames(challenge: Challenge, yaws: list[float], *, start: float, fps: fl
 def test_a_step_passes_after_reach_hold_and_return() -> None:
     rng = random.Random(1)
     challenge = Challenge(["turn_left"], CAL, 0.0, rng, 0.0)
-    pause = challenge.until
+    pause = challenge.resume
     yaws = [0.0] * int(pause * 30 + 2) + [0.35] * 30 + [0.0] * 5
     outcome, _ = run_frames(challenge, yaws, start=0.0)
     assert outcome == "passed"

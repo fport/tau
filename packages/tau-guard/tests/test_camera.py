@@ -208,10 +208,13 @@ def test_permission_is_checked_before_anything_opens() -> None:
 def test_the_camera_stays_open_at_most_twenty_seconds() -> None:
     assert MAX_OPEN_SECONDS == 20.0
     cam, made = camera(Devices([BUILTIN]))
+    assert cam.stops_at is None
     with opened(cam) as frames:
         seen = list(frames)
     assert cam.opened_at is not None and len(seen) > 50  # the fake capture never runs dry
     assert seen[-1].at - cam.opened_at <= MAX_OPEN_SECONDS < seen[-1].at - cam.opened_at + 0.5
+    assert cam.stops_at == cam.opened_at + MAX_OPEN_SECONDS  # what the check plans around
+    assert all(frame.at < cam.stops_at for frame in seen)
     assert made[0].released == 1
 
 

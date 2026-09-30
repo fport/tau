@@ -20,6 +20,10 @@ the wrong type makes the service ``unavailable`` (reason ``config``, which ``/st
 | ``unlock_fallback`` | ``touch_id`` | ``touch_id``, ``touch_id_or_password``, ``none`` |
 | ``camera`` | ``builtin`` | ``builtin`` or a camera id |
 
+``verify_timeout_seconds`` bounds the frontal match; the camera stays on for at most 20 s
+whatever it says (:data:`tau_guard.camera.MAX_OPEN_SECONDS`), so above about 19 s the camera's
+limit ends the match first, with the same verdict (:mod:`tau_guard.verify`).
+
 A client sends its own ``step_up`` and ``unlock_liveness`` with every verification;
 :func:`stricter_policy` keeps the stricter of the hub's and the client's value.
 """

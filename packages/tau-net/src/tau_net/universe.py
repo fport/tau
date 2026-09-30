@@ -264,8 +264,9 @@ def make_payload(
     """The payload object of ``kind`` with the field order of §1, checked like a universe
     checks it (:class:`MalformedRequest` otherwise). A report carries ``subs`` only when
     there is at least one, so a tau without public sub-taus sends what it always sent; each
-    one is ``{"name", "about", "web", "starters"}`` (``web`` false and no starters when the
-    item has none)."""
+    one is ``{"name", "about"}`` plus ``web`` and ``starters`` when the item has them (as
+    ``cloud/shared/net`` builds it; a hub's reports always have both, from
+    :func:`~tau_net.subs.universe_subs`)."""
     payload: dict[str, Any] = {
         "v": 1,
         "kind": kind,
@@ -278,15 +279,14 @@ def make_payload(
         payload["about"] = about
     elif kind == "report":
         payload["links"] = [{"peer": link["peer"], "messages": link["messages"]} for link in links]
-        listed = [
-            {
-                "name": sub["name"],
-                "about": sub["about"],
-                "web": sub.get("web") is True,
-                "starters": list(sub.get("starters") or []),
-            }
-            for sub in subs
-        ]
+        listed = []
+        for sub in subs:
+            item: dict[str, Any] = {"name": sub["name"], "about": sub["about"]}
+            if "web" in sub:
+                item["web"] = sub["web"]
+            if "starters" in sub:
+                item["starters"] = list(sub["starters"])
+            listed.append(item)
         if listed:
             payload["subs"] = listed
     elif kind == "claim":

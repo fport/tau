@@ -20,18 +20,25 @@ export const HANDLE_PATTERN = new RegExp(`^${HANDLE}$`);
 /** `host[:port]` or `host[:port]/@handle`. */
 export const ADDRESS_PATTERN = new RegExp(`^${HOST}(/@${HANDLE})?$`);
 
-/** The longest address checked at all (a DNS name, a port and a handle fit well within). */
-export const MAX_ADDRESS_CHARS = 320;
+/** The longest host part checked at all (cloud/shared/net uses the same limit). */
+export const MAX_HOST_CHARS = 260;
+
+function hostPart(value: string): string {
+  const slash = value.indexOf("/");
+  return slash === -1 ? value : value.slice(0, slash);
+}
 
 export function isAddress(value: unknown): value is string {
   return (
-    typeof value === "string" && value.length <= MAX_ADDRESS_CHARS && ADDRESS_PATTERN.test(value)
+    typeof value === "string" &&
+    hostPart(value).length <= MAX_HOST_CHARS &&
+    ADDRESS_PATTERN.test(value)
   );
 }
 
 /** A plain host (`host[:port]`), never one with a handle. */
 export function isHost(value: unknown): value is string {
-  return typeof value === "string" && value.length <= MAX_ADDRESS_CHARS && HOST_PATTERN.test(value);
+  return typeof value === "string" && value.length <= MAX_HOST_CHARS && HOST_PATTERN.test(value);
 }
 
 /** The host name of an address, without the port and without `/@handle`. */

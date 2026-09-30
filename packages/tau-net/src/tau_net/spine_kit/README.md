@@ -2,7 +2,7 @@
 
 # tau spine
 
-The spine of a tau (0.2.0+0c7fa71551ab): a Cloudflare Worker whose hostname is the tau's address. It
+The spine of a tau (0.2.0+34aba9917da1): a Cloudflare Worker whose hostname is the tau's address. It
 serves the tau's public card at `/.well-known/tau.json`, keeps the sealed envelopes other
 taus send until the hub picks them up, and gives the hub its API under `/hub/*`. It never
 decrypts anything and holds no contacts. It runs in local mode and fits the Workers Free plan.

@@ -31,6 +31,7 @@ __all__ = [
     "HOST_PATTERN",
     "ID_PATTERN",
     "INSECURE_HOSTS",
+    "MAX_HOST_CHARS",
     "SUB_NAME_PATTERN",
     "AddressError",
     "EncodingError",
@@ -67,6 +68,8 @@ HANDLE_PATTERN = re.compile(_HANDLE)
 """A handle (ADR 0013: ``^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$``), used with ``fullmatch``."""
 ADDRESS_PATTERN = re.compile(_HOST + r"(/@" + _HANDLE + r")?")
 """An address, ``host[:port]`` or ``host[:port]/@handle`` (§1), used with ``fullmatch``."""
+MAX_HOST_CHARS = 260
+"""A longer host part is refused before the pattern runs (as the spine and cloud/shared do)."""
 
 ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,64}")
 """Envelope ids, used with ``fullmatch``."""
@@ -108,13 +111,22 @@ def b64u_decode(text: str) -> bytes:
 
 
 def is_valid_address(address: object) -> bool:
-    """``host[:port]`` or ``host[:port]/@handle``, exactly (lower case, nothing around it)."""
-    return isinstance(address, str) and ADDRESS_PATTERN.fullmatch(address) is not None
+    """``host[:port]`` or ``host[:port]/@handle``, exactly (lower case, nothing around it),
+    with a host part of at most :data:`MAX_HOST_CHARS`."""
+    return (
+        isinstance(address, str)
+        and len(address.split("/", 1)[0]) <= MAX_HOST_CHARS
+        and ADDRESS_PATTERN.fullmatch(address) is not None
+    )
 
 
 def is_valid_host(host: object) -> bool:
     """``host[:port]`` only: the address of a spine or a universe, never one with a handle."""
-    return isinstance(host, str) and HOST_PATTERN.fullmatch(host) is not None
+    return (
+        isinstance(host, str)
+        and len(host) <= MAX_HOST_CHARS
+        and HOST_PATTERN.fullmatch(host) is not None
+    )
 
 
 def is_valid_handle(handle: object) -> bool:

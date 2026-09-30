@@ -22,16 +22,21 @@ jobs:
         working-directory: cloud/shared
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10
+          bun-version: 1.3.2
+      # bun installs and runs the scripts; Vitest, its Workers pool, Wrangler and the vectors
+      # script run on Node, which `bun run` starts through their `#!/usr/bin/env node` shebangs.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: cloud/shared/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run typecheck
-      - run: pnpm test
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('cloud/shared/bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run test
       - name: A Worker bundles the shared modules (wrangler dry run)
-        run: pnpm run bundle-check
+        run: bun run bundle-check

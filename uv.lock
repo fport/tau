@@ -12,6 +12,7 @@ members = [
     "tau-example-provider",
     "tau-example-service",
     "tau-example-tool",
+    "tau-net",
     "tau-tui",
     "tau-workspace",
 ]
@@ -1661,6 +1662,23 @@ dependencies = [
 requires-dist = [{ name = "tau-core" }]
 
 [[package]]
+name = "tau-net"
+version = "0.1.0"
+source = { editable = "packages/tau-net" }
+dependencies = [
+    { name = "click" },
+    { name = "cryptography" },
+    { name = "tau-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1" },
+    { name = "cryptography", specifier = ">=44" },
+    { name = "tau-core", editable = "packages/tau-core" },
+]
+
+[[package]]
 name = "tau-tui"
 version = "0.3.1"
 source = { editable = "packages/tau-tui" }
@@ -1685,6 +1703,7 @@ version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "tau-core" },
+    { name = "tau-net" },
     { name = "tau-tui" },
 ]
 
@@ -1705,6 +1724,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "tau-core", editable = "packages/tau-core" },
+    { name = "tau-net", editable = "packages/tau-net" },
     { name = "tau-tui", editable = "packages/tau-tui" },
 ]
 

@@ -241,6 +241,9 @@ def _hub_active(ctx: click.Context, config: Config, language: str) -> bool:
 
 
 def _audit_local(config: Config, event: str, answer: dict[str, Any], started: float) -> None:
+    """The audit records of a local run: ``camera_open``, ``touch_id`` and the event itself.
+    A check's record names its method (a local check is the face check) and, for a
+    ``spoof``, the liveness rule that failed, like the hub's records."""
     log = AuditLog(_guard_dir(config))
     camera_ms = answer.get("camera_ms")
     common = {"channel": CLI_CHANNEL, "client_id": process_client_id()}
@@ -258,6 +261,7 @@ def _audit_local(config: Config, event: str, answer: dict[str, Any], started: fl
             **common,
         )
     score = answer.get("score")
+    method = answer.get("method") if isinstance(answer.get("method"), str) else "face"
     log.record(
         event,
         ok=answer.get("ok") is True,
@@ -266,6 +270,7 @@ def _audit_local(config: Config, event: str, answer: dict[str, Any], started: fl
         liveness=answer.get("liveness") if isinstance(answer.get("liveness"), str) else None,
         duration_ms=int((time.monotonic() - started) * 1000),
         trigger="local",
+        method=method if event in CHECK_EVENTS else None,
         **common,
     )
 

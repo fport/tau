@@ -313,6 +313,28 @@ def test_a_failed_local_check_names_the_liveness_rule(tmp_path: Path, model_ok: 
     ]
 
 
+def test_an_explain_run_audits_the_rule_and_the_method(tmp_path: Path, model_ok: list) -> None:
+    """A local check's record carries both the liveness rule (issue 127) and the method (issue
+    114), and ``tau guard log`` shows both."""
+    config = fresh(tmp_path)
+    runner = InProcess()
+    assert invoke(config, "enroll", runner=runner).exit_code == 0
+    runner.users = [SimulatedUser(returns=False)]
+    assert invoke(config, "verify", "--explain", runner=runner).exit_code == 1
+    assert invoke(config, "verify", "--explain", runner=runner).exit_code == 0
+    entries = AuditLog(config.data_dir / "guard").read()
+    checks = [e for e in entries if e["event"] == "verify"]
+    assert [(e["ok"], e["reason"], e["liveness"], e["method"]) for e in checks] == [
+        (False, "spoof", "no_return", "face"),
+        (True, "match", "challenge", "face"),
+    ]
+    (enroll,) = [e for e in entries if e["event"] == "enroll"]
+    assert "method" not in enroll  # only a check names its method, as in the hub's records
+    lines = invoke(config, "log", runner=runner).output.splitlines()
+    failed = [line for line in lines if "spoof (no_return)" in line]
+    assert len(failed) == 1 and "face" in failed[0].split("  ")
+
+
 def test_verify_through_a_running_hub(tmp_path: Path) -> None:
     config = cli_config(tmp_path)
     with running_hub(

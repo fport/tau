@@ -159,10 +159,13 @@ def _reason_text(reason: object, language: str, *, enroll: bool = False) -> str:
 
 
 class _Printer:
-    """Prints each new progress step (and its live hint) once."""
+    """Prints each new progress step (and its live hint) once; ``labels`` replaces a step's
+    text (an enrollment's ``touch_id`` step is the device-owner prompt: Touch ID or the
+    password)."""
 
-    def __init__(self, language: str) -> None:
+    def __init__(self, language: str, labels: dict[str, str] | None = None) -> None:
         self.language = language
+        self.labels = labels or {}
         self.last: tuple[str, str | None] | None = None
 
     def __call__(self, step: str, hint: str | None) -> None:
@@ -171,7 +174,7 @@ class _Printer:
         if (step, hint) == self.last:
             return
         self.last = (step, hint)
-        text = t(f"guard.progress.{step}", self.language)
+        text = t(self.labels.get(step, f"guard.progress.{step}"), self.language)
         if hint in VERDICT_REASONS:
             text = f"{text} {t(f'guard.verdict.{hint}', self.language)}"
         click.echo(f"  > {text}")
@@ -345,7 +348,7 @@ def _enroll(ctx: click.Context, config: Config, *, add: bool) -> bool:
     click.echo(t("guard.cli.enroll.start", language))
     if add:
         click.echo(t("guard.cli.enroll.add", language))
-    printer = _Printer(language)
+    printer = _Printer(language, {"touch_id": "guard.cli.enroll.local_auth"})
     if _hub_active(ctx, config, language):
         click.echo(t("guard.cli.via_hub", language))
         answer = _hub_enroll(ctx, config, add, printer)

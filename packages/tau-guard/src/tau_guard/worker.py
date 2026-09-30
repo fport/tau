@@ -41,7 +41,9 @@ Operations:
   changed: ``unavailable``), the camera, then the check (:func:`~tau_guard.verify.run_check`).
 - ``enroll``: refused with ``SSH_CONNECTION`` set; the engine; whether it is the first
   enrollment (from the Keychain item, :func:`~tau_guard.store.first_enrollment`); with
-  ``add`` the existing template; then LocalAuthentication (device owner, prompt text from
+  ``add`` the existing template; the camera permission and device (``permission_pending``,
+  ``camera_denied``, ``camera_unavailable`` before any prompt); then LocalAuthentication
+  (device owner, prompt text from
   ``reason_text``: ``touch_id_failed`` or ``touch_id_unavailable`` when it does not pass, and the
   camera stays off); then the guided capture (:mod:`tau_guard.enroll`); then the key (a new one
   only for a first enrollment, read back before anything is written: a key store that drops
@@ -144,9 +146,11 @@ class Deps:
     clock: Callable[[], float] = time.monotonic
     wall: Callable[[], datetime] = lambda: datetime.now(UTC)
     devices: Callable[[], Any] | None = None
-    """For ``selftest``: → a :class:`~tau_guard.camera.DeviceList`."""
+    """For ``selftest`` and the enrollment's early camera check: → a
+    :class:`~tau_guard.camera.DeviceList`."""
     permission: Callable[[], Any] | None = None
-    """For ``selftest``: → a :class:`~tau_guard.camera.Permission`."""
+    """For ``selftest`` and the enrollment's early camera check: → a
+    :class:`~tau_guard.camera.Permission`."""
 
 
 def system_deps(op: str = "verify") -> Deps:
@@ -346,6 +350,26 @@ def _authenticate(request: dict[str, Any], deps: Deps) -> str | None:
     return verdict_reason(str(outcome))
 
 
+def _camera_ready(request: dict[str, Any], deps: Deps) -> str | None:
+    """The camera permission and the device, checked before LocalAuthentication, so the owner
+    never authenticates only to hear that the camera is not allowed (``permission_pending``
+    asks macOS for access); ``None`` when both are fine."""
+    from tau_guard.camera import CameraError, check_permission, select_device
+
+    try:
+        if deps.permission is not None:
+            check_permission(deps.permission())
+        if deps.devices is not None:
+            select_device(deps.devices().devices(), _camera_setting(request))
+    except CameraError as exc:
+        log(f"enroll: camera: {exc}")
+        return exc.reason
+    except Exception as exc:  # pyobjc missing or failing: the camera cannot be used either
+        log(f"enroll: the camera cannot be checked ({type(exc).__name__})")
+        return "camera_unavailable"
+    return None
+
+
 def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]:
     import hmac
     import secrets
@@ -383,6 +407,9 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
     except StoreError as exc:
         log(f"enroll: {exc.reason}")
         return verdict(False, exc.reason)
+    camera_refused = _camera_ready(request, deps)
+    if camera_refused is not None:
+        return verdict(False, camera_refused)
     progress = _Progress(emit, deps)
     progress.step("touch_id")
     refused = _authenticate(request, deps)

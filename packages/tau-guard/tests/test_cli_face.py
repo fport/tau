@@ -240,6 +240,8 @@ def test_enroll_through_a_running_hub(tmp_path: Path, model_ok: list) -> None:
         result = invoke(config, "enroll", "--add", runner=local, client=running.client)
         assert result.exit_code == 0, result.output
         assert t("guard.cli.via_hub") in result.output
+        assert t("guard.cli.enroll.local_auth") in result.output  # Touch ID or the password
+        assert t("guard.progress.touch_id") not in result.output
         assert t("guard.progress.turn_more") in result.output
         assert t("guard.verdict.too_dark") in result.output
         assert t("guard.cli.enroll.done_add") in result.output

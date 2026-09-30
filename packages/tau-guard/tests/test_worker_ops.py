@@ -319,6 +319,63 @@ def test_enrollment_runs_only_after_local_authentication(
     assert session.keys.key is None
 
 
+class _Permission:
+    def __init__(self, status: int) -> None:
+        self._status = status
+        self.requests = 0
+
+    def status(self) -> int:
+        return self._status
+
+    def request(self) -> None:
+        self.requests += 1
+
+
+class _Devices:
+    def __init__(self, *devices: Any) -> None:
+        self.listed = list(devices)
+
+    def devices(self) -> list[Any]:
+        return list(self.listed)
+
+
+@pytest.mark.parametrize(
+    ("status", "listed", "reason"),
+    [
+        (0, "builtin", "permission_pending"),  # macOS asks for access, then the owner retries
+        (2, "builtin", "camera_denied"),
+        (3, "iphone", "camera_unavailable"),  # no built-in camera to use
+    ],
+)
+def test_the_camera_is_checked_before_local_authentication(
+    session: Session, status: int, listed: str, reason: str
+) -> None:
+    from tau_guard.camera import BUILTIN_TYPE, Device
+
+    devices = {
+        "builtin": Device("B", "MacBook Pro Camera", BUILTIN_TYPE, "bltn"),
+        "iphone": Device("A", "iPhone", "AVCaptureDeviceTypeExternal", "othr"),
+    }
+    permission = _Permission(status)
+    answer = session.run(
+        "enroll",
+        session.request("enroll"),
+        permission=lambda: permission,
+        devices=lambda: _Devices(devices[listed]),
+    )
+    assert answer["ok"] is False and answer["reason"] == reason
+    assert session.auth.calls == []  # no Touch ID or password for nothing
+    assert session.sources == [] and permission.requests == (1 if status == 0 else 0)
+    allowed = session.run(
+        "enroll",
+        session.request("enroll"),
+        user=SimulatedUser(duration=25),
+        permission=lambda: _Permission(3),
+        devices=lambda: _Devices(devices["builtin"]),
+    )
+    assert allowed["ok"] is True and len(session.auth.calls) == 1
+
+
 def test_enrollment_is_refused_over_ssh(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SSH_CONNECTION", "100.x.y.z 50000 100.x.y.z 22")
     assert session.enroll()["reason"] == "unavailable"

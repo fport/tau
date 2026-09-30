@@ -202,6 +202,10 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Yönergeleri izle: kameraya bak, sola dön, sağa dön, yukarı, aşağı. Yaklaşık 15 "
         "saniye sürer.",
     },
+    "guard.cli.enroll.local_auth": {
+        "en": "Confirm in the macOS prompt with Touch ID or your Mac password.",
+        "tr": "macOS isteminde Touch ID ya da Mac parolanla onayla.",
+    },
     "guard.cli.enroll.add": {
         "en": "Adding samples under the current light to your face template.",
         "tr": "Yüz şablonuna şimdiki ışıkta örnekler ekleniyor.",

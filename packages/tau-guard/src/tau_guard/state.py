@@ -36,6 +36,14 @@ Rules the table in the ADR leaves to the implementation:
   hub's second line.
 - **Challenge freshness.** Only an unlock or a step-up that passed the challenge starts the
   ``challenge_fresh`` window, and every lock ends it.
+- **Abandoned challenges count.** A check dropped while its record shows a head-turn prompt
+  (step ``turn_left``, ``turn_right`` or ``center``) by a client's cancel, any lock (``/guard
+  lock``, a screen lock, a sleep, the hub stopping) or the last client leaving ends as ``spoof``:
+  it counts like a step past its deadline, and a strict attempt locks with ``step_up_failed``
+  (a lock that is already happening keeps its own trigger). Otherwise someone holding up a clip
+  could cancel whenever the drawn direction does not fit it and retry at once, and a step-up
+  could escape its lock. A check dropped before its first prompt (camera start-up, the frontal
+  match) still ends as ``cancelled`` and counts for nothing.
 - An enrollment (``kind="enroll"``) runs behind LocalAuthentication; its failures do not
   count and its success resets nothing.
 - A verdict with ``camera_ms`` also writes a ``camera_open`` audit record (``reason`` is the
@@ -62,6 +70,7 @@ from typing import Any, Protocol, runtime_checkable
 
 __all__ = [
     "ATTEMPT_EVENTS",
+    "CHALLENGE_STEPS",
     "COUNTED_REASONS",
     "KINDS",
     "STRICTNESS",
@@ -87,6 +96,9 @@ ATTEMPT_EVENTS = {
 """The audit event of each attempt kind."""
 COUNTED_REASONS = frozenset({"no_match", "spoof", "multiple_faces"})
 """Verdict reasons that count as failures, for unlock, recheck and step-up alike."""
+CHALLENGE_STEPS = frozenset({"turn_left", "turn_right", "center"})
+"""Progress steps that show a head-turn prompt: a check dropped at one of them failed its
+challenge (``spoof``)."""
 
 FAILURE_WINDOW = 600.0
 COOLDOWN_AFTER = 3
@@ -554,7 +566,7 @@ class GuardMachine:
             return False
         for attempt in [self.running, *self.queue]:
             if attempt is not None and not attempt.done:
-                self._drop(attempt, "cancelled")
+                self._drop(attempt, "cancelled", locking=True)
         self.state = "locked"
         self.lock_trigger = trigger
         self.method = None
@@ -666,11 +678,16 @@ class GuardMachine:
                 continue
             self._start(attempt)
 
-    def _drop(self, attempt: Attempt, reason: str) -> None:
-        """End a running or queued attempt the service decided about (no worker verdict)."""
+    def _drop(self, attempt: Attempt, reason: str, *, locking: bool = False) -> None:
+        """End a running or queued attempt the service decided about (no worker verdict). A
+        check dropped at a head-turn prompt failed its challenge (``spoof``, counted); with
+        ``locking`` a lock is already under way, so a strict attempt does not lock again."""
         if attempt is self.running:
             self._outbox.kill.append((attempt.id, reason))
-            self._conclude(attempt, Outcome(False, reason))
+            outcome = Outcome(False, reason)
+            if attempt.kind != "enroll" and attempt.step in CHALLENGE_STEPS:
+                outcome = Outcome(False, "spoof")
+            self._conclude(attempt, outcome, relock=not locking)
         else:
             if attempt in self.queue:
                 self.queue.remove(attempt)
@@ -703,8 +720,9 @@ class GuardMachine:
         self._records[attempt.id] = attempt
         attempt.seq = self._bump()
 
-    def _conclude(self, attempt: Attempt, outcome: Outcome) -> None:
-        """Apply a verdict of the running attempt (decision 9's table)."""
+    def _conclude(self, attempt: Attempt, outcome: Outcome, *, relock: bool = True) -> None:
+        """Apply a verdict of the running attempt (decision 9's table); ``relock=False``
+        when the caller locks anyway."""
         self.running = None
         wall = self.clock.wall()
         now = self.clock.monotonic()
@@ -777,7 +795,7 @@ class GuardMachine:
             )
         if counted:
             self._count_failure(now, wall)
-        if lock_after is not None:
+        if lock_after is not None and relock:
             self.lock(lock_after, channel=attempt.channel, client_id=attempt.client_id)
 
     def _face_seen(self, wall: datetime) -> None:

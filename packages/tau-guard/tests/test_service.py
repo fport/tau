@@ -329,6 +329,30 @@ async def test_cancelling_an_in_hub_unlock_cancels_the_attempt(tmp_path: Path) -
         await service.stop()
 
 
+async def test_cancelling_at_a_head_turn_prompt_counts_and_is_kept(tmp_path: Path) -> None:
+    runs = [[{"progress": "look"}, {"progress": "turn_right"}, {"hang": True}]]
+    service, hub, _, _ = make(tmp_path, runs=runs)
+    await service.start(hub)  # type: ignore[arg-type]
+    try:
+        task = asyncio.ensure_future(service.unlock(channel="tui", client_id="c1"))
+        await until_async(
+            lambda: (
+                service.machine is not None
+                and service.machine.running is not None
+                and service.machine.running.step == "turn_right"
+            )
+        )
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        status = await service.status()
+        assert status.last_verdict == "spoof" and status.failures == 1
+        saved = json.loads(service.failure_file.path.read_text())
+        assert saved["failures"] == 1  # a hub restart does not forget it
+    finally:
+        await service.stop()
+
+
 # -- verification fixes: stopping, reflexes at the verdict, restarts, the event loop -------------
 
 

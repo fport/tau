@@ -338,6 +338,95 @@ def test_cancel_withdraws_one_client_and_cancels_an_attempt_nobody_waits_for(
     assert m.drain().kill == [(attempt.id, "cancelled")]
 
 
+def at_step(m: GuardMachine, attempt, step: str) -> None:
+    assert m.progress(attempt.id, step=step, hint=None, deadline=None)
+
+
+@pytest.mark.parametrize("step", ["turn_left", "turn_right", "center"])
+def test_cancelling_at_a_head_turn_prompt_is_a_counted_failure(clock: FakeClock, step: str) -> None:
+    m = machine(clock)
+    attempt = m.request("unlock", channel="tui", client_id="c1")
+    assert not isinstance(attempt, Refusal)
+    at_step(m, attempt, step)
+    m.drain()
+    assert m.cancel("c1")
+    assert m.failures == 1 and m.state == "locked" and m.lock_trigger == "startup"
+    record = m.record(attempt.id)
+    assert record is not None and record["reason"] == "spoof" and record["ok"] is False
+    effects = m.drain()
+    assert effects.kill == [(attempt.id, "cancelled")]  # the worker still stops
+    assert ("verify", "spoof") in [(e["event"], e.get("reason")) for e in effects.audit]
+
+
+@pytest.mark.parametrize("step", ["starting", "look"])
+def test_cancelling_before_the_first_prompt_counts_for_nothing(clock: FakeClock, step: str) -> None:
+    m = machine(clock)
+    attempt = m.request("unlock", channel="tui", client_id="c1")
+    assert not isinstance(attempt, Refusal)
+    if step != "starting":
+        at_step(m, attempt, step)
+    assert m.cancel("c1")
+    assert m.failures == 0 and m.record(attempt.id)["reason"] == "cancelled"
+
+
+def test_a_clip_cannot_cancel_its_way_past_unwelcome_prompts(clock: FakeClock) -> None:
+    """Someone with a left-turn clip cancels every attempt that asks for a right turn."""
+    m = machine(clock)
+    refused = 0
+    for _ in range(20):
+        attempt = m.request("unlock", channel="tui", client_id="c1")
+        if isinstance(attempt, Refusal):
+            assert attempt.reason == "cooldown"
+            refused += 1
+            clock.advance(attempt.retry_after or 1)
+            continue
+        at_step(m, attempt, "turn_right")
+        m.cancel("c1")
+        clock.advance(1)
+    assert m.failures >= 3 and refused > 0  # cooldowns, as for any failed challenge
+
+
+@pytest.mark.parametrize("kind", ["step_up", "recheck", "re_unlock"])
+def test_cancelling_a_strict_check_at_a_prompt_locks(clock: FakeClock, kind: str) -> None:
+    m = unlocked(clock)
+    attempt = m.request("unlock" if kind == "re_unlock" else kind, channel="tui", client_id="c1")
+    assert not isinstance(attempt, Refusal) and attempt.strict
+    at_step(m, attempt, "turn_left")
+    m.drain()
+    assert m.cancel("c1")
+    assert (m.state, m.lock_trigger) == ("locked", "step_up_failed") and m.failures == 1
+    assert m.record(attempt.id)["reason"] == "spoof"
+    locks = [e for e in m.drain().audit if e["event"] == "lock"]
+    assert [e["trigger"] for e in locks] == ["step_up_failed"]
+
+
+@pytest.mark.parametrize("trigger", ["command", "screen_lock", "sleep", "hub_stop"])
+def test_a_lock_during_a_prompt_counts_the_check_and_keeps_its_trigger(
+    clock: FakeClock, trigger: str
+) -> None:
+    m = unlocked(clock)
+    step_up = m.request("step_up", channel="tui", client_id="c1")
+    queued = m.request("step_up", channel="chat", client_id="c2")
+    assert not isinstance(step_up, Refusal) and not isinstance(queued, Refusal)
+    at_step(m, step_up, "center")
+    m.drain()
+    assert m.lock(trigger)
+    assert (m.state, m.lock_trigger) == ("locked", trigger) and m.failures == 1
+    assert m.record(step_up.id)["reason"] == "spoof"
+    assert m.record(queued.id)["reason"] == "cancelled"  # it never showed a prompt
+    locks = [e for e in m.drain().audit if e["event"] == "lock"]
+    assert [e["trigger"] for e in locks] == [trigger]
+
+
+def test_an_enrollment_cancelled_at_a_pose_counts_for_nothing(clock: FakeClock) -> None:
+    m = machine(clock)
+    attempt = m.request("enroll", channel="cli", client_id="c1")
+    assert not isinstance(attempt, Refusal)
+    at_step(m, attempt, "turn_left")  # enrollment poses use the same step names
+    assert m.cancel("c1")
+    assert m.failures == 0 and m.record(attempt.id)["reason"] == "cancelled"
+
+
 def test_records_stay_readable_for_at_least_60_seconds(clock: FakeClock) -> None:
     m = machine(clock)
     attempt = m.request("unlock", channel="tui", client_id="c1")

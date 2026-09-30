@@ -28,6 +28,9 @@ Changelog = "https://github.com/fport/tau/releases"
 [project.entry-points."tau.sessions"]
 spine = "tau_cloud.sessions:make_store"
 
+[project.entry-points."tau.commands"]
+cloud = "tau_cloud.cli:cloud"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

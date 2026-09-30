@@ -138,7 +138,7 @@ Pages are Markdown under `docs/`, the navigation is in `mkdocs.yml`. `--strict` 
 
 The site is bilingual through [mkdocs-static-i18n](https://ultrabug.github.io/mkdocs-static-i18n/) with the suffix layout. `page.md` is English and the source; `page.tr.md` next to it is its Turkish twin, served under `/tr/`. A page without a twin is served in English under `/tr/` as well (`fallback_to_default`), so ADRs, reference pages and anything not translated yet still work there, and a link from a Turkish page to such a page lands on the English one.
 
-- Twins exist for the home page, `getting-started/` and `guides/`. ADRs, issues and most reference pages stay English only.
+- Twins exist for the home page, `getting-started/`, `guides/`, the threat model and three references (CLI, `tau.toml`, slash commands). ADRs, issues and the other reference pages stay English only.
 - **Change an English page and its twin together.** If you cannot translate the change, put `<!-- tr: out of date -->` at the top of the twin so the drift is visible until someone updates it.
 - A twin starts with `<!-- tr twin of <page>.md, translated YYYY-MM-DD -->`; update the date when you bring it level with the English page.
 - Commands, code blocks, paths, config keys, environment variables, CLI output and URLs stay exactly as in the English page, and `<!-- verified: ... -->` markers are copied unchanged.

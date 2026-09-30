@@ -1,6 +1,6 @@
 # 112 · Face verification: built-in camera, YuNet + SFace, head-turn challenge, enrollment, encrypted template, `tau guard` CLI
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L10 · Guard
 Packages: tau-guard
@@ -112,16 +112,16 @@ The decisions are in [ADR 0008](../../docs/adr/0008-owner-guard.md) (decisions 1
 
 ## Acceptance criteria
 
-- [ ] The camera selection picks only a `bltn` built-in wide-angle device; a changed device list after the open aborts with `camera_unavailable` (fake enumerations); permission status 0 gives `permission_pending` and 2 gives `camera_denied`; the camera is released in `finally` on every path, including a kill
-- [ ] The vendored YuNet file's sha256 is checked at load; `tau guard setup` downloads SFace and refuses a file with a wrong checksum; `--model-file` works offline
-- [ ] Quality gates and the second-face rule behave as specified on synthetic detections, with hints `too_dark` and `face_too_small` reaching `/guard/status` as progress hints
-- [ ] Match needs 3 of the last 5 quality frames at or above the threshold; `unlock_threshold` below 0.45 is refused
-- [ ] The head-turn challenge passes a synthetic owner sequence and fails on: the wrong direction, an overshoot beyond 0.15 the other way (`spoof`), no hold, no return to baseline, a step past its deadline, a second face, and an IoU break; unlock uses 2 steps and step-up 3; within `step_up_challenge_fresh_seconds` a step-up runs passively
-- [ ] Enrollment rejects inconsistent samples (leave-one-out below 0.55), stores the calibration, runs only after LocalAuthentication passes (fake factor), and is refused with `SSH_CONNECTION` set
-- [ ] The template file starts with `TAUG1`, decrypts only with the key and the matching model sha (AAD), is 0600 in a 0700 directory, and a copy of `guard/` without the key cannot be decrypted (test); nothing in `guard/` or the logs contains an embedding or a frame
-- [ ] `forget` removes the template, the marker and the key, and the next verify in a running hub answers `not_enrolled` without a restart; deleting only the template file does not make the next enrollment a first enrollment
-- [ ] `tau guard verify --explain` prints the per-frame numbers and saves nothing; `tau guard doctor` covers every item listed above
-- [ ] The offline tests run in CI on Linux; the opt-in `-m models` tests pass on a Mac and download nothing into the repo
+- [x] The camera selection picks only a `bltn` built-in wide-angle device; a changed device list after the open aborts with `camera_unavailable` (fake enumerations); permission status 0 gives `permission_pending` and 2 gives `camera_denied`; the camera is released in `finally` on every path, including a kill
+- [x] The vendored YuNet file's sha256 is checked at load; `tau guard setup` downloads SFace and refuses a file with a wrong checksum; `--model-file` works offline
+- [x] Quality gates and the second-face rule behave as specified on synthetic detections, with hints `too_dark` and `face_too_small` reaching `/guard/status` as progress hints
+- [x] Match needs 3 of the last 5 quality frames at or above the threshold; `unlock_threshold` below 0.45 is refused
+- [x] The head-turn challenge passes a synthetic owner sequence and fails on: the wrong direction, an overshoot beyond 0.15 the other way (`spoof`), no hold, no return to baseline, a step past its deadline, a second face, and an IoU break; unlock uses 2 steps and step-up 3; within `step_up_challenge_fresh_seconds` a step-up runs passively
+- [x] Enrollment rejects inconsistent samples (leave-one-out below 0.55), stores the calibration, runs only after LocalAuthentication passes (fake factor), and is refused with `SSH_CONNECTION` set
+- [x] The template file starts with `TAUG1`, decrypts only with the key and the matching model sha (AAD), is 0600 in a 0700 directory, and a copy of `guard/` without the key cannot be decrypted (test); nothing in `guard/` or the logs contains an embedding or a frame
+- [x] `forget` removes the template, the marker and the key, and the next verify in a running hub answers `not_enrolled` without a restart; deleting only the template file does not make the next enrollment a first enrollment
+- [x] `tau guard verify --explain` prints the per-frame numbers and saves nothing; `tau guard doctor` covers every item listed above
+- [x] The offline tests run in CI on Linux; the opt-in `-m models` tests pass on a Mac and download nothing into the repo
 - [ ] (user) Live on the owner's Mac: `tau guard setup` enrolls, `tau tui` unlocks with the head-turn challenge, and a tier-2 call passes the step-up; the numbers go under Comments
 - [ ] (user) A printed photo and a phone playing a looping clip of the owner are held up to the camera and both fail; the result goes under Comments
 
@@ -132,3 +132,52 @@ The decisions are in [ADR 0008](../../docs/adr/0008-owner-guard.md) (decisions 1
 ## Comments
 
 - 2026-09-30: filed with ADR 0008.
+- 2026-09-30: built. The worker's `verify`, `enroll` and `forget` run the real face check:
+  `camera.py` (built-in `bltn` camera only, cv2 index from the uniqueID-sorted video + muxed list,
+  re-enumerated after the open, own TCC check, 5 warm-up frames, 20 s cap, release in `finally`,
+  SIGTERM unwinds), `engine.py` (vendored YuNet with its sha256 checked at every load; SFace
+  installed by `tau guard setup` from the pinned URL or `--model-file`, a bad checksum is never
+  kept), `verify.py` (gates, second-face rule, 3 of 5, floor 0.45, the check per kind),
+  `liveness.py` (baseline-relative head-turn challenge), `enroll.py` (five poses, diversity,
+  leave-one-out, calibration, `--add`), `store.py` (TAUG1 AES-GCM with the model sha as AAD, key
+  in the Keychain behind `KeyStore`, marker), `localauth.py` (`LocalAuthFactor`, device-owner
+  policy), and the CLI (`setup`, `enroll [--add]`, `verify [--explain]`, `forget`, `doctor`;
+  `local.py` runs a local worker). Commits: ff10dcf, 8cc0849, 5eb21e8, c5e4523, 23fa8cb, d95488e,
+  4c8ae6c, 5b00d24. 1607 tests pass offline (the one failure, the "no personal paths" repo rule on
+  TauBar's `login.rs`, predates this branch and is issue 130); ruff clean.
+  - **Opt-in `-m models`, run once on the owner's Mac (M5, OpenCV 4.14):** 8 passed. Genuine
+    cosine 0.819 and impostor 0.230 against a 2-sample template; a horizontally squeezed and a
+    perspective-warped still both fail the challenge with `spoof` (yaw proxy spread 0.057 and
+    0.093, far below the 0.27 reach); a second face at 29 % and 36 % of the owner's eye distance
+    is ignored and at 55 %, 72 % and 94 % counts. Nothing was downloaded into the repo (the
+    cache was outside it) and no face image is committed.
+  - **Deviations and choices:**
+    - tau-core's `PROGRESS_STEPS` gains `look_up`, `look_down` and `turn_more` (with en/tr
+      prompts): the five enrollment poses and the "turn more" hint have to cross the wire when
+      the hub runs the enrollment. Channels already render `guard.progress.<step>`.
+    - The worker gains a `forget` op (CLI only; the ADR lists verify, enroll, touch_id,
+      selftest): LocalAuthentication and the Keychain stay in the worker. `forget` also writes
+      `[component.guard] enabled = false` when setup had written `true`, so it stays the only
+      off switch (decision 4).
+    - `POST /guard/enroll` takes an optional `add: bool` (for `enroll --add` through the hub).
+      Enrollment attempts get 100 s (LocalAuthentication plus capture); their failures do not
+      count toward the cooldown and their success resets nothing.
+    - A step arms only on a frame near the baseline after its prompt, so a head (or clip) that
+      is already turned when the prompt appears does not pass. Every challenge failure,
+      including a step past its deadline, is `spoof` (counted), so a looping clip cannot retry
+      for free; the camera's 20 s cap ending a check mid-challenge is `timeout`.
+    - A worker verdict may carry `camera_ms`; the hub writes the `camera_open` audit record from
+      it. Local CLI runs are audited too (channel `cli`, trigger `local`).
+    - `verify` without a hub (or with the hub's guard off) runs in a local worker and unlocks
+      nothing; with a hub whose guard is active it goes through `HubGuard.unlock`.
+  - **For 114:** `LocalAuthFactor` and `MacLocalAuth` exist; `_authenticate` in the worker uses
+    `DEVICE_OWNER` for first and re-enrollment alike (the enroll verdict carries `first`, decided
+    from the Keychain item); `policy_for` answers `touch_id_unavailable` for `step_up =
+    "touch_id"`; the `touch_id` op still answers `touch_id_unavailable`; the doctor prints Touch ID
+    as "from 114 on".
+  - **For 113/115/116:** the hub's enrollment shows the LocalAuthentication prompt from the hub's
+    worker, so the camera and the prompt belong to TauBar (or the terminal running the hub).
+    Through the hub, progress arrives by long poll, so steps shorter than a poll round trip can
+    be skipped on screen (the verdict is unaffected).
+  - **Left for the owner:** the two (user) criteria: a live `tau guard setup`, a `tau tui`
+    unlock and a tier-2 step-up, and the printed-photo and phone-clip attempts.

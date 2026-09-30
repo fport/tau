@@ -8,5 +8,6 @@
 |---|---|---|---|
 | 078 | [PyPI release path: trusted publishing on tags, version policy, install verified from wheels](078-pypi-release-path.md) | HITL | – |
 | 079 | [Docs site: MkDocs Material built strictly in CI and deployed to Cloudflare Pages at `docs.tau.<domain>`](079-docs-site.md) | HITL | – |
+| 169 | [One installer and `tau setup`: pick the features, install and configure them](169-one-installer-and-tau-setup.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py --layer L8`

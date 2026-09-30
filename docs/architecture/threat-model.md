@@ -1,6 +1,6 @@
 # Threat model
 
-This is the readable version of [ADR 0006](../adr/0006-private-first-topology.md): what tau protects, who it protects it from, the decisions that follow, and a table of what an attacker gets from each piece they might compromise. Read it before you expose anything; the [private deployment guide](../guides/private-deployment.md) is the practical companion.
+This is the readable version of [ADR 0006](../adr/0006-private-first-topology.md), with the owner guard of [ADR 0008](../adr/0008-owner-guard.md): what tau protects, who it protects it from, the decisions that follow, and a table of what an attacker gets from each piece they might compromise. Read it before you expose anything; the [private deployment guide](../guides/private-deployment.md) is the practical companion.
 
 ## What is protected
 
@@ -10,12 +10,14 @@ This is the readable version of [ADR 0006](../adr/0006-private-first-topology.md
 | Credentials: `.env`, the tunnel credentials file, the backup key | the hub; the backup key also in your password manager | model providers, Cloudflare, Telegram; the backups themselves |
 | The hub machine | your desk | shell and file tools later; the sessions on disk now |
 | Home devices and the robot | your home, reached through nodes | tier-2 tools: the physical world |
+| Your face template | the hub, `TAU_DATA_DIR/guard/`, AES-GCM encrypted with a key in the macOS Keychain | biometric data; it must never leave the Mac, and a copy of the data folder must not reveal it |
 
 ## Who attacks, and how
 
 1. **Through a public endpoint.** Anything reachable from the internet gets scanned and probed. tau's answer is to have exactly one such endpoint, behind identity, with no inbound port on the hub.
 2. **Through text.** A Telegram message, a fetched web page, a tool result: anything that reaches the model can try to talk it into misusing a tool (prompt injection). tau's answer is that the model never approves anything, writes are tier 2 or sandboxed, fetches are allowlisted, and reflexes do not use a model at all.
 3. **Through data at rest elsewhere.** A third party's store can be breached, subpoenaed or misconfigured. tau's answer is to keep life data on the hub and to send only ciphertext away.
+4. **At your Mac.** Someone at your unlocked Mac opens the TUI and reads your sessions, or approves a tier-2 action with one key; a local program or a web page calls the hub's control API. tau's answer is the [owner guard](../guides/guard.md): guarded channels stay locked until your face is verified at the Mac, a tier-2 call needs a face step-up after your approval, and every control route but `/health` and `/status` needs a request signed with the hub's token. The guard protects tau's own windows, not your account: anyone with a shell in your account is out of its scope, and a 2D webcam check does not stop a real-time deepfake or a good video.
 
 **Out of scope:** model inference. Prompts go straight from the hub to the configured provider (Anthropic, OpenAI or Google Gemini, with the owner's key; [ADR 0011](../adr/0011-budgets-in-tau-no-litellm.md)); nothing sits in between. The spend ledger on the hub (`TAU_DATA_DIR/spend.sqlite3`) records tokens and dollars per call, never text. The mitigation is data minimization (the system prompt carries `user.md` and the conversation, nothing else) and the `local` role, which keeps a prompt on the owner's Mac (Ollama).
 
@@ -23,7 +25,7 @@ This is the readable version of [ADR 0006](../adr/0006-private-first-topology.md
 
 | # | Decision | In one sentence |
 |---|---|---|
-| 1 | One public surface, identity at the edge | `tau.<your-domain>` → Cloudflare Access → Cloudflare Tunnel (outbound from the hub) → the web UI. Tailscale Serve when there is no domain. No inbound port, ever. |
+| 1 | One public surface, identity at the edge | `hub.tau.<your-domain>` → Cloudflare Access → Cloudflare Tunnel (outbound from the hub) → the web UI. Tailscale Serve when there is no domain. No inbound port, ever. |
 | 2 | Telegram without a middleman | The hub polls `getUpdates` itself; no webhook, no Worker; a `chat_id` allowlist on the hub. |
 | 3 | Life data lives on the hub | Sessions, settings, memory, KB and routines under `TAU_DATA_DIR`; vector search local; Cloudflare holds only `age`-encrypted backups in a private R2 bucket. |
 | 4 | Settings are local data | A hot-reloaded file under `TAU_DATA_DIR`; never synced to a third party. |
@@ -31,6 +33,7 @@ This is the readable version of [ADR 0006](../adr/0006-private-first-topology.md
 | 6 | Tools assume hostile input | Shell, file and write tools tier 2 or sandboxed; fetch tools allowlisted; tau-written tools wait in `tools/_pending/`; the mesh and sshd stay tailnet-only. |
 | 7 | Voice is a separate package | Microphone, STT and TTS on the hub; nothing leaves before a wake phrase; voice from the phone goes through the web UI's microphone to the hub. |
 | 8 | Installable by anyone | PyPI packages, `tau init`, `tau doctor`, this docs site; nothing personal needed to install or read. |
+| 9 | The owner at the Mac | On a guarded hub the TUI, `tau chat` and tau Desktop open locked and unlock with a face check and a head-turn challenge; reflex locks on idle, screen lock, sleep and max age; a step-up after every tier-2 approval; Telegram and network turns are identified by chat id and contact keys instead; the template never leaves the Mac. |
 
 ## What an attacker gets if X is compromised
 
@@ -47,6 +50,9 @@ Read each row as: *if this one thing falls, and nothing else does*.
 | **The phone** | an attached tmux session with the TUI, until the SSH key and the Tailscale device are revoked; the Telegram app; an Access session cookie | the backup key; the hub's shell beyond the tmux session's user | revoke the key in `authorized_keys` and the device in Tailscale; log the phone out of Telegram; short Access session durations |
 | **The model provider** | prompts and replies: `user.md`, the conversation, tool descriptions | files, the hub, approvals | data minimization; the `local` role (Ollama on the Mac) |
 | **Injected text** (a poisoned page, a hostile Telegram message from an allowlisted chat) | a model that wants to do something wrong | a tier-2 action without you; a write outside the sandbox | tiers; the model never approves; reflexes without a model |
+| **Your unlocked Mac, while you are away** (a housemate, a visitor) | with the guard: nothing through tau's windows until a face check passes; a TUI you left unlocked, until idle (10 min), a presence recheck (3 min idle) or the screen lock | your sessions, an approval, the template | the owner guard; your Mac's screen lock; `/guard lock` from Telegram |
+| **A local program or a web page** | `GET /health` and the open `/status` (state words, no timestamps) | any other control route: `/spend`, `/guard/*`, a lock or an unlock | signed requests with the hub's control token and a response proof; no `Origin` accepted; the guard's routes can only ask the hub to look |
+| **A copy of `TAU_DATA_DIR` or a backup** | whatever that copy holds, but no face: the template is encrypted with a key in the Keychain, and `guard/` is left out of backups | the template, your face | AES-GCM with the key only in the Keychain |
 
 ## Why not the alternatives
 

@@ -233,9 +233,11 @@ Also true: your model provider sees what tau sends it to think, and if you join 
 | [`packages/tau-net`](packages/tau-net/README.md) | The network: keys, envelopes, contacts, the spine kit, the universe client, `tau net` |
 | [`packages/tau-cloud`](packages/tau-cloud/README.md) | Cloud mode: the same hub in a Cloudflare Container, for owners without a machine at home, `tau cloud` |
 | [`packages/tau-sub`](packages/tau-sub/README.md) | Sub-taus: `tau sub`, `ask_sub`, `create_sub` |
+| [`packages/tau-guard`](packages/tau-guard/README.md) | The owner guard: tau's windows unlock with a face check at the Mac, `tau guard` (macOS) |
 | [`cloud/spine`](cloud/spine/README.md) | The spine Worker (TypeScript): card and mailbox; in cloud mode also the brain container |
 | [`cloud/universe`](cloud/universe/README.md) | The public site at tau.getporti.com and the universe |
 | [`apps/taubar`](apps/taubar/README.md) | TauBar, the macOS menu bar app (Tauri) |
+| [`apps/tau-desktop`](apps/tau-desktop/README.md) | tau Desktop: `tau tui` in its own Mac windows (Tauri, xterm.js) |
 
 Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name>`) and plugs in through entry points; `tau components` lists what is installed. The docs site lives in `docs/`, the issues in `roadmap/`, phone access over Tailscale in [`infra/remote`](infra/remote/README.md).
 
@@ -252,6 +254,7 @@ Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name
 | The public site and the universe | Works | [L9](roadmap/L9-network/README.md) |
 | Sub-taus from the command line and through `ask_sub` | Works | [L9](roadmap/L9-network/README.md) |
 | TauBar: runs the hub, sleep modes | In progress, built from source | [L4](roadmap/L4-interface/README.md) |
+| Owner guard (face check at the Mac, step-up after approvals) and tau Desktop | Built; live test on a Mac pending; Touch ID and remote unlock planned | [L10](roadmap/L10-guard/README.md) |
 | Cloud mode: the hub in a Cloudflare Container | Built; first live run pending | [L9](roadmap/L9-network/README.md) |
 | PyPI releases | `tau-core` and `tau-tui` published; `tau-net`, `tau-cloud` and `tau-sub` not yet | [L8](roadmap/L8-distribution/README.md) |
 | Public sub-taus, `/coach` inside chats | Planned | [L9](roadmap/L9-network/README.md) |

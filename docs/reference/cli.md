@@ -1,6 +1,6 @@
 # CLI
 
-Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init`, `spend` and `version`; `tau-tui` adds `tui`, `tau-net` adds `net` and `tau-cloud` adds `cloud` (see [Join the tau network](../guides/tau-network.md)); any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
+Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init`, `spend` and `version`; `tau-tui` adds `tui`, `tau-guard` adds `guard` ([Owner guard](../guides/guard.md)), `tau-net` adds `net`, `tau-cloud` adds `cloud` (see [Join the tau network](../guides/tau-network.md)) and `tau-sub` adds `sub`; any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
 
 Inside a repository checkout, prefix each command with `uv run`.
 
@@ -29,10 +29,12 @@ Commands:
               brain.
   components  List installed components and their state.
   doctor      Check the installation.
+  guard       The owner guard (setup, verify, status, lock, log).
   hub         Run and manage tau as a long-lived service in the hub role.
   init        Create tau.toml and the persona files.
   net         Talk to other taus (identity, contacts, messages).
   spend       Show the spend per model role.
+  sub         Specialists of your tau (/coach, /landing, ...).
   tui         Open tau in the Textual interface.
   version     Show the versions of the installed tau packages.
 ```
@@ -143,6 +145,7 @@ Options:
 - `--session ID` opens (or creates) a session with that id; ids must be plain names (letters, digits, `.`, `_`, `-`).
 - `--role` pins the role for the whole run and wins over the role a resumed session remembers.
 - Exit 2 before the prompt appears when credentials are missing, the config is invalid, or the session cannot open. Ctrl-D and `/quit` exit 0.
+- With the [owner guard](../guides/guard.md) active, `tau chat` starts on a `locked> ` prompt and clears the screen and the scrollback; Enter starts a face check. Until it passes only `/help`, `/lang`, `/guard` and `/quit` run.
 
 ## `tau tui`
 
@@ -159,6 +162,45 @@ Options:
 ```
 
 `--profile` here is the same setting as the global one; either place works. A broken config or an unknown session id end the command with a plain English message and exit code 2 before the interface opens. With no `tau.toml` at all the setup screen opens first and creates one (the same code as `tau init`; Esc there is exit code 2 too); with a config whose role has no credentials the interface opens on its settings screen and the chat starts once a key is saved ([First run](../getting-started/first-run.md#in-the-interface-tau-tui)). While it runs, logging goes only to `<TAU_DATA_DIR>/logs/tau.log`.
+
+With the [owner guard](../guides/guard.md) active, the interface opens on an opaque lock screen before any session loads, and the setup and settings screens stay closed until a face check passes (Enter starts one, Esc cancels it, ctrl+q quits). tau Desktop runs this same command in its windows.
+
+## `tau guard`
+
+```text
+Usage: tau guard [OPTIONS] COMMAND [ARGS]...
+
+  The owner guard: face setup and checks, its state as the hub reports it,
+  locking tau, the audit log.
+
+Options:
+  -h, --help  Show this help and exit.
+
+Commands:
+  doctor  Check everything the face guard depends on.
+  enroll  Enroll your face again (behind Touch ID or your password).
+  forget  Remove your face template, the marker and the Keychain key...
+  lock    Lock tau now (every guarded channel, until you unlock at the Mac).
+  log     Show the guard's audit log (checks, locks, cooldowns).
+  setup   Set up the face guard at the Mac: the face model, your...
+  status  Show the guard's state as the running hub reports it.
+  verify  Run one face check with the head-turn challenge.
+```
+
+Added by `tau-guard`, on macOS only (other platforms refuse the face commands). The setup, daily use and recovery are in [Owner guard](../guides/guard.md); keys, routes, states and the audit log in the [guard reference](guard.md).
+
+| Command | What it does |
+|---|---|
+| `tau guard setup [--model-file FILE]` | Installs the SFace model (downloaded and checked against its pinned sha256, or from `FILE`), enrolls your face behind Touch ID or your Mac password, runs one check and writes `[component.guard] enabled = true` to `tau.toml`. At the Mac only: refused over SSH |
+| `tau guard enroll [--add]` | Enrolls again behind Touch ID or your Mac password; `--add` adds samples under other light to the template. At the Mac only |
+| `tau guard verify [--explain]` | One face check with the head-turn challenge. Through the hub when a guarded hub runs (a passed check unlocks tau), else in a local worker; `--explain` always runs locally and prints each frame's numbers, never saving a frame. Exit 1 when it fails |
+| `tau guard forget` | Removes the template, the enrollment marker and the Keychain key behind Touch ID or your Mac password and writes `enabled = false`. Exit 1 when the Keychain kept the key: run it again. At the Mac only |
+| `tau guard doctor` | Checks everything the face guard depends on, including which app holds the hub's camera grant. Exit 1 on a `fail` |
+| `tau guard status [--json]` | The state as the running hub reports it. `off` without an active guard; exit 0 when no hub runs, 1 on a hub error |
+| `tau guard lock` | Locks every guarded channel now (trigger `command`). Works over SSH too |
+| `tau guard log [--since WHEN] [--json]` | The audit log; `WHEN` is a duration (`30m`, `2h`, `7d`) or an ISO date or time |
+
+After `setup` or `forget`, restart the hub and any open `tau chat`, `tau tui` or tau Desktop window.
 
 ## `tau hub`
 
@@ -401,8 +443,8 @@ One line per installed `tau-*` distribution. It never imports a provider SDK, so
 | Code | Meaning |
 |---|---|
 | 0 | success; for `tau doctor`, no `fail` |
-| 1 | `tau doctor` found a failing check; `tau hub run` found a running hub; a hub command could not do its job |
-| 2 | `tau chat` / `tau tui`: missing credentials, invalid config or unknown session, before anything opened; also Click's own usage errors |
+| 1 | `tau doctor` or `tau guard doctor` found a failing check; `tau hub run` found a running hub; a hub command could not do its job; a `tau guard` check, enrollment or forget did not succeed |
+| 2 | `tau chat` / `tau tui`: missing credentials, invalid config or unknown session, before anything opened; `tau guard` face commands on a platform other than macOS or over SSH; also Click's own usage errors |
 | 130 | `tau chat` left on Ctrl-C while an approval prompt was still blocking on stdin |
 
 ## Environment

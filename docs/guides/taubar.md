@@ -87,7 +87,8 @@ dir, port and environment fields: [Run tau as a service](hub-service.md#macos-ta
 When the hub runs the owner guard ([ADR 0008](https://github.com/fport/tau/blob/main/docs/adr/0008-owner-guard.md)),
 the panel shows a **Guard** row (`locked`, `unlocked`, `unavailable (camera denied)`) and the
 right-click menu a guard line (`Guard: locked`), both with **Lock now**, which asks the hub to
-lock with a signed request; TauBar never unlocks. Both are hidden without a guard.
+lock with a signed request; TauBar never unlocks. Both are hidden without a guard. Setting the
+guard up, daily use and the "locked out" steps are in the [Owner guard](guard.md) guide.
 
 The hub is TauBar's child, so macOS asks for the camera in TauBar's name ("TauBar would like to
 access the camera"); TauBar carries the usage descriptions and the camera and microphone
@@ -97,7 +98,12 @@ after every rebuild, which drops the camera grant: sign TauBar with a stable sel
 certificate through `APPLE_SIGNING_IDENTITY`, as the
 [README](https://github.com/fport/tau/blob/main/apps/taubar/README.md#a-stable-signing-identity-for-the-camera-grant)
 describes step by step. No TauBar window can use the camera or the microphone: every webview
-permission request is denied.
+permission request is denied. To make macOS ask again, run `tccutil reset Camera com.tau.taubar`
+and restart the hub from TauBar (untick and tick **Run the hub**).
+
+[tau Desktop](https://github.com/fport/tau/blob/main/apps/tau-desktop/README.md)
+(`apps/tau-desktop`) is tau's other Mac app: it runs `tau tui` in its own windows, shows the same
+lock screen and needs no camera permission, because the check runs in the hub TauBar runs.
 
 ## Sleep modes
 

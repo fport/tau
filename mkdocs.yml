@@ -69,6 +69,7 @@ plugins:
             Reach tau from your phone (Tailscale + Termius): Telefondan tau'ya ulaş (Tailscale + Termius)
             Private deployment (Cloudflare Tunnel + Access): Özel dağıtım (Cloudflare Tunnel + Access)
             Voice: Ses
+            Owner guard: Sahip koruması
             Backups (encrypted, R2): Yedekler (şifreli, R2)
             Run tau as a service: tau'yu servis olarak çalıştır
             Models and budgets: Modeller ve bütçeler
@@ -81,6 +82,7 @@ plugins:
             Environment variables: Ortam değişkenleri
             Components and plugins: Bileşenler ve eklentiler
             Tiers and approvals: Tier'lar ve onaylar
+            Owner guard reference: Sahip koruması referansı
             Sessions and compaction: Oturumlar ve sıkıştırma
             tau network protocol and spine API: tau ağı protokolü ve spine API'si
             tau universe protocol and the spine kit: tau evreni protokolü ve spine kiti
@@ -95,6 +97,7 @@ plugins:
             0005 Components and entry-point groups: 0005 Bileşenler ve giriş noktası grupları
             0006 Private-first topology: 0006 Gizlilik öncelikli topoloji
             0007 Cloud mode and the tau network: 0007 Bulut modu ve tau ağı
+            0008 The owner guard: 0008 Sahip koruması
             0009 Anthropic-only models behind the proxy: 0009 Proxy arkasında yalnızca Anthropic modelleri
             0010 The public site and the tau universe: 0010 Herkese açık site ve tau evreni
             0011 Budgets in tau, no LiteLLM: 0011 Bütçeler tau'da, LiteLLM yok
@@ -147,6 +150,7 @@ nav:
       - Private deployment (Cloudflare Tunnel + Access): guides/private-deployment.md
       - Telegram: guides/telegram.md
       - Voice: guides/voice.md
+      - Owner guard: guides/guard.md
       - Backups (encrypted, R2): guides/backups.md
       - Run tau as a service: guides/hub-service.md
       - Models and budgets: guides/models-and-budgets.md
@@ -161,6 +165,7 @@ nav:
       - Environment variables: reference/environment.md
       - Components and plugins: reference/components.md
       - Tiers and approvals: reference/tiers.md
+      - Owner guard reference: reference/guard.md
       - Sessions and compaction: reference/sessions.md
       - tau network protocol and spine API: reference/tau-network.md
       - tau universe protocol and the spine kit: reference/tau-universe.md

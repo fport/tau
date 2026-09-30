@@ -2,7 +2,7 @@
 
 # CLI
 
-Her `tau` alt komutu bir bileşendir: `tau-core`; `chat`, `components`, `doctor`, `hub`, `init`, `spend` ve `version` komutlarıyla gelir; `tau-tui` `tui` komutunu, `tau-net` `net` komutunu, `tau-cloud` da `cloud` komutunu ekler (bkz. [tau ağına katıl](../guides/tau-network.md)). Kurulu herhangi bir dağıtım, `tau.commands` entry point grubu (Python paketlerinin eklenti kayıt noktası) üzerinden başka komutlar da ekleyebilir. Bu sayfa her birinin `--help` çıktısını aynen verir.
+Her `tau` alt komutu bir bileşendir: `tau-core`; `chat`, `components`, `doctor`, `hub`, `init`, `spend` ve `version` komutlarıyla gelir; `tau-tui` `tui` komutunu, `tau-guard` `guard` komutunu ([Sahip koruması](../guides/guard.md)), `tau-net` `net` komutunu, `tau-cloud` `cloud` komutunu (bkz. [tau ağına katıl](../guides/tau-network.md)), `tau-sub` da `sub` komutunu ekler. Kurulu herhangi bir dağıtım, `tau.commands` entry point grubu (Python paketlerinin eklenti kayıt noktası) üzerinden başka komutlar da ekleyebilir. Bu sayfa her birinin `--help` çıktısını aynen verir.
 
 Bir depo checkout'unun (deponun yerel kopyası) içindeysen her komutun başına `uv run` ekle.
 
@@ -31,10 +31,12 @@ Commands:
               brain.
   components  List installed components and their state.
   doctor      Check the installation.
+  guard       The owner guard (setup, verify, status, lock, log).
   hub         Run and manage tau as a long-lived service in the hub role.
   init        Create tau.toml and the persona files.
   net         Talk to other taus (identity, contacts, messages).
   spend       Show the spend per model role.
+  sub         Specialists of your tau (/coach, /landing, ...).
   tui         Open tau in the Textual interface.
   version     Show the versions of the installed tau packages.
 ```
@@ -145,6 +147,7 @@ Options:
 - `--session ID`, o id'ye sahip bir oturumu açar (ya da oluşturur); id'ler düz adlar olmalı (harfler, rakamlar, `.`, `_`, `-`).
 - `--role`, rolü bütün çalıştırma boyunca sabitler ve sürdürülen bir oturumun hatırladığı role üstün gelir.
 - Kimlik bilgileri eksikse, yapılandırma geçersizse ya da oturum açılamıyorsa komut, istem görünmeden önce 2 çıkış koduyla biter. Ctrl-D ve `/quit` 0 ile çıkar.
+- [Sahip koruması](../guides/guard.md) etkinken `tau chat` ekranı ve kaydırma geçmişini temizler, `locked> ` istemiyle açılır; Enter bir yüz kontrolü başlatır. Kontrol geçene kadar yalnızca `/help`, `/lang`, `/guard` ve `/quit` çalışır.
 
 ## `tau tui`
 
@@ -161,6 +164,45 @@ Options:
 ```
 
 Buradaki `--profile`, global seçenekle aynı ayardır; ikisinden birini kullanabilirsin. Bozuk bir yapılandırma ya da bilinmeyen bir oturum id'si, arayüz açılmadan önce komutu düz İngilizce bir mesajla ve 2 çıkış koduyla bitirir. Hiç `tau.toml` yoksa önce kurulum ekranı açılır ve bir tane oluşturur (`tau init` ile aynı kod; oradaki Esc de 2 çıkış kodudur). Bir rolünün kimlik bilgileri olmayan bir yapılandırmayla arayüz ayarlar ekranında açılır ve bir anahtar kaydedilince sohbet başlar ([İlk çalıştırma](../getting-started/first-run.md#in-the-interface-tau-tui)). Çalıştığı sürece loglar yalnızca `<TAU_DATA_DIR>/logs/tau.log` dosyasına gider.
+
+[Sahip koruması](../guides/guard.md) etkinken arayüz, hiçbir oturum yüklenmeden önce opak bir kilit ekranıyla açılır; kurulum ve ayarlar ekranları bir yüz kontrolü geçene kadar açılmaz (Enter kontrolü başlatır, Esc iptal eder, ctrl+q çıkar). tau Desktop pencerelerinde bu komutun aynısını çalıştırır.
+
+## `tau guard`
+
+```text
+Usage: tau guard [OPTIONS] COMMAND [ARGS]...
+
+  The owner guard: face setup and checks, its state as the hub reports it,
+  locking tau, the audit log.
+
+Options:
+  -h, --help  Show this help and exit.
+
+Commands:
+  doctor  Check everything the face guard depends on.
+  enroll  Enroll your face again (behind Touch ID or your password).
+  forget  Remove your face template, the marker and the Keychain key...
+  lock    Lock tau now (every guarded channel, until you unlock at the Mac).
+  log     Show the guard's audit log (checks, locks, cooldowns).
+  setup   Set up the face guard at the Mac: the face model, your...
+  status  Show the guard's state as the running hub reports it.
+  verify  Run one face check with the head-turn challenge.
+```
+
+`tau-guard` ekler, yalnızca macOS'ta çalışır (diğer platformlar yüz komutlarını reddeder). Kurulum, günlük kullanım ve kurtarma [Sahip koruması](../guides/guard.md) rehberinde; anahtarlar, route'lar, durumlar ve denetim kaydı [koruma referansında](guard.md).
+
+| Komut | Ne yapar |
+|---|---|
+| `tau guard setup [--model-file FILE]` | SFace modelini kurar (indirir ve sabitlenmiş sha256 ile doğrular, ya da `FILE`'dan), yüzünü Touch ID ya da Mac parolanın arkasında kaydeder, bir kontrol çalıştırır ve `tau.toml`'a `[component.guard] enabled = true` yazar. Yalnızca Mac'in başında: SSH üzerinden reddedilir |
+| `tau guard enroll [--add]` | Touch ID ya da Mac parolanın arkasında yeniden kaydeder; `--add` şablona başka bir ışıkta örnekler ekler. Yalnızca Mac'in başında |
+| `tau guard verify [--explain]` | Baş çevirme sınamasıyla tek bir yüz kontrolü. Korumalı bir hub çalışıyorsa hub üzerinden (geçen kontrol tau'nun kilidini açar), yoksa yerel bir worker'da; `--explain` her zaman yerelde çalışır ve her karenin sayılarını yazar, hiçbir kareyi kaydetmez. Başarısızsa 1 ile çıkar |
+| `tau guard forget` | Şablonu, kayıt işaretini ve Keychain anahtarını Touch ID ya da Mac parolanın arkasında siler ve `enabled = false` yazar. Keychain anahtarı tuttuysa 1 ile çıkar: yeniden çalıştır. Yalnızca Mac'in başında |
+| `tau guard doctor` | Yüz korumasının dayandığı her şeyi denetler; hub'ın kamera iznini hangi uygulamanın tuttuğu da dahil. `fail` varsa 1 ile çıkar |
+| `tau guard status [--json]` | Çalışan hub'ın bildirdiği durum. Etkin koruma yoksa `off`; hub çalışmıyorsa 0, hub hatasında 1 ile çıkar |
+| `tau guard lock` | Korunan her kanalı hemen kilitler (tetikleyici `command`). SSH üzerinden de çalışır |
+| `tau guard log [--since WHEN] [--json]` | Denetim kaydı; `WHEN` bir süre (`30m`, `2h`, `7d`) ya da ISO tarih veya saattir |
+
+`setup` ya da `forget` sonrasında hub'ı ve açık her `tau chat`, `tau tui` ya da tau Desktop penceresini yeniden başlat.
 
 ## `tau hub`
 
@@ -403,8 +445,8 @@ Kurulu her `tau-*` dağıtımı için bir satır. Hiçbir sağlayıcı SDK'sın�
 | Kod | Anlamı |
 |---|---|
 | 0 | başarı; `tau doctor` için hiç `fail` yok |
-| 1 | `tau doctor` başarısız bir kontrol buldu; `tau hub run` çalışan bir hub buldu; bir hub komutu işini yapamadı |
-| 2 | `tau chat` / `tau tui`: hiçbir şey açılmadan önce eksik kimlik bilgileri, geçersiz yapılandırma ya da bilinmeyen oturum; ayrıca Click'in kendi kullanım hataları |
+| 1 | `tau doctor` ya da `tau guard doctor` başarısız bir kontrol buldu; `tau hub run` çalışan bir hub buldu; bir hub komutu işini yapamadı; bir `tau guard` kontrolü, kaydı ya da silmesi başarılı olmadı |
+| 2 | `tau chat` / `tau tui`: hiçbir şey açılmadan önce eksik kimlik bilgileri, geçersiz yapılandırma ya da bilinmeyen oturum; macOS dışındaki bir platformda ya da SSH üzerinden `tau guard` yüz komutları; ayrıca Click'in kendi kullanım hataları |
 | 130 | `tau chat`, bir onay istemi hâlâ stdin'i beklerken Ctrl-C ile bırakıldı |
 
 ## Ortam { #environment }

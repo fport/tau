@@ -51,7 +51,7 @@ tau components
 tau components --json
 ```
 
-In a repository checkout with the `dev` group installed, the listing also shows `tau-net`, `tau-cloud` and the three test-fixture distributions (`tau-example-*`); a plain install shows only `tau-core` and `tau-tui`:
+In a repository checkout with the `dev` group installed, the listing also shows `tau-guard`, `tau-net`, `tau-cloud`, `tau-sub` and the three test-fixture distributions (`tau-example-*`); a plain install shows only `tau-core` and `tau-tui`. The excerpt below leaves out `tau-sub`:
 
 ```text
 tau.tools
@@ -69,6 +69,7 @@ tau.commands
   init        tau-core 0.3.1   enabled  tau init
   spend       tau-core 0.3.1   enabled  tau spend
   tui         tau-tui 0.3.1    enabled  tau tui
+  guard       tau-guard 0.3.1  enabled  tau guard
   net         tau-net 0.1.0    enabled  tau net
   cloud       tau-cloud 0.1.0  enabled  tau cloud
 tau.providers
@@ -91,10 +92,11 @@ tau.hub_services
   example   tau-example-service 0.0.1  enabled
   spend     tau-core 0.3.1             enabled
   telegram  tau-core 0.3.1             enabled
+  guard     tau-guard 0.3.1            enabled
   net       tau-net 0.1.0              enabled
 ```
 
-The `budget` context source, the `spend` hub service and the `spend` command are tau-core's three readers of the spend ledger ([Models and budgets](../guides/models-and-budgets.md)).
+The `budget` context source, the `spend` hub service and the `spend` command are tau-core's three readers of the spend ledger ([Models and budgets](../guides/models-and-budgets.md)). The `guard` hub service and the `guard` command come from `tau-guard`, the [owner guard](../guides/guard.md); the service stays inert (no thread, no route, no OpenCV import) until the guard is set up.
 
 Columns: name, distribution and version, `enabled`/`disabled` (from `[components]`), then a note: `tier N` for a tool (or `no tier: never registered`), `tau <name>` for a command, `in use: <roles>` / `available` / `planned` for a provider, `in use` / `available` for a backend, and the load error for anything that failed. `--json` gives the same rows as objects with `group`, `name`, `distribution`, `version`, `source` (`built-in`, `entry point`, `registered`, `planned`), `enabled`, `note`, `error`.
 
@@ -105,9 +107,9 @@ These are the invariants every component runs under. They are what makes an untr
 1. **A tool without a tier is never registered.** `@tau_tool(tier=…)` records the tier in the tool spec; a plain Strands `@tool` raises `UntieredToolError` in the catalog, is refused by `build_agent(tools=[…])` and is skipped with a warning when a plugin ships it.
 2. **An unknown tool is refused, not run.** Every call is looked up live in the `ToolCatalog`; a tool that reached the Strands agent through a `Plugin` or another side door is refused with `Tool '<name>' is not registered; it was not run.` and an `error` event.
 3. **The tier gate has the last word.** `TierHook` is registered at `HookOrder.SDK_LAST`; `build_agent` raises a `ConfigError` for any hook registered above it, so no plugin hook can rewrite a call after it was approved. A hook added to the SDK agent *after* build cannot be refused; the gate then records a refused call that ran, or an approved call whose arguments changed, as an `error` with `where: tier_gate`.
-4. **Nothing approves on its own.** No component can replace the approver; a channel passes its own `Approver` to `build_agent`, and the default rejects.
+4. **Nothing approves on its own.** No component can replace the approver; a channel passes its own `Approver` to `build_agent`, and the default rejects. The owner guard can only narrow: it refuses turns and tier-2 calls, and `build_agent(guard=DISCOVER)` guards a caller that passes nothing whenever a guard is active. There is no `tau.guard` group, so no installed package can swap the guard.
 5. **A broken component is skipped, never fatal.** An entry point that fails to import or returns the wrong kind of object is logged with its distribution and left out; `tau components` and `tau doctor` show the error.
-6. **A hub service is optional.** One that fails to build or start is logged and skipped; the hub runs on. Control API routes are additive only: `add_route` raises for a `(method, path)` that exists, so no service can replace `GET /health`, `GET /status` or another service's route.
+6. **A hub service is optional.** One that fails to build or start is logged and skipped; the hub runs on. Control API routes are additive only: `add_route` raises for a `(method, path)` that exists, so no service can replace `GET /health`, `GET /status` or another service's route. They are also **protected by default** (`add_route(..., open=False)`): a request must be signed with the hub's control token and the answer carries a proof, so no other local process or web page can call them. Only `/health` and `/status` are open ([ADR 0008](../adr/0008-owner-guard.md), [the signed-request scheme](guard.md#signed-requests)).
 7. **Tiers come from the process, not from the wire.** The `annotations["tau"]` block in a tool spec is authoritative only for tools registered in-process. A spec that arrives from outside (an MCP tool provider, layer 5) has it stripped and gets its tier from the hub's own configuration.
 8. **`tools.disabled` only removes.** It cannot add, promote or demote a tool.
 

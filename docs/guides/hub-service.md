@@ -43,16 +43,21 @@ Running, it shows the pid, uptime, heartbeat age, version, role, profile, the la
 
 The hub listens on `127.0.0.1:<control_port>` only (default 7877; `TAU_HUB_PORT` overrides) and speaks JSON:
 
-| Route | Answer |
-|---|---|
-| `GET /health` | `{"ok": true, "pid": …, "uptime_s": …}` |
-| `GET /status` | role, profile, version, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`, `approvals_pending`, `nodes`, plus keys that hub services add |
-| `GET /spend` | every model role's spend in its budget period next to its cap, read from the local spend ledger (`TAU_DATA_DIR/spend.sqlite3`) on each request (the `spend` hub service; `/status` carries the same object under `spend`); see [Models and budgets](models-and-budgets.md) |
+| Route | Access | Answer |
+|---|---|---|
+| `GET /health` | open | `{"ok": true, "pid": …, "uptime_s": …}` |
+| `GET /status` | open | role, profile, version, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`, `approvals_pending`, `nodes`, plus keys that hub services add: `spend` (the same object as `/spend`), `guard: {state, enrolled, available, reason}` with the owner guard |
+| `GET /spend` | protected | every model role's spend in its budget period next to its cap, read from the local spend ledger (`TAU_DATA_DIR/spend.sqlite3`) on each request (the `spend` hub service); see [Models and budgets](models-and-budgets.md) |
+| `/guard/*` | protected | the [owner guard](guard.md)'s status, admission, checks and lock, only while the guard is active ([reference](../reference/guard.md#guard)) |
 
 A request with a non-loopback `Host` header gets 403, so the API cannot be reached through a tunnel or a proxy by accident. `tau doctor` and `/status` in a session probe `/health` with a one-second timeout, for information only.
 
+**Every route but `/health` and `/status` is protected** ([ADR 0008](../adr/0008-owner-guard.md)). At every start the hub writes a fresh token to `TAU_DATA_DIR/hub/control.token` (mode `0600`). A client signs each protected request with it (`X-Tau-Nonce`, `X-Tau-Auth`), the token itself never travels, and the hub signs its answer (`X-Tau-Proof`); a request with an `Origin` header is refused, so no web page can call these routes. The scheme is in the [guard reference](../reference/guard.md#signed-requests). A plain `curl` gets 403 there, so read the open routes with curl and the protected ones with tau-core's `HubClient`, which signs and checks for you:
+
 ```sh
 curl -s 127.0.0.1:7877/health
+curl -s 127.0.0.1:7877/status | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["spend"], indent=2))'
+uv run python -c 'from tau_core import Config; from tau_core.hub import HubClient; print(HubClient(Config.load()).get("/spend", timeout=5))'
 ```
 
 ## macOS: TauBar (default)

@@ -244,10 +244,11 @@ Budget: brain $0.42 of $15.00 this month (resets 01.10.2026 00:00); fast $0.03 o
 ok   budget: brain $0.00 of $15.00 this month (resets 01.10.2026 00:00); fast $0.00 of $1.00 today (resets 01.10.2026 00:00)
 ```
 
-**The hub** serves it on its control API (loopback only), and `GET /status` carries the same object under `spend`:
+**The hub** serves it on its control API (loopback only) as `GET /spend`. That route is protected: a request must be signed with the hub's control token ([ADR 0008](../adr/0008-owner-guard.md)), so a plain `curl` gets 403. The open `GET /status` carries the same object under `spend`, and tau-core's `HubClient` signs the protected route for you:
 
 ```sh
-curl -s 127.0.0.1:7877/spend
+curl -s 127.0.0.1:7877/status | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["spend"], indent=2))'
+uv run python -c 'from tau_core import Config; from tau_core.hub import HubClient; print(HubClient(Config.load()).get("/spend", timeout=5))'
 ```
 
 ```json

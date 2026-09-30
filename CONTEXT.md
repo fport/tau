@@ -17,18 +17,20 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Backup** — the client-side encrypted copy of `TAU_DATA_DIR` in a private R2 bucket; the key never leaves the hub and the owner's password manager.
 - **Deployment mode** — where the hub runs and where its life data lives ([ADR 0007](docs/adr/0007-cloud-mode-and-tau-network.md)). **Local** (default): the hub runs on the owner's machine and life data stays under `TAU_DATA_DIR` (ADR 0006). **Cloud** (opt-in): the same hub runs as a Cloudflare Container managed by the owner's spine, and life data lives in the owner's own Cloudflare account (D1, KV). *Avoid: hosted, SaaS.*
 - **Spine** — a tau's own Cloudflare Worker (`cloud/spine`, `tau-spine`): its address, card and mailbox; in cloud mode also the host of the brain container and its store. In local mode it only stores and forwards sealed envelopes. *Avoid: relay (retired), server, backend.*
+- **Control API** — the hub's loopback HTTP API on `127.0.0.1:<control_port>`. Only `GET /health` and `GET /status` are open; every other **control route** (`/spend`, `/guard/*`, any route a hub service adds) is protected: the request is signed with the hub's control token (`TAU_DATA_DIR/hub/control.token`, never sent) and the answer carries a proof ([ADR 0008](docs/adr/0008-owner-guard.md)). Clients use `tau_core.hub.HubClient`. *Avoid: API key, auth header (the token never travels).*
 - **Component** — a pluggable part of tau registered through a `tau.*` entry-point group (`tau.tools`, `tau.commands`, `tau.providers`, `tau.sessions`, `tau.context`, `tau.hub_services`) or a registry, enabled or disabled through `[components]` in `tau.toml`, and listed by `tau components`. *Avoid: plugin (use it only for a third-party distribution that provides components).*
 
 ## Talking to tau
 
-- **Channel** — a way to converse with tau: Telegram, TUI, TauBar, voice ("Hey tau"), MCP server.
+- **Channel** — a way to converse with tau: Telegram, TUI, TauBar, voice ("Hey tau"), MCP server. tau Desktop and web tabs run the TUI, so they are the `tui` channel.
 - **Session** — one recorded conversation: messages, tool calls, approvals. Resumed with `/resume`. Kept forever.
 - **Persona** — tau's character, from `persona/persona.md` (Jarvis-style, Turkish by default, mirrors the user's language) and `persona/user.md` (facts about the user). Combined with the **dynamic context** (time, profile, live nodes, budget) into the system prompt each turn. Everything the model reads around it (headings, labels, gate texts) is English.
-- **Slash command** — a `/name [argument]` line typed into a channel and handled by the channel, never sent to the model: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/compact`, `/clear`, `/status`, `/model`, `/lang`, `/settings`, `/quit`. Canonical names are English; Turkish aliases are accepted but never shown. Spec in `tau_core.commands`.
+- **Slash command** — a `/name [argument]` line typed into a channel and handled by the channel, never sent to the model: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/compact`, `/clear`, `/status`, `/model`, `/lang`, `/settings`, `/guard`, `/quit`. Canonical names are English; Turkish aliases are accepted but never shown. Spec in `tau_core.commands`.
 - **Compaction** — `/compact`: summarizing the current session with the agent's own model and continuing in a *new* session whose history starts with that summary (the **seed**). The old session is kept untouched and the two point at each other in their metadata (`compacted_from`, `compacted_to`). Never a rewrite of an existing session. *Avoid: truncate, prune.*
 - **UI language** — the language of the UI chrome (slash-command hints, labels, pane titles, key hints, notices, approval dialog, CLI help): `en` (default) or `tr`, set by `[ui] language` in `tau.toml`, `TAU_LANG`, `tau --lang` or `/lang` for one run. Looked up through `tau_core.i18n` (`t(key, language)`). Distinct from the persona's language. *Avoid: locale.*
 - **Status report** — the message the hub sends to Telegram when it starts or restarts.
-- **TauBar** — the macOS tray app (Tauri): runs and supervises the hub ("Run the hub"), sleep modes, launch at login; later status, approvals, voice.
+- **TauBar** — the macOS tray app (Tauri): runs and supervises the hub ("Run the hub"), sleep modes, launch at login, the guard line and "Lock now"; holds the camera and microphone permission for the hub it runs; later approvals, voice.
+- **tau Desktop** — the desktop app (`apps/tau-desktop`, Tauri + xterm.js): every window runs the real `tau tui` in a PTY. It holds no camera or microphone permission and opens no network listener. *Avoid: desktop client, GUI.*
 
 ## tau network
 
@@ -61,12 +63,26 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Pending tool** — a tool tau wrote itself, waiting in `tools/_pending/` for approval.
 - **Sim mode / real mode** — robot execution targets. Sim is the default; real mode needs explicit config and approval.
 
+## Owner guard
+
+Decided in [ADR 0008](docs/adr/0008-owner-guard.md); the user's side is `docs/guides/guard.md`.
+
+- **Owner** — the one person tau works for: the person enrolled in the guard and the holder of the allowlisted Telegram chats. There is exactly one. *Avoid: user account, admin.*
+- **Guard** (owner guard) — the check that the owner is at the Mac before a guarded channel works: the `guard` hub service of `tau-guard`, seen by channels through `tau_core.guard` (`HubGuard`). It only ever narrows: it refuses turns and turns approvals into rejections, never approves. States: `off`, `locked`, `verifying`, `unlocked`, `unavailable`. *Avoid: loop guard (that is `[agent] max_turns`), auth, login.*
+- **Guarded channel** — a channel that needs the owner verified at the Mac: the TUI (local, over SSH, in tau Desktop, in a web tab), `tau chat`, `tau ask`, later voice, and any channel that does not opt out (`build_agent(guard=DISCOVER)` fails closed).
+- **Identified channel** — an in-hub channel that knows the owner another way and passes `guard=None` in code: Telegram (chat-id allowlist) and network turns (contacts' keys, no tools). The only two; a repo rule enforces it. Distinct from **trusted** (ADR 0006), which is about who may answer a tier-2 approval.
+- **Step-up** — the fresh identity check after the owner approves a tier-2 call on a guarded channel: head turns, or a passive match shortly after one. It never replaces the approval; a failure rejects the call.
+- **Face template** — the owner's enrolled face: the renormalised mean of 10–20 SFace embeddings plus the head-turn calibration, AES-GCM encrypted in `TAU_DATA_DIR/guard/owner.face.v1.bin` with the key in the macOS Keychain. Biometric data; never leaves the hub, excluded from backups. *Avoid: face ID, photo (no image is ever stored).*
+- **Presence recheck** — a passive face check of about a second, with no head turns, that admission asks for after a few minutes of idle time since the last face match or after `presence_recheck_minutes`; a non-matching face locks.
+- **Lock trigger** — why the guard locked: `command`, `idle`, `screen_lock`, `sleep`, `max_age`, `hub_stop`, `telegram`, `step_up_failed`, `startup`. The idle, screen, sleep and max-age locks are reflexes: no LLM, no cloud.
+- **Cooldown** — after three counted failures (`no_match`, `spoof`, `multiple_faces`) within 10 minutes, checks are refused for 30 s, doubling up to 15 minutes. Distinct from a routine's cooldown.
+
 ## Behavior
 
 - **Event** — something that happened, published on Zenoh as `tau/<area>/<name>` (e.g. `tau/desk/presence`). Summaries of events are stored locally on the hub.
 - **Agent event** — a record of what the agent did in a session (tool call, approval, turn limit, error, notice); distinct from a mesh **Event** on Zenoh.
 - **Turn event** — what a channel receives while one user turn streams: `TextDelta`, `ReasoningDelta`, `ToolUseStarted`, `ToolProgress`, `ToolFinished`, `Throttled`, `Notice`, `TurnEnd`. Rendered by the terminal and the TUI; not stored (agent events are).
-- **Stop reason** — why a turn ended, carried by `TurnEnd`: `end_turn`, `limit_turns`, `limit_total_tokens`, `max_tokens`, `cancelled`, `interrupt`, `error`, `busy`.
+- **Stop reason** — why a turn ended, carried by `TurnEnd`: `end_turn`, `limit_turns`, `limit_total_tokens`, `max_tokens`, `cancelled`, `interrupt`, `error`, `busy`, `locked` (the owner guard refused the turn before any history, prompt or model work; nothing is appended and no repair turn follows).
 - **Repair turn** — when the history ends on an unfinished turn (a failed, cancelled or limited turn, or a crash-restored session), the next turn sends an assistant notice before the user's prompt so the history keeps alternating. Only the SDK appends to history; tau never does by hand.
 - **Telemetry** — high-frequency raw data (sensor streams, joint states). Never stored with the sessions; batched to local files and backed up encrypted with the rest of the data dir.
 - **Routine** — a user-registered rule: event pattern → action, with optional conditions (time window, cooldown). Registering a tier-2 routine needs one approval; its firings do not.

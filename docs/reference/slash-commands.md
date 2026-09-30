@@ -1,6 +1,6 @@
 # Slash commands
 
-A line that starts with `/` is a slash command. The channel handles it and the model never sees it. The specification (names, aliases, arguments, help keys) is `tau_core.commands`; `tau chat` and `tau tui` implement the same thirteen commands with the same wording, so the two never drift (the Telegram channel offers the subset that makes sense in a chat).
+A line that starts with `/` is a slash command. The channel handles it and the model never sees it. The specification (names, aliases, arguments, help keys) is `tau_core.commands`; `tau chat` and `tau tui` implement the same fourteen commands with the same wording, so the two never drift (the Telegram channel offers the subset that makes sense in a chat).
 
 - Canonical names are English and are the only ones shown in hints and menus.
 - Turkish aliases are accepted forever and never shown.
@@ -24,6 +24,7 @@ A line that starts with `/` is a slash command. The channel handles it and the m
 | `/model` | `/rol` | `[role]` | list the roles of `tau.toml` with the current one marked, or switch this session to a role |
 | `/lang` | `/dil` | `en` or `tr` | switch the UI language for this run |
 | `/settings` | `/ayarlar`, `/ayar` | `[key value]` | show the bootstrap config (roles, credential status, language, profile, context, files) or change one value; the TUI opens its settings screen |
+| `/guard` | `/koruma` | `[lock\|unlock]` | the [owner guard](../guides/guard.md)'s state, or lock tau, or (while locked) start a face check; `The guard is off.` without an active guard |
 | `/quit` | `/çık`, `/cik`, `/exit` | – | leave |
 
 `/exit` is an alias of `/quit`; hints always show `/quit`.
@@ -48,6 +49,7 @@ Commands:
   /model [role]          show the model roles, or switch this session to one
   /lang en|tr            switch the UI language for this run
   /settings [key value]  show the settings, or change one (language, profile, model, set NAME)
+  /guard [lock|unlock]   show the guard state, or lock or unlock tau
   /quit                  leave
 ```
 
@@ -108,9 +110,10 @@ UI language: en
 Versions: tau-core 0.3.1 · tau-tui 0.3.1
 Hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
 Budget: brain $0.42 of $15.00 this month (resets 01.10.2026 00:00); fast $0.03 of $1.00 today (resets 01.10.2026 00:00)
+Guard: unlocked · face
 ```
 
-The model line names the provider and model id and says when the role's `fallback` is in use; it never prints a key. The budget line appears when some role has a budget in `tau.toml`: what each role spent in its current period against its cap, read from the local spend ledger, the same text as `tau spend` and the model's `## Now` block ([Models and budgets](../guides/models-and-budgets.md)). The hub line is the `tau doctor` probe (one second, information only). In the TUI `/status` is an info card.
+The model line names the provider and model id and says when the role's `fallback` is in use; it never prints a key. The budget line appears when some role has a budget in `tau.toml`: what each role spent in its current period against its cap, read from the local spend ledger, the same text as `tau spend` and the model's `## Now` block ([Models and budgets](../guides/models-and-budgets.md)). The hub line is the `tau doctor` probe (one second, information only). The guard line appears only while the [owner guard](../guides/guard.md) is active: its state with the method or the lock trigger (`Guard: locked · locked after inactivity`). In the TUI `/status` is an info card.
 
 ### `/model [role]`
 
@@ -127,6 +130,18 @@ Roles in tau.toml:
 ### `/lang en|tr`
 
 The confirmation is already in the new language: `/lang tr` answers `Arayüz dili: tr.` and `/lang en` answers `UI language: en.`. Without an argument: `Usage: /lang en|tr (current: en).` The persona's reply language is unaffected.
+
+### `/guard [lock|unlock]`
+
+Only while the [owner guard](../guides/guard.md) is active; otherwise `The guard is off.`
+
+| Form | Effect |
+|---|---|
+| `/guard` | the state line, as in `/status` |
+| `/guard lock` | locks every guarded channel (trigger `command`) and shows the lock screen or the `locked> ` prompt; `The lock did not reach the guard; check that the hub runs (`tau doctor`).` when the hub did not confirm it |
+| `/guard unlock` | while locked, a face check (the same as Enter on the lock screen); while unlocked, `tau is already unlocked.` |
+
+While tau is locked only `/help`, `/lang`, `/guard` and `/quit` run; any other command answers `/<name> is not available while tau is locked.`
 
 ### `/settings [key value]`
 
@@ -189,4 +204,4 @@ Every string a person reads comes from `tau_core.i18n`, keyed and per language; 
 
 ## On Telegram
 
-The [Telegram](../guides/telegram.md) channel resolves the same specification with the same wording: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`, `/model`, `/compact` and `/lang` work, Turkish aliases included. `/start` (what Telegram sends when you open the bot) and a bare `/` show the help, and `/help@your_bot` works. The hub sets these commands as the bot's menu for each allowed chat (`setMyCommands` with a chat scope), with the help texts in the UI language; `/lang` sets the menu again in the new language. An unknown command lists only the commands that work on Telegram. The rest (`/clear`, `/quit` and any command that edits credentials) answer that they are not available on Telegram. `/lang` switches the language of that chat until the hub restarts.
+The [Telegram](../guides/telegram.md) channel resolves the same specification with the same wording: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`, `/model`, `/compact`, `/lang` and `/guard` work, Turkish aliases included. `/start` (what Telegram sends when you open the bot) and a bare `/` show the help, and `/help@your_bot` works. The hub sets these commands as the bot's menu for each allowed chat (`setMyCommands` with a chat scope), with the help texts in the UI language; `/lang` sets the menu again in the new language. An unknown command lists only the commands that work on Telegram. The rest (`/clear`, `/quit` and any command that edits credentials) answer that they are not available on Telegram. `/lang` switches the language of that chat until the hub restarts. On Telegram `/guard` shows the owner guard's state and `/guard lock` locks it (trigger `telegram`), your remote kill switch; `/guard unlock` answers that unlocking happens only at the Mac, and Telegram itself keeps working while tau is locked.

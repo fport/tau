@@ -86,6 +86,8 @@ The image (`cloud/spine/container/Dockerfile`) starts `tau cloud run`, which:
 
 The image installs `tau-core`, `tau-net`, `tau-cloud` and `tau-sub`, so the brain has your sub-taus: `ask_sub` works from Telegram, and a public sub-tau answers your contacts over the tau network exactly as on a local hub ([Join the tau network](tau-network.md)).
 
+**No owner guard in cloud mode.** The [owner guard](guard.md) is a local-mode feature: a container has no camera and no Keychain, and `tau-guard` is not in the image. The channels that run there, Telegram and network turns, are identified by your chat id and your contacts' keys and never ask the guard, so nothing locks. A `tau.toml` pushed with `[component.guard] enabled = true` only makes the container's guard locked for good (`unsupported_platform`), which those channels ignore. Your enrollment marker and face template live under `TAU_DATA_DIR/guard/` on your Mac, and `tau cloud push` never sends them. The container's `GET /health` reads only the hub's open `/status`.
+
 ## Try it locally, without a container
 
 `bun run dev:cloud` runs the spine in cloud mode with containers off, so you can check the files and the `spine` session backend without Docker or a Cloudflare account:

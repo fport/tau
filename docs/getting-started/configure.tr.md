@@ -123,7 +123,7 @@ control_port = 7877
 heartbeat_seconds = 5
 ```
 
-Hub'ın (servis olarak çalışan, uzun ömürlü tau) kontrol API'si yalnızca `127.0.0.1:<control_port>` adresini dinler ve `GET /health`, `GET /status` ve `spend` servisinden gelen `GET /spend` (her rolün bütçe döneminde ne harcadığı, yerel defterden) isteklerine yanıt verir. `TAU_HUB_PORT` portu ezer. Heartbeat, çalışan hub'ın durum dosyasını ne sıklıkla yenilediğidir; `tau hub status` onu okur. Bkz. [tau'yu servis olarak çalıştır](../guides/hub-service.md).
+Hub'ın (servis olarak çalışan, uzun ömürlü tau) kontrol API'si yalnızca `127.0.0.1:<control_port>` adresini dinler ve `GET /health`, `GET /status` ve `spend` servisinden gelen `GET /spend` (her rolün bütçe döneminde ne harcadığı, yerel defterden) isteklerine yanıt verir. Yalnızca `/health` ve `/status` açıktır; `/spend` ve diğer her route hub'ın kontrol token'ıyla imzalanmış bir istek ister, `/status` ise aynı harcamayı `spend` anahtarı altında taşır. `TAU_HUB_PORT` portu ezer. Heartbeat, çalışan hub'ın durum dosyasını ne sıklıkla yenilediğidir; `tau hub status` onu okur. Bkz. [tau'yu servis olarak çalıştır](../guides/hub-service.md).
 
 ## `[ui]`
 

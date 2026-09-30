@@ -88,6 +88,8 @@ Telegram'da botuna yaz. Container'daki hub yanıt verir ve tier-2 onaylar (her z
 
 İmaj `tau-core`, `tau-net`, `tau-cloud` ve `tau-sub` paketlerini kurar; böylece beyin sub-tau'larına sahip olur: `ask_sub` Telegram'dan çalışır ve açık (public) bir sub-tau, tau ağında kişilerine tıpkı yerel bir hub'daki gibi cevap verir ([tau ağına katıl](tau-network.md)).
 
+**Bulut modunda sahip koruması yok.** [Sahip koruması](guard.md) yerel moda özgüdür: bir container'ın kamerası ve Keychain'i yoktur ve `tau-guard` imajda bulunmaz. Orada çalışan kanallar, Telegram ve ağ turları, chat id'inle ve kişilerinin anahtarlarıyla tanınır ve korumaya hiç sormaz; bu yüzden hiçbir şey kilitlenmez. `[component.guard] enabled = true` içeren bir `tau.toml` gönderirsen, container'ın koruması yalnızca kalıcı olarak kilitli olur (`unsupported_platform`) ve bu kanallar bunu yok sayar. Kayıt işaretin ve yüz şablonun Mac'inde `TAU_DATA_DIR/guard/` altında durur ve `tau cloud push` onları asla göndermez. Container'ın `GET /health` yanıtı yalnızca hub'ın açık `/status`'unu okur.
+
 ## Container olmadan yerelde dene
 
 `bun run dev:cloud`, spine'ı container'lar kapalıyken bulut modunda çalıştırır; böylece dosyaları ve `spine` oturum arka ucunu Docker ya da Cloudflare hesabı olmadan kontrol edebilirsin:

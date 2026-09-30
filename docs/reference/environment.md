@@ -9,7 +9,7 @@ Precedence for the settings that have a command-line option: option → environm
 | Variable | Default | Meaning |
 |---|---|---|
 | `TAU_HOME` | the current directory when it holds `tau.toml`, else `~/.tau` | The configuration root: `tau.toml`, `.env`, `persona/`, `tools/`. `tau --home DIR` wins. |
-| `TAU_DATA_DIR` | `~/.local/share/tau` | Mutable state: `sessions/`, `hub/`, `logs/` and the spend ledger `spend.sqlite3`. Never inside a repository. |
+| `TAU_DATA_DIR` | `~/.local/share/tau` | Mutable state: `sessions/`, `hub/` (with the control token `hub/control.token`), `logs/`, the spend ledger `spend.sqlite3` and, with the owner guard, `guard/`. Never inside a repository. |
 | `TAU_PROFILE` | `home` | The active profile: `home`, `travel` or `sport`. `tau --profile NAME` wins and is exported as this variable. |
 | `TAU_ROLE` | `hub` | The host role, `hub` or `node`. The hub service templates set `hub`; the mesh (layer 5) uses `node`. Any other value is a `ConfigError`. |
 | `TAU_HUB_PORT` | `[hub] control_port` (7877) | Overrides the control API port. Must be a number. |
@@ -104,6 +104,19 @@ Keep the file `0600` inside a `0700` directory.
 | `TAU_TUI_PLAIN_STREAM=1` | stream every reply as plain text and parse the markdown once per segment |
 | `TEXTUAL_ANIMATIONS=none` | no header motion |
 | `TEXTUAL_COLOR_SYSTEM` | Textual's colour system override; with `--ansi` the `tau-ansi` 16-colour theme |
+
+## Owner guard
+
+The [owner guard](../guides/guard.md) has no variable of its own that changes policy: no variable, flag or config key switches it off for a channel. It reads the environment only here:
+
+| Variable | Effect |
+|---|---|
+| `SSH_CONNECTION` | set by sshd; `tau guard setup`, `enroll` and `forget` refuse to run while it is set (exit 2) |
+| `PYTHONPATH`, `PYTHON_KEYRING_BACKEND`, `KEYCHAIN_PATH` | never reach the guard's worker: no module path can shadow it, and the template key always goes through keyring's macOS Keychain backend |
+| `TAU_GUARD_TEST_CACHE` | tests only: where the opt-in real-model tests cache SFace and public-domain portraits (default `~/.cache/tau-guard-tests`) |
+| `TAU_GUARD_SFACE` | tests only: a local SFace file for the opt-in real-model tests instead of a download |
+
+The worker runs in `TAU_DATA_DIR/guard/` with the hub's environment minus those three, plus `OPENCV_LOG_LEVEL=ERROR` and `OPENCV_AVFOUNDATION_SKIP_AUTH=1`, so OpenCV never prints to a terminal or asks for the camera itself. Nothing needs setting by hand.
 
 ## Planned variables
 

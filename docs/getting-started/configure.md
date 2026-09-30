@@ -121,7 +121,7 @@ control_port = 7877
 heartbeat_seconds = 5
 ```
 
-The hub's control API listens on `127.0.0.1:<control_port>` only and answers `GET /health`, `GET /status` and, from the `spend` service, `GET /spend` (what every role spent in its budget period, from the local ledger). `TAU_HUB_PORT` overrides the port. The heartbeat is how often the running hub refreshes its state file; `tau hub status` reads it. See [Run tau as a service](../guides/hub-service.md).
+The hub's control API listens on `127.0.0.1:<control_port>` only and answers `GET /health`, `GET /status` and, from the `spend` service, `GET /spend` (what every role spent in its budget period, from the local ledger). Only `/health` and `/status` are open; `/spend` and every other route need a request signed with the hub's control token, and `/status` carries the same spend under its `spend` key. `TAU_HUB_PORT` overrides the port. The heartbeat is how often the running hub refreshes its state file; `tau hub status` reads it. See [Run tau as a service](../guides/hub-service.md).
 
 ## `[ui]`
 

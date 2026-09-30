@@ -1,8 +1,9 @@
 # tau Desktop
 
 A desktop app for talking to tau: every window runs the real `tau tui` in a PTY and renders it
-with [xterm.js](https://xtermjs.org/), so every TUI feature works unchanged, and so will the
-guard's lock screen once it lands ([ADR 0008](../../docs/adr/0008-owner-guard.md), decision 16).
+with [xterm.js](https://xtermjs.org/), so every TUI feature works unchanged, the owner guard's lock screen
+included ([ADR 0008](../../docs/adr/0008-owner-guard.md), decision 16; the
+[guard guide](../../docs/guides/guard.md)).
 It is built with Tauri v2, React and TypeScript, `@xterm/xterm` and `portable-pty`.
 
 - **One PTY per window**, running `<TAU_HOME>/.venv/bin/python -m tau_core tui` with

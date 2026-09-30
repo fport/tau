@@ -45,16 +45,21 @@ tau hub is not running.
 
 Hub yalnızca `127.0.0.1:<control_port>` adresini dinler (varsayılan 7877; `TAU_HUB_PORT` bunu ezer) ve JSON konuşur:
 
-| Rota | Yanıt |
-|---|---|
-| `GET /health` | `{"ok": true, "pid": …, "uptime_s": …}` |
-| `GET /status` | rol, profil, sürüm, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`, `approvals_pending`, `nodes`, artı hub servislerinin eklediği anahtarlar |
-| `GET /spend` | her model rolünün bütçe dönemindeki harcaması, üst sınırıyla yan yana; her istekte yerel harcama defterinden (ledger, `TAU_DATA_DIR/spend.sqlite3`) okunur (`spend` hub servisi; `/status` aynı nesneyi `spend` altında taşır); bkz. [Modeller ve bütçeler](models-and-budgets.md) |
+| Rota | Erişim | Yanıt |
+|---|---|---|
+| `GET /health` | açık | `{"ok": true, "pid": …, "uptime_s": …}` |
+| `GET /status` | açık | rol, profil, sürüm, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`, `approvals_pending`, `nodes`, artı hub servislerinin eklediği anahtarlar: `spend` (`/spend` ile aynı nesne), sahip korumasıyla `guard: {state, enrolled, available, reason}` |
+| `GET /spend` | korumalı | her model rolünün bütçe dönemindeki harcaması, üst sınırıyla yan yana; her istekte yerel harcama defterinden (ledger, `TAU_DATA_DIR/spend.sqlite3`) okunur (`spend` hub servisi); bkz. [Modeller ve bütçeler](models-and-budgets.md) |
+| `/guard/*` | korumalı | [sahip korumasının](guard.md) durumu, kabulü, kontrolleri ve kilidi; yalnızca koruma etkinken ([referans](../reference/guard.md#guard)) |
 
 Loopback olmayan bir `Host` başlığı taşıyan istek 403 alır; böylece API'ye yanlışlıkla bir tünel ya da proxy üzerinden ulaşılamaz. `tau doctor` ve bir oturumdaki `/status`, yalnızca bilgi amaçlı olarak `/health` adresini bir saniyelik zaman aşımıyla yoklar.
 
+**`/health` ve `/status` dışındaki her route korumalıdır** ([ADR 0008](../adr/0008-owner-guard.md)). Hub her başlangıçta `TAU_DATA_DIR/hub/control.token` dosyasına (mod `0600`) yeni bir token yazar. İstemci her korumalı isteği onunla imzalar (`X-Tau-Nonce`, `X-Tau-Auth`), token'ın kendisi asla yolculuk etmez ve hub yanıtını imzalar (`X-Tau-Proof`); `Origin` başlığı taşıyan istek reddedilir, böylece hiçbir web sayfası bu route'ları çağıramaz. Şema [koruma referansında](../reference/guard.md#signed-requests). Düz bir `curl` orada 403 alır; açık route'ları curl ile, korumalı olanları ise imzalayıp denetleyen tau-core'un `HubClient`'ı ile oku:
+
 ```sh
 curl -s 127.0.0.1:7877/health
+curl -s 127.0.0.1:7877/status | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["spend"], indent=2))'
+uv run python -c 'from tau_core import Config; from tau_core.hub import HubClient; print(HubClient(Config.load()).get("/spend", timeout=5))'
 ```
 
 ## macOS: TauBar (varsayılan) { #macos-taubar-default }

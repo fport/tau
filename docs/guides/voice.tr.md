@@ -43,10 +43,20 @@ Issue 031 ile hub, bir uyandırma ifadesini sürekli dinler ve onu duyana kadar 
 
 Uyandırma ifadesi üç ya da dört heceli olmalı; onu seçmek ve örnek kaydetmek [issue 030](https://github.com/fport/tau/blob/main/roadmap/L4-interface/030-pick-wake-phrase.md), yani bir insanın yapması gereken bir iş.
 
+## Sahip koruması altında { #under-the-owner-guard }
+
+[Sahip koruması](guard.md) açıkken ses onun kurallarına uyar (issue 118 ve 119, [ADR 0008](../adr/0008-owner-guard.md)):
+
+- **Mikrofon yalnızca yüzün yakın zamanda görüldüyse** ve ekran kilidi açıksa açılır. Ses servisi mikrofonu açmadan önce hub'ın içindeki korumaya sorar; böylece TUI'ye yazılan bir döküm kontrolü atlayamaz.
+- **Sesle onay yok.** Bir ses turunun başlattığı tier-2 çağrı, açıksa TUI'de, değilse Telegram'da onaylanır.
+- **Ses asla kefil olmaz.** Konuşmacı doğrulaması sana benzemeyen bir komutu veto edebilir; bir eşleşme ise asla sen olduğunun kanıtı sayılmaz, çünkü sesler kolayca yeniden oynatılır ve kopyalanır.
+- **Yanıtlar** metin, konuşma ya da ikisi birden olarak gelir (`reply_mode`).
+- **Ses route'ları**, `/health` ve `/status` dışındaki her route gibi korumalı kontrol route'larıdır.
+
 ## Mikrofon izni
 
 !!! warning "macOS'ta mikrofon izni"
-    macOS mikrofon erişimini uygulama kimliği başına verir. Terminalden başlatılan bir Python süreci terminalin iznini devralır (ya da onu ister), bir launchd agent'ının hiç izni yoktur ve bir Tauri uygulamasının kendi izni vardır. Plan şu: **mikrofon izni TauBar'a ait olacak** ve TauBar ses hattını kendi sidecar'ı (yan süreci) olarak çalıştıracak; böylece izin, **System Settings → Privacy & Security → Microphone** altında görebileceğin imzalı bir uygulamaya ait olur. TauBar ses hattını çalıştırana kadar (TauBar'ın kendisi issue 024'ten beri var, ama sessiz), `tau tui` içindeki bas-konuş izni terminal uygulaman adına ister. İzni orada ver, istemediğinde de orada geri al.
+    macOS mikrofon erişimini uygulama kimliği başına verir. Terminalden başlatılan bir Python süreci terminalin iznini devralır (ya da onu ister), bir launchd agent'ının hiç izni yoktur ve bir Tauri uygulamasının kendi izni vardır. **Mikrofon izni TauBar'ındır**: hub'ı o çalıştırır ve issue 115'ten beri mikrofon kullanım açıklamasını ve ses girişi yetkisini (entitlement) taşır; böylece hub içindeki ses servisi TauBar adına ister ve izin, **System Settings → Privacy & Security → Microphone** altında görebileceğin imzalı bir uygulamaya ait olur. Hiçbir TauBar ya da tau Desktop penceresi mikrofonu kendisi kullanamaz: her webview izin isteği reddedilir. Bir terminalden başlatılan hub (`tau hub run`) ise o terminal uygulaması adına ister. İzni orada ver, istemediğinde de orada geri al.
 
     Raspberry Pi'de bir izin sistemi yoktur; mikrofon bir aygıt dosyasıdır. Bu senin için önemliyse donanımsal sessize alma düğmesi olan bir USB mikrofon seç.
 

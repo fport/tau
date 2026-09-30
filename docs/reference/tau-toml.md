@@ -170,6 +170,28 @@ approval_timeout_seconds = 300   # an unanswered tier-2 approval is a timeout (d
 nodes = ["mac", "arm"]
 ```
 
+### `[component.guard]`
+
+The [owner guard](../guides/guard.md)'s table is the one exception to "not validated": tau-core locks the guard for good on an unknown key or a non-bool `enabled` (a typo such as `enable = true` must never mean "off"), and `tau-guard` makes the guard `unavailable` on a value out of range, never falling back to a weaker one. `tau guard setup` writes `enabled = true`; while the enrollment marker `TAU_DATA_DIR/guard/enrolled` exists the guard is on whatever `enabled` says, and only `tau guard forget` turns it off.
+
+| Key | Default | Range or values |
+|---|---|---|
+| `enabled` | `false` | bool |
+| `max_unlock_hours` | `8` | 1–24 |
+| `idle_lock_minutes` | `10` | 1–240 |
+| `recheck_after_idle_minutes` | `3` | 1–240 |
+| `presence_recheck_minutes` | `30` | 1–1440 |
+| `verify_timeout_seconds` | `15` | 5–60 |
+| `unlock_threshold` | `0.50` | 0.45–0.95 |
+| `step_up_threshold` | `0.55` | 0.45–0.95 |
+| `step_up_challenge_fresh_seconds` | `120` | 0–600 |
+| `unlock_liveness` | `"challenge"` | `challenge`, `none` |
+| `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` |
+| `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` |
+| `camera` | `"builtin"` | `builtin` or a camera's AVFoundation uniqueID |
+
+What each key does is in the [guard reference](guard.md#componentguard).
+
 ## The shipped file
 
 This is the template `tau init` writes, verbatim; it equals the repository's own `tau.toml`, and a test keeps the two identical.

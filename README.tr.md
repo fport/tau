@@ -235,9 +235,11 @@ Her yazılımda hata olabilir ve tau henüz genç. Dürüst hâli şu:
 | [`packages/tau-net`](packages/tau-net/README.md) | Ağ: anahtarlar, zarflar, kişiler, spine kiti, evren istemcisi, `tau net` |
 | [`packages/tau-cloud`](packages/tau-cloud/README.md) | Bulut modu: evde makinesi olmayanlar için aynı hub'ın bir Cloudflare Container'ında çalışması, `tau cloud` |
 | [`packages/tau-sub`](packages/tau-sub/README.md) | Sub-tau'lar: `tau sub`, `ask_sub`, `create_sub` |
+| [`packages/tau-guard`](packages/tau-guard/README.md) | Sahip koruması: tau'nun pencereleri Mac'in başında bir yüz kontrolüyle açılır, `tau guard` (macOS) |
 | [`cloud/spine`](cloud/spine/README.md) | Spine Worker'ı (TypeScript): kart ve posta kutusu; bulut modunda beyin konteyneri de burada |
 | [`cloud/universe`](cloud/universe/README.md) | tau.getporti.com'daki herkese açık site ve evren |
 | [`apps/taubar`](apps/taubar/README.md) | TauBar, macOS menü çubuğu uygulaması (Tauri) |
+| [`apps/tau-desktop`](apps/tau-desktop/README.md) | tau Desktop: `tau tui` kendi Mac pencerelerinde (Tauri, xterm.js) |
 
 Her paket kendi başına bir PyPI dağıtımıdır (`tau-<name>`, `tau_<name>` olarak import edilir) ve entry point'ler (Python paketlerinin eklenti kayıt noktaları) üzerinden takılır; kurulu olanları `tau components` listeler. Doküman sitesi `docs/`, issue'lar `roadmap/`, Tailscale üzerinden telefon erişimi [`infra/remote`](infra/remote/README.md) içinde. Paket README'leri, ADR'ler ve katkı sayfaları yalnızca İngilizce.
 
@@ -254,6 +256,7 @@ Her paket kendi başına bir PyPI dağıtımıdır (`tau-<name>`, `tau_<name>` o
 | Herkese açık site ve evren | Çalışıyor | [L9](roadmap/L9-network/README.md) |
 | Komut satırından ve `ask_sub` üzerinden sub-tau'lar | Çalışıyor | [L9](roadmap/L9-network/README.md) |
 | TauBar: hub'ı çalıştırır, uyku modları | Geliştiriliyor, kaynaktan derleniyor | [L4](roadmap/L4-interface/README.md) |
+| Sahip koruması (Mac'in başında yüz kontrolü, onaylardan sonra step-up) ve tau Desktop | Hazır; bir Mac'te canlı deneme bekleniyor; Touch ID ve uzaktan kilit açma planlı | [L10](roadmap/L10-guard/README.md) |
 | Bulut modu: hub'ın bir Cloudflare Container'ında çalışması | Hazır; ilk canlı çalıştırma bekleniyor | [L9](roadmap/L9-network/README.md) |
 | PyPI sürümleri | `tau-core` ve `tau-tui` yayında; `tau-net`, `tau-cloud` ve `tau-sub` henüz değil | [L8](roadmap/L8-distribution/README.md) |
 | Herkese açık sub-tau'lar, sohbet içinde `/coach` | Planlanıyor | [L9](roadmap/L9-network/README.md) |

@@ -41,10 +41,20 @@ With issue 031 the hub listens for a wake phrase all the time and records nothin
 
 The wake phrase must have three or four syllables; picking it and recording samples is [issue 030](https://github.com/fport/tau/blob/main/roadmap/L4-interface/030-pick-wake-phrase.md), a human task.
 
+## Under the owner guard
+
+When the [owner guard](guard.md) is on, voice follows its rules (issues 118 and 119, [ADR 0008](../adr/0008-owner-guard.md)):
+
+- **The microphone opens only while your face was seen recently** and the screen is unlocked. The voice service asks the guard inside the hub before it opens the microphone, so a transcript typed into the TUI cannot skip the check.
+- **No approvals by voice.** A tier-2 call raised by a voice turn is approved in the TUI when one is open, else on Telegram.
+- **Voice never vouches.** Speaker verification may veto a command that does not sound like you; a match never counts as proof that it is you, because voices are easy to replay and clone.
+- **Replies** come as text, speech or both (`reply_mode`).
+- **Voice routes** are protected control routes, like every route but `/health` and `/status`.
+
 ## Microphone permission
 
 !!! warning "Microphone permission on macOS"
-    macOS grants microphone access per application identity. A Python process started from the terminal inherits the terminal's permission (or asks for it), a launchd agent has none, and a Tauri app has its own. The plan is that **TauBar owns the microphone permission** and runs the voice pipeline as its sidecar, so the permission belongs to a signed app you can see in **System Settings → Privacy & Security → Microphone**. Until TauBar runs the voice pipeline (TauBar itself exists since issue 024, without voice), push-to-talk in `tau tui` will ask for the permission on behalf of your terminal app. Grant it there, and revoke it there when you do not want it.
+    macOS grants microphone access per application identity. A Python process started from the terminal inherits the terminal's permission (or asks for it), a launchd agent has none, and a Tauri app has its own. **TauBar owns the microphone permission**: it runs the hub, and since issue 115 it carries the microphone usage description and the audio-input entitlement, so the voice service inside the hub will ask in TauBar's name and the permission belongs to a signed app you can see in **System Settings → Privacy & Security → Microphone**. No TauBar or tau Desktop window can use the microphone itself: every webview permission request is denied. A hub started from a terminal (`tau hub run`) asks on behalf of that terminal app instead. Grant it there, and revoke it there when you do not want it.
 
     On a Raspberry Pi there is no permission system; the microphone is a device file. Choose a USB microphone with a hardware mute if that matters to you.
 

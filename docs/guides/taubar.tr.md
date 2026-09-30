@@ -93,6 +93,8 @@ Hub sahip korumasını (owner guard) çalıştırdığında
 **Guard** satırı (`locked`, `unlocked`, `unavailable (camera denied)`), sağ tık menüsünde de bir
 koruma satırı (`Guard: locked`) görünür; ikisinin altında da **Lock now** vardır. Bu, hub'dan
 imzalı bir istekle kilitlenmesini ister; TauBar kilidi asla açmaz. Koruma yoksa ikisi de gizlidir.
+Korumanın kurulumu, günlük kullanımı ve "kilitli kaldım" adımları [Sahip koruması](guard.md)
+rehberinde.
 
 Hub TauBar'ın alt süreci olduğu için macOS kamerayı TauBar adına ister ("TauBar would like to
 access the camera"); TauBar bunun için kullanım açıklamalarını ve kamera ile mikrofon
@@ -102,7 +104,13 @@ her yeniden derlemeden sonra macOS için yeni bir uygulamadır ve kamera izni d�
 `APPLE_SIGNING_IDENTITY` ile sabit, kendinden imzalı bir sertifikayla imzala;
 [README](https://github.com/fport/tau/blob/main/apps/taubar/README.md#a-stable-signing-identity-for-the-camera-grant)
 bunu adım adım anlatır. Hiçbir TauBar penceresi kamerayı ya da mikrofonu kullanamaz: her webview
-izin isteği reddedilir.
+izin isteği reddedilir. macOS'un yeniden sormasını istersen `tccutil reset Camera com.tau.taubar`
+çalıştır ve hub'ı TauBar'dan yeniden başlat (**Run the hub** işaretini kaldırıp yeniden koy).
+
+[tau Desktop](https://github.com/fport/tau/blob/main/apps/tau-desktop/README.md)
+(`apps/tau-desktop`) tau'nun diğer Mac uygulamasıdır: `tau tui`'yi kendi pencerelerinde çalıştırır,
+aynı kilit ekranını gösterir ve kamera izni gerektirmez, çünkü kontrol TauBar'ın çalıştırdığı hub'da
+yapılır.
 
 ## Uyku modları
 

@@ -246,10 +246,11 @@ Budget: brain $0.42 of $15.00 this month (resets 01.10.2026 00:00); fast $0.03 o
 ok   budget: brain $0.00 of $15.00 this month (resets 01.10.2026 00:00); fast $0.00 of $1.00 today (resets 01.10.2026 00:00)
 ```
 
-**Hub** bunu kontrol API'sinde (yalnızca loopback) sunar; `GET /status` da aynı nesneyi `spend` altında taşır:
+**Hub** bunu kontrol API'sinde (yalnızca loopback) `GET /spend` olarak sunar. Bu route korumalıdır: istek hub'ın kontrol token'ıyla imzalanmalıdır ([ADR 0008](../adr/0008-owner-guard.md)), bu yüzden düz bir `curl` 403 alır. Açık `GET /status` aynı nesneyi `spend` altında taşır; tau-core'un `HubClient`'ı ise korumalı route'u senin yerine imzalar:
 
 ```sh
-curl -s 127.0.0.1:7877/spend
+curl -s 127.0.0.1:7877/status | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["spend"], indent=2))'
+uv run python -c 'from tau_core import Config; from tau_core.hub import HubClient; print(HubClient(Config.load()).get("/spend", timeout=5))'
 ```
 
 ```json

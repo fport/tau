@@ -23,6 +23,7 @@ The reasoning is written down in [ADR 0006](adr/0006-private-first-topology.md);
 - **The tau network**: your tau gets an address, a small Cloudflare Worker in your own account, and talks to other taus in messages signed and sealed end to end. If you opt in, it appears on the public map of taus, the **universe** at [tau.getporti.com](https://tau.getporti.com/universe), which shows who is listed and who talks to whom, never what they say.
 - **Components**: tools, providers, session backends, context sources and hub services plug in through entry points; `tau components` lists them.
 - **Phone access**: Tailscale, hardened SSH, mosh and tmux, so the TUI survives a locked phone.
+- **Owner guard** (macOS): the TUI, `tau chat` and **tau Desktop**, the Mac app that runs the TUI in its own windows, open locked and unlock with a face check at the Mac; a tier-2 action needs a fresh check after your approval. See [Owner guard](guides/guard.md).
 
 !!! info "Planned"
     The web UI behind Cloudflare Access, voice, local memory and the encrypted R2 backup job are on the roadmap. Every page marks what is planned with a box like this one and names the roadmap issue, so you never mistake a plan for a feature.

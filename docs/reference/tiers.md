@@ -1,6 +1,6 @@
 # Tiers and approvals
 
-Every tool tau can call declares a **tier**: how much it can change the world. Tier 0 and tier 1 calls run by themselves; a tier 2 call waits for your explicit approval on the channel it came from, every time. Nothing in tau approves on its own, not the model, not a plugin, not a test. The mechanism is [ADR 0001](../adr/0001-approval-through-strands-hooks.md).
+Every tool tau can call declares a **tier**: how much it can change the world. Tier 0 and tier 1 calls run by themselves; a tier 2 call waits for your explicit approval on the channel it came from, every time. Nothing in tau approves on its own, not the model, not a plugin, not a test. The mechanism is [ADR 0001](../adr/0001-approval-through-strands-hooks.md); the [owner guard](../guides/guard.md) adds a lock check and a face step-up on guarded channels ([ADR 0008](../adr/0008-owner-guard.md)).
 
 ## The three tiers
 
@@ -34,7 +34,8 @@ Every call passes `TierGate`, wired into the Strands agent as `TierHook` at `Hoo
 1. **Unknown tool** (not in the catalog): refused with `Tool '<name>' is not registered; it was not run.` and an `error` agent event. Logged at `WARNING`.
 2. **Tier 0 and 1:** allowed.
 3. **Tier 2:** allowed when an exemption matches; otherwise the channel's `Approver` decides. Anything but `Decision.APPROVED` refuses the call.
-4. **Every call of every tier** emits a `tool_call` agent event: `tool`, `tier`, `arguments`, `status`, `result_summary`, `approval`, `duration_ms`, `tool_use_id`. Every tier-2 question emits an `approval` event.
+4. **With the owner guard** (`TierGate(guard=…)`, on guarded channels): before a tier-1 or tier-2 call the guard's admission runs again, and a locked guard refuses the call without asking the approver (approval `locked`). After `APPROVED` on a tier-2 call, admission runs once more, then the **step-up**: a fresh face check. Anything but a pass turns the decision into `REJECTED` (the `approval` event records `step_up: passed` or `failed`). Exempt calls reach neither check.
+5. **Every call of every tier** emits a `tool_call` agent event: `tool`, `tier`, `arguments`, `status`, `result_summary`, `approval`, `duration_ms`, `tool_use_id`. Every tier-2 question emits an `approval` event.
 
 When any registered tool is tier 2, `build_agent` uses the SDK's sequential tool executor, so two approved physical calls in one model turn never run at the same time. Prompts are asked one at a time.
 
@@ -44,6 +45,13 @@ The refusal is the tool result; the turn goes on and the model answers with it i
 
 ```text
 The user did not approve this action: <tool>. Do not perform it; tell the user briefly.
+```
+
+On a guarded channel two more fixed notes exist, one for a call that met a locked guard and one for a failed step-up:
+
+```text
+tau was locked before the user answered.
+The guard could not confirm the user's identity.
 ```
 
 The persona adds its own rule: after a refusal tau reports it briefly and does not try the same action another way. The terminal shows `✗ <tool>: not approved`; the TUI shows the card as rejected.
@@ -60,6 +68,8 @@ A channel implements `Approver` (a `name` and `async decide(request) -> Decision
 | `ScriptedApprover` | tests only | a scripted list of decisions | – |
 | `TelegramApprover` | Telegram | the **Approve** inline button, pressed in an allowlisted chat | `approval_timeout_seconds`, then rejected |
 | TauBar, web UI | planned (issues 025, 074) | a button on an enrolled device | yes, as rejected |
+
+On a guarded channel (the TUI, `tau chat`, tau Desktop) the approver's yes is followed by the guard's step-up; Telegram and network turns are identified in other ways and have no step-up. The step-up never replaces the approval and never produces one.
 
 The terminal prompt:
 
@@ -95,6 +105,7 @@ undo = agent.gate.add_exemption(fn)
 ## Rules that never bend
 
 - **Tier-2 actions always go through approval.** Never bypassed, never auto-approved, also in tests: tests script decisions with `ScriptedApprover([Decision.APPROVED])` and simulate silence with `UnansweredApprover`.
+- **The guard only narrows.** It can refuse a call or turn an approval into a rejection, never approve. Tests use `FakeGuard`, which never approves anything; `guard=None` appears only in the two identified in-hub channels (Telegram, network turns), and every `TierGate(` passes `guard=` explicitly.
 - **Approvals come only from trusted channels**: the TUI, TauBar, the web UI behind Access with a per-device key, Telegram polled directly. No intermediary server can produce one, because none exists ([ADR 0006](../adr/0006-private-first-topology.md)).
 - **Approval requests carry no jokes.** The persona states what it will do, with which arguments, and the real-world effect, in plain sentences.
 - **Robot: simulation by default.** Real mode is an explicit opt-in per session and every motion is tier 2.

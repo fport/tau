@@ -172,6 +172,28 @@ approval_timeout_seconds = 300   # an unanswered tier-2 approval is a timeout (d
 nodes = ["mac", "arm"]
 ```
 
+### `[component.guard]`
+
+[Sahip korumasının](../guides/guard.md) tablosu "doğrulanmaz" kuralının tek istisnasıdır: tau-core bilinmeyen bir anahtarda ya da bool olmayan bir `enabled` değerinde korumayı kalıcı olarak kilitler (`enable = true` gibi bir yazım hatası asla "kapalı" anlamına gelmemeli); `tau-guard` da aralık dışı bir değerde korumayı `unavailable` yapar, asla daha zayıf bir değere düşmez. `tau guard setup` `enabled = true` yazar; kayıt işareti `TAU_DATA_DIR/guard/enrolled` durduğu sürece koruma `enabled` ne derse desin açıktır ve onu yalnızca `tau guard forget` kapatır.
+
+| Anahtar | Varsayılan | Aralık ya da değerler |
+|---|---|---|
+| `enabled` | `false` | bool |
+| `max_unlock_hours` | `8` | 1–24 |
+| `idle_lock_minutes` | `10` | 1–240 |
+| `recheck_after_idle_minutes` | `3` | 1–240 |
+| `presence_recheck_minutes` | `30` | 1–1440 |
+| `verify_timeout_seconds` | `15` | 5–60 |
+| `unlock_threshold` | `0.50` | 0.45–0.95 |
+| `step_up_threshold` | `0.55` | 0.45–0.95 |
+| `step_up_challenge_fresh_seconds` | `120` | 0–600 |
+| `unlock_liveness` | `"challenge"` | `challenge`, `none` |
+| `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` |
+| `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` |
+| `camera` | `"builtin"` | `builtin` ya da bir kameranın AVFoundation uniqueID'si |
+
+Her anahtarın ne yaptığı [koruma referansında](guard.md#componentguard).
+
 ## Gelen dosya { #the-shipped-file }
 
 Bu, `tau init`'in birebir yazdığı şablondur; deponun kendi `tau.toml` dosyasına eşittir ve bir test ikisini aynı tutar.

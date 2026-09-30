@@ -2,7 +2,7 @@
 
 # Slash komutları
 
-`/` ile başlayan bir satır bir slash komutudur. Onu kanal işler, model asla görmez. Belirtim (adlar, takma adlar, argümanlar, yardım anahtarları) `tau_core.commands` içindedir; `tau chat` ve `tau tui` aynı on üç komutu aynı ifadelerle uygular, böylece ikisi asla birbirinden kopmaz (Telegram kanalı bunların bir sohbette anlamlı olan alt kümesini sunar).
+`/` ile başlayan bir satır bir slash komutudur. Onu kanal işler, model asla görmez. Belirtim (adlar, takma adlar, argümanlar, yardım anahtarları) `tau_core.commands` içindedir; `tau chat` ve `tau tui` aynı on dört komutu aynı ifadelerle uygular, böylece ikisi asla birbirinden kopmaz (Telegram kanalı bunların bir sohbette anlamlı olan alt kümesini sunar).
 
 - Kanonik adlar İngilizcedir ve ipuçlarında ve menülerde yalnızca onlar gösterilir.
 - Türkçe takma adlar her zaman kabul edilir ve asla gösterilmez.
@@ -26,6 +26,7 @@
 | `/model` | `/rol` | `[role]` | `tau.toml` içindeki rolleri mevcut olan işaretli şekilde listeler ya da bu oturumu bir role geçirir |
 | `/lang` | `/dil` | `en` ya da `tr` | bu çalıştırma için arayüz dilini değiştirir |
 | `/settings` | `/ayarlar`, `/ayar` | `[key value]` | başlangıç yapılandırmasını (roller, kimlik bilgisi durumu, dil, profil, bağlam, dosyalar) gösterir ya da bir değeri değiştirir; TUI kendi ayarlar ekranını açar |
+| `/guard` | `/koruma` | `[lock\|unlock]` | [sahip korumasının](../guides/guard.md) durumunu gösterir, tau'yu kilitler ya da (kilitliyken) bir yüz kontrolü başlatır; etkin koruma yoksa `The guard is off.` |
 | `/quit` | `/çık`, `/cik`, `/exit` | – | çıkar |
 
 `/exit`, `/quit`'in bir takma adıdır; ipuçları her zaman `/quit` gösterir.
@@ -50,6 +51,7 @@ Commands:
   /model [role]          show the model roles, or switch this session to one
   /lang en|tr            switch the UI language for this run
   /settings [key value]  show the settings, or change one (language, profile, model, set NAME)
+  /guard [lock|unlock]   show the guard state, or lock or unlock tau
   /quit                  leave
 ```
 
@@ -110,9 +112,10 @@ UI language: en
 Versions: tau-core 0.3.1 · tau-tui 0.3.1
 Hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
 Budget: brain $0.42 of $15.00 this month (resets 01.10.2026 00:00); fast $0.03 of $1.00 today (resets 01.10.2026 00:00)
+Guard: unlocked · face
 ```
 
-Model satırı sağlayıcıyı ve model id'sini belirtir, rolün `fallback`'i kullanılıyorsa bunu söyler; asla bir anahtar yazdırmaz. Bütçe satırı, bir rolün `tau.toml` içinde bütçesi olduğunda görünür: her rolün mevcut dönemde harcadığı tutar ve üst sınırı, yerel harcama defterinden (ledger) okunur; `tau spend` çıktısının ve modelin `## Now` bloğunun aynı metni ([Modeller ve bütçeler](../guides/models-and-budgets.md)). Hub satırı `tau doctor` yoklamasıdır (bir saniye, yalnızca bilgi amaçlı). TUI'de `/status` bir bilgi kartıdır.
+Model satırı sağlayıcıyı ve model id'sini belirtir, rolün `fallback`'i kullanılıyorsa bunu söyler; asla bir anahtar yazdırmaz. Bütçe satırı, bir rolün `tau.toml` içinde bütçesi olduğunda görünür: her rolün mevcut dönemde harcadığı tutar ve üst sınırı, yerel harcama defterinden (ledger) okunur; `tau spend` çıktısının ve modelin `## Now` bloğunun aynı metni ([Modeller ve bütçeler](../guides/models-and-budgets.md)). Hub satırı `tau doctor` yoklamasıdır (bir saniye, yalnızca bilgi amaçlı). Koruma satırı yalnızca [sahip koruması](../guides/guard.md) etkinken görünür: durumu, yöntemi ya da kilit tetikleyicisiyle (`Guard: locked · locked after inactivity`). TUI'de `/status` bir bilgi kartıdır.
 
 ### `/model [role]`
 
@@ -129,6 +132,18 @@ Roles in tau.toml:
 ### `/lang en|tr`
 
 Onay zaten yeni dildedir: `/lang tr`, `Arayüz dili: tr.` yanıtını; `/lang en` ise `UI language: en.` yanıtını verir. Argüman olmadan: `Usage: /lang en|tr (current: en).` Persona'nın yanıt dili bundan etkilenmez.
+
+### `/guard [lock|unlock]`
+
+Yalnızca [sahip koruması](../guides/guard.md) etkinken; değilse `The guard is off.`
+
+| Biçim | Etkisi |
+|---|---|
+| `/guard` | `/status`'taki gibi durum satırı |
+| `/guard lock` | korunan her kanalı kilitler (tetikleyici `command`) ve kilit ekranını ya da `locked> ` istemini gösterir; hub kilidi doğrulamazsa `The lock did not reach the guard; check that the hub runs (`tau doctor`).` |
+| `/guard unlock` | kilitliyken bir yüz kontrolü (kilit ekranında Enter ile aynı); açıkken `tau is already unlocked.` |
+
+tau kilitliyken yalnızca `/help`, `/lang`, `/guard` ve `/quit` çalışır; diğer her komut `/<name> is not available while tau is locked.` yanıtını verir.
 
 ### `/settings [key value]`
 
@@ -191,4 +206,4 @@ Bir insanın okuduğu her dizge, anahtarlı ve dil başına olarak `tau_core.i18
 
 ## Telegram'da { #on-telegram }
 
-[Telegram](../guides/telegram.md) kanalı aynı belirtimi aynı ifadelerle çözümler: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`, `/model`, `/compact` ve `/lang` çalışır, Türkçe takma adlar dahil. `/start` (botu açtığında Telegram'ın gönderdiği) ve tek başına `/` yardımı gösterir; `/help@your_bot` de çalışır. Hub bu komutları izin verilen her sohbet için botun menüsü olarak ayarlar (sohbet kapsamlı `setMyCommands`), yardım metinleri arayüz dilindedir; `/lang` menüyü yeni dilde yeniden ayarlar. Bilinmeyen bir komut yalnızca Telegram'da çalışan komutları listeler. Geri kalanlar (`/clear`, `/quit` ve kimlik bilgilerini düzenleyen her komut) Telegram'da kullanılamadıklarını söyler. `/lang`, o sohbetin dilini hub yeniden başlayana kadar değiştirir.
+[Telegram](../guides/telegram.md) kanalı aynı belirtimi aynı ifadelerle çözümler: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`, `/model`, `/compact`, `/lang` ve `/guard` çalışır, Türkçe takma adlar dahil. `/start` (botu açtığında Telegram'ın gönderdiği) ve tek başına `/` yardımı gösterir; `/help@your_bot` de çalışır. Hub bu komutları izin verilen her sohbet için botun menüsü olarak ayarlar (sohbet kapsamlı `setMyCommands`), yardım metinleri arayüz dilindedir; `/lang` menüyü yeni dilde yeniden ayarlar. Bilinmeyen bir komut yalnızca Telegram'da çalışan komutları listeler. Geri kalanlar (`/clear`, `/quit` ve kimlik bilgilerini düzenleyen her komut) Telegram'da kullanılamadıklarını söyler. `/lang`, o sohbetin dilini hub yeniden başlayana kadar değiştirir. Telegram'da `/guard` sahip korumasının durumunu gösterir, `/guard lock` onu kilitler (tetikleyici `telegram`); bu senin uzaktan acil durdurma düğmendir. `/guard unlock` kilidin yalnızca Mac'in başında açıldığını söyler; tau kilitliyken Telegram çalışmaya devam eder.

@@ -356,13 +356,31 @@ async def admit_turn(guard: Guard, turn: GuardTurn, *, timeout: float | None = N
     with ``error``, one that does not answer within ``timeout`` (default
     :data:`ADMIT_LIMIT`) with ``unavailable``, and an unknown reason reads as ``error``.
     ``asyncio.CancelledError`` propagates.
+
+    The bound is hard: ``admit`` runs as its own task, and when the time is up the task is
+    cancelled and whatever it answers later is dropped. (``asyncio.wait_for`` hands back a
+    late result when the coroutine swallows the cancellation, which would admit a turn after
+    the limit.)
     """
     limit = ADMIT_LIMIT if timeout is None else timeout
     try:
-        answer = await asyncio.wait_for(guard.admit(turn), limit)
-    except TimeoutError:
+        task = asyncio.ensure_future(guard.admit(turn))
+    except Exception:
+        logger.exception("guard %s failed to answer admission; refusing", _name(guard))
+        return Admission(False, "error")
+    try:
+        done, _ = await asyncio.wait({task}, timeout=limit)
+    except asyncio.CancelledError:
+        task.cancel()
+        task.add_done_callback(_drop_result)
+        raise
+    if not done:
+        task.cancel()
+        task.add_done_callback(_drop_result)
         logger.warning("guard %s did not answer admission within %ss", _name(guard), limit)
         return Admission(False, "unavailable")
+    try:
+        answer = task.result()
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -371,6 +389,12 @@ async def admit_turn(guard: Guard, turn: GuardTurn, *, timeout: float | None = N
     if isinstance(answer, Admission) and answer.allowed is True:
         return Admission(True, "ok")
     return Admission(False, admission_reason(getattr(answer, "reason", None)))
+
+
+def _drop_result(task: asyncio.Future[Any]) -> None:
+    """Retrieve a late admission task's outcome so nothing is logged as never retrieved."""
+    if not task.cancelled():
+        task.exception()
 
 
 def _name(guard: object) -> str:

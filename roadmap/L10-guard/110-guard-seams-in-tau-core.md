@@ -136,7 +136,7 @@ class Guard(Protocol):
 - `TierGate(..., guard: Guard | None = None, client_id: str = "")`. A repo-rule test asserts that every `TierGate(` call in `packages/*/src` passes `guard=` explicitly. `build_agent` passes the agent's guard and client id.
 - In `check`, when `guard` is set:
   1. **Before a tier-1 or tier-2 call**, `await guard.admit(...)` runs. A refusal refuses the call with the locked note, without an approver prompt, and the `tool_call` event records approval `"locked"`.
-  2. **For tier-2 only**, after `_ask` returned `APPROVED` and still inside the approval lock, `ok = await guard.step_up(request, client_id=..., on_progress=cb)` runs.
+  2. **For tier-2 only**, after `_ask` returned `APPROVED` and still inside the approval lock, the guard must admit once more: a lock while the dialog was open refuses with the locked note (approval `"locked"`), and `recheck` goes on. Then `ok = await guard.step_up(request, client_id=..., on_progress=cb)` runs.
      - `cb` emits `guard {"action": "challenge", "step", "hint", "deadline", "request_id"}` on the bus.
      - Before and after, the gate emits `guard {"action": "step_up", "phase": "start" | "end", "ok"?, "request_id", "tool"}`.
      - Anything but `True` becomes `REJECTED` with the refusal note, and the approval event gains `"step_up": "passed" | "failed"`.

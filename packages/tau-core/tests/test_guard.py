@@ -240,6 +240,40 @@ def test_admit_turn_fails_closed_on_errors_and_timeouts() -> None:
         asyncio.run(admit_turn(OddGuard(raises=asyncio.CancelledError()), TURN))
 
 
+def test_admit_turn_drops_a_late_answer_from_a_guard_that_swallows_cancellation() -> None:
+    class Swallows(FakeGuard):
+        def __init__(self, keep_going: bool) -> None:
+            super().__init__("locked")
+            self.keep_going = keep_going
+
+        async def admit(self, turn: GuardTurn) -> Admission:
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                if self.keep_going:
+                    await asyncio.sleep(0.3)  # and ignores the cancellation for a while
+            return Admission(True)  # a stale "allowed"
+
+    async def main(guard: FakeGuard) -> tuple[Admission, float]:
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        result = await admit_turn(guard, TURN, timeout=0.05)
+        return result, loop.time() - started
+
+    for keep_going in (False, True):
+        result, took = asyncio.run(main(Swallows(keep_going)))
+        assert result == Admission(False, "unavailable")
+        assert took < 0.25
+
+
+def test_admit_turn_refuses_a_guard_whose_admit_is_not_async() -> None:
+    class Sync(FakeGuard):
+        def admit(self, turn: GuardTurn) -> Admission:  # type: ignore[override]
+            return Admission(True)
+
+    assert asyncio.run(admit_turn(Sync(), TURN)) == Admission(False, "error")
+
+
 # -- admission in TauAgent.stream -------------------------------------------------------------
 
 
@@ -481,6 +515,42 @@ def test_step_up_events_progress_and_the_approval_record() -> None:
     approval = events[-1]
     assert approval.kind == "approval"
     assert approval.data["decision"] == "rejected" and approval.data["step_up"] == "failed"
+
+
+class LocksWhileAsking(ScriptedApprover):
+    """The owner walks away with the approval dialog open, the guard locks, someone clicks."""
+
+    def __init__(self, guard: FakeGuard) -> None:
+        super().__init__([Decision.APPROVED])
+        self.guard = guard
+
+    async def decide(self, request: ApprovalRequest) -> Decision:
+        self.guard.set_state("locked", trigger="idle")
+        return await super().decide(request)
+
+
+def test_a_lock_while_the_dialog_is_open_refuses_before_the_step_up() -> None:
+    guard = FakeGuard("unlocked", step_ups=[True])  # a guard whose step-up ignores the lock
+    bus = EventBus()
+    events = record_events(bus, "guard", "approval")
+    gate = make_gate(LocksWhileAsking(guard), guard, bus=bus)
+    assert check(gate) == (False, refusal_text("lamp", LOCKED_NOTE), "locked")
+    assert [call[0] for call in guard.calls] == ["admit", "admit"]  # never stepped up
+    assert [(e.kind, e.data.get("action"), e.data.get("reason")) for e in events] == [
+        ("guard", "refused", "locked"),
+        ("approval", None, None),
+    ]
+    assert events[-1].data["decision"] == "rejected" and "step_up" not in events[-1].data
+
+
+def test_a_recheck_after_the_approval_goes_on_to_the_step_up() -> None:
+    guard = FakeGuard("unlocked", admissions=[True, "recheck"], step_ups=[True])
+    gate = make_gate(ScriptedApprover([Decision.APPROVED]), guard)
+    assert check(gate) == (True, None, "approved")
+    assert [call[0] for call in guard.calls] == ["admit", "admit", "step_up"]
+    guard = FakeGuard("unlocked", admissions=[True, "cooldown"], step_ups=[True])
+    gate = make_gate(ScriptedApprover([Decision.APPROVED]), guard)
+    assert check(gate) == (False, refusal_text("lamp", LOCKED_NOTE), "locked")
 
 
 def test_without_a_guard_the_approval_record_has_no_step_up() -> None:

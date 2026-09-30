@@ -297,11 +297,12 @@ agent = build_agent(approver=ButtonApprover(), channel="telegram")
   approves.
 - **Owner guard** (see [Guard](#guard)): with a guard, a tier-1 or tier-2 call is refused
   without asking when the guard does not admit the turn (approval `locked`, note "tau was
-  locked before the user answered."), and an approved tier-2 call also needs the guard's
-  step-up (anything but a literal `True` turns it into `rejected`, note "The guard could not
-  confirm the user's identity."; the `approval` event gains `step_up: passed | failed`). The
-  guard can only refuse; exempt calls reach neither check. Every `TierGate(...)` in the repo
-  passes `guard=` explicitly (a repo rule).
+  locked before the user answered."). After an approval the guard must admit once more (a lock
+  while the dialog was open refuses the same way; `recheck` goes on), and an approved tier-2
+  call then needs the guard's step-up (anything but a literal `True` turns it into `rejected`,
+  note "The guard could not confirm the user's identity."; the `approval` event gains
+  `step_up: passed | failed`). The guard can only refuse; exempt calls reach no check. Every
+  `TierGate(...)` in the repo passes `guard=` explicitly (a repo rule).
 - **Exemptions** let registered routines (#037) skip per-call approval:
   `build_agent(exemptions=[fn])` or `agent.gate.add_exemption(fn)` (returns an undo function).
   `fn(tool_name, arguments)` sees a copy of the arguments and must return `True`; it is asked
@@ -644,14 +645,15 @@ returns `None`.
   `TurnEnd("locked")`, emits `guard {"action": "refused", "channel", "reason"}` and changes no
   history. `ask()` raises `GuardLocked(reason)`, `summarize()` raises `CompactionLocked` (a
   `CompactionError` and a `GuardLocked`) before any model call. A raising guard, a timeout or
-  an unknown reason refuses (`admit_turn`).
+  an unknown reason refuses (`admit_turn`, a hard bound: a late answer is dropped).
 - **`HubGuard(config)`** talks to the hub through `HubClient`. Only a proven `unlocked` answer
   (`allowed: true` from `POST /guard/admit`) whose `enrollment` equals the local marker's
   admits; `off`, 404, 403, 5xx, a timeout, bad JSON, a missing proof or another enrollment
   mean `unavailable`. `admit` has a 3 s bound, all HTTP runs in daemon threads, and
-  `unlock`/`step_up` post `/guard/verify`, long-poll `GET /guard/status?since=` (calling
-  `on_progress` on every step) and post `/guard/cancel` when cancelled. The route contract is in
-  the `tau_core.guard` module docstring.
+  `unlock`/`step_up` post `/guard/verify`, long-poll `GET /guard/status?since=&attempt=` for
+  their own attempt (calling `on_progress` on every step) and post `/guard/cancel` when
+  cancelled. `lock` logs an error when the hub did not confirm it. The route contract is in the
+  `tau_core.guard` module docstring.
 - **Identified in-hub channels opt out in code**: Telegram and network turns pass
   `guard=None`, and a repo rule refuses `guard=None` anywhere else. No flag, variable or
   config key selects a channel.

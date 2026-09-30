@@ -191,11 +191,12 @@ class TierGate:
     ``timeout_seconds`` bounds how long a tier-2 call waits for the approver; when it is
     ``None`` the approver's own ``timeout_seconds`` attribute applies, if it has one.
 
-    ``guard`` (ADR 0008) adds two checks that can only refuse: before a tier-1 or tier-2 call
+    ``guard`` (ADR 0008) adds checks that can only refuse: before a tier-1 or tier-2 call
     the guard must admit ``client_id``'s turn (else the call is refused unasked, approval
-    ``locked``), and after the approver said ``APPROVED`` a tier-2 call needs
-    ``guard.step_up(...)`` to return exactly ``True`` (else ``REJECTED``). Exempt calls reach
-    neither check. Every caller passes ``guard=`` explicitly (a repo rule).
+    ``locked``); after the approver said ``APPROVED`` it must admit once more (a lock while
+    the dialog was open refuses with approval ``locked``; ``recheck`` goes on), and a tier-2
+    call then needs ``guard.step_up(...)`` to return exactly ``True`` (else ``REJECTED``).
+    Exempt calls reach no check. Every caller passes ``guard=`` explicitly (a repo rule).
     """
 
     def __init__(
@@ -306,8 +307,8 @@ class TierGate:
         """Return ``(allowed, refusal_text, approval)``.
 
         ``approval`` is ``"approved"``, ``"rejected"``, ``"timeout"``, ``"exempt"``,
-        ``"locked"`` (the guard refused before anyone was asked) or ``None`` (tier 0/1, or an
-        unknown tool, which fails closed).
+        ``"locked"`` (the guard refused before anyone was asked, or locked while the approval
+        dialog was open) or ``None`` (tier 0/1, or an unknown tool, which fails closed).
         """
         tier = self._tier(tool_name)
         if tier is None:
@@ -343,6 +344,10 @@ class TierGate:
                 return False, refusal_text(tool_name, LOCKED_NOTE), "locked"
             decision = await self._ask(request)
             if decision is Decision.APPROVED and self.guard is not None:
+                if not await self._admitted(tool_name, recheck_ok=True):
+                    # tau locked while the dialog was open: whoever answered, nothing runs
+                    self._record_approval(request, arguments, Decision.REJECTED, None)
+                    return False, refusal_text(tool_name, LOCKED_NOTE), "locked"
                 try:
                     passed = await self._step_up(request)
                 except asyncio.CancelledError:
@@ -393,13 +398,16 @@ class TierGate:
 
     # -- the owner guard (ADR 0008): it can only refuse ------------------------------------
 
-    async def _admitted(self, tool_name: str) -> bool:
-        """``True`` without a guard or when it admits this client's turn right now."""
+    async def _admitted(self, tool_name: str, *, recheck_ok: bool = False) -> bool:
+        """``True`` without a guard or when it admits this client's turn right now.
+
+        ``recheck_ok`` also lets a ``recheck`` answer through: after an approval the step-up
+        that follows is itself a face check."""
         if self.guard is None:
             return True
         turn = GuardTurn(channel=self.channel, session_id=self.session_id, client_id=self.client_id)
         admission = await admit_turn(self.guard, turn)
-        if admission.allowed:
+        if admission.allowed or (recheck_ok and admission.reason == "recheck"):
             return True
         self._emit(
             "guard",

@@ -11,6 +11,7 @@ import {
   binaryToBytes,
   debounce,
   exitMessage,
+  gridChanged,
   keyFilter,
   shouldOpenLink,
   terminalOptions,
@@ -69,13 +70,16 @@ export default function TerminalView() {
         ended = true;
         onExit(info);
       };
+      // After a reload this takes over the window's running TUI, and Rust makes it repaint;
+      // a resize to the same size right after would cut that repaint short.
+      const sent = { cols: term.cols, rows: term.rows };
       api
-        .ptyStart(term.cols, term.rows, (bytes) => output.push(bytes), ptyExited)
+        .ptyStart(sent.cols, sent.rows, (bytes) => output.push(bytes), ptyExited)
         .then(() => {
           // A TUI that died at once has already reported its exit.
           if (!ended) running = true;
           // The grid may have changed while the TUI was starting.
-          api.ptyResize(term.cols, term.rows).catch(() => undefined);
+          if (gridChanged(sent, term)) api.ptyResize(term.cols, term.rows).catch(() => undefined);
         })
         .catch((e) => {
           running = false;

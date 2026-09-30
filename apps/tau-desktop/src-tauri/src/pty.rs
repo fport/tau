@@ -5,12 +5,18 @@
 //! nothing here decodes UTF-8, so a character split across two reads (ğ, ş, a box-drawing
 //! line) reaches xterm.js whole, and xterm.js's own decoder joins it.
 //!
+//! Output and the exit report go to the session's outlet, which a page reload hands to the new
+//! page ([`Session::reattach`]): the TUI keeps running, the new terminal first gets the modes the
+//! TUI had switched on ([`ModeTracker`]), and a size change makes the TUI paint everything again
+//! ([`Session::repaint`]).
+//!
 //! The child is a session leader (portable-pty calls `setsid`), so its pid is also its process
 //! group id. A waiter thread learns about the exit with `waitid(WNOWAIT)` and reaps only while
 //! holding the exit lock; [`Session::shutdown`] kills the group under the same lock, so it can
 //! never signal a recycled pid.
 
 use crate::launch::Launch;
+use crate::modes::ModeTracker;
 use portable_pty::{native_pty_system, Child, MasterPty, PtySize};
 use serde::Serialize;
 use std::io::{Read, Write};
@@ -32,6 +38,10 @@ pub const MAX_BATCH: usize = 256 * 1024;
 const READ_BUFFER: usize = 64 * 1024;
 /// After the TUI exits, how long to wait for the rest of its output before reporting the exit.
 const DRAIN_AFTER_EXIT: Duration = Duration::from_millis(500);
+/// How long a repaint keeps the PTY one row smaller, so the TUI sees two real size changes.
+/// Textual reads the size when SIGWINCH arrives and ignores a size it already has, so the two
+/// changes must not land in the same signal.
+pub const REPAINT_NUDGE: Duration = Duration::from_millis(150);
 
 /// How the TUI ended, for the window.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -82,6 +92,16 @@ impl ExitState {
     }
 }
 
+/// Where the output and the exit report of a session go: the page that started it, or the page
+/// that took it over after a reload.
+struct Outlet {
+    output: Box<dyn FnMut(Vec<u8>) + Send>,
+    /// Taken when the exit is reported; `None` from then on, and then no page can take over.
+    exit: Option<Box<dyn FnOnce(ExitInfo) + Send>>,
+    /// The terminal modes in everything sent so far, for a page that takes over.
+    modes: ModeTracker,
+}
+
 /// A running (or finished) TUI in its PTY.
 pub struct Session {
     master: Mutex<Box<dyn MasterPty + Send>>,
@@ -89,12 +109,14 @@ pub struct Session {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pid: u32,
     exit: Arc<ExitState>,
+    outlet: Arc<Mutex<Outlet>>,
     closing: AtomicBool,
 }
 
 impl Session {
     /// Start `launch` in a new PTY of `size`. `on_output` gets every batch of raw bytes;
-    /// `on_exit` is called once when the child has exited and its output is drained.
+    /// `on_exit` is called once when the child has exited and its output is drained. Both can be
+    /// replaced later with [`Session::reattach`].
     pub fn spawn(
         launch: &Launch,
         size: PtySize,
@@ -139,18 +161,38 @@ impl Session {
             status: Mutex::new(None),
             changed: Condvar::new(),
         });
+        let outlet = Arc::new(Mutex::new(Outlet {
+            output: Box::new(on_output),
+            exit: Some(Box::new(on_exit)),
+            modes: ModeTracker::new(),
+        }));
         let (chunks_tx, chunks_rx) = mpsc::channel::<Vec<u8>>();
         let (drained_tx, drained_rx) = mpsc::channel::<()>();
         spawn_thread("tau-desktop-pty-read", move || read_loop(reader, chunks_tx))?;
+        let forward_outlet = Arc::clone(&outlet);
         spawn_thread("tau-desktop-pty-forward", move || {
-            forward(chunks_rx, BATCH_WINDOW, MAX_BATCH, on_output);
+            forward(chunks_rx, BATCH_WINDOW, MAX_BATCH, |batch| {
+                // Under the outlet lock, so a page taking over gets every batch the old page
+                // did not, and modes that match what the old page got.
+                let mut outlet = forward_outlet.lock().unwrap_or_else(|e| e.into_inner());
+                outlet.modes.feed(&batch);
+                (outlet.output)(batch);
+            });
             let _ = drained_tx.send(());
         })?;
         let waiter_exit = Arc::clone(&exit);
+        let waiter_outlet = Arc::clone(&outlet);
         spawn_thread("tau-desktop-pty-wait", move || {
             let info = wait_for_exit(pid, child, &waiter_exit);
             let _ = drained_rx.recv_timeout(DRAIN_AFTER_EXIT);
-            on_exit(info);
+            let on_exit = waiter_outlet
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .exit
+                .take();
+            if let Some(on_exit) = on_exit {
+                on_exit(info);
+            }
         })?;
 
         Ok(Arc::new(Self {
@@ -158,8 +200,72 @@ impl Session {
             writer: Arc::new(Mutex::new(writer)),
             pid,
             exit,
+            outlet,
             closing: AtomicBool::new(false),
         }))
+    }
+
+    /// Hand the session to a new page (the old one reloaded): from now on output goes to
+    /// `on_output` and the exit report to `on_exit`. `on_output` first gets the terminal modes the
+    /// TUI has switched on, so a fresh terminal matches it; call [`Session::repaint`] next.
+    /// Returns `false`, and changes nothing, once the exit has been reported: that TUI is over.
+    pub fn reattach(
+        &self,
+        on_output: impl FnMut(Vec<u8>) + Send + 'static,
+        on_exit: impl FnOnce(ExitInfo) + Send + 'static,
+    ) -> bool {
+        let mut on_output: Box<dyn FnMut(Vec<u8>) + Send> = Box::new(on_output);
+        let on_exit: Box<dyn FnOnce(ExitInfo) + Send> = Box::new(on_exit);
+        let (old_output, old_exit) = {
+            let mut outlet = self.outlet.lock().unwrap_or_else(|e| e.into_inner());
+            if outlet.exit.is_none() {
+                return false;
+            }
+            let replay = outlet.modes.replay();
+            if !replay.is_empty() {
+                on_output(replay);
+            }
+            (
+                std::mem::replace(&mut outlet.output, on_output),
+                outlet.exit.replace(on_exit),
+            )
+        };
+        // The old page's channels go away outside the lock.
+        drop((old_output, old_exit));
+        true
+    }
+
+    /// Make the TUI paint its whole screen again, at `cols` x `rows`. A terminal program
+    /// redraws everything when its size changes, and SIGWINCH comes only with a real change: if
+    /// the PTY already has this size, it is made one row smaller for [`REPAINT_NUDGE`] first.
+    pub fn repaint(self: &Arc<Self>, cols: u16, rows: u16) -> Result<(), String> {
+        let wanted = pty_size(cols, rows);
+        if self.size().is_some_and(|size| !same_size(size, wanted)) {
+            return self.resize(cols, rows);
+        }
+        let nudge = if wanted.rows > 1 {
+            pty_size(wanted.cols, wanted.rows - 1)
+        } else {
+            pty_size(wanted.cols + 1, wanted.rows)
+        };
+        self.resize(nudge.cols, nudge.rows)?;
+        let session = Arc::clone(self);
+        spawn_thread("tau-desktop-pty-repaint", move || {
+            std::thread::sleep(REPAINT_NUDGE);
+            // A resize from the page in the meantime already made the TUI repaint.
+            if session.exited().is_none() && session.size().is_some_and(|s| same_size(s, nudge)) {
+                let _ = session.resize(wanted.cols, wanted.rows);
+            }
+        })
+    }
+
+    /// The PTY's size now.
+    pub fn size(&self) -> Option<PtySize> {
+        self.master
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_size()
+            .ok()
     }
 
     /// The TUI's pid, which is also its process group id.
@@ -229,6 +335,10 @@ impl Session {
         self.exit.wait(Duration::from_secs(2));
         Shutdown::Killed
     }
+}
+
+fn same_size(a: PtySize, b: PtySize) -> bool {
+    (a.cols, a.rows) == (b.cols, b.rows)
 }
 
 /// A PTY size from xterm.js's grid, clamped to something every terminal program survives.
@@ -520,10 +630,15 @@ mod tests {
         }
 
         fn wait_for(&self, needle: &str) -> String {
+            self.wait_for_after(0, needle)
+        }
+
+        /// Wait for `needle` in the output after its first `start` bytes.
+        fn wait_for_after(&self, start: usize, needle: &str) -> String {
             let deadline = Instant::now() + Duration::from_secs(10);
             loop {
                 let text = self.text();
-                if text.contains(needle) {
+                if text.get(start..).is_some_and(|tail| tail.contains(needle)) {
                     return text;
                 }
                 assert!(Instant::now() < deadline, "no {needle:?} in {text:?}");
@@ -641,6 +756,85 @@ mod tests {
         assert!(info.signal.is_some() && !info.success, "{info:?}");
         wait_gone(leader);
         wait_gone(child);
+    }
+
+    /// What a second page sees of a session: its own output buffer and exit channel.
+    type Page = (Arc<Mutex<Vec<u8>>>, Receiver<ExitInfo>);
+
+    fn attach(session: &Session) -> Option<Page> {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&output);
+        let (exit_tx, exits) = mpsc::channel();
+        session
+            .reattach(
+                move |batch| sink.lock().unwrap().extend(batch),
+                move |info| exit_tx.send(info).unwrap(),
+            )
+            .then_some((output, exits))
+    }
+
+    fn wait_in(buffer: &Mutex<Vec<u8>>, needle: &str) -> String {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let text = String::from_utf8_lossy(&buffer.lock().unwrap()).into_owned();
+            if text.contains(needle) {
+                return text;
+            }
+            assert!(Instant::now() < deadline, "no {needle:?} in {text:?}");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn a_reloaded_page_takes_over_the_running_tui() {
+        // Switches modes like Textual, then waits for two lines of input.
+        let run = Running::start(sh(
+            "printf '\\033[?1049h\\033[?1000;1006h\\033[?25l'; echo first; \
+             read a; echo \"second:$a\"; read b; exit 0",
+        ));
+        run.wait_for("first");
+        let (output, exits) = attach(&run.session).expect("the TUI is running");
+        // The new terminal is put into the TUI's modes before anything else reaches it.
+        assert!(
+            output
+                .lock()
+                .unwrap()
+                .starts_with(b"\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h"),
+            "{:?}",
+            String::from_utf8_lossy(&output.lock().unwrap())
+        );
+        run.session.write(b"hello\n").unwrap();
+        wait_in(&output, "second:hello");
+        assert!(!run.text().contains("second:"), "{}", run.text());
+        // The exit report goes to the new page, and nobody can take over a finished TUI.
+        run.session.write(b"\n").unwrap();
+        let info = exits.recv_timeout(Duration::from_secs(10)).unwrap();
+        assert!(info.success, "{info:?}");
+        assert!(run.exits.try_recv().is_err());
+        assert!(attach(&run.session).is_none());
+    }
+
+    #[test]
+    fn repaint_gives_the_tui_a_real_size_change() {
+        let run = Running::start(sh(
+            "trap 'echo \"size:$(stty size)\"' WINCH; echo ready; while :; do sleep 0.02; done",
+        ));
+        run.wait_for("ready");
+        // A new size: one change, no nudge.
+        run.session.repaint(100, 30).unwrap();
+        run.wait_for("size:30 100");
+        std::thread::sleep(REPAINT_NUDGE * 2);
+        let before = run.text().len();
+        assert_eq!(run.text().matches("size:").count(), 1, "{}", run.text());
+        // The same size: one row smaller for a moment, then back.
+        run.session.repaint(100, 30).unwrap();
+        let text = run.wait_for_after(before, "size:30 100");
+        let tail = &text[before..];
+        let smaller = tail.find("size:29 100").expect(tail);
+        assert!(smaller < tail.find("size:30 100").unwrap(), "{tail}");
+        let size = run.session.size().unwrap();
+        assert_eq!((size.cols, size.rows), (100, 30));
+        run.session.shutdown(Duration::from_millis(100));
     }
 
     #[test]

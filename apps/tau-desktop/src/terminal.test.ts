@@ -5,9 +5,11 @@ import {
   binaryToBytes,
   debounce,
   exitMessage,
+  gridChanged,
   isAppShortcut,
   isWebLink,
   keyFilter,
+  shouldBlockContextMenu,
   shouldOpenLink,
   terminalOptions,
   textToBytes,
@@ -134,5 +136,29 @@ describe("exit message", () => {
       "tau tui was stopped (Killed: 9).",
     );
     expect(exitMessage({ success: true, code: 0, signal: null })).toBe("tau tui exited.");
+  });
+});
+
+describe("context menu", () => {
+  // A stand-in for an Element: `closest(".xterm")` finds the terminal or nothing.
+  const inTerminal = { closest: (selector: string) => (selector === ".xterm" ? {} : null) };
+  const outside = { closest: () => null };
+
+  it("keeps the text menu inside the terminal", () => {
+    expect(shouldBlockContextMenu(inTerminal)).toBe(false);
+  });
+
+  it("suppresses the webview menu (with Reload) everywhere else", () => {
+    expect(shouldBlockContextMenu(outside)).toBe(true);
+    expect(shouldBlockContextMenu({})).toBe(true); // not an element
+    expect(shouldBlockContextMenu(null)).toBe(true);
+  });
+});
+
+describe("resize after start", () => {
+  it("resizes only when the grid changed while the TUI was starting", () => {
+    expect(gridChanged({ cols: 120, rows: 40 }, { cols: 120, rows: 40 })).toBe(false);
+    expect(gridChanged({ cols: 120, rows: 40 }, { cols: 121, rows: 40 })).toBe(true);
+    expect(gridChanged({ cols: 120, rows: 40 }, { cols: 120, rows: 39 })).toBe(true);
   });
 });

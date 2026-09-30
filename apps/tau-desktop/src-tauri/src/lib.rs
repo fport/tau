@@ -9,6 +9,7 @@
 mod commands;
 pub mod home;
 pub mod launch;
+pub mod modes;
 pub mod pty;
 
 use crate::home::{Source, Validated};

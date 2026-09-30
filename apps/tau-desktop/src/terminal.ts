@@ -115,6 +115,26 @@ export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: numb
   return debounced;
 }
 
+/** The subset of an event target the context-menu rule looks at (an Element has `closest`). */
+export interface TargetLike {
+  closest?: (selector: string) => unknown;
+}
+
+/**
+ * Whether to suppress the webview's own context menu. Outside the terminal it offers Reload,
+ * which would throw the page away while its TUI keeps running; inside the terminal xterm.js
+ * moves its text area under the pointer, so the menu there is the text menu (Copy, Paste).
+ */
+export function shouldBlockContextMenu(target: TargetLike | null): boolean {
+  if (!target || typeof target.closest !== "function") return true;
+  return target.closest(".xterm") === null;
+}
+
+/** Whether the grid changed since the PTY was given `sent`, so it needs a resize. */
+export function gridChanged(sent: { cols: number; rows: number }, now: { cols: number; rows: number }): boolean {
+  return sent.cols !== now.cols || sent.rows !== now.rows;
+}
+
 /** One line for a TUI that ended on its own. */
 export function exitMessage(info: { success: boolean; code: number | null; signal: string | null }): string {
   if (info.signal) return `tau tui was stopped (${info.signal}).`;

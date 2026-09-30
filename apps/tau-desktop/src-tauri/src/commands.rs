@@ -164,6 +164,10 @@ pub async fn choose_home(
 
 /// Start `tau tui` in this window's PTY. Output arrives as raw bytes on `output`; `exit` gets
 /// the status when the TUI ends on its own (a clean exit closes the window instead).
+///
+/// If this window's TUI is still running, the page was reloaded (Tauri reloads a page whose web
+/// content process crashed; `pnpm tauri dev` reloads on some edits): the new page takes the
+/// running TUI over instead of starting a second one, so nothing is left running out of reach.
 #[tauri::command]
 pub fn pty_start(
     app: AppHandle,
@@ -177,23 +181,47 @@ pub fn pty_start(
     let home = desktop.home().ok_or("No tau checkout is chosen yet.")?.home;
     let label = window.label().to_string();
     let mut sessions = desktop.sessions.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(running) = sessions.get(&label) {
-        if running.exited().is_none() {
-            return Err("tau tui is already running in this window.".into());
+    if let Some(running) = sessions.get(&label).cloned() {
+        if running.is_closing() {
+            return Err("tau tui is closing in this window.".into());
         }
+        let attached = running.reattach(
+            output_sink(output.clone()),
+            exit_sink(app.clone(), label.clone(), exit.clone()),
+        );
+        if attached {
+            // Without the repaint the screen fills in as the TUI draws; the keys work either way.
+            if let Err(err) = running.repaint(cols, rows) {
+                eprintln!("tau-desktop: the TUI could not be made to repaint: {err}");
+            }
+            return Ok(());
+        }
+        // Its exit was already reported: that TUI is over, start a new one.
     }
     let launch = Launch::tui(&home, inherited_env);
-    let exit_label = label.clone();
     let session = Session::spawn(
         &launch,
         pty_size(cols, rows),
-        move |batch| {
-            let _ = output.send(InvokeResponseBody::Raw(batch));
-        },
-        move |info| tui_exited(&app, &exit_label, info, &exit),
+        output_sink(output),
+        exit_sink(app, label.clone(), exit),
     )?;
     sessions.insert(label, session);
     Ok(())
+}
+
+/// Output batches to the page, as raw bytes (a page that is gone just drops them).
+fn output_sink(output: Channel<InvokeResponseBody>) -> impl FnMut(Vec<u8>) + Send + 'static {
+    move |batch| {
+        let _ = output.send(InvokeResponseBody::Raw(batch));
+    }
+}
+
+fn exit_sink(
+    app: AppHandle,
+    label: String,
+    exit: Channel<ExitInfo>,
+) -> impl FnOnce(ExitInfo) + Send + 'static {
+    move |info| tui_exited(&app, &label, info, &exit)
 }
 
 /// The TUI ended. A clean exit (ctrl+q) closes the window; anything else is shown in it.

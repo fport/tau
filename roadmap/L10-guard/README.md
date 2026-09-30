@@ -31,7 +31,7 @@
 | 123 | [Owner notifications from the guard: failed attempts, cooldown, guard disabled](123-guard-owner-notifications.md) | AFK | 111 |
 | 124 | [In-process guard fallback when no hub runs (worker subprocess, same state machine)](124-in-process-guard-fallback.md) | AFK | 112, 113 |
 | 125 | [Lock the Mac session on a non-matching face (optional strong mode)](125-lock-the-mac-on-a-stranger.md) | AFK | 112 |
-| 126 | [Guard window in TauBar: live camera preview and head-turn prompts](126-guard-window-with-camera-preview.md) | AFK | 112, 115 |
+| 126 | [Guard window: the worker shows the camera and the step on the Mac's screen](126-guard-window-with-camera-preview.md) | AFK | 112, 115 |
 | 127 | [Tune the head-turn challenge on real captures](127-tune-the-head-turn-challenge.md) | AFK | 112 |
 
 ## Status and next steps (2026-09-30)
@@ -46,13 +46,14 @@
 - 114: Touch ID authorises a re-enrollment and `forget`, unlocks `tau tui` with the camera covered, and passes a step-up with `step_up = "face_or_touch_id"`.
 - 115: a stable signing identity for TauBar (see its README), a rebuilt and reinstalled TauBar, and the camera permission granted to it.
 - 116: one live session in tau Desktop.
+- 126: `tau guard window --demo`, then one unlock and one step-up through the guard window.
 - 127: five natural unlocks in a row, with and without glasses.
 - Release: a PyPI trusted publisher for `tau-guard` and the GitHub environment `pypi-guard`; the release that first ships `tau_core.guard` bumps tau-core, tau-tui and tau-guard together and raises tau-guard's `tau-core>=` floor (0.3.1 on PyPI has no `tau_core.guard`).
 
 **Agent work, in this order:**
 
 1. **127** Tune the head-turn challenge (head pose in degrees from `solvePnP`, return swings allowed, prompts that stand out in `--explain`). In progress on `guard/tune`.
-2. **126** Guard window in TauBar. Starts with a spike that opens the camera from two processes at once, so it needs the owner at the Mac for a few seconds.
+2. ~~**126** Guard window~~: done on `guard/window` (the worker draws a full-screen window during every check; `tau guard window --demo` shows it without the camera).
 3. **117** Remote unlock through Telegram: brings back `tau tui` over mosh and `tau ask` while the owner is away.
 4. **123** Owner notifications (failed attempts, cooldown, guard disabled).
 5. **124** In-process fallback when no hub runs.

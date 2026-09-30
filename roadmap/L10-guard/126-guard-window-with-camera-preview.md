@@ -1,40 +1,40 @@
-# 126 · Guard window in TauBar: live camera preview and head-turn prompts
+# 126 · Guard window: the worker shows the camera and the step on the Mac's screen
 
-Status: ready-for-agent
+Status: done
 Type: AFK
 Layer: L10 · Guard
-Packages: apps/taubar, tau-guard
+Packages: tau-guard, tau-core
 Blocked by: 112, 115
 
 ## What to build
 
-The owner tried the face check from the terminal on 2026-09-30 and asked for it to happen on a screen instead: following "turn your head left" from text, without seeing the camera, is hard. When a verification starts (unlock, recheck, step-up or enrollment, from any channel: `tau tui`, `tau chat`, tau Desktop), TauBar opens a small **Guard window** that shows what the check sees and what to do, then closes itself.
+The owner tried enrollment and verification from the terminal on 2026-09-30 and failed again and again because they could not see themselves: "Look at the camera. It is too dark", "Turn a little further", "Move closer to the camera" scrolled by as text. They asked for a screen-covering UI instead of the terminal ("ekrana bir şey gelse kaplasa ve orda ui olsa görsem, terminalde bunu yapmasak").
+
+**Re-scoped (2026-09-30).** The first plan was a TauBar window that opened the camera a second time from its webview (or got preview frames over a pipe). Instead, the **guard worker itself** shows a full-screen window while an attempt runs. It already owns the frames, so there is no second camera session and no frame transport, frames never leave the worker, and it works for every path: `tau guard setup`/`enroll`/`verify` in a local worker, and every check through the hub (TUI, `tau chat`, tau Desktop, step-ups, rechecks) whether the hub runs under TauBar or a terminal.
 
 ### Shape
 
-- **Trigger.** TauBar already runs the hub and polls it. It long-polls the protected `GET /guard/status?since=<seq>&wait=25` with its signed client (115) and opens the window when an attempt starts, whichever channel started it. It closes the window about 1.5 s after the attempt is done.
-- **Content, in the TauBar visual language (the 089 panel tokens):**
-  - the camera picture, mirrored, with an oval face guide;
-  - a large direction mark for the current step (`look`, `turn_left`, `turn_right`, `center`, and the enrollment poses), from the attempt's `step`;
-  - a countdown ring from the attempt's `deadline`;
-  - the live hint (`too_dark`, `face_too_small`, `multiple_faces`, …) as one short line;
-  - the result: a pass mark or the verdict reason, with the next action (try again, Touch ID, `tau guard doctor`).
-  - The window is always on top, non-activating where macOS allows it, and has no controls besides Cancel (which posts `/guard/cancel`).
-- **Where the picture comes from.** The verdict stays in the worker (ADR 0008 decision 2); the window only displays. First choice: the Guard window's own webview opens the camera with `getUserMedia`, and TauBar's `on_permission_request` grants camera **only** to that window's bundled page and still denies every other webview and every other origin. Nothing is recorded, stored or sent; the stream stops when the window closes.
-  - **Spike first:** confirm that macOS lets the TauBar webview and the worker (a child of the hub, itself a child of TauBar) capture from the built-in camera at the same time, and measure the effect on the worker's frame rate. If concurrent capture fails, the fallback is the worker sending low-resolution preview frames (for example 320×240 JPEG at 10 fps) to TauBar over a local pipe, never through the hub process or the control API; decide in the spike and record it.
-- **ADR 0008 amendment.** Decision 2 ("frames exist only in the worker's memory") and decision 16 (TauBar denies every webview media request) change: TauBar's Guard window may show the camera, display-only, during an attempt. Record the new rule and why it keeps the threat model (the picture never leaves TauBar's process; no route carries frames; other webviews stay denied).
-- **Channels keep their text prompts.** The TUI busy line and the terminal lines stay as they are; the window is an addition. Without TauBar (hub from a terminal), nothing changes.
-- **i18n.** The window's strings follow the language decision of 086; until then English, with the Turkish texts prepared from `tau_core.guard`'s message keys.
+- **Where.** `tau_guard/overlay.py` (pyobjc AppKit, darwin only, imported lazily; `pyobjc-framework-Cocoa` joins the dependencies): an `NSApplication` with the Accessory policy (no Dock icon) and one borderless window over the main screen below the menu bar, at the status window level, activated, Void at 90 %, excluded from screen capture where macOS allows it. The AppKit loop runs on the worker's main thread and the operation in a second thread; the path without a window is unchanged.
+- **Frames.** A `WatchedSource` hands every frame to the verifier and at most 20 per second to the window (dropped only for the picture). The main thread converts the newest one (BGR → BGRA → `CGImage`, at most 720 px wide) and draws it mirrored.
+- **The look** (tau brand, docs/brand): the mirrored picture in a circle inside a thin neon τ ring, instrument ticks, the countdown to the step's deadline as a comet arc (the brand's thinking motion), the step as a large neon triangle (left/right for turns, up/down for the enrollment tilts, hollow and pointing at the camera for "look"), a bold uppercase monospaced line (`TURN LEFT` / `SOLA ÇEVİR`), the live hint in Flare, the τ guard wordmark and the purpose (unlock, presence check, step-up for `<tool>`, enrollment with `n/10 SAMPLES` and a segmented bar), an Ember ring fill with a check (`UNLOCKED`, `ENROLLED`, ...) or a Signal flash with a cross and the reason, closing 1.2 s after the verdict. Sharp corners, no emoji; macOS "Reduce motion" stops the motion.
+- **Touch ID.** While LocalAuthentication asks (the `touch_id` op, an enrollment's prompt, the Touch ID half of `face_or_touch_id`) the window becomes a small panel at the top of the screen and the app deactivates, so the macOS prompt is never covered.
+- **Esc** (or a click on the ESC · CANCEL chip) writes `{"type": "cancel"}`; the hub withdraws every client from the attempt through the usual cancel path (`cancelled`, or `spoof` when a head-turn prompt was up), the CLI answers `cancelled`.
+- **Strings** go through the message table (`guard.window.*`, en + tr). The worker never imports tau-core, so the hub and the CLI put the lines, in the owner's UI language, into the request's `window` object.
+- **Config:** `[component.guard] window = true | false` (default `true`; `window` joins `tau_core.guard.GUARD_CONFIG_KEYS`); `--no-window` on `setup`, `enroll` and `verify` for checks the command runs itself (a check through the hub follows the hub's setting, and the CLI says so). Without a GUI session (`SSH_CONNECTION`, no window server, no pyobjc AppKit, not macOS) or with `TAU_GUARD_WINDOW=0` the worker runs headless as before and logs why.
+- **Demo:** `tau guard window` says whether the window can open here; `tau guard window --demo` plays a scripted unlock, a failed step-up and an enrollment on a synthetic dark picture, without the camera.
+- **Channels keep their text prompts;** `verify --explain` shows the window too (the picture the numbers belong to), `--no-window` turns it off.
 
 ## Acceptance criteria
 
-- [ ] A spike records whether concurrent capture (TauBar webview + worker) works on the hub Mac and which preview path is used
-- [ ] An attempt started from `tau tui`, `tau chat` or tau Desktop opens the Guard window within 0.5 s; it shows the mirrored picture, the oval, the current step's direction mark, the countdown and the live hint, and closes about 1.5 s after the verdict
-- [ ] Cancel in the window cancels the attempt (`/guard/cancel`) and the channel shows `cancelled`
-- [ ] Only the Guard window's bundled page can get the camera; every other webview and origin is still denied (test)
-- [ ] The camera stream stops when the window closes; nothing is recorded or stored; no route or pipe through the hub carries frames
-- [ ] ADR 0008 is amended (decisions 2 and 16) and the guard guide shows the window
-- [ ] (user) One unlock and one step-up done through the window on the hub Mac
+- [x] The worker shows the window for `verify`, `enroll` and `touch_id` when the request asks for it; the AppKit loop runs on the main thread, the check in a second thread; the headless path is unchanged
+- [x] The verifier gets every frame and the window a throttled subset (test with a recording view); the view gets start, the steps with their deadlines, the hints, the samples, the result and the close
+- [x] Esc cancels through the existing cancel path (hub: every client withdrawn, a head-turn prompt counts as `spoof`; CLI: `cancelled`); SIGTERM in window mode closes the window and releases the camera
+- [x] The Touch ID step uses a small panel that never covers the macOS prompt
+- [x] Brand look per docs/brand, strings in en + tr through the message table, Reduce motion respected
+- [x] `[component.guard] window` and `--no-window`; headless without a GUI session, over SSH, without pyobjc or with `TAU_GUARD_WINDOW=0`, with the reason in `worker.log`
+- [x] `tau guard window --demo` plays a scripted check without the camera
+- [x] ADR 0008 has a "Refinement (issue 126)"; the guard guide and the reference describe the window, the key and the flag
+- [ ] (user) One unlock and one step-up done through the window on the hub Mac, after a look at `tau guard window --demo`
 
 ## Blocked by
 
@@ -44,3 +44,5 @@ The owner tried the face check from the terminal on 2026-09-30 and asked for it 
 ## Comments
 
 - 2026-09-30: filed from the owner's first live try ("guard açılınca bir ekranda gözükse orda yapsak iyi olacak").
+- 2026-09-30: re-scoped to a window drawn by the guard worker (the owner: "ekrana bir şey gelse kaplasa ve orda ui olsa görsem, terminalde bunu yapmasak"); the TauBar webview and the concurrent-capture spike are no longer needed. ADR 0008 decisions 2 and 16 stay as they are.
+- 2026-09-30: built on `guard/window` (from main cc4ffa7). Commits: 0b47651 (tau-core key), 89cb65a (the window in the worker, the cancel line, the service and the knob), cf0c3ba (`--no-window`, `tau guard window --demo`), a3930d3 (guide, reference, ADR 0008 "Refinement (issue 126)"). 57 new tests; the full suite passed (2564 passed, 8 skipped) but for the two timing-flaky tau-net universe tests, which pass when run alone. New modules `window.py` (the view seam, the frame tee, the model, the layout, the request field, the demo script), `overlay.py` (AppKit, lazily) and `cli_window.py`; small hooks in `worker.py` (`_Progress`, `_watched`, `run(view=, cancel=)`, the windowed `main`), `runner.py` and `local.py` (the cancel line; `EXIT_GRACE` 2 s so the result stays up), `service.py` (the request field, `_on_worker_cancel`), `config.py` (`window`), `cli_face.py` (`--no-window`), and `window` in tau-core's `GUARD_CONFIG_KEYS`. The challenge logic (`verify.py`, `liveness.py`, `enroll.py`) is untouched, so 127's branch merges around it. Tests never open a window: `RecordingView` fakes the view, the tests' `conftest.py` sets `TAU_GUARD_WINDOW=0` for any real worker, and the painter was checked by rendering scenes offscreen to PNG (`python -m tau_guard.overlay demo` with `snapshot`, also `tau guard window --demo --snapshot DIR`). A HUD frame paints in about 12 ms at Retina scale offscreen (the picture conversion about 1.4 ms), so 30 fps leaves the main thread room; the check runs in its own thread. Not verified here, for the owner: the live window itself (focus taking, Esc reaching it under macOS's cooperative activation, the frame rate on the hub Mac, the Touch ID panel next to the macOS prompt).

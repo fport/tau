@@ -140,7 +140,13 @@ STATUS_CLASS = {
 
 @dataclass(frozen=True)
 class Glyphs:
-    """The one-cell vocabulary. ``unicode`` is the default, ``ascii`` the fallback."""
+    """The one-cell vocabulary. ``unicode`` is the default, ``ascii`` the fallback.
+
+    Rich counts every glyph as one cell. ``◆ ● ○ █ ▀ ▄ ⚿`` have East Asian Width "A"
+    (ambiguous): a terminal set to draw ambiguous characters wide (iTerm2's option, CJK
+    locales) draws them two cells wide and shifts the row by one. ``TAU_TUI_ASCII=1`` avoids
+    that; the lock keeps ``⚿`` (Unicode's lock emoji are all wide), in line with the others.
+    """
 
     user: str  # gutter of a user row
     tau: str  # gutter of a reply, the header mark

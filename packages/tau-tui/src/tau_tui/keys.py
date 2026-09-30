@@ -50,7 +50,8 @@ BINDINGS: tuple[KeyBinding, ...] = (
 )
 """The app's own bindings; ``ctrl+q`` (quit) is Textual's default priority binding. F10 opens
 the settings (``ctrl+,`` is unreliable over mosh, so there is no ctrl mirror). ``ctrl+l`` locks
-the owner guard; its mirror F5 overrides the text area's word selection, like F6 and F7."""
+the owner guard; its mirror F5 is a free key (Textual's text area binds only F6 and F7, which the
+priority mirrors of ctrl+o and PageUp override)."""
 
 HELP_KEYS: tuple[tuple[str, str], ...] = (
     ("enter", "tui.key.send"),

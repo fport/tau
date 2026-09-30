@@ -68,7 +68,8 @@ Operations:
   "touch_id"``.
 - ``verify`` for a step-up with ``step_up = "face_or_touch_id"``: when the face check fails
   for a reason that does not count (:data:`TOUCH_ID_AFTER`: ``too_dark``, ``no_face``, a
-  ``camera_*`` verdict, ...), the camera is released and Touch ID (pinned) is asked instead.
+  ``camera_*`` verdict, a missing or changed face model, ...), the camera is released and
+  Touch ID (pinned) is asked instead.
 - Every verdict that followed a LocalAuthentication prompt (or its refusal before the prompt)
   carries ``local_auth: {"policy", "outcome", "ms"}``, from which the hub writes the ``touch_id``
   audit record. Every prompt's ``LAContext`` is invalidated after 30 s and at once on SIGTERM
@@ -132,10 +133,13 @@ TOUCH_ID_AFTER = frozenset(
         "camera_unavailable",
         "camera_denied",
         "permission_pending",
+        "unavailable",
+        "model_changed",
     }
 )
 """Face verdicts after which a ``face_or_touch_id`` step-up asks Touch ID: the face check could
-not work. A counted failure (``no_match``, ``spoof``, ``multiple_faces``) never does."""
+not work (the face model missing or changed included). A counted failure (``no_match``,
+``spoof``, ``multiple_faces``) never does."""
 FALLBACK_POLICIES = {"touch_id": "biometrics", "touch_id_or_password": "device_owner"}
 """``unlock_fallback`` → the LocalAuthentication policy of the Touch ID unlock and recheck."""
 FALLBACK_RANK = {"touch_id_or_password": 0, "touch_id": 1, "none": 2}
@@ -310,7 +314,7 @@ class _Progress:
 def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]:
     from tau_guard.camera import CameraError
     from tau_guard.engine import SFACE_SHA256, ModelError
-    from tau_guard.store import StoreError, load_template
+    from tau_guard.store import StoreError, load_template, read_pin
     from tau_guard.verify import PolicyError, policy_for, run_check
 
     data_dir = _data_dir(request)
@@ -325,17 +329,25 @@ def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
     if not _enrolled(request):
         return verdict(False, "not_enrolled")
     guard_dir = data_dir / "guard"
+    progress = _Progress(emit, deps)
     try:
         template = load_template(guard_dir, deps.keys, SFACE_SHA256)
     except StoreError as exc:
         log(f"verify: the template cannot be used ({exc.reason})")
+        if _touch_id_after(request, exc.reason):  # model_changed: Touch ID reads the old model
+            try:
+                pin = read_pin(guard_dir, deps.keys)
+            except StoreError as inner:
+                return verdict(False, inner.reason)
+            return _step_up_touch_id(request, deps, progress, pin, None)
         return verdict(False, exc.reason)
     try:
         engine = deps.engine(data_dir)
     except ModelError as exc:
         log(f"verify: {exc}")
+        if _touch_id_after(request, "unavailable"):
+            return _step_up_touch_id(request, deps, progress, template.domain_state, None)
         return verdict(False, "unavailable")
-    progress = _Progress(emit, deps)
     progress.step("starting")
     source = deps.source(_camera_setting(request))
     explain = _explainer(emit) if request.get("explain") is True else None

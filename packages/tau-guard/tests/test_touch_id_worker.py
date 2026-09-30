@@ -431,6 +431,57 @@ def test_a_camera_verdict_falls_back_to_touch_id(session: Session, reason: str) 
     assert answer["ok"] is True and answer["method"] == "touch_id"
 
 
+@pytest.mark.parametrize(("mode", "falls_back"), [("face_or_touch_id", True), ("face", False)])
+def test_a_missing_face_model_falls_back_to_touch_id(
+    session: Session, mode: str, falls_back: bool
+) -> None:
+    from tau_guard import worker
+    from tau_guard.engine import ModelError
+    from tau_guard.testing import fake_deps
+
+    session.enroll()
+
+    def no_model(data_dir: Path) -> Any:
+        raise ModelError("missing", "SFace is not installed")
+
+    auth = FakeLocalAuth()
+    built = fake_deps(keys=session.keys, local_auth=auth)
+    built.engine = no_model
+    answer = worker.run("verify", step_up_request(session, mode), deps=built)
+    if falls_back:
+        assert answer["ok"] is True and answer["method"] == "touch_id"
+        assert auth.calls == [(BIOMETRICS, "run lamp")] and auth.pins == [FINGERPRINTS]
+    else:
+        assert answer["reason"] == "unavailable" and auth.calls == []
+
+
+@pytest.mark.parametrize(("mode", "falls_back"), [("face_or_touch_id", True), ("face", False)])
+def test_a_changed_face_model_falls_back_to_touch_id_with_the_old_pin(
+    session: Session, monkeypatch: pytest.MonkeyPatch, mode: str, falls_back: bool
+) -> None:
+    session.enroll()
+    monkeypatch.setattr("tau_guard.engine.SFACE_SHA256", "1" * 64)  # a newer SFace since
+    auth = FakeLocalAuth()
+    answer = session.run("verify", step_up_request(session, mode), local_auth=auth)
+    if falls_back:
+        assert answer["ok"] is True and answer["method"] == "touch_id"
+        assert auth.pins == [FINGERPRINTS]  # read with the model the enrollment was made with
+        accepted_by_the_hub("verify", session.lines, answer)
+    else:
+        assert answer["reason"] == "model_changed" and auth.calls == []
+
+
+def test_a_changed_face_model_with_no_pin_refuses_touch_id(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session.auth = FakeLocalAuth(biometry=CLAMSHELL)  # enrolled with the lid closed: no pin
+    session.enroll()
+    monkeypatch.setattr("tau_guard.engine.SFACE_SHA256", "1" * 64)
+    auth = FakeLocalAuth()
+    answer = session.run("verify", step_up_request(session, "face_or_touch_id"), local_auth=auth)
+    assert answer["reason"] == "touch_id_failed" and auth.calls == []
+
+
 def test_a_counted_face_failure_never_falls_back(session: Session) -> None:
     session.enroll()
     auth = FakeLocalAuth()

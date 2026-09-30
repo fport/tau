@@ -56,8 +56,9 @@ Rules the table in the ADR leaves to the implementation:
 
   - *The unlock fallback* (``request("unlock", method="touch_id")``) is offered only while
     ``locked`` and the hub's ``unlock_fallback`` is not ``none``, after :data:`FALLBACK_AFTER`
-    failed face unlocks within :data:`FAILURE_WINDOW` (``FACE_FAILURES``) or a ``camera_*``
-    verdict of any face check in that window (:meth:`GuardMachine.fallback_offer`, the status field
+    failed face unlocks within :data:`FAILURE_WINDOW` (``FACE_FAILURES``) or a verdict of any
+    face check in that window that says it cannot work (``FALLBACK_NOW``: ``camera_*``,
+    ``unavailable``, ``model_changed``) (:meth:`GuardMachine.fallback_offer`, the status field
     ``fallback``); otherwise, or when the request's merged ``unlock_fallback`` (the stricter
     of the hub's and the client's) is ``none``, it is refused with ``touch_id_unavailable``. A
     Touch ID only request never joins one that takes the password. The face cooldown
@@ -359,8 +360,9 @@ class GuardMachine:
         """HID idle observed since :attr:`checked_at` (the name predates Touch ID)."""
         self._face_failures: list[float] = []
         """Monotonic times of failed face unlocks within the window (the fallback offer)."""
-        self._camera_trouble: float | None = None
-        """When a face check last answered a ``camera_*`` verdict."""
+        self._face_blocked: float | None = None
+        """When a face check last answered a verdict that says it cannot work
+        (:data:`~tau_core.guard.FALLBACK_NOW`: ``camera_*``, a missing or changed model)."""
         self._touch_id_misses: list[float] = []
         """Monotonic times of Touch ID unlock or recheck prompts that did not pass."""
         self._offer: str | None = None
@@ -417,14 +419,15 @@ class GuardMachine:
     def fallback_offer(self) -> str | None:
         """The Touch ID fallback the lock screen may offer now (``unlock_fallback``), else
         ``None``: only while ``locked``, after :data:`~tau_core.guard.FALLBACK_AFTER` failed
-        face unlocks or a ``camera_*`` verdict within the window."""
+        face unlocks or a :data:`~tau_core.guard.FALLBACK_NOW` verdict (``camera_*``, a missing
+        or changed face model) within the window."""
         mode = self.limits.unlock_fallback
         if mode == "none" or self.state != "locked":
             return None
         now = self.clock.monotonic()
         failures = [t for t in self._face_failures if now - t < FAILURE_WINDOW]
-        camera = self._camera_trouble is not None and now - self._camera_trouble < FAILURE_WINDOW
-        return mode if len(failures) >= FALLBACK_AFTER or camera else None
+        blocked = self._face_blocked is not None and now - self._face_blocked < FAILURE_WINDOW
+        return mode if len(failures) >= FALLBACK_AFTER or blocked else None
 
     def touch_id_backoff(self) -> float | None:
         """Seconds until another Touch ID unlock or recheck may start (:data:`TOUCH_ID_TRIES`),
@@ -934,7 +937,7 @@ class GuardMachine:
                 self.reported_failures = self.failures
                 self.failures = 0
                 self._face_failures.clear()
-                self._camera_trouble = None
+                self._face_blocked = None
                 self._touch_id_misses.clear()
                 self._cooldown_until_mono = self.cooldown_until = None  # the owner is back
             elif self.state == "verifying":
@@ -951,7 +954,7 @@ class GuardMachine:
                 self._touch_id_misses.append(now)
         if checks and not outcome.ok and attempt.factor == "face":
             if outcome.reason in FALLBACK_NOW:
-                self._camera_trouble = now
+                self._face_blocked = now
             elif attempt.kind == "unlock" and outcome.reason in FACE_FAILURES:
                 self._face_failures = [t for t in self._face_failures if now - t < FAILURE_WINDOW]
                 self._face_failures.append(now)

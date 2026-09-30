@@ -93,8 +93,11 @@ def test_the_fallback_is_offered_after_two_failed_face_unlocks(clock: FakeClock)
     assert m.seq > seq
 
 
-@pytest.mark.parametrize("reason", ["camera_busy", "camera_unavailable", "camera_denied"])
-def test_a_camera_verdict_offers_the_fallback_at_once(clock: FakeClock, reason: str) -> None:
+@pytest.mark.parametrize(
+    "reason",
+    ["camera_busy", "camera_unavailable", "camera_denied", "unavailable", "model_changed"],
+)
+def test_a_blocked_face_check_offers_the_fallback_at_once(clock: FakeClock, reason: str) -> None:
     m = machine(clock, unlock_fallback="touch_id_or_password")
     fail_face(m, Outcome(False, reason), times=1)
     assert m.fallback_offer() == "touch_id_or_password"

@@ -74,8 +74,9 @@ face check it can only narrow: it never produces an approval.
   bringing the password back. A template that cannot be read refuses Touch ID only too, since
   the pin cannot be compared (a Mac with no Touch ID sensor keeps the password).
 - **Unlock fallback** (`unlock_fallback`, default `touch_id`). After two failed face unlocks
-  within 10 minutes, or any `camera_*` verdict, the locked status carries `fallback`, and a
-  channel may ask for it (`POST /guard/verify {..., fallback: "touch_id"}`,
+  within 10 minutes, or a verdict that says the face check cannot work (`camera_*`, or
+  `unavailable` / `model_changed` for a missing or changed face model), the locked status
+  carries `fallback`, and a channel may ask for it (`POST /guard/verify {..., fallback: "touch_id"}`,
   `Guard.unlock(method="touch_id")`). `touch_id` is Touch ID only; `touch_id_or_password` takes
   the password (or an approval from a paired Apple Watch, which macOS's device-owner policy
   also accepts) too, the opt-in for a closed lid. The stricter of the hub's and the client's
@@ -87,13 +88,15 @@ face check it can only narrow: it never produces an approval.
   (status and audit), ends a face cooldown and clears the offer; a Touch ID failure never
   counts toward the face cooldown. Touch ID has its own limit: after five prompts that did
   not pass (a wrong finger, a cancel, a timeout) within 10 minutes, a new Touch ID unlock or
-  recheck is refused with `cooldown` until the oldest is 10 minutes old. A Touch ID unlock is presence but not a face: rechecks follow it (and are Touch ID
-  checks in a Touch ID session, so a covered camera does not fail every later turn), while
-  `face_fresh` (for voice) still needs a face.
+  recheck is refused with `cooldown` until the oldest is 10 minutes old. A Touch ID unlock is
+  presence but not a face: rechecks follow it (and are Touch ID checks in a Touch ID session,
+  so a covered camera does not fail every later turn), while `face_fresh` (for voice) still
+  needs a face.
 - **Step-up** (`step_up`, default `face`). `face`: the head-turn challenge (or a passive match
   in the freshness window). `face_or_touch_id`: Touch ID only when the face check could not
-  work (`too_dark`, `no_face`, `timeout`, `face_too_small`, `permission_pending` or a
-  `camera_*` verdict); a counted failure never falls back. `touch_id`: Touch ID only, the
+  work (`too_dark`, `no_face`, `timeout`, `face_too_small`, `permission_pending`, a
+  `camera_*` verdict, or a missing or changed face model: the pin is read with the model the
+  enrollment was made with); a counted failure never falls back. `touch_id`: Touch ID only, the
   camera never opens (the accessible choice for an owner who cannot turn their head). `none`:
   no fresh check, only when both the hub's and the client's `tau.toml` say `none`; a client
   whose `tau.toml` leaves `step_up` out uses `face` (the doctor warns about `none`). A step-up

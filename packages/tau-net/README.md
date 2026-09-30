@@ -3,7 +3,9 @@
 The tau network: a tau talks to other taus. Each tau has a **spine** (a Cloudflare Worker in its
 owner's account) whose hostname is the tau's **address**. The spine serves a public **card**
 with two public keys and keeps a **mailbox** of sealed **envelopes** until the hub picks them
-up. There is no central server: like e-mail, every tau runs its own.
+up. There is no central server: like e-mail, every tau runs its own. A tau hosted on a
+tau-host lives under a path of that host, `tau.example.com/@alice` (ADR 0013); every command
+here takes such addresses too.
 
 It is its own distribution (`tau-net`, import `tau_net`), uses only the public API of
 `tau-core` and plugs in through three entry points:
@@ -37,6 +39,11 @@ ADR 0007.
   limits) in a session per contact and sub-tau; a private or unknown one is dropped unanswered.
   tau-net finds sub-taus through the `tau.subs` entry point (tau-sub provides it) and never
   imports tau-sub.
+- **Visitors.** A public sub-tau with `web = true` has a chat page on the universe (ADR 0013).
+  The universe relays a visitor's message as a signed `visit` envelope; the hub accepts it only
+  from the universe it joined (keys pinned at the first visit), only for a public web sub-tau,
+  within its `web_daily` per UTC day, and answers with the same narrow turn, framed as an
+  anonymous visitor's text, on a throwaway session. A visit is no contact and no link.
 - **The owner's tools.** `net_send` speaks for the owner to a third party, so it needs an
   approval every time, like a physical action.
 
@@ -142,12 +149,15 @@ tau net contacts                  # contacts and pending requests
 tau net accept tau.example.org    # accept a request
 tau net send tau.example.org When are you free this week?
 tau net send tau.example.org/coach Plan my week, please.   # a public sub-tau of that tau
+tau net add tau.example.com/@alice                         # a hosted tau
+tau net send tau.example.com/@alice/coach Hello, coach.    # a public sub-tau of a hosted tau
 tau net log --address tau.example.org -n 20
 tau net block tau.example.org     # nothing from it is read or answered
 tau net remove tau.example.org
 tau net poll --once               # handle what is queued without a running hub
 tau net universe join --owner Alice --about "Plans hikes."   # list this tau (--no-links)
-tau net universe status           # the setting, whether it is listed, its visible links
+tau net universe status           # the setting, whether it is listed, its handle and links
+tau net universe claim            # a link that claims a handle with a GitHub sign-in
 tau net universe leave
 ```
 
@@ -202,9 +212,15 @@ A **universe** is an opt-in public directory of taus (ADR 0010; protocol in
   `message` envelopes exchanged with each (the `counts` document). A link shows only when both
   taus report each other. With links off (`--no-links` or `universe_links = false`) the list
   is empty. Message contents, notes and unlisted contacts never leave the hub.
-- A report also lists the tau's public sub-taus as `subs: [{name, about}]` (at most 20, the
-  about line cut to 200 characters; none when there are none). Private sub-taus never leave
-  the hub.
+- A report also lists the tau's public sub-taus as `subs: [{name, about, web, starters}]`
+  (at most 20, the about line cut to 200 characters; none when there are none). Private
+  sub-taus never leave the hub.
+- `tau net universe claim` prints `https://<universe>/claim#<signed claim>`. Opening it and
+  signing in with GitHub there binds the GitHub login to this tau as its handle (`/@login` on
+  the universe); the claim is valid for an hour and nothing is sent from the hub. `status`
+  shows the handle once the universe reports it.
+- `leave` also forgets the universe's pinned keys, so no visit is taken until the next join
+  and the next visit pins them again.
 - While the profile says joined, the `net` hub service reports once the card is published and
   then every `universe_report_minutes`, and joins again if the universe forgot the tau.
   Failures only show in `/status` as `net.universe` (`joined`, `last_report_at`, `last_error`,
@@ -228,13 +244,14 @@ spine.state_get("my.key")
 ```
 
 `tau_net.universe.UniverseClient` talks to a universe (`join`, `report`, `leave`,
-`snapshot`, `tau(address)`).
+`snapshot`, `tau(address)`, `claim_link(identity, address)`).
 
 `tau_net.testing` has `FakeSpine` (the spine of protocol v1 in memory: inbox checks, hub API
 with a real long poll, cloud-mode state and files; `route()` adds more), `FakeDoorbell` (the
 doorbell offline; `FakeSpine.doorbell()` gives one the spine rings on every queued envelope,
 and `NetService(doorbell=...)` takes it), `FakeUniverse` (a universe in memory, with every
-check of the protocol and the snapshot) and `FakeNetwork` (a transport that routes by host to
+check of the protocol and the snapshot; with an `identity` it also has a card and an inbox and
+sends `visit`s) and `FakeNetwork` (a transport that routes by host, and by `/@handle` path, to
 several fakes), so tests run taus against each other and a universe with no socket.
 
 ## Development

@@ -1,4 +1,5 @@
-"""The tau universe client: signed ``join``, ``report`` and ``leave`` requests (v1, ADR 0010).
+"""The tau universe client: signed ``join``, ``report``, ``leave`` and ``claim`` requests (v1,
+ADR 0010 and 0013).
 
 A universe is an opt-in public directory of taus (``docs/reference/tau-universe.md``). A tau
 talks to it with signed requests whose wire body has the shape of an envelope::
@@ -9,11 +10,17 @@ talks to it with signed requests whose wire body has the shape of an envelope::
   key. The prefix differs from envelopes (``tau-net/1``), so no signature is valid in both
   places.
 - **Payload**: compact UTF-8 JSON, at most 64 KiB, with ``v`` (1), ``kind`` (``join``,
-  ``report`` or ``leave``), ``universe`` (the universe's host, so a request cannot be replayed
-  to another universe), ``address`` and ``ts`` (Unix seconds), plus ``owner`` (0–60
-  characters) and ``about`` (0–200) for ``join``, and ``links`` (at most 500
+  ``report``, ``leave`` or ``claim``), ``universe`` (the universe's host, so a request cannot
+  be replayed to another universe), ``address`` and ``ts`` (Unix seconds), plus ``owner`` (0–60
+  characters) and ``about`` (0–200) for ``join``, ``links`` (at most 500
   ``{"peer", "messages"}``) plus an optional ``subs`` (at most 20 public sub-taus,
-  ``{"name", "about"}``, issue 150) for ``report``.
+  ``{"name", "about", "web", "starters"}``, issues 150 and 156) for ``report``, and ``nonce``
+  for ``claim``.
+- **Claims** (ADR 0013 §6, issue 157): a ``claim`` is not posted by the tau. :func:`claim_link`
+  signs one and puts its wire body into ``https://<universe>/claim#<b64u(wire JSON)>``; the
+  owner opens the link, signs in with GitHub there, and the universe binds the handle to the
+  address. A claim is valid for :data:`CLAIM_VALID_SECONDS` after its ``ts``, and its random
+  ``nonce`` makes it single-use.
 
 :class:`UniverseClient` builds, signs and posts them, reads the public snapshot and one tau's
 entry, and maps the universe's error codes to :class:`UniverseError`. The scheme is the one of
@@ -25,6 +32,8 @@ universe makes on a request body (:class:`tau_net.testing.FakeUniverse` uses it)
 from __future__ import annotations
 
 import json
+import re
+import secrets
 import time
 import urllib.parse
 from collections.abc import Callable, Iterable, Mapping
@@ -60,6 +69,7 @@ __all__ = [
     "STALE_RETRIES",
     "UNIVERSE_CONTEXT",
     "UNIVERSE_KINDS",
+    "CLAIM_VALID_SECONDS",
     "MalformedRequest",
     "SignedRequest",
     "UniverseClient",
@@ -67,6 +77,7 @@ __all__ = [
     "UniverseUnreachable",
     "build_request",
     "check_payload",
+    "claim_link",
     "encode_payload",
     "listed_addresses",
     "make_payload",
@@ -80,7 +91,11 @@ __all__ = [
 
 UNIVERSE_CONTEXT = b"tau-universe/1\n"
 """The domain prefix of every universe signature."""
-UNIVERSE_KINDS = ("join", "report", "leave")
+UNIVERSE_KINDS = ("join", "report", "leave", "claim")
+CLAIM_VALID_SECONDS = 3600
+"""A ``claim`` is valid this long after its ``ts`` (the other kinds: 300 s either way)."""
+NONCE_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,64}")
+"""A claim's ``nonce``: 16 to 64 base64url characters (the client sends 16 random bytes)."""
 DEFAULT_UNIVERSE = "tau.getporti.com"
 MAX_REQUEST_BYTES = 65_536
 """The largest ``POST`` body a universe accepts."""
@@ -90,6 +105,9 @@ ABOUT_LIMIT = 200
 MAX_LINKS = 500
 MAX_SUBS = 20
 """A report lists at most this many public sub-taus."""
+MAX_STARTERS = 4
+STARTER_LIMIT = 80
+"""A reported sub-tau carries at most 4 starters of 1 to 80 characters (ADR 0013 §5)."""
 DEFAULT_TIMEOUT = 15.0
 STALE_RETRIES = 3
 """A client runs at most a few seconds ahead of its clock (join, report and a re-join within
@@ -190,11 +208,16 @@ def check_payload(data: Any) -> dict[str, Any]:
             if not _is_int(messages) or messages < 0:
                 raise MalformedRequest("payload.links has an item without messages >= 0")
         _check_subs(data.get("subs"))
+    elif kind == "claim":
+        nonce = data.get("nonce")
+        if not isinstance(nonce, str) or not NONCE_PATTERN.fullmatch(nonce):
+            raise MalformedRequest("payload.nonce must be 16 to 64 base64url characters")
     return data
 
 
 def _check_subs(subs: Any) -> None:
-    """The optional ``subs`` of a report: at most :data:`MAX_SUBS` ``{"name", "about"}``."""
+    """The optional ``subs`` of a report: at most :data:`MAX_SUBS` ``{"name", "about"}`` with
+    an optional ``web`` (bool) and ``starters`` (at most 4 strings of 1-80 characters)."""
     if subs is None:
         return
     if not isinstance(subs, list) or len(subs) > MAX_SUBS:
@@ -208,6 +231,20 @@ def _check_subs(subs: Any) -> None:
                 f"payload.subs has an item whose about is not a string of 0-{ABOUT_LIMIT} "
                 "characters"
             )
+        if "web" in sub and not isinstance(sub["web"], bool):
+            raise MalformedRequest("payload.subs has an item whose web is not true or false")
+        starters = sub.get("starters", [])
+        if (
+            not isinstance(starters, list)
+            or len(starters) > MAX_STARTERS
+            or not all(
+                isinstance(item, str) and 1 <= len(item) <= STARTER_LIMIT for item in starters
+            )
+        ):
+            raise MalformedRequest(
+                f"payload.subs has an item whose starters are not at most {MAX_STARTERS} "
+                f"strings of 1-{STARTER_LIMIT} characters"
+            )
 
 
 def make_payload(
@@ -220,10 +257,13 @@ def make_payload(
     about: str = "",
     links: Iterable[Mapping[str, Any]] = (),
     subs: Iterable[Mapping[str, Any]] = (),
+    nonce: str = "",
 ) -> dict[str, Any]:
     """The payload object of ``kind`` with the field order of §1, checked like a universe
     checks it (:class:`MalformedRequest` otherwise). A report carries ``subs`` only when
-    there is at least one, so a tau without public sub-taus sends what it always sent."""
+    there is at least one, so a tau without public sub-taus sends what it always sent; each
+    one is ``{"name", "about", "web", "starters"}`` (``web`` false and no starters when the
+    item has none)."""
     payload: dict[str, Any] = {
         "v": 1,
         "kind": kind,
@@ -236,10 +276,44 @@ def make_payload(
         payload["about"] = about
     elif kind == "report":
         payload["links"] = [{"peer": link["peer"], "messages": link["messages"]} for link in links]
-        listed = [{"name": sub["name"], "about": sub["about"]} for sub in subs]
+        listed = [
+            {
+                "name": sub["name"],
+                "about": sub["about"],
+                "web": sub.get("web") is True,
+                "starters": list(sub.get("starters") or []),
+            }
+            for sub in subs
+        ]
         if listed:
             payload["subs"] = listed
+    elif kind == "claim":
+        payload["nonce"] = nonce
     return check_payload(payload)
+
+
+def new_nonce() -> str:
+    """A claim's nonce: 16 random bytes, base64url (22 characters)."""
+    return b64u_encode(secrets.token_bytes(16))
+
+
+def claim_link(
+    identity: Identity,
+    *,
+    universe: str,
+    address: str,
+    ts: int,
+    nonce: str | None = None,
+    base: str | None = None,
+) -> str:
+    """``<base>/claim#<b64u(wire JSON)>``: a signed ``claim`` of ``address`` for the universe
+    ``universe`` (``base`` defaults to ``https://<universe>``). Nothing is sent: the owner opens
+    the link and signs in with GitHub there."""
+    payload = make_payload(
+        "claim", universe=universe, address=address, ts=ts, nonce=nonce or new_nonce()
+    )
+    request = build_request(identity, payload)
+    return f"{base or 'https://' + universe}/claim#{b64u_encode(request.to_bytes())}"
 
 
 def encode_payload(payload: Mapping[str, Any]) -> bytes:
@@ -393,18 +467,23 @@ def tau_links(entry: Mapping[str, Any], address: str) -> list[tuple[str, int]]:
     return sorted(links, key=lambda link: (-link[1], link[0]))
 
 
-def tau_subs(entry: Mapping[str, Any]) -> list[dict[str, str]]:
-    """The public sub-taus (``{"name", "about"}``) in a ``GET /api/taus/<address>`` answer, at
-    the top level or under ``tau``; ``[]`` from a universe that predates them."""
+def tau_subs(entry: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The public sub-taus (``{"name", "about", "web"}``) in a ``GET /api/taus/<address>``
+    answer, at the top level or under ``tau``; ``[]`` from a universe that predates them, and
+    ``web`` false from one that predates pages."""
     raw = entry.get("subs")
     if raw is None and isinstance(entry.get("tau"), Mapping):
         raw = entry["tau"].get("subs")
-    subs: list[dict[str, str]] = []
+    subs: list[dict[str, Any]] = []
     for item in raw if isinstance(raw, list) else []:
         if isinstance(item, Mapping) and is_valid_sub_name(item.get("name")):
             about = item.get("about")
             subs.append(
-                {"name": str(item["name"]), "about": about if isinstance(about, str) else ""}
+                {
+                    "name": str(item["name"]),
+                    "about": about if isinstance(about, str) else "",
+                    "web": item.get("web") is True,
+                }
             )
     return subs
 
@@ -545,6 +624,17 @@ class UniverseClient:
     def leave(self, identity: Identity, address: str) -> dict:
         """``POST /api/leave``: the universe forgets the tau and its reported links."""
         return self._signed(identity, "leave", address)
+
+    def claim_link(self, identity: Identity, address: str, *, nonce: str | None = None) -> str:
+        """The link that claims a handle for ``address`` (see :func:`claim_link`)."""
+        return claim_link(
+            identity,
+            universe=self.host,
+            address=address,
+            ts=int(self.clock()),
+            nonce=nonce,
+            base=self.base,
+        )
 
     def snapshot(self) -> dict[str, Any]:
         """``GET /api/universe``: ``{universe, generated_at, stats, taus, links}``."""

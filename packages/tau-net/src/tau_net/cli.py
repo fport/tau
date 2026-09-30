@@ -21,6 +21,7 @@ import contextlib
 import json
 import logging
 import os
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NoReturn
@@ -35,7 +36,7 @@ from tau_net import spine_strings as _spine_strings  # noqa: F401  (registers th
 from tau_net import strings as _strings  # noqa: F401  (registers the message keys)
 from tau_net.config import NetConfigError
 from tau_net.contacts import PENDING_IN, ContactError
-from tau_net.encoding import AddressError, parse_target
+from tau_net.encoding import AddressError, is_valid_handle, parse_target
 from tau_net.envelope import EnvelopeError
 from tau_net.identity import (
     IDENTITY_ENV,
@@ -599,7 +600,8 @@ def universe_leave_command(ctx: click.Context) -> None:
 @universe.command(
     name="status",
     help="Show the universe host, whether the profile says joined, the links setting, and "
-    "whether the universe lists this tau, with its visible links.",
+    "whether the universe lists this tau, with its handle, visible links and public "
+    "sub-taus (and today's visitor turns of those with a web page).",
     short_help="Show the universe status.",
 )
 @help_option()
@@ -644,13 +646,56 @@ def universe_status_command(ctx: click.Context) -> None:
     online = tau.get("online") is True
     say("net.universe.status.online" if online else "net.universe.status.offline", when=when)
     say("net.universe.status.url", url=client.url_for(address))
+    handle = tau.get("handle")
+    if isinstance(handle, str) and is_valid_handle(handle):
+        say("net.universe.status.handle", handle=handle, url=f"{client.base}/@{handle}")
+    else:
+        say("net.universe.status.no_handle")
     links = tau_links(entry, address)
     if not links:
         say("net.universe.status.no_links")
     for peer, messages in links:
         say("net.universe.status.link", peer=peer, messages=messages)
+    today = time.strftime("%Y-%m-%d", time.gmtime(node.clock()))
+    visits = _run(ctx, lambda: node.store.visits(today))
     for sub in tau_subs(entry):
-        say("net.universe.status.sub", name=sub["name"], about=sub["about"])
+        if sub["web"]:
+            say(
+                "net.universe.status.sub_web",
+                name=sub["name"],
+                about=sub["about"],
+                visits=visits.get(sub["name"], 0),
+            )
+        else:
+            say("net.universe.status.sub", name=sub["name"], about=sub["about"])
+
+
+@universe.command(
+    name="claim",
+    help="Print a link that claims a handle for this tau: a signed claim request (valid for "
+    "one hour) in the fragment of https://<universe>/claim. Open it and sign in with GitHub "
+    "there; the universe then binds your GitHub login as this tau's handle, so its page is "
+    "/@<login>. Nothing is sent from here. Publishes the card first when it is missing or "
+    "different, because the universe checks the signature against it.",
+    short_help="Claim a handle with GitHub.",
+)
+@help_option()
+@click.pass_context
+def universe_claim_command(ctx: click.Context) -> None:
+    config = _config(ctx)
+    say = _Say(config)
+    node = _node(ctx, config)
+    client = _run(ctx, node.universe)
+    identity = _run(ctx, node.require_identity)
+    if _run(ctx, node.ensure_card):
+        say("net.publish.done", address=node.address(), name=node.display_name())
+    address = _run(ctx, node.address)
+    link = _run(ctx, lambda: client.claim_link(identity, address))
+    say("net.universe.claim.link", universe=client.host, address=address)
+    click.echo(link)
+    say("net.universe.claim.private")
+    if not _run(ctx, node.profile).universe_join:
+        say("net.universe.claim.not_joined")
 
 
 # -- spine kit ---------------------------------------------------------------------------------

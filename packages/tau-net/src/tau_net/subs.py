@@ -13,7 +13,9 @@ is tau-sub's business, so tau-net asks through an entry point instead of importi
   (every public one, for the universe report);
 - a :class:`PublicSub` is plain data: the name, the about line, the model role, the file with
   the persona the model reads (tau-sub's header plus the persona text) and the file of its
-  public note, if it has one.
+  public note, if it has one; since ADR 0013 also its page settings ``web``, ``web_daily`` and
+  ``starters``, read with :func:`page_settings` so a tau-sub that predates them means "no
+  page".
 
 Both sides depend only on tau-core, and the contract is duck-typed (:class:`typing.Protocol`),
 so neither package imports the other. Without tau-sub installed a hub simply has no public
@@ -24,6 +26,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -32,12 +35,17 @@ from tau_core import Config
 from tau_net.encoding import is_valid_sub_name
 
 __all__ = [
+    "MAX_REPORTED_STARTERS",
     "MAX_REPORTED_SUBS",
+    "STARTER_LIMIT",
     "SUBS_GROUP",
     "SUB_ABOUT_LIMIT",
+    "WEB_DAILY_DEFAULT",
+    "PageSettings",
     "PublicSub",
     "SubDirectory",
     "find_sub_directory",
+    "page_settings",
     "universe_subs",
 ]
 
@@ -49,6 +57,11 @@ MAX_REPORTED_SUBS = 20
 """A universe report lists at most this many public sub-taus."""
 SUB_ABOUT_LIMIT = 200
 """A reported ``about`` line is cut to this many characters."""
+MAX_REPORTED_STARTERS = 4
+STARTER_LIMIT = 80
+"""A report carries at most 4 starters of 1 to 80 characters per sub-tau."""
+WEB_DAILY_DEFAULT = 50
+WEB_DAILY_RANGE = (1, 1000)
 
 
 @runtime_checkable
@@ -63,6 +76,8 @@ class PublicSub(Protocol):
     """The persona the model reads (tau-sub's header, then the persona text); absolute."""
     public_note_file: Path | None
     """Its public note (``persona/subs/<note>.md``), absolute; ``None`` when it has none."""
+    # ADR 0013 adds ``web: bool``, ``web_daily: int`` and ``starters: tuple[str, ...]``; they
+    # are read with :func:`page_settings`, so an object without them has no page.
 
 
 class SubDirectory(Protocol):
@@ -108,10 +123,40 @@ def find_sub_directory(
     return None
 
 
-def universe_subs(directory: SubDirectory | None) -> list[dict[str, str]]:
-    """The ``subs`` of a universe report: every public sub-tau as ``{"name", "about"}``, at
-    most :data:`MAX_REPORTED_SUBS`, ``about`` on one line and cut to :data:`SUB_ABOUT_LIMIT`.
-    Private sub-taus are never listed; a failing directory lists nothing (logged)."""
+@dataclass(frozen=True)
+class PageSettings:
+    """The web page of a public sub-tau (ADR 0013 §5), as tau-net trusts it."""
+
+    web: bool = False
+    web_daily: int = WEB_DAILY_DEFAULT
+    starters: tuple[str, ...] = ()
+
+
+def page_settings(sub: object) -> PageSettings:
+    """``web``, ``web_daily`` and ``starters`` of a :class:`PublicSub`, checked again: a
+    missing or malformed ``web`` means no page, a bad ``web_daily`` the default, and starters
+    are kept only when they are 1 to 80 characters on one line (at most 4)."""
+    web = getattr(sub, "web", False) is True
+    daily = getattr(sub, "web_daily", WEB_DAILY_DEFAULT)
+    low, high = WEB_DAILY_RANGE
+    if isinstance(daily, bool) or not isinstance(daily, int) or not low <= daily <= high:
+        daily = WEB_DAILY_DEFAULT
+    raw = getattr(sub, "starters", ())
+    starters: list[str] = []
+    for starter in raw if isinstance(raw, list | tuple) else ():
+        if not isinstance(starter, str):
+            continue
+        line = " ".join(starter.split())
+        if 1 <= len(line) <= STARTER_LIMIT and line not in starters:
+            starters.append(line)
+    return PageSettings(web, daily, tuple(starters[:MAX_REPORTED_STARTERS]))
+
+
+def universe_subs(directory: SubDirectory | None) -> list[dict[str, Any]]:
+    """The ``subs`` of a universe report: every public sub-tau as ``{"name", "about", "web",
+    "starters"}``, at most :data:`MAX_REPORTED_SUBS`, ``about`` on one line and cut to
+    :data:`SUB_ABOUT_LIMIT`. Private sub-taus are never listed; a failing directory lists
+    nothing (logged)."""
     if directory is None:
         return []
     try:
@@ -119,11 +164,17 @@ def universe_subs(directory: SubDirectory | None) -> list[dict[str, str]]:
     except Exception as exc:
         logger.warning("net: could not list the public sub-taus: %s", exc)
         return []
-    listed: dict[str, str] = {}
+    listed: dict[str, dict[str, Any]] = {}
     for sub in subs:
         name = getattr(sub, "name", None)
         if not is_valid_sub_name(name) or name in listed:
             continue
         about = " ".join(str(getattr(sub, "about", "") or "").split())
-        listed[str(name)] = about[:SUB_ABOUT_LIMIT].rstrip()
-    return [{"name": name, "about": listed[name]} for name in sorted(listed)][:MAX_REPORTED_SUBS]
+        page = page_settings(sub)
+        listed[str(name)] = {
+            "name": str(name),
+            "about": about[:SUB_ABOUT_LIMIT].rstrip(),
+            "web": page.web,
+            "starters": list(page.starters),
+        }
+    return [listed[name] for name in sorted(listed)][:MAX_REPORTED_SUBS]

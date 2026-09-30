@@ -32,6 +32,22 @@ from the tau it wrote to (:func:`sub_is_ours`). So:
 Either way every reply carries the ``sub`` it answered, so a thread with ``/coach`` stays with
 ``/coach``. A hub that predates the field ignores it and answers as the main tau.
 
+**Visits** (ADR 0013 §5, issue 156). A universe relays an anonymous visitor of a public
+sub-tau's web page as a ``visit`` envelope (``{"text", "sub"}``, ``thread`` = the visitor's
+conversation). The hub accepts one only when all of these hold, and drops and logs it like a
+stranger's message otherwise:
+
+- it comes from ``[component.net] universe`` while the profile says joined, and verifies with
+  the universe's keys, pinned at its first visit (a visit that does not verify with the pinned
+  key is dropped with a "key changed" warning; ``tau net universe leave`` forgets the pin);
+- it names a sub-tau with ``public`` and ``web``, and ``auto_reply`` is on;
+- the sub-tau has visitor turns left today (``web_daily``, per UTC day, in the store).
+
+The sub-tau then runs a visit turn (:meth:`~tau_net.turns.NetworkTurns.run_visit`) and the
+answer goes back to the universe as a ``message`` with the same ``thread``, the ``sub`` and
+``reply_to`` = the visit's id. A visit creates no contact and adds nothing to ``counts``, so it
+never becomes a universe link.
+
 Any failure is logged and the envelope is dropped; the caller acknowledges it either way. A
 reply to a given envelope always gets the same id, so an envelope handled again after a crash
 cannot deliver a second reply (the recipient's spine answers ``duplicate``).
@@ -85,7 +101,13 @@ from tau_net.peers import CardError, Delivery, DeliveryError, PeerCard, PeerClie
 from tau_net.profile import NetProfile, check_profile_changes
 from tau_net.spine import SpineClient, Transport, Update
 from tau_net.store import FileBackend, NetStore, SpineBackend
-from tau_net.subs import PublicSub, SubDirectory, find_sub_directory, universe_subs
+from tau_net.subs import (
+    PublicSub,
+    SubDirectory,
+    find_sub_directory,
+    page_settings,
+    universe_subs,
+)
 from tau_net.turns import NetworkTurns
 from tau_net.universe import UniverseClient, UniverseError, listed_addresses, select_links
 
@@ -196,6 +218,33 @@ class _TurnJob:
     def reply_sub(self) -> str | None:
         """The ``sub`` the reply carries: the one the message carried."""
         return self.sub.name if self.sub is not None else self.peer_sub
+
+
+@dataclass
+class _VisitJob:
+    """A visit that passed every check: the public web sub-tau ``sub`` answers it."""
+
+    universe: str
+    box_key: str
+    envelope_id: str
+    thread: str
+    hops: int
+    text: str
+    sub: PublicSub
+    history: list[dict[str, Any]] = field(default_factory=list)
+
+
+QUIET_DROPS = (
+    "blocked",
+    "not a contact",
+    "no public sub-tau",
+    "not the joined universe",
+    "not in the universe",
+    "no web page",
+    "over web_daily",
+    "auto_reply is off",
+)
+"""Drop reasons logged at INFO: what strangers and visitors cause every day."""
 
 
 @dataclass(frozen=True)
@@ -361,8 +410,10 @@ class NetNode:
         reply_to: str | None = None,
         hops: int = 0,
         envelope_id: str | None = None,
+        count: bool = True,
     ) -> Delivery:
-        """Seal, sign and post one envelope to ``address``; log it when it was delivered."""
+        """Seal, sign and post one envelope to ``address``; log it when it was delivered.
+        ``count=False`` keeps a message out of ``counts`` (a reply to a visit)."""
         envelope, payload = build_envelope(
             self.require_identity(),
             sender=self.address(),
@@ -390,7 +441,7 @@ class NetNode:
             # An even hop goes to the other tau's sub-tau; an odd one is written by this tau's.
             entry["peer_sub" if sub_is_ours(hops) else "own_sub"] = content["sub"]
         logged = self.store.append_log(entry)
-        if logged and kind == "message":
+        if logged and kind == "message" and count:
             self._count_message(address, "out")
         logger.info("net: sent %s %s to %s (%s)", kind, payload.id, address, delivery.status)
         return delivery
@@ -499,7 +550,7 @@ class NetNode:
 
     # -- receiving -----------------------------------------------------------------------------
 
-    def receive(self, raw: Any) -> tuple[Handled, _TurnJob | None]:
+    def receive(self, raw: Any) -> tuple[Handled, _TurnJob | _VisitJob | None]:
         """Steps 1–4 of the module doc, up to (not including) a network turn."""
         try:
             envelope = Envelope.from_json(raw)
@@ -509,6 +560,8 @@ class NetNode:
         contact = self.contacts.get(sender)
         if contact is not None and contact.state == BLOCKED:
             return _drop("blocked", sender), None
+        if _peek_kind(envelope) == "visit":
+            return self._receive_visit(envelope, sender)
         card: PeerCard | None = None
         sign_key = box_key = ""  # the keys the envelope verified with, pinned on acceptance
         try:
@@ -627,6 +680,128 @@ class NetNode:
         self.store.mark_seen(sender, payload.id)
         return Handled("handled", sender, kind, payload.id), None
 
+    def _receive_visit(self, envelope: Envelope, sender: str) -> tuple[Handled, _VisitJob | None]:
+        """A ``visit`` from the universe (see the module doc); nothing is fetched for one
+        from anyone else or while this tau is not in the universe."""
+        kind = "visit"
+        universe = self.settings.universe
+        if not universe or sender != universe:
+            return _drop("not the joined universe", sender, kind), None
+        if not self.profile().universe_join:
+            return _drop("not in the universe", sender, kind), None
+        pin = self.store.universe_pin(universe)
+        try:
+            if pin is not None:
+                sign_key, box_key = pin["sign_key"], pin["box_key"]
+                try:
+                    payload = open_verified(envelope, sign_key)
+                except BadSignature:
+                    logger.warning(
+                        "net: a visit from the universe %s does not verify with its pinned key "
+                        "(key changed); dropped. `tau net universe leave` and `join` trust a "
+                        "new key",
+                        universe,
+                    )
+                    return _drop("key changed", sender, kind), None
+            else:
+                try:
+                    card = self.peers.fetch_card(sender)
+                except CardError as exc:
+                    return _drop(f"sender card unavailable ({exc.reason})", sender, kind), None
+                sign_key, box_key = card.sign_key, card.box_key
+                payload = open_verified(envelope, sign_key)
+                self.store.pin_universe(
+                    universe, sign_key=sign_key, box_key=box_key, ts=self._now()
+                )
+                logger.info("net: pinned the keys of the universe %s at its first visit", universe)
+        except BadSignature:
+            return _drop("bad signature", sender, kind), None
+        except EnvelopeError as exc:
+            return _drop(exc.reason, sender, kind), None
+        if payload.kind != kind or payload.sender != sender:  # pragma: no cover - same bytes
+            return _drop("sender mismatch", sender, kind), None
+        if payload.recipient != self.address():
+            return _drop("wrong recipient", sender, kind, id=payload.id), None
+        if self.store.is_seen(sender, payload.id):
+            return Handled("duplicate", sender, kind, payload.id, "already handled"), None
+        try:
+            content = parse_content(
+                kind, open_box(payload.box, self.require_identity(), payload.aad)
+            )
+        except EnvelopeError as exc:
+            return _drop(exc.reason, sender, kind, id=payload.id), None
+        name = content["sub"]
+        public = self.public_sub(name)
+        if public is None:
+            return _drop(f"no public sub-tau /{name}", sender, kind, id=payload.id), None
+        page = page_settings(public)
+        if not page.web:
+            return _drop(f"no web page for /{name}", sender, kind, id=payload.id), None
+        if not self.settings.auto_reply:
+            return _drop("auto_reply is off", sender, kind, id=payload.id), None
+        if payload.hops + 1 > self.settings.max_hops:
+            return _drop("a reply would pass max_hops", sender, kind, id=payload.id), None
+        day = time.strftime("%Y-%m-%d", time.gmtime(self._now()))
+        if not self.store.take_visit(name, day, page.web_daily):
+            reason = f"/{name} is over web_daily ({page.web_daily} visitor turns today)"
+            return _drop(reason, sender, kind, id=payload.id), None
+        history = [
+            e
+            for e in self.store.log(address=sender)
+            if e.get("thread") == payload.thread
+            and e.get("own_sub") == name
+            and e.get("id") != payload.id
+        ]
+        self.store.append_log(
+            {
+                "ts": payload.ts,
+                "direction": "in",
+                "address": sender,
+                "kind": kind,
+                "id": payload.id,
+                "thread": payload.thread,
+                "text": content["text"],
+                "own_sub": name,
+            }
+        )
+        job = _VisitJob(
+            universe=sender,
+            box_key=box_key,
+            envelope_id=payload.id,
+            thread=payload.thread,
+            hops=payload.hops,
+            text=content["text"],
+            sub=public,
+            history=history,
+        )
+        return Handled("handled", sender, kind, payload.id), job
+
+    def finish_visit(self, job: _VisitJob, reply: str | None) -> Handled:
+        """Send the answer of a visit turn to the universe, if there is one, as a ``message``
+        with the visit's ``thread`` and ``sub``; mark the visit handled."""
+        replied = False
+        try:
+            if reply:
+                self._send(
+                    job.universe,
+                    job.box_key,
+                    "message",
+                    {"text": reply[:MAX_MESSAGE_CHARS], "sub": job.sub.name},
+                    thread=job.thread,
+                    reply_to=job.envelope_id,
+                    hops=job.hops + 1,
+                    envelope_id=reply_id(self.address(), job.universe, job.envelope_id),
+                    count=False,
+                )
+                replied = True
+        except (DeliveryError, EnvelopeError) as exc:
+            logger.warning(
+                "net: the answer to a visit of /%s was not delivered: %s", job.sub.name, exc
+            )
+        finally:
+            self.store.mark_seen(job.universe, job.envelope_id)
+        return Handled("handled", job.universe, "visit", job.envelope_id, replied=replied)
+
     def _turn_job(
         self, contact: Contact, envelope_id: str, thread: str, hops: int
     ) -> _TurnJob | None:
@@ -693,7 +868,13 @@ class NetNode:
     ) -> Handled:
         """Handle one envelope end to end (verification, state, network turn, reply)."""
         handled, job = await blocking(lambda: self.receive(raw))
-        if job is not None:
+        if isinstance(job, _VisitJob):
+            visit = job
+            answer = await self.turns.run_visit(
+                universe=visit.universe, sub=visit.sub, text=visit.text, history=visit.history
+            )
+            handled = await blocking(lambda: self.finish_visit(visit, answer))
+        elif job is not None:
             reply = await self.turns.run(
                 address=job.sender,
                 name=job.contact.name,
@@ -713,9 +894,7 @@ class NetNode:
         else:
             self.stats["dropped"] += 1
             level = logging.INFO if handled.outcome == "duplicate" else logging.WARNING
-            if handled.reason in ("blocked", "not a contact") or handled.reason.startswith(
-                "no public sub-tau"
-            ):
+            if any(quiet in handled.reason for quiet in QUIET_DROPS):
                 level = logging.INFO
             logger.log(
                 level,
@@ -831,8 +1010,10 @@ class NetNode:
         return client.report(identity, self.address(), links, subs=self.universe_subs())
 
     def universe_leave(self) -> dict[str, Any]:
-        """``POST /api/leave``."""
+        """``POST /api/leave``. The universe's pinned keys are forgotten first: a tau that
+        left takes no visits, and a later join pins the keys again at the next visit."""
         client = self.universe()
+        self.store.forget_universe(client.host)
         return client.leave(self.require_identity(), self.address())
 
     def universe_sync(self) -> UniverseSync:

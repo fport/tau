@@ -14,7 +14,9 @@
 - :class:`FakeUniverse` implements a universe (``docs/reference/tau-universe.md`` §2) in
   memory: signed ``join``/``report``/``leave`` with every check in order (the card is fetched
   over its network), the mutual-link rule and the public snapshot. It records every request
-  body, so tests can assert what a hub sent.
+  body, so tests can assert what a hub sent. With an ``identity`` it is also a network node
+  (ADR 0013 §5): it serves its card, takes envelopes at ``POST /net/inbox`` and relays a
+  visitor to a hub with :meth:`FakeUniverse.visit`.
 - :class:`FakeNetwork` is a :class:`~tau_net.spine.Transport` that routes each request by host
   to one of several fake spines (and fake universes), so tests run taus that talk to each other
   with no socket. It refuses ``http`` to any host but ``localhost``/``127.0.0.1``, like a careful
@@ -56,8 +58,12 @@ from tau_net.envelope import (
     Envelope,
     EnvelopeError,
     Payload,
+    build_envelope,
+    open_box,
+    parse_content,
     verify_signature,
 )
+from tau_net.identity import Identity
 from tau_net.peers import CARD_PATH, CARD_TIMEOUT, MAX_CARD_BYTES
 from tau_net.spine import STATE_KEY_PATTERN, TransportError
 from tau_net.universe import MAX_REQUEST_BYTES, MalformedRequest, parse_request, verify_request
@@ -746,6 +752,12 @@ class FakeUniverse:
     links as ``{"peer", "messages"}``. Inspect :attr:`taus`, :attr:`reports` (``address →
     {peer: messages}``), :attr:`requests` (``(method, path)``) and :meth:`bodies` / :meth:`payloads`
     (what was posted); script failures with :meth:`fail`; :meth:`cron` is the hourly clean-up.
+
+    With ``identity`` the universe has its own network identity (ADR 0013 §5): ``GET
+    /.well-known/tau.json`` is its card (:attr:`card`), ``POST /net/inbox`` takes signed
+    envelopes addressed to it (checked like a spine checks them, kept in :attr:`inbox`), and
+    :meth:`visit` sends a hub a ``visit`` for one of its sub-taus; :meth:`answers` opens what
+    came back. ``handles`` maps an address to the handle ``GET /api/taus/<address>`` reports.
     """
 
     def __init__(
@@ -756,6 +768,8 @@ class FakeUniverse:
         network: FakeNetwork | None = None,
         allow_insecure_peers: bool = False,
         rate_per_hour: int = UNIVERSE_RATE_PER_HOUR,
+        identity: Identity | None = None,
+        name: str = "tau universe",
     ):
         if not is_valid_host(host):
             raise ValueError(f"not a host: {host!r}")
@@ -764,6 +778,10 @@ class FakeUniverse:
         self.network = network
         self.allow_insecure_peers = allow_insecure_peers
         self.rate_per_hour = rate_per_hour
+        self.identity = identity
+        self.name = name
+        self.inbox: list[tuple[Payload, dict[str, str]]] = []
+        self.handles: dict[str, str] = {}
         self.taus: dict[str, dict[str, Any]] = {}
         self.reports: dict[str, dict[str, int]] = {}
         self.last_ts: dict[str, int] = {}
@@ -788,6 +806,107 @@ class FakeUniverse:
     @property
     def url(self) -> str:
         return f"{self.scheme}://{self.address}"
+
+    @property
+    def card(self) -> dict[str, Any] | None:
+        """The universe's own card, when it has an identity."""
+        if self.identity is None:
+            return None
+        return {
+            "v": 1,
+            "address": self.address,
+            "name": self.name,
+            **self.identity.public_fields(self.name),
+            "inbox": f"{self.url}/net/inbox",
+            "software": "tau-universe/test",
+        }
+
+    # -- visitors (ADR 0013 §5) ----------------------------------------------------------------
+
+    def visit(
+        self,
+        to: str,
+        text: str,
+        sub: str,
+        *,
+        thread: str | None = None,
+        envelope_id: str | None = None,
+        identity: Identity | None = None,
+        box_key: str | None = None,
+    ) -> Payload:
+        """Relay a visitor's ``text`` for the sub-tau ``sub`` of the tau at ``to``: a signed
+        ``visit`` posted to its inbox. ``identity`` signs instead of the universe's own (a
+        forged or rotated key); ``box_key`` replaces the recipient's (fetched from its card).
+        Raises ``TransportError`` or ``RuntimeError`` when the inbox does not queue it."""
+        signer = identity or self.identity
+        if signer is None or self.network is None:
+            raise RuntimeError("the universe needs an identity and a network to visit")
+        if box_key is None:
+            status, _, body = self.network(
+                "GET",
+                base_url(to, allow_insecure=self.allow_insecure_peers) + CARD_PATH,
+                {},
+                None,
+                5,
+            )
+            if status != 200:
+                raise RuntimeError(f"no card at {to} ({status})")
+            box_key = json.loads(bytes(body).decode("utf-8"))["box_key"]
+        envelope, payload = build_envelope(
+            signer,
+            sender=self.address,
+            recipient=to,
+            recipient_box_key=box_key,
+            kind="visit",
+            content={"text": text, "sub": sub},
+            envelope_id=envelope_id,
+            thread=thread,
+            ts=int(self.clock()),
+        )
+        inbox = base_url(to, allow_insecure=self.allow_insecure_peers) + "/net/inbox"
+        headers = {"content-type": "application/json"}
+        status, _, body = self.network("POST", inbox, headers, envelope.to_bytes(), 15)
+        if status not in (200, 202):
+            raise RuntimeError(f"the visit was not queued: {status} {bytes(body)!r}")
+        return payload
+
+    def answers(self) -> list[tuple[Payload, dict[str, str]]]:
+        """What reached :attr:`inbox`: each envelope's header and its opened content."""
+        with self._lock:
+            return list(self.inbox)
+
+    def _inbox(self, body: bytes) -> Response:
+        """``POST /net/inbox`` of a universe with an identity: the spine's checks, in order
+        (except the rate limits), then the box is opened with the universe's key."""
+        if self.identity is None:
+            return _error(404, "not_found")
+        if len(body) > MAX_ENVELOPE_BYTES:
+            return _error(413, "too_large")
+        try:
+            envelope = Envelope.from_json(json.loads(body.decode("utf-8")))
+            payload = Payload.from_json(json.loads(envelope.payload_bytes.decode("utf-8")))
+        except (UnicodeDecodeError, ValueError) as exc:
+            detail = exc.reason if isinstance(exc, EnvelopeError) else "body is not JSON"
+            return _error(400, "bad_request", detail)
+        if payload.recipient != self.address:
+            return _error(400, "wrong_recipient")
+        if abs(int(self.clock()) - payload.ts) > STALE_SECONDS:
+            return _error(400, "stale")
+        card = self._card(payload.sender)
+        if card is None:
+            return _error(502, "sender_card_unavailable")
+        try:
+            verify_signature(card["sign_key"], envelope.payload_bytes, envelope.sig_bytes)
+            content = parse_content(payload.kind, open_box(payload.box, self.identity, payload.aad))
+        except BadSignature:
+            return _error(403, "bad_signature")
+        except EnvelopeError as exc:
+            return _error(400, "bad_request", exc.reason)
+        with self._lock:
+            if any(p.sender == payload.sender and p.id == payload.id for p, _ in self.inbox):
+                return _json(200, {"status": "duplicate", "id": payload.id})
+            self.inbox.append((payload, content))
+        return _json(202, {"status": "queued", "id": payload.id})
 
     # -- scripting and inspection --------------------------------------------------------------
 
@@ -902,6 +1021,10 @@ class FakeUniverse:
                     return answer
         if method == "GET" and path in ("/", "/universe"):
             return 200, {"content-type": "text/html; charset=utf-8"}, b"<!doctype html>"
+        if method == "GET" and path == CARD_PATH and self.card is not None:
+            return _json(200, self.card)
+        if method == "POST" and path == "/net/inbox":
+            return self._inbox(body)
         if method == "GET" and path == "/api/universe":
             headers = {"cache-control": "public, max-age=60", "access-control-allow-origin": "*"}
             return _json(200, self.snapshot(), headers)
@@ -923,6 +1046,11 @@ class FakeUniverse:
             "last_seen": entry["last_seen"],
             "online": now - entry["last_seen"] <= ONLINE_SECONDS,
             "subs": [dict(sub) for sub in entry.get("subs", [])],
+            **(
+                {"handle": self.handles[entry["address"]]}
+                if entry["address"] in self.handles
+                else {}
+            ),
         }
 
     def _one(self, address: str) -> Response:
@@ -1022,8 +1150,16 @@ class FakeUniverse:
                     if link["peer"] in self.taus and link["peer"] != address
                 }
                 # A report replaces the public sub-taus; one without `subs` lists none.
-                subs = {sub["name"]: _plain(sub["about"]) for sub in payload.get("subs") or []}
-                entry["subs"] = [{"name": name, "about": subs[name]} for name in sorted(subs)]
+                subs = {
+                    sub["name"]: {
+                        "name": sub["name"],
+                        "about": _plain(sub["about"]),
+                        "web": sub.get("web") is True,
+                        "starters": [_plain(text) for text in sub.get("starters") or []],
+                    }
+                    for sub in payload.get("subs") or []
+                }
+                entry["subs"] = [subs[name] for name in sorted(subs)]
                 visible = sum(1 for link in self.links() if address in (link["a"], link["b"]))
                 return _json(200, {"ok": True, "visible_links": visible})
             del self.taus[address]

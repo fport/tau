@@ -215,6 +215,35 @@ NET_MESSAGES: dict[str, dict[str, str]] = {
         "en": "sub-tau:  /{name}: {about}",
         "tr": "sub-tau:  /{name}: {about}",
     },
+    "net.universe.status.sub_web": {
+        "en": "sub-tau:  /{name} (web page, {visits} visitor turns today): {about}",
+        "tr": "sub-tau:  /{name} (web sayfası, bugün {visits} ziyaretçi turu): {about}",
+    },
+    "net.universe.status.handle": {
+        "en": "handle:   @{handle}  {url}",
+        "tr": "tanıtıcı: @{handle}  {url}",
+    },
+    "net.universe.status.no_handle": {
+        "en": "handle:   none yet (`tau net universe claim` proves one with GitHub)",
+        "tr": "tanıtıcı: henüz yok (`tau net universe claim` GitHub ile bir tane kanıtlar)",
+    },
+    "net.universe.claim.link": {
+        "en": "Open this link within an hour and sign in with GitHub there; {universe} then "
+        "binds your GitHub login as the handle of {address}:",
+        "tr": "Bu bağlantıyı bir saat içinde aç ve orada GitHub ile giriş yap; {universe} "
+        "GitHub kullanıcı adını {address} için tanıtıcı olarak bağlar:",
+    },
+    "net.universe.claim.private": {
+        "en": "The link is a signed claim for this tau: whoever opens it with their GitHub "
+        "account could take the handle for it, so do not share it.",
+        "tr": "Bağlantı bu tau için imzalı bir talep: onu kendi GitHub hesabıyla açan herkes "
+        "tanıtıcıyı alabilir, o yüzden paylaşma.",
+    },
+    "net.universe.claim.not_joined": {
+        "en": "This tau is not in the universe yet; the handle shows once you run `tau net "
+        "universe join`.",
+        "tr": "Bu tau henüz evrende değil; tanıtıcı `tau net universe join` çalıştırınca görünür.",
+    },
 }
 
 _collisions = set(NET_MESSAGES) & set(MESSAGES)

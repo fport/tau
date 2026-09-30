@@ -355,6 +355,7 @@ def test_join_status_leave_from_the_command_line(
     assert lines[5].startswith("listed:   yes, online, last report ")
     assert lines[6:] == [
         f"page:     https://{UNIVERSE}/universe#{ALICE}",
+        "handle:   none yet (`tau net universe claim` proves one with GitHub)",
         f"visible:  {BOB}, messages: 1",
     ]
 

@@ -468,7 +468,7 @@ def test_universe_subs_lists_only_public_ones_cut_and_capped(tmp_path: Path, net
     assert all(int(entry["name"][1:]) % 2 == 0 for entry in listed)
     assert universe_subs(None) == []
     assert universe_subs(FakeSubs((long, True))) == [
-        {"name": "zeta", "about": ("x " * 100).strip()}
+        {"name": "zeta", "about": ("x " * 100).strip(), "web": False, "starters": []}
     ]
 
 
@@ -486,8 +486,13 @@ def test_the_universe_report_lists_public_sub_taus_only(tmp_path: Path, network)
     node.universe_report()
     [report] = universe.payloads("report")
     assert report["subs"] == [
-        {"name": "coach", "about": "A strict but kind workout coach."},
-        {"name": "landing", "about": "Writes landing-page copy."},
+        {
+            "name": "coach",
+            "about": "A strict but kind workout coach.",
+            "web": False,
+            "starters": [],
+        },
+        {"name": "landing", "about": "Writes landing-page copy.", "web": False, "starters": []},
     ]
     [entry] = universe.snapshot()["taus"]
     assert [sub["name"] for sub in entry["subs"]] == ["coach", "landing"]

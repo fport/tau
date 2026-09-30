@@ -6,7 +6,7 @@ This page is the contract between three parts, which are built and tested separa
 - the universe client in `tau-net` (`tau net universe`, the `net` hub service);
 - the spine kit in `tau-net` (`tau net spine init|deploy`).
 
-The decision is [ADR 0010](../adr/0010-public-site-and-tau-universe.md). Addresses, base64url, cards and the scheme rule are those of the [tau network protocol](tau-network.md) §1–§2.
+The decision is [ADR 0010](../adr/0010-public-site-and-tau-universe.md); handles, pages and visitors come from [ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md). §5 also fixes what the universe asks of tau-host's visitor API. Addresses, base64url, cards and the scheme rule are those of the [tau network protocol](tau-network.md) §1–§2.
 
 ## 1. Signed requests
 
@@ -80,6 +80,8 @@ The universe's own host is the `UNIVERSE` variable when it is set, otherwise the
 | `POST /api/report` | a signed `report` |
 | `POST /api/leave` | a signed `leave` |
 | `POST /api/claim` | a signed `claim`, posted by the claim page with the owner's tau-host session cookie |
+| `POST /api/chat/<target>`, `GET /api/chat/<target>/<thread>` | the visitor chat with web sub-taus (§5) |
+| `GET /.well-known/tau.json`, `POST /net/inbox` | the universe's own card and inbox, with `UNIVERSE_IDENTITY` (§5) |
 
 A handle in a path is matched without regard to case: `/@Alice` redirects (`301`) to `/@alice`, and `/api/people/Alice` answers Alice's page. The templates are served only through these routes, never at `/person` or `/sub`.
 
@@ -263,3 +265,141 @@ A report works like this:
   4. writes `TAU_SPINE_URL` into the hub's `.env`: `https://<address>` from `--address`, or the `workers.dev` URL printed by the deploy.
 
   Afterwards `tau net init` and `tau net publish` finish the setup.
+
+## 5. Visitors: the universe's identity, inbox and chat
+
+[ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §5. Anonymous visitors talk to a public sub-tau with `web = true` on its page (`/<slug>` or `/@<handle>/<name>`). A visitor has no key and no card, so the universe relays every message and keeps the conversation, a **thread**, for 24 hours:
+
+- a **hosted** sub-tau, one of a tau at `<universe>/@<handle>`, is answered by tau-host through the `HOST` binding;
+- a **hub-run** sub-tau, one of any other tau (local mode, cloud mode, or a tau-host on another host), gets a sealed `visit` envelope from the universe's own network identity, and its hub answers with a `message` to the universe's inbox ([protocol](tau-network.md) §3 and §6.4, "Visits").
+
+Visitor chats are not end-to-end private: the universe holds each thread in plain text for 24 hours to relay it, and the page says so. The universe never logs a visitor's text.
+
+### The universe's identity
+
+The Worker secret `UNIVERSE_IDENTITY` is the universe's network identity, in the form of `TAU_NET_IDENTITY` (protocol §2: the identity JSON, base64url-encoded).
+
+- `pnpm run identity` makes a fresh one and writes it to `.universe-identity` (gitignored, mode `0600`), and `npx wrangler secret put UNIVERSE_IDENTITY < .universe-identity` hands it to the deployed Worker. `pnpm run identity --dev` writes it to `.dev.vars` for `pnpm dev` instead. The script prints only the public keys, never the secret, and refuses to replace an existing identity without `--force`.
+- `pnpm run configure --check-identity` asks Wrangler for the Worker's secret names and says whether `UNIVERSE_IDENTITY` is set.
+- Hubs pin the universe's keys at its first visit. A new identity makes every hub drop the universe's visits as "key changed" until its owner runs `tau net universe leave` and `join`, so keep the file rather than make a new one.
+
+| Method and path | Response |
+|---|---|
+| `GET /.well-known/tau.json` | `200` the universe's card: `{"v": 1, "address": "<universe>", "name": "tau universe", "sign_key", "box_key", "inbox": "https://<universe>/net/inbox", "software": "tau-universe/<version>"}`, with `Access-Control-Allow-Origin: *` and `Cache-Control: public, max-age=300`; `404 {"error": "no_card"}` without a readable `UNIVERSE_IDENTITY` |
+| `POST /net/inbox` | hubs' answers to the universe's visits (below) |
+
+Without the secret, the universe has no card, its inbox answers `503`, and visitors reach only hosted sub-taus.
+
+### The inbox
+
+`POST /net/inbox` takes one kind of envelope: a hub's answer to a `visit` the universe sent. That is a `message` whose `reply_to` is the visit's id, whose `thread` is the visitor's thread and whose `from` is the address the visit went to. The checks follow a spine's inbox (protocol §4), in this order and with the same codes:
+
+| Check | Failure |
+|---|---|
+| the universe has a readable `UNIVERSE_IDENTITY` | `503 {"error": "not_configured"}` |
+| `Content-Type: application/json` | `415 {"error": "unsupported_media_type"}` |
+| body ≤ 65 536 bytes | `413 {"error": "too_large"}` |
+| an envelope of protocol §3: `payload` and `sig` b64u, every payload field valid | `400 {"error": "bad_request", "detail": "..."}` |
+| `to` is the universe's host | `400 {"error": "wrong_recipient"}` |
+| `abs(now - ts) ≤ 300` | `400 {"error": "stale"}` |
+| the client IP sent at most 60 envelopes in the last minute (`INBOX_IP_LIMIT`), and `from` at most 30 (`INBOX_SENDER_LIMIT`) | `429 {"error": "rate_limited"}` |
+| a `message` with a `reply_to`; that id is a visit of the thread `thread`; the visit went to `from` | `400 {"error": "bad_request", "detail": "..."}` |
+| the sender's card can be fetched (the limits of protocol §4) | `502 {"error": "sender_card_unavailable"}` |
+| the signature verifies with the card's `sign_key` | `403 {"error": "bad_signature"}` |
+| the box opens with the universe's identity, and its `sub` names the visited sub-tau | `400 {"error": "bad_request", "detail": "..."}` |
+| the visit has no answer yet | `200 {"status": "duplicate", "id": ...}` for the same answer again, `400 {"error": "bad_request"}` for another one |
+
+An accepted answer joins the visitor's thread and gets `202 {"status": "delivered", "id": ...}`; a hub counts any `202` as delivered. The visit check runs before the card fetch, so an envelope the universe never asked for costs no subrequest. An answer is taken also after its visit stopped counting as pending, or after the visit's delivery seemed to fail, as long as the thread lives.
+
+### The chat API
+
+JSON, for the site's own pages only: no CORS headers, and every send carries the page's `Origin`. `<target>` is a slug (`coach`) or a handle and a name (`@alice/coach`, the handle in any case), resolved through the directory like `GET /api/subs/...`. A visitor is the random cookie `tau_visitor`, and a thread belongs to the cookie that started it.
+
+**`POST /api/chat/<target>`** with `{"text": str, "thread": str?}` sends a message; without `thread` it starts a new thread. The checks, in order:
+
+| Check | Failure |
+|---|---|
+| the path is `/api/chat/<slug>` or `/api/chat/@<handle>/<name>` | `404 {"error": "not_found"}` |
+| `Content-Type: application/json` | `415 {"error": "unsupported_media_type"}` |
+| `Origin` equals the universe's own origin | `403 {"error": "bad_origin"}` |
+| the client IP (`CF-Connecting-IP`; an IPv6 address by its /64) sent at most 10 messages in the last minute (`CHAT_IP_LIMIT`) | `429 {"error": "rate_limited"}` |
+| body ≤ 16 384 bytes | `413 {"error": "too_large"}` |
+| a JSON object; `text` a string of 1–2 000 characters after trimming the ends (as JavaScript counts them, which is tau-host's limit too); `thread` absent, `null` or an id (`^[A-Za-z0-9_-]{16,64}$`) | `400 {"error": "bad_request", "detail": "..."}` |
+| the directory lists the sub-tau | `404 {"error": "not_found"}` |
+| its `web` is true | `403 {"error": "not_web"}` |
+| a hosted sub-tau needs the `HOST` binding, a hub-run one `UNIVERSE_IDENTITY` | `503 {"error": "unavailable"}` |
+| `thread`, when given, exists, has not expired, belongs to this visitor and talks to this sub-tau | `404 {"error": "not_found"}` |
+| the thread has room for this message and its answer (at most 50 messages) | `409 {"error": "thread_full"}` |
+| the thread's last message is not still awaiting its answer | `409 {"error": "busy"}` |
+
+On success the message is stored and the answer is `200 {"thread": str, "id": str, "n": int}`: the thread's id, the visit's id and the message's number in the thread. A request without a valid `tau_visitor` cookie gets one: `Set-Cookie: tau_visitor=<32 base64url characters>; Path=/api/chat; Max-Age=31536000; HttpOnly; SameSite=Lax; Secure` (`Secure` on https). The delivery runs after the answer (`waitUntil`), and its outcome shows in the thread.
+
+**`GET /api/chat/<target>/<thread>?after=<n>&wait=<s>`** reads the thread with the cookie that started it:
+
+```json
+{
+  "messages": [
+    {"n": 1, "from": "visitor", "text": "Plan my week", "ts": 1790000000},
+    {"n": 2, "from": "sub", "text": "Three runs: ...", "ts": 1790000004}
+  ],
+  "pending": false,
+  "state": "open"
+}
+```
+
+- **`messages`** are those with `n > after` (`after` is 0 by default), oldest first; `from` is `visitor` or `sub`.
+- **`pending`** is true while the last message awaits its answer: up to 60 seconds for a hosted sub-tau, up to 120 seconds for a hub-run one. A hub whose owner is offline answers when it is back; that answer still joins the thread, after `pending` went false.
+- **`state`** is one of:
+  - `open`;
+  - `resting`: a hosted sub-tau reached its `web_daily` cap for the UTC day, or its owner's budget ("resting until tomorrow");
+  - `full`: no room for another exchange, so the page starts a new thread;
+  - `unavailable`: the last message could not be delivered or answered, and the visitor may try again.
+
+  A new message sets the state back to `open`. A hub-run sub-tau over its `web_daily` cap drops the visit silently, so the universe cannot tell it from an offline hub.
+- **Waiting.** While a message is pending and nothing newer than `after` is there, the request waits up to `wait` seconds (0–25, 25 by default) and returns as soon as the answer lands. It returns at once when nothing is pending, or with `wait=0`. A page sends a message, then polls with `after=<its n>` until `pending` is false; a page left open may look for late answers with `wait=0` every 30 seconds or so.
+- A request without the cookie, an unknown, expired or foreign thread, and a target that is not the thread's sub-tau get `404 {"error": "not_found"}`; a bad `after` or `wait` gets `400`.
+
+The wait costs the Workers Free plan little: the Worker holds the request and reads the thread's Durable Object every 2 seconds, so the object is billed for a few milliseconds per read and never for the wait itself. A wait of 25 seconds costs at most 14 short Durable Object requests and one Worker request, where a page polling every 2 seconds would cost 13 of each.
+
+### Delivering a message
+
+**Hosted.** The universe calls tau-host's visitor API through `HOST`:
+
+```http
+POST https://<universe>/api/visit/<handle>/<name>
+Content-Type: application/json
+
+{"visitor": "<43 base64url characters>", "thread": "<tau-host's thread id>", "text": "..."}
+```
+
+- `visitor` is `b64u(SHA-256("tau-universe/1 visitor|" + cookie))`, so neither tau-host nor the universe's storage holds the cookie itself.
+- `thread` is tau-host's own thread id, absent on a thread's first message. The universe keeps it with its own thread.
+- No `Origin`, no `Cookie` and no client IP go along: the universe checked the origin and applied the per-IP limit itself.
+- The call times out after 28 seconds, within the 30 seconds `waitUntil` allows.
+
+tau-host answers `200 {"thread": str, "reply": {"id": str, "text": str, "ts": int}}`, and the reply joins the thread. Errors come as `{"error": code}`:
+
+| tau-host answers | The thread |
+|---|---|
+| `429 daily_cap`, `402 budget` | `resting` |
+| `409 thread_full` | `full` |
+| `404 unknown_thread` (tau-host no longer has its thread) | the universe sends the message again without `thread`, which starts a new tau-host thread |
+| `502 no_reply` (the sub-tau chose not to answer) | no answer; `open` |
+| anything else, a timeout, a network error | `unavailable` |
+
+**Hub-run.** The universe builds a `visit` envelope (protocol §3) and posts it to `<scheme>://<address>/net/inbox`, the inbox of the tau that runs the sub-tau:
+
+- `from` is the universe's host, `to` that tau's address, `id` the visit's id, `thread` the visitor's thread id, `reply_to` null and `hops` 0;
+- the content `{"text", "sub"}` is sealed to the box key of the tau's card, fetched for each visit.
+
+A `202`, or `200 {"status": "duplicate"}`, is delivered. Anything else, or a card that cannot be fetched, makes the thread `unavailable`. A hub whose owner is offline is fine: its spine keeps the visit until the hub is back.
+
+### The Relay
+
+Each thread lives in its own SQLite-backed Durable Object, `Relay`, named by the thread id. It holds:
+
+- **`thread`**: the visitor id, the sub-tau (its tau's address and its name, with the slug and handle its page had), whether tau-host answers it, tau-host's thread id, the state, and when the thread began and ends;
+- **`messages`**: `{n, sender, text, ts}`, at most 50;
+- **`visits`**: one row per message relayed, with its id, until when it is pending, and the id of its answer.
+
+The tables are created only when a thread begins, so reading an unknown thread id leaves no storage behind. An alarm deletes the whole object 24 hours after the thread began, and every read treats an expired thread as gone even before the alarm runs.

@@ -35,5 +35,12 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 143 | [Go live: `tau.getporti.com`, the owner's tau in the universe, the docs](143-go-live-site-and-universe.md) | AFK | 140, 141, 142 |
 | 144 | [Docs: build your own tau from zero, verified on a clean home](144-build-your-own-tau-docs.md) | AFK | 141, 142 |
 | 145 | [Publish tau-net and tau-cloud on PyPI](145-publish-tau-net-tau-cloud.md) | HITL | 142 |
+| 146 | [The public site explains how tau works, in English and Turkish](146-site-how-it-works-bilingual.md) | AFK | – |
+| 147 | [The docs site in English and Turkish](147-docs-bilingual.md) | AFK | – |
+| 148 | [A README a newcomer understands, in English and Turkish](148-readme-rewrite.md) | AFK | 146, 149 |
+| 149 | [Sub-taus: `tau-sub` with drafting, chat, delegation and tools](149-sub-taus.md) | AFK | – |
+| 150 | [Public sub-taus over the network and in the universe](150-sub-taus-network-universe.md) | AFK | 149, 105, 146 |
+| 151 | [Sub-taus from `tau chat`, the TUI and Telegram: `/sub NAME …`](151-sub-tau-slash-commands.md) | AFK | 149 |
+| 152 | [Generated interfaces in the web UI](152-generated-ui.md) | AFK | 074 |
 
 Live status: `python3 roadmap/board.py --layer L9`

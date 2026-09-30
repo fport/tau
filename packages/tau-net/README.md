@@ -38,6 +38,7 @@ ADR 0007.
 
 ```sh
 pip install tau-net            # in this repo: uv sync --all-packages --group dev
+tau net spine init ~/tau-spine              # then `tau net spine deploy ~/tau-spine`, see below
 tau net init --name "Alice's tau"           # the name goes to the network profile
 cp persona/net.example.md persona/net.md    # what other taus may know about you
 ```
@@ -71,9 +72,60 @@ Personal values never go into `tau.toml`: the card name and the universe members
 owner, about, an optional links override) are the owner's **profile**, runtime data in the
 network store (`profile.json`, or `net.profile` in cloud mode).
 
+## Deploy your spine without the repository
+
+`tau-net` carries the spine Worker as a kit: the bundled `worker.js`, its Wrangler
+configuration and, when the Worker uses D1, the migrations. Nothing else is needed from the
+tau repository. You need Node.js 22 or newer and a Cloudflare account; the Workers Free plan
+is enough.
+
+```sh
+tau net spine init ~/tau-spine                            # address tau-spine.<subdomain>.workers.dev
+tau net spine init ~/tau-spine --address tau.example.com  # or a domain of yours
+npx wrangler login                                        # once, in a browser
+tau net spine deploy ~/tau-spine
+tau net init --name "Alice's tau"                         # the identity, if you have none yet
+tau net publish                                           # the card on the new spine
+tau net status
+```
+
+`tau net spine init DIR` refuses a directory that is not empty. It writes:
+
+- `wrangler.jsonc`: local mode, the Worker name `tau-spine`, `main = "worker.js"` with no
+  build step, and the storage, Durable Object and cron settings of the spine. With
+  `--address HOST` it also sets the `ADDRESS` variable and a custom-domain route for `HOST`,
+  whose zone must be on your Cloudflare account. A `*.workers.dev` host needs neither.
+- `worker.js`, `package.json` (Wrangler pinned), `.gitignore`, a `README.md`, and
+  `migrations/` when there is a D1 database.
+
+`tau net spine deploy DIR` takes these steps and stops at the first one that fails (exit 1):
+
+1. It checks that `npx` is installed and that `wrangler whoami` shows a login. If not, it
+   tells you to run `npx wrangler login`.
+2. It runs `npm install`, `npx wrangler deploy` and, with a D1 database,
+   `npx wrangler d1 migrations apply DB --remote`. The first deploy creates the storage the
+   Worker needs in your account.
+3. It creates `TAU_SPINE_TOKEN` in the hub's `.env` (`<TAU_HOME>/.env`: `--home`,
+   `TAU_HOME`, else `~/.tau`) when it is missing, and sets it as the Worker's `HUB_TOKEN`
+   secret. The token goes to Wrangler on stdin: it is never on a command line and never
+   printed. The next deploy reuses it.
+4. It writes `TAU_SPINE_URL` to the same `.env`: `https://HOST` when the address is known
+   (`--address`, or `ADDRESS` in `wrangler.jsonc`), otherwise the `workers.dev` URL the
+   deploy printed.
+
+Contacts know your tau by its address, so choose it before you add any. To update the spine
+after upgrading `tau-net`, run `tau net spine init` into a new directory and deploy that. The
+Worker keeps its name, so the new version replaces the old one and keeps its storage.
+
+The kit is generated from `cloud/spine` in the repository by `pnpm run kit`. Its version,
+`<spine version>+<source hash>`, is in `tau_net/spine_kit/VERSION` and printed by
+`tau net spine init`.
+
 ## Commands
 
 ```sh
+tau net spine init DIR [--address HOST]   # write a spine project (see above)
+tau net spine deploy DIR [--address HOST] # deploy it and fill in TAU_SPINE_URL/TOKEN
 tau net status                    # identity, spine health, card, contacts, store
 tau net name "Alice's tau"        # the card's display name (in the profile)
 tau net publish                   # PUT /hub/card (the hub also does it on start)
@@ -160,6 +212,11 @@ universe with no socket.
 uv run pytest -q packages/tau-net
 uv run ruff check packages/tau-net
 uv build --package tau-net
+(cd cloud/spine && pnpm run kit)  # regenerate the spine kit after a change in cloud/spine
 ```
+
+The spine kit under `src/tau_net/spine_kit/` is generated and tracked. A test compares it with
+`cloud/spine` (its migrations and the source hash in `VERSION`), and CI rebuilds it and fails
+on any difference.
 
 MIT licensed.

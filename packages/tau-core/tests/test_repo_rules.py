@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 from pathlib import Path
@@ -77,3 +78,68 @@ def test_no_personal_paths_in_tracked_files() -> None:
         if home_path.search(text):
             offenders.append(path.relative_to(ROOT))
     assert offenders == [], f"absolute personal paths in tracked files: {offenders}"
+
+
+# -- the owner guard (issue 110, ADR 0008) -----------------------------------------------------
+
+GUARD_NONE_ALLOWED = {
+    Path("packages/tau-core/src/tau_core/channels/telegram.py"),
+    Path("packages/tau-net/src/tau_net/turns.py"),
+}
+"""The identified in-hub channels, the only code that may opt out of the guard."""
+
+
+def _python_sources() -> list[tuple[Path, ast.Module]]:
+    return [
+        (path.relative_to(ROOT), ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        for path in _source_files()
+        if path.suffix == ".py"
+    ]
+
+
+def _calls(tree: ast.Module) -> list[ast.Call]:
+    return [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+
+
+def _called_name(call: ast.Call) -> str | None:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return None
+
+
+def test_only_identified_channels_opt_out_of_the_guard() -> None:
+    found: set[Path] = set()
+    for path, tree in _python_sources():
+        for call in _calls(tree):
+            for keyword in call.keywords:
+                value = keyword.value
+                if (
+                    keyword.arg == "guard"
+                    and isinstance(value, ast.Constant)
+                    and value.value is None
+                ):
+                    found.add(path)
+    assert found <= GUARD_NONE_ALLOWED, f"guard=None outside the allowlist: {found}"
+    assert found == GUARD_NONE_ALLOWED, "an identified channel stopped opting out"
+
+
+def test_every_tier_gate_decides_about_the_guard() -> None:
+    offenders = []
+    for path, tree in _python_sources():
+        for call in _calls(tree):
+            if _called_name(call) == "TierGate":
+                if not any(keyword.arg == "guard" for keyword in call.keywords):
+                    offenders.append(f"{path}:{call.lineno}")
+    assert offenders == [], f"TierGate( without guard=: {offenders}"
+
+
+def test_no_channel_flag_or_variable_selects_a_channel() -> None:
+    offenders = [
+        p.relative_to(ROOT)
+        for p in _code_files()
+        if p.suffix == ".py"
+        and re.search(r"--channel\b|TAU_CHANNEL", p.read_text(encoding="utf-8"))
+    ]
+    assert offenders == [], f"a channel is chosen by code, never by a flag: {offenders}"

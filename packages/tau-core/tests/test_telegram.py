@@ -185,6 +185,28 @@ def test_allowlisted_message_gets_a_reply_in_a_telegram_session(tmp_path: Path) 
     assert "123:test-token" not in json.dumps(status) and str(ME) not in json.dumps(status)
 
 
+def test_telegram_turns_run_while_a_guard_is_active(tmp_path: Path) -> None:
+    """Telegram is an identified in-hub channel: it builds with ``guard=None`` (ADR 0008)."""
+    from tau_core.guard import ENROLLED_MARKER, reset_guards, resolve_guard
+
+    config = make_config(tmp_path, default="Here.")
+    marker = config.data_dir / ENROLLED_MARKER
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text('{"v": 1, "enrollment": "E1"}', encoding="utf-8")
+    reset_guards()
+    assert resolve_guard(config) is not None  # guarded channels would be locked now
+
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "hi")
+        await run.until(replies_to(run, 1))
+        [chat] = run.service._chats.values()
+        assert chat.agent is not None and chat.agent.guard is None
+
+    run = serve(config, body)
+    assert run.api.sent[0]["text"] == "Here."
+    reset_guards()
+
+
 def test_messages_from_other_chats_are_dropped_and_logged_never_answered(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

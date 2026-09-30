@@ -30,8 +30,8 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 
 ## Talking to tau
 
-- **Channel** — a way to converse with tau: Telegram, TUI, the web app (`web`), TauBar, voice ("Hey tau"), MCP server.
-  - tau Desktop runs the TUI, so it is the `tui` channel.
+- **Channel** — a way to converse with tau: Telegram, TUI, the web app (`web`), the tau app, voice ("Hey tau"), MCP server.
+  - The tau app's chat windows run the TUI, so they are the `tui` channel.
   - The web app's turns run inside the hub as `web`, a guarded and trusted channel.
   - Scheduled tasks run as `schedule`.
 - **Session** — one recorded conversation: messages, tool calls, approvals. Resumed with `/resume`. Kept forever.
@@ -40,8 +40,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Compaction** — `/compact`: summarizing the current session with the agent's own model and continuing in a *new* session whose history starts with that summary (the **seed**). The old session is kept untouched and the two point at each other in their metadata (`compacted_from`, `compacted_to`). Never a rewrite of an existing session. *Avoid: truncate, prune.*
 - **UI language** — the language of the UI chrome (slash-command hints, labels, pane titles, key hints, notices, approval dialog, CLI help): `en` (default) or `tr`, set by `[ui] language` in `tau.toml`, `TAU_LANG`, `tau --lang` or `/lang` for one run. Looked up through `tau_core.i18n` (`t(key, language)`). Distinct from the persona's language. *Avoid: locale.*
 - **Status report** — the message the hub sends to Telegram when it starts or restarts.
-- **TauBar** — the macOS tray app (Tauri): runs and supervises the hub ("Run the hub"), sleep modes, launch at login, the guard line and "Lock now"; holds the camera and microphone permission for the hub it runs; later approvals, voice.
-- **tau Desktop** — the desktop app (`apps/tau-desktop`, Tauri + xterm.js): every window runs the real `tau tui` in a PTY. It holds no camera or microphone permission and opens no network listener. *Avoid: desktop client, GUI.*
+- **tau app** — tau's Mac app, "tau" (`apps/tau`, Tauri + xterm.js, bundle id `com.tau.app`): the menu bar icon with its panel, menu and settings window; runs and supervises the hub ("Run the hub"), sleep modes, launch at login, the guard line and "Lock now"; **chat windows**, each running the real `tau tui` in a PTY; updates itself from the GitHub release. Holds the camera and microphone permission for the hub it runs; its webviews get none, and it opens no network listener. Replaced TauBar (the menu bar app) and tau Desktop (the chat windows) in roadmap 170. *Avoid: TauBar, tau Desktop, desktop client, GUI.*
 
 ## tau network
 
@@ -85,7 +84,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 ## Safety
 
 - **Tier** — a tool's permission level. **Tier 0**: read, runs freely. **Tier 1**: digital write, runs and is logged. **Tier 2**: physical action, activating self-written code, or speaking for the owner to another tau (`net_send`), needs approval.
-- **Approval** — an explicit user decision on a tier-2 call, through whichever channel the call came from (terminal prompt, Telegram buttons, TauBar). Never from the tau network: a network turn refuses every approval, and sending to another tau (`net_send`) is itself tier 2.
+- **Approval** — an explicit user decision on a tier-2 call, through whichever channel the call came from (terminal prompt, Telegram buttons, the tau app). Never from the tau network: a network turn refuses every approval, and sending to another tau (`net_send`) is itself tier 2.
 - **Pending tool** — a tool tau wrote itself, waiting in `tools/_pending/` for approval.
 - **Sim mode / real mode** — robot execution targets. Sim is the default; real mode needs explicit config and approval.
 
@@ -95,7 +94,7 @@ Decided in [ADR 0008](docs/adr/0008-owner-guard.md); the user's side is `docs/gu
 
 - **Owner** — the one person tau works for: the person enrolled in the guard and the holder of the allowlisted Telegram chats. There is exactly one. *Avoid: user account, admin.*
 - **Guard** (owner guard) — the check that the owner is at the Mac before a guarded channel works: the `guard` hub service of `tau-guard`, seen by channels through `tau_core.guard` (`HubGuard`). It only ever narrows: it refuses turns and turns approvals into rejections, never approves. States: `off`, `locked`, `verifying`, `unlocked`, `unavailable`. *Avoid: loop guard (that is `[agent] max_turns`), auth, login.*
-- **Guarded channel** — a channel that needs the owner verified at the Mac: the TUI (local, over SSH, in tau Desktop, in a web tab), `tau chat`, `tau ask`, later voice, and any channel that does not opt out (`build_agent(guard=DISCOVER)` fails closed).
+- **Guarded channel** — a channel that needs the owner verified at the Mac: the TUI (local, over SSH, in a chat window of the tau app, in a web tab), `tau chat`, `tau ask`, later voice, and any channel that does not opt out (`build_agent(guard=DISCOVER)` fails closed).
 - **Identified channel** — an in-hub channel that knows the owner another way and passes `guard=None` in code: Telegram (chat-id allowlist) and network turns (contacts' keys, no tools). The only two; a repo rule enforces it. Distinct from **trusted** (ADR 0006), which is about who may answer a tier-2 approval.
 - **Step-up** — the fresh identity check after the owner approves a tier-2 call on a guarded channel: head turns, or a passive match shortly after one. It never replaces the approval; a failure rejects the call.
 - **Face template** — the owner's enrolled face: the renormalised mean of 10–20 SFace embeddings plus the head-turn calibration, AES-GCM encrypted in `TAU_DATA_DIR/guard/owner.face.v1.bin` with the key in the macOS Keychain. Biometric data; never leaves the hub, excluded from backups. *Avoid: face ID, photo (no image is ever stored).*

@@ -36,8 +36,7 @@ cloud/spine/           tau-spine Worker (TS, bun): card, mailbox, hub long poll;
 cloud/universe/        tau-universe Worker (TS, bun): the public site tau.<domain> and the opt-in universe — from #140 on
 cloud/host/            tau-host Worker (TS, bun): hosted taus, GitHub sign-in, the owner's web app — from #159 on
 cloud/shared/          TypeScript shared by the Workers: the protocol's TS half, the character generator — from #158 on
-apps/taubar/           Tauri v2 + React tray app — from #024 on
-apps/tau-desktop/      tau Desktop: Tauri v2 + React + xterm.js, `tau tui` in a PTY — from #116 on
+apps/tau/              the Mac app "tau": Tauri v2 + React + xterm.js; menu bar, hub supervisor, chat windows (`tau tui` in a PTY) — from #024/#116, one app since #170
 infra/tunnel/ backup/  Cloudflare Tunnel + Access setup, encrypted R2 backups — from #076/#018 on
 persona/  tools/       persona files; hot-reloaded tools (+ tools/_pending/)
 mkdocs.yml + docs/     the docs site (MkDocs Material); guides under docs/getting-started, guides, reference, contributing

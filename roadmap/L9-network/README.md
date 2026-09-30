@@ -57,5 +57,6 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 165 | [Go live: hosted taus on `tau.getporti.com`](165-hosted-go-live.md) | HITL | 159–163 |
 | 167 | [One GitHub account with a hosted tau and a hub-run tau: who holds the handle](167-one-handle-two-taus.md) | AFK | 165 |
 | 168 | [A claim button in tau-host's app for taus on an own host](168-claim-from-the-host-app.md) | AFK | 162 |
+| 174 | [Deploy a spine without Node: the Cloudflare API with a scoped token](174-spine-deploy-without-node.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py --layer L9`

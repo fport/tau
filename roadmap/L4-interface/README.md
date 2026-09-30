@@ -25,5 +25,7 @@
 | 091 | [Two TauBar copies can run at once](091-taubar-single-instance.md) | AFK | – |
 | 130 | [TauBar's login tests trip the "no personal paths" repo rule](130-taubar-test-paths-trip-the-repo-rule.md) | AFK | – |
 | 166 | [TauBar in black and fire: only what is on burns](166-taubar-black-and-fire.md) | AFK | 089 |
+| 170 | [One Mac app, "tau": TauBar and tau Desktop merged, built and signed in CI](170-one-mac-app.md) | AFK | – |
+| 171 | [The app's first-launch wizard and permissions](171-app-setup-wizard.md) | AFK | 169, 170 |
 
 Live status: `python3 roadmap/board.py --layer L4`

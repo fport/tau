@@ -9,5 +9,8 @@
 | 078 | [PyPI release path: trusted publishing on tags, version policy, install verified from wheels](078-pypi-release-path.md) | HITL | – |
 | 079 | [Docs site: MkDocs Material built strictly in CI and deployed to Cloudflare Pages at `docs.tau.<domain>`](079-docs-site.md) | HITL | – |
 | 169 | [One installer and `tau setup`: pick the features, install and configure them](169-one-installer-and-tau-setup.md) | AFK | – |
+| 172 | [Telegram pairing without looking up a chat id](172-telegram-pairing.md) | AFK | 169 |
+| 173 | [Remote access in setup: Tailscale and the phone](173-remote-access-step.md) | AFK | 169 |
+| 175 | [Docs and site for the installer and the app](175-installer-docs-and-site.md) | AFK | 169, 170 |
 
 Live status: `python3 roadmap/board.py --layer L8`

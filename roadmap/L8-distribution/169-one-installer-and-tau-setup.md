@@ -1,12 +1,15 @@
 # 169 · One installer and `tau setup`: pick the features, install and configure them
 
-Status: in-progress
+Status: ready-for-agent
 Type: AFK
 Layer: L8 · Distribution
 Packages: tau-core, cloud/universe, docs
 Blocked by: –
 
 ## What to build
+
+[ADR 0014](../../docs/adr/0014-one-installer-and-onboarding.md) §1–§2: the engine and the terminal front door. The app's wizard (171) drives the same engine through its JSON mode, specified here in `docs/reference/setup.md`.
+
 
 The owner: "People may not manage to use all this. We should have one installer: run it, let people pick the features they want, then it can set up the guard and so on."
 
@@ -74,3 +77,4 @@ Today a person has to know which packages exist (`--with tau-tui --with tau-net 
 ## Comments
 
 - 2026-10-01: filed at the owner's request.
+- 2026-10-01: scoped by ADR 0014: the engine, the JSON protocol and `install.sh`; Telegram pairing (172), remote access (173) and the spine without Node (174) plug in as catalog features.

@@ -1,6 +1,6 @@
 # 114 · Touch ID: authorises enrollment and forget, unlock fallback, optional step-up
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L10 · Guard
 Packages: tau-guard, tau-tui, tau-core

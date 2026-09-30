@@ -1,6 +1,6 @@
 # 111 · `tau-guard` service: state machine, reflex locks, worker subprocess, protected `/guard/*` routes, cooldown, audit log
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L10 · Guard
 Packages: tau-guard (new)
@@ -102,20 +102,20 @@ The states are `off` / `locked` / `verifying` / `unlocked` / `unavailable`. Orth
 
 ## Acceptance criteria
 
-- [ ] `uv build --package tau-guard` builds a wheel with `LICENSE`; the package is in CI and the release list; `uv run pytest -q` passes on Linux without pyobjc
-- [ ] With the guard inactive, the service reports `guard: {state: "off"}` only; no thread starts, `cv2` and `objc` are not in `sys.modules`, and no `/guard/*` route exists
-- [ ] Every row of the state table has a pure `state.py` test with a fake clock, including concurrent unlocks sharing one attempt and verdict, a step-up while locked returning `False` without spawning a worker, and a lock during `verifying` cancelling the attempt
-- [ ] A hub start is always `locked` (trigger `startup`), including after `kill -9` of the previous hub
-- [ ] Reflex locks fire with a fake clock and a fake presence source: max age, sleep drift, idle, screen lock, and an unknown screen state capping the unlock at `idle_lock_minutes`; admit refuses when the reflex loop's last tick is older than 6 s
-- [ ] Admission answers `recheck` after `recheck_after_idle_minutes` of idle since the last face and after `presence_recheck_minutes`; a recheck with a non-matching face locks
-- [ ] Cooldown: three counted failures within 10 minutes give `cooldown` with `retry_after` 30 s, doubling to 15 min; a failed step-up with `no_match` locks with trigger `step_up_failed`
-- [ ] A test enumerates every registered `/guard/*` route and its body schema, and finds no field that accepts a verdict, a score, an image or an embedding; `/guard/lock` is idempotent
-- [ ] Every `/guard/*` route answers 403 without the token and carries a valid proof with it (real `ControlApi` on port 0, `HubGuard` from 110 as the client)
-- [ ] The worker runner: a fake worker script's progress lines reach `GET /guard/status` as `seq` changes; cancel, lock and a timeout kill it (SIGTERM, then SIGKILL after 1 s); garbage output or an exit without a verdict gives `error`; stderr lands in `worker.log`, never on the hub's stderr
-- [ ] `/status` carries `guard: {state, enrolled, available, reason}` and nothing more; an active but failed service shows `state: "unavailable"`
-- [ ] `audit.jsonl` follows the schema, rotates at 1 MiB with 3 files, and a test asserts no record contains a list of floats or any key other than the schema's; `guard/` is 0700 and its files 0600
-- [ ] `GuardService` passes `isinstance(service, tau_core.Guard)`; `subscribe` callbacks see every state change; `face_fresh` follows `face_seen_at`
-- [ ] Stopping the hub during a running attempt kills the worker and ends within the hub's normal stop time
+- [x] `uv build --package tau-guard` builds a wheel with `LICENSE`; the package is in CI and the release list; `uv run pytest -q` passes on Linux without pyobjc
+- [x] With the guard inactive, the service reports `guard: {state: "off"}` only; no thread starts, `cv2` and `objc` are not in `sys.modules`, and no `/guard/*` route exists
+- [x] Every row of the state table has a pure `state.py` test with a fake clock, including concurrent unlocks sharing one attempt and verdict, a step-up while locked returning `False` without spawning a worker, and a lock during `verifying` cancelling the attempt
+- [x] A hub start is always `locked` (trigger `startup`), including after `kill -9` of the previous hub
+- [x] Reflex locks fire with a fake clock and a fake presence source: max age, sleep drift, idle, screen lock, and an unknown screen state capping the unlock at `idle_lock_minutes`; admit refuses when the reflex loop's last tick is older than 6 s
+- [x] Admission answers `recheck` after `recheck_after_idle_minutes` of idle since the last face and after `presence_recheck_minutes`; a recheck with a non-matching face locks
+- [x] Cooldown: three counted failures within 10 minutes give `cooldown` with `retry_after` 30 s, doubling to 15 min; a failed step-up with `no_match` locks with trigger `step_up_failed`
+- [x] A test enumerates every registered `/guard/*` route and its body schema, and finds no field that accepts a verdict, a score, an image or an embedding; `/guard/lock` is idempotent
+- [x] Every `/guard/*` route answers 403 without the token and carries a valid proof with it (real `ControlApi` on port 0, `HubGuard` from 110 as the client)
+- [x] The worker runner: a fake worker script's progress lines reach `GET /guard/status` as `seq` changes; cancel, lock and a timeout kill it (SIGTERM, then SIGKILL after 1 s); garbage output or an exit without a verdict gives `error`; stderr lands in `worker.log`, never on the hub's stderr
+- [x] `/status` carries `guard: {state, enrolled, available, reason}` and nothing more; an active but failed service shows `state: "unavailable"`
+- [x] `audit.jsonl` follows the schema, rotates at 1 MiB with 3 files, and a test asserts no record contains a list of floats or any key other than the schema's; `guard/` is 0700 and its files 0600
+- [x] `GuardService` passes `isinstance(service, tau_core.Guard)`; `subscribe` callbacks see every state change; `face_fresh` follows `face_seen_at`
+- [x] Stopping the hub during a running attempt kills the worker and ends within the hub's normal stop time
 
 ## Blocked by
 
@@ -130,3 +130,17 @@ The states are `off` / `locked` / `verifying` / `unlocked` / `unavailable`. Orth
   - Never answer 403 from a `/guard/*` handler: 403 belongs to the token check, is never signed, and `HubGuard` reads it as `unavailable` whatever the body says. Refusals such as `cooldown` or `busy` use 409 or 429 with `{reason, retry_after?}`.
   - `/guard/lock` must answer `{"state": "locked"}`; `HubGuard.lock` logs an error otherwise.
   - 110 set mode 0700 on `hub/logs` only when `tau hub install` creates it (`mkdir(mode=)` does not change an existing directory). Chmod it explicitly at hub start and create new log files 0600.
+- 2026-09-30: done on `guard/service` (commits 71634cc, ff685e6, 14cfc2c, 088b45b, 11542db, cbf4cff, b012cf5, 9a819a2, 692b1f6, d064750). `packages/tau-guard` holds `state.py` (the pure machine), `presence.py`, `config.py`, `audit.py`, `worker.py` (the subprocess), `runner.py` (spawn, read, kill), `routes.py` (strict schemas), `service.py` (`GuardService`, `make_service`), `cli.py` with `strings.py` (`guard.cli.*`) and `testing.py` (`FakeClock`, `FakePresence`, a scripted fake worker). The package has 191 tests. The full suite passes except the pre-existing `test_no_personal_paths_in_tracked_files` (issue 130). The tau-guard tests also pass with pyobjc and cv2 imports blocked; CI confirms them on Linux.
+  - **`verifying` means an unlock from `locked`.** A re-unlock, a recheck or a step-up started while `unlocked` keeps the state `unlocked`, with `attempt` set (and `step_up_active` for a step-up). Other channels are not refused in the meantime, and a finished step-up still reads `state: "unlocked"`, which `HubGuard` requires for a success.
+  - **A failed recheck** (`no_match`, `spoof`, `multiple_faces`) locks with trigger `step_up_failed` ("locked after a failed identity check"). `LOCK_TRIGGERS` has no recheck value, and only `GUARD_CONFIG_KEYS` may change in `tau_core/guard.py` on this branch.
+  - **Cooldown rule.** Three counted failures within 10 minutes start 30 s. After that, every further counted failure starts the next cooldown at twice the length (up to 15 min), until a match or 10 quiet minutes (no failure, no cooldown ending) reset the doubling.
+  - **The cap for unknown presence.** While the screen state or the HID idle is unknown, the unlock lasts at most `idle_lock_minutes` from `since`, with lock trigger `max_age`.
+  - **Knob ranges the ADR leaves open:** `recheck_after_idle_minutes` 1–240, `presence_recheck_minutes` 1–1440, `verify_timeout_seconds` 5–60, `step_up_challenge_fresh_seconds` 0–600, thresholds 0.45–0.95. A worker is killed after `verify_timeout_seconds` + 15 s. Finished records stay readable for 120 s (at most 256 of them). At most 8 attempts queue; beyond that the answer is `409 busy`.
+  - **Answers.** `409 {reason}` for `locked`, `busy`, `not_enrolled` and `unavailable`; `429` for `cooldown`; `400 {reason: "error"}` for a body or query outside the schema. The `202` of `/guard/verify` carries a `seq` just below the attempt's, so the first poll answers at once with `step: "starting"`. A `since` from an earlier hub is answered at once.
+  - **Extra fields.** `/guard/status` adds `screen` (`locked`, `unlocked` or `unknown`) and `step_up_active`. Besides the unavailable reasons (`config`, `unsupported_platform`, `presence_unavailable`, `no_control_api`, `error`, `stopped`), the open `/status` `reason` says `reflex_stalled` or, while available, `screen_unknown`. `camera` is derived from the last verdict.
+  - **The worker in this slice.** `verify` answers `not_enrolled` without a marker and `unavailable` with one. `enroll` answers `not_enrolled` and `touch_id` answers `touch_id_unavailable`. A passing `selftest` has `reason: null` and a `checks` map. Workers inherit the hub's environment plus `OPENCV_LOG_LEVEL=ERROR` and `OPENCV_AVFOUNDATION_SKIP_AUTH=1`. The service does not run `selftest` at start.
+  - **Logs.** `hub/logs` is chmod 0700 and its files 0600 at every hub start (`HubFiles.secure_logs`). `tau.log` is also created 0600 in a 0700 directory, and an existing one is narrowed.
+  - **Human step:** a PyPI trusted publisher for `tau-guard` with the GitHub environment `pypi-guard` (see `release.yml` and `docs/contributing/release.md`). The release that ships `tau_core.guard` bumps tau-core, tau-tui and tau-guard together and raises tau-guard's `tau-core>=` floor to that version; 0.3.1 on PyPI has no `tau_core.guard`.
+  - **For 112.** Fill `tau_guard.worker.run` for `verify` and `enroll`. The request carries `kind`, the merged `policy`, `settings` (thresholds, timeout, camera, fallback) and `challenge_fresh`. Release the camera before writing the verdict: the hub waits 1 s for the exit, then sends SIGTERM. A verdict with `liveness: "challenge"` starts the `step_up_challenge_fresh_seconds` window. The hub cannot see the camera open, so `camera_open` needs a progress step or a new message type. `tau guard doctor` should run `selftest` and show `screen_unknown` and the unavailable reason. `/guard/enroll` still needs LocalAuthentication first and the `SSH_CONNECTION` refusal.
+  - **For 113 and 115.** `GuardStatus.failures` shows the count before an unlock for as long as it stays unlocked. An admission answer of `recheck` means `unlock(kind="recheck")`. `subscribe()` callbacks run on the hub loop.
+  - **Out of scope, for the orchestrator:** tau-core's `guard_doctor_check` reports a hub guard in state `unavailable` as `ok` and never shows the block's `reason`.

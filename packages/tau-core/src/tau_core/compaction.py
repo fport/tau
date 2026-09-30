@@ -5,7 +5,8 @@ edited or trimmed. A throwaway Strands ``Agent`` (same model, no tools, no sessi
 hooks, so the tier gate is not involved) reads a copy of the history and writes the summary;
 the summary becomes the first two messages of a *new* session through
 ``build_agent(seed_messages=...)``, and the two sessions point at each other in their metadata
-(``compacted_from`` on the new one, ``compacted_to`` on the old one).
+(``compacted_from`` on the new one, ``compacted_to`` on the old one). The throwaway agent never
+passes ``TauAgent.stream``, so :func:`summarize` asks the agent's owner guard itself first.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from strands import Agent
 from strands.types.content import Message
 
 from tau_core.agent import TITLE_LIMIT, TauAgent, conversation_manager_for, dangling
+from tau_core.guard import GuardLocked, GuardTurn, admit_turn
 from tau_core.sessions import SessionStore
 
 __all__ = [
@@ -25,6 +27,7 @@ __all__ = [
     "SYSTEM_PROMPT",
     "CompactionCancelled",
     "CompactionError",
+    "CompactionLocked",
     "compaction_title",
     "record_compaction",
     "seed_messages",
@@ -64,6 +67,11 @@ class CompactionCancelled(CompactionError):
     """The caller's ``cancel_signal`` stopped the summarizer; nothing was changed."""
 
 
+class CompactionLocked(CompactionError, GuardLocked):
+    """The owner guard refused (ADR 0008); no model was called. Both a
+    :class:`CompactionError` (channels report it like any other) and a ``GuardLocked``."""
+
+
 def _text_blocks(message: Message) -> list[str]:
     return [
         str(block["text"])
@@ -98,8 +106,14 @@ async def summarize(
     instruction appended to the system prompt. ``cancel_signal`` is handed to the SDK as the
     invocation's cancel event: setting it (Esc in the TUI) ends the call at the SDK's next
     checkpoint with :class:`CompactionCancelled`. Raises :class:`CompactionError` when there
-    is nothing to summarize, when the model call fails or when it returns no text.
+    is nothing to summarize, when the model call fails or when it returns no text, and
+    :class:`CompactionLocked` (a ``GuardLocked``) when the agent's owner guard refuses.
     """
+    if agent.guard is not None:
+        turn = GuardTurn(agent.channel, agent.session_id, agent.client_id)
+        admission = await admit_turn(agent.guard, turn)
+        if not admission.allowed:
+            raise CompactionLocked(admission.reason)
     history = copy.deepcopy(agent.messages)
     if not history:
         raise CompactionError("the session has no messages to summarize.")

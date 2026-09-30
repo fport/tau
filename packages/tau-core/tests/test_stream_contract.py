@@ -76,6 +76,7 @@ def test_stop_reasons_are_documented_on_turn_end() -> None:
         "interrupt",
         "error",
         "busy",
+        "locked",
     )
     for reason in STOP_REASONS:
         assert f"``{reason}``" in (TurnEnd.__doc__ or "")

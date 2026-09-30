@@ -6,6 +6,9 @@ cancels refused calls with a refusal text the model reads as the tool result;
 ``AfterToolCallEvent`` records the call. Channels plug in their own :class:`Approver`.
 Nothing here approves on its own: without an approver the default rejects, and every doubt
 (unknown tool, failing approver, invalid answer, timeout, internal error) refuses the call.
+
+With an owner guard (ADR 0008) the gate only narrows further: a tier-1 or tier-2 call on a
+locked guard is refused without asking, and an approved tier-2 call still needs a step-up.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from strands.hooks import (
 )
 
 from tau_core.events import AgentEvent, EventBus
+from tau_core.guard import LOCKED_NOTE, STEP_UP_NOTE, Guard, GuardProgress, GuardTurn, admit_turn
 from tau_core.i18n import DEFAULT_LANGUAGE, t
 from tau_core.tiers import Tier, ToolCatalog, UntieredToolError, effect_of
 
@@ -186,6 +190,12 @@ class TierGate:
 
     ``timeout_seconds`` bounds how long a tier-2 call waits for the approver; when it is
     ``None`` the approver's own ``timeout_seconds`` attribute applies, if it has one.
+
+    ``guard`` (ADR 0008) adds two checks that can only refuse: before a tier-1 or tier-2 call
+    the guard must admit ``client_id``'s turn (else the call is refused unasked, approval
+    ``locked``), and after the approver said ``APPROVED`` a tier-2 call needs
+    ``guard.step_up(...)`` to return exactly ``True`` (else ``REJECTED``). Exempt calls reach
+    neither check. Every caller passes ``guard=`` explicitly (a repo rule).
     """
 
     def __init__(
@@ -198,6 +208,8 @@ class TierGate:
         channel: str,
         exemptions: Iterable[Exemption] = (),
         timeout_seconds: float | None = None,
+        guard: Guard | None = None,
+        client_id: str = "",
     ):
         self.catalog = catalog
         self.approver = approver
@@ -206,6 +218,8 @@ class TierGate:
         self.channel = channel
         self.exemptions: list[Exemption] = list(exemptions)
         self.timeout_seconds = _validate_timeout(timeout_seconds)
+        self.guard = guard
+        self.client_id = client_id
         self._approval_lock: asyncio.Lock | None = None
         self._lock_loop: asyncio.AbstractEventLoop | None = None
 
@@ -291,8 +305,9 @@ class TierGate:
     ) -> tuple[bool, str | None, str | None]:
         """Return ``(allowed, refusal_text, approval)``.
 
-        ``approval`` is ``"approved"``, ``"rejected"``, ``"timeout"``, ``"exempt"`` or ``None``
-        (tier 0/1, or an unknown tool, which fails closed).
+        ``approval`` is ``"approved"``, ``"rejected"``, ``"timeout"``, ``"exempt"``,
+        ``"locked"`` (the guard refused before anyone was asked) or ``None`` (tier 0/1, or an
+        unknown tool, which fails closed).
         """
         tier = self._tier(tool_name)
         if tier is None:
@@ -300,13 +315,17 @@ class TierGate:
             self._emit("error", {"message": text, "where": "tier_gate", "tool": tool_name})
             logger.warning("refused unknown tool %s (tool_use_id=%s)", tool_name, tool_use_id)
             return False, text, None
-        if tier < Tier.PHYSICAL:
+        if tier == Tier.READ:
             return True, None, None
-        if self._is_exempt(tool_name, arguments):
+        if tier == Tier.PHYSICAL and self._is_exempt(tool_name, arguments):
             logger.info(
                 "tier-2 tool %s exempt from approval (tool_use_id=%s)", tool_name, tool_use_id
             )
             return True, None, "exempt"
+        if tier < Tier.PHYSICAL:
+            if not await self._admitted(tool_name):
+                return False, refusal_text(tool_name, LOCKED_NOTE), "locked"
+            return True, None, None
 
         tool = self.catalog.get(tool_name)
         request = ApprovalRequest(
@@ -318,35 +337,114 @@ class TierGate:
             session_id=self.session_id,
             channel=self.channel,
         )
+        step_up: str | None = None
         async with self._lock():  # one prompt at a time, even for parallel tool calls
+            if not await self._admitted(tool_name):
+                return False, refusal_text(tool_name, LOCKED_NOTE), "locked"
             decision = await self._ask(request)
-        self._emit(
-            "approval",
-            {
-                "tool": tool_name,
-                "tier": int(tier),
-                "arguments": _copy_arguments(arguments),
-                "effect": request.effect,
-                "decision": decision.value,
-                "channel": getattr(self.approver, "name", self.channel),
-                "request_id": request.request_id,
-            },
-        )
-        logger.info(
-            "approval %s for %s via %s (request_id=%s)",
-            decision.value,
-            tool_name,
-            getattr(self.approver, "name", "?"),
-            request.request_id,
-        )
+            if decision is Decision.APPROVED and self.guard is not None:
+                try:
+                    passed = await self._step_up(request)
+                except asyncio.CancelledError:
+                    self._record_approval(request, arguments, Decision.REJECTED, "failed")
+                    raise
+                step_up = "passed" if passed else "failed"
+                if not passed:
+                    decision = Decision.REJECTED
+        self._record_approval(request, arguments, decision, step_up)
         if decision is Decision.APPROVED:
             return True, None, decision.value
+        if step_up == "failed":
+            return False, refusal_text(tool_name, STEP_UP_NOTE), decision.value
         note = getattr(self.approver, "refusal_note", None)
         return (
             False,
             refusal_text(tool_name, note if isinstance(note, str) else None),
             decision.value,
         )
+
+    def _record_approval(
+        self,
+        request: ApprovalRequest,
+        arguments: dict[str, Any],
+        decision: Decision,
+        step_up: str | None,
+    ) -> None:
+        data: dict[str, Any] = {
+            "tool": request.tool,
+            "tier": int(request.tier),
+            "arguments": _copy_arguments(arguments),
+            "effect": request.effect,
+            "decision": decision.value,
+            "channel": getattr(self.approver, "name", self.channel),
+            "request_id": request.request_id,
+        }
+        if step_up is not None:
+            data["step_up"] = step_up
+        self._emit("approval", data)
+        logger.info(
+            "approval %s for %s via %s (request_id=%s%s)",
+            decision.value,
+            request.tool,
+            getattr(self.approver, "name", "?"),
+            request.request_id,
+            f", step-up {step_up}" if step_up is not None else "",
+        )
+
+    # -- the owner guard (ADR 0008): it can only refuse ------------------------------------
+
+    async def _admitted(self, tool_name: str) -> bool:
+        """``True`` without a guard or when it admits this client's turn right now."""
+        if self.guard is None:
+            return True
+        turn = GuardTurn(channel=self.channel, session_id=self.session_id, client_id=self.client_id)
+        admission = await admit_turn(self.guard, turn)
+        if admission.allowed:
+            return True
+        self._emit(
+            "guard",
+            {
+                "action": "refused",
+                "channel": self.channel,
+                "reason": admission.reason,
+                "tool": tool_name,
+            },
+        )
+        logger.info("guard refused %s: %s", tool_name, admission.reason)
+        return False
+
+    async def _step_up(self, request: ApprovalRequest) -> bool:
+        """The guard's step-up after a human approval: ``True`` only for a literal ``True``;
+        a raising guard counts as failed, ``asyncio.CancelledError`` propagates."""
+        guard = self.guard
+        assert guard is not None
+        ids = {"request_id": request.request_id, "tool": request.tool}
+
+        def on_progress(progress: GuardProgress) -> None:
+            deadline = getattr(progress, "deadline", None)
+            self._emit(
+                "guard",
+                {
+                    "action": "challenge",
+                    "step": getattr(progress, "step", None),
+                    "hint": getattr(progress, "hint", None),
+                    "deadline": deadline.isoformat() if deadline is not None else None,
+                    "request_id": request.request_id,
+                },
+            )
+
+        self._emit("guard", {"action": "step_up", "phase": "start", **ids})
+        passed = False
+        try:
+            answer = await guard.step_up(request, client_id=self.client_id, on_progress=on_progress)
+            passed = answer is True
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("guard step-up failed for %s; rejecting", request.tool)
+        finally:
+            self._emit("guard", {"action": "step_up", "phase": "end", "ok": passed, **ids})
+        return passed
 
     def record(
         self,

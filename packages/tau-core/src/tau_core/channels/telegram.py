@@ -1006,6 +1006,7 @@ class TelegramService:
                 session_id=session_id,
                 channel=CHANNEL,
                 seed_messages=seed,
+                guard=None,  # identified in-hub channel: the chat-id allowlist (ADR 0008)
             )
         except (MissingCredentials, ConfigError) as exc:
             chat.print(str(exc))

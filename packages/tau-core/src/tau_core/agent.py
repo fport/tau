@@ -21,6 +21,8 @@ Stream contract (one ``stream(prompt)`` call is one user turn):
   loop that hits the SDK's own concurrency guard gets a ``busy`` turn and no history change.
 - A turn never leaves the SDK in interrupt state, and a session restored in that state is
   cleared before its first turn.
+- With an owner guard (ADR 0008) a turn is admitted inside the lock before any history, prompt
+  or SDK work; a refused turn yields a ``Notice`` and ``TurnEnd("locked")`` and changes nothing.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import secrets
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass, field, replace
@@ -57,6 +60,16 @@ from tau_core import registry
 from tau_core.approval import Approver, AutoRejectApprover, Exemption, TierGate, TierHook
 from tau_core.config import AgentConfig, Config, ConfigError
 from tau_core.events import AgentEvent, EventBus
+from tau_core.guard import (
+    DISCOVER,
+    Guard,
+    GuardLocked,
+    GuardTurn,
+    admission_reason,
+    admit_turn,
+    process_client_id,
+    resolve_guard,
+)
 from tau_core.i18n import DEFAULT_LANGUAGE, t
 from tau_core.models import ModelNotice, resolve_model
 from tau_core.persona import ContextSource, PersonaHook, PersonaLoader, default_context_factory
@@ -78,6 +91,7 @@ STOP_REASONS = (
     "interrupt",
     "error",
     "busy",
+    "locked",
 )
 """Every value ``TurnEnd.stop_reason`` can carry; see :class:`TurnEnd`."""
 
@@ -145,6 +159,8 @@ class TurnEnd:
     - ``error``: the model call, the context window or an interrupt failed (notice, repaired
       next turn when the history was left dangling).
     - ``busy``: another invocation held the SDK's concurrency guard; nothing ran.
+    - ``locked``: the owner guard refused the turn (notice ``guard.refused.<reason>``, a
+      ``guard`` event); nothing was appended and no model was called.
 
     ``[agent] max_turns`` and ``max_total_tokens`` bound the whole turn: the SDK's ``Limits``
     are per invocation, so the continuation that answers an interrupt gets what is left.
@@ -309,6 +325,12 @@ class TauAgent:
     role: str = "brain"
     """The model role this agent was built for (``/status``, ``/model``); a label when the
     caller passed its own ``model``."""
+    channel: str = "terminal"
+    """The channel label ``build_agent`` got (admission, session metadata, traces)."""
+    guard: Guard | None = None
+    """The owner guard that admits every turn (ADR 0008); ``None`` for no guard."""
+    client_id: str = field(default_factory=lambda: secrets.token_hex(8))
+    """This client's id for the guard: random per process, an audit label, never a claim."""
     _unsubscribe_store: Callable[[], None] | None = field(default=None, repr=False)
     _pending_repair: str | None = field(default=None, repr=False)
     """The notice the next turn prepends as an assistant message when the history ends
@@ -319,6 +341,8 @@ class TauAgent:
     _lock_loop: asyncio.AbstractEventLoop | None = field(default=None, repr=False)
     _running: bool = field(default=False, repr=False)
     """True while a turn is inside :meth:`_stream_locked`; :meth:`cancel` is a no-op otherwise."""
+    _refused: str | None = field(default=None, repr=False)
+    """The admission reason of the last refused turn (for :meth:`ask`)."""
 
     @property
     def messages(self) -> list[Message]:
@@ -418,8 +442,26 @@ class TauAgent:
     async def stream(self, prompt: str) -> AsyncIterator[TurnEvent]:
         """One user turn. Never raises for model/provider errors: they become a ``Notice``."""
         async with self._stream_lock():
+            self._refused = None
+            if self.guard is not None:
+                turn = GuardTurn(self.channel, self.session_id, self.client_id)
+                admission = await admit_turn(self.guard, turn)
+                if not admission.allowed:
+                    for event in self._refuse(admission.reason):
+                        yield event
+                    return
             async for event in self._stream_locked(prompt):
                 yield event
+
+    def _refuse(self, reason: str) -> list[TurnEvent]:
+        """A turn the guard refused: one ``guard`` event, a notice and ``TurnEnd("locked")``.
+        Nothing reaches the history, the session store's messages or the model."""
+        reason = admission_reason(reason)
+        self._refused = reason
+        logger.info("guard refused a turn in session %s: %s", self.session_id, reason)
+        self._emit("guard", {"action": "refused", "channel": self.channel, "reason": reason})
+        text = t(f"guard.refused.{reason}", self.config.ui.language)
+        return [Notice(text=text), TurnEnd(stop_reason="locked")]
 
     async def _stream_locked(self, prompt: str) -> AsyncIterator[TurnEvent]:
         finished: deque[AgentEvent] = deque()
@@ -612,11 +654,17 @@ class TauAgent:
             self._pending_repair = previous._pending_repair
 
     async def ask(self, prompt: str) -> str:
-        """Run one turn and return only the reply text."""
+        """Run one turn and return only the reply text; raises :class:`GuardLocked` when the
+        owner guard refused the turn."""
         parts: list[str] = []
+        locked = False
         async for event in self.stream(prompt):
             if isinstance(event, TextDelta):
                 parts.append(event.text)
+            elif isinstance(event, TurnEnd) and event.stop_reason == "locked":
+                locked = True
+        if locked:
+            raise GuardLocked(self._refused or "error")
         return "".join(parts)
 
 
@@ -702,6 +750,8 @@ def build_agent(
     hooks: Iterable[HookProvider] = (),
     plugins: Iterable[Any] = (),
     seed_messages: Iterable[Message] | None = None,
+    guard: Guard | None | Any = DISCOVER,
+    client_id: str | None = None,
 ) -> TauAgent:
     """Assemble a tau agent. Raises ``ConfigError``/``MissingCredentials`` before any model call.
 
@@ -726,6 +776,12 @@ def build_agent(
     register a ``BeforeToolCallEvent`` callback that would run after it (``ConfigError``, fail
     closed at build time), and a tool a plugin registers behind the catalog's back is refused
     as unknown.
+
+    ``guard`` is the owner guard (ADR 0008) that admits every turn and steps up tier-2 calls.
+    The default ``DISCOVER`` resolves it from the configuration (``resolve_guard``), so a
+    caller that passes nothing is guarded whenever a guard is active; channels that own a guard
+    pass the same object on every build, and only identified in-hub channels (Telegram,
+    network turns) pass ``None``. ``client_id`` defaults to this process's id.
     """
     config = config or Config.load()
     if profile:
@@ -753,8 +809,20 @@ def build_agent(
     context_factory = default_context_factory(config, clock=clock, sources=context_sources)
     system_prompt = persona.build_system_content(context_factory())  # fails early without persona
 
+    if guard is DISCOVER:
+        guard = resolve_guard(config)
+    if guard is not None and not isinstance(guard, Guard):
+        raise ConfigError(f"guard must implement tau_core.Guard, not {type(guard).__name__}")
+    client_id = client_id or process_client_id()
     gate = TierGate(
-        catalog, approver, events, session_id=session_id, channel=channel, exemptions=exemptions
+        catalog,
+        approver,
+        events,
+        session_id=session_id,
+        channel=channel,
+        exemptions=exemptions,
+        guard=guard,
+        client_id=client_id,
     )
     session_manager = (
         RepositorySessionManager(session_id=session_id, session_repository=session_store)
@@ -816,5 +884,8 @@ def build_agent(
         store=session_store,
         gate=gate,
         role=role,
+        channel=channel,
+        guard=guard,
+        client_id=client_id,
         _unsubscribe_store=unsubscribe,
     )

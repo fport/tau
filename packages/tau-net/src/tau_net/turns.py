@@ -167,6 +167,7 @@ class NetworkTurns:
             persona=self.persona_loader,
             context_sources=[],
             channel=CHANNEL,
+            guard=None,  # identified in-hub channel: no tools, approvals refused (ADR 0008)
         )
         self._agents[address] = agent
         if agent.session_id != session_id:

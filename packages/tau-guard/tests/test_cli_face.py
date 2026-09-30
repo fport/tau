@@ -414,6 +414,10 @@ def test_doctor_covers_every_item(tmp_path: Path) -> None:
     ]
     assert "Terminal" in result.output and t("guard.cli.doctor.tcc.3") in result.output
     assert t("guard.cli.doctor.hub_none") in result.output
+    from tau_guard.engine import YUNET_SHA256
+
+    for sha in (YUNET_SHA256, SFACE_SHA256):
+        assert f"sha256 {sha[:12]}" in result.output  # the doctor shows the model sha
     assert t("guard.cli.doctor.failures", count=1) in result.output
     assert calls[0]["data_dir"] == str(config.data_dir)
 
@@ -440,6 +444,27 @@ def test_doctor_reports_problems(tmp_path: Path) -> None:
     result, _ = doctor(config, selftest_answer(keychain="invalid", template="key_unavailable"))
     assert "fail keychain:" in result.output
     assert t("guard.cli.doctor.keychain_invalid") in result.output
+
+
+def test_doctor_after_a_model_change_and_with_another_camera(tmp_path: Path) -> None:
+    config = cli_config(tmp_path)
+    toml = config.home / "tau.toml"
+    toml.write_text(toml.read_text() + 'camera = "0x1420000005ac8600"\n')
+    marker = config.data_dir / "guard" / MARKER_FILE
+    marker.write_text(json.dumps({"v": 1, "enrollment": "E1", "model": "ab" * 32, "created": "x"}))
+    camera = {"device": "OBS Virtual Camera", "others": 1, "permission": 3, "builtin": False}
+    result, _ = doctor(Config.load(config.home), selftest_answer(camera=camera))
+    out = result.output
+    assert "fail enrollment:" in out and "abababababab" in out and SFACE_SHA256[:12] in out
+    assert "warn camera:" in out and "OBS Virtual Camera" in out
+    assert (
+        t(
+            "guard.cli.doctor.camera_not_builtin",
+            name="OBS Virtual Camera",
+            camera="0x1420000005ac8600",
+        )
+        in out
+    )
 
 
 def test_doctor_names_the_hubs_app(tmp_path: Path) -> None:

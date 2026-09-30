@@ -67,6 +67,22 @@ def test_a_camera_id_names_another_device() -> None:
         select_device([BUILTIN], USB.unique_id)
 
 
+def test_an_ambiguous_camera_list_refuses() -> None:
+    twin = Device("99999999-0000-4000-8000-000000000009", "Second Built-in", BUILTIN_TYPE, "bltn")
+    same_id = Device(BUILTIN.unique_id, "OBS Virtual Camera", EXTERNAL, "virt")
+    for devices, camera in (
+        ([BUILTIN, twin], "builtin"),  # two devices claim to be the built-in camera
+        ([BUILTIN, same_id], "builtin"),  # another device copies its uniqueID
+        ([same_id, BUILTIN], "builtin"),
+        ([USB, USB], USB.unique_id),
+    ):
+        with pytest.raises(CameraError) as caught:
+            select_device(devices, camera)
+        assert caught.value.reason == "camera_unavailable"
+    copied = Device(IPHONE.unique_id, "iPhone (muxed)", EXTERNAL, "othr")
+    assert select_device([IPHONE, copied, BUILTIN]) == (2, BUILTIN)  # others may repeat
+
+
 def test_a_non_ascii_unique_id_refuses() -> None:
     odd = Device("cam\u00e9ra", "odd", BUILTIN_TYPE, "bltn")
     with pytest.raises(CameraError):

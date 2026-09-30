@@ -539,7 +539,12 @@ def test_the_deep_selftest_reports_everything_without_a_camera(session: Session)
     details = answer["details"]
     assert details["yunet"] == "ok" and details["sface"] == "missing"
     assert details["keychain"] == "ok" and details["template"] == "ok"
-    assert details["camera"] == {"device": "MacBook Pro Camera", "others": 1, "permission": 3}
+    assert details["camera"] == {
+        "device": "MacBook Pro Camera",
+        "others": 1,
+        "permission": 3,
+        "builtin": True,
+    }
     assert details["opencv"] and details["opencv_verified"] is True
     plain = worker.selftest("darwin", request={"v": 1}, deps=deps)
     assert "details" not in plain

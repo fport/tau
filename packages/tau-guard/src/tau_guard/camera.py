@@ -124,7 +124,10 @@ def opencv_order(devices: Sequence[Device]) -> list[Device]:
 def select_device(devices: Sequence[Device], camera: str = BUILTIN) -> tuple[int, Device]:
     """``(cv2 index, device)`` for the ``[component.guard] camera`` setting: ``builtin`` picks
     the built-in wide-angle camera on transport ``bltn``, anything else the device with that
-    uniqueID. Raises :class:`CameraError` (``camera_unavailable``) when there is none."""
+    uniqueID. Raises :class:`CameraError` (``camera_unavailable``) when there is none, and when
+    the choice is ambiguous: more than one device claims to be the built-in camera, or another
+    device shares the chosen one's uniqueID (the sort order of equal ids is not guaranteed, so
+    the index could open the other one)."""
     ordered = opencv_order(devices)
     if camera == BUILTIN:
         chosen = [device for device in ordered if device.builtin]
@@ -132,7 +135,12 @@ def select_device(devices: Sequence[Device], camera: str = BUILTIN) -> tuple[int
         chosen = [device for device in ordered if device.unique_id == camera]
     if not chosen:
         raise CameraError("camera_unavailable", f"no camera matches {camera!r}")
-    return ordered.index(chosen[0]), chosen[0]
+    if len(chosen) > 1:
+        raise CameraError("camera_unavailable", f"{len(chosen)} cameras match {camera!r}")
+    device = chosen[0]
+    if sum(1 for other in ordered if other.unique_id == device.unique_id) > 1:
+        raise CameraError("camera_unavailable", "another camera shares the chosen uniqueID")
+    return ordered.index(device), device
 
 
 @runtime_checkable

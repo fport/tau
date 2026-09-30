@@ -319,17 +319,24 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "{version}; kamera sırası yalnızca {verified} için denetlendi",
     },
     "guard.cli.doctor.model_ok": {
-        "en": "{name}: sha256 matches",
-        "tr": "{name}: sha256 eşleşiyor",
+        "en": "{name}: sha256 {sha} matches",
+        "tr": "{name}: sha256 {sha} eşleşiyor",
+    },
+    "guard.cli.doctor.model_changed": {
+        "en": "made with the model {enrolled}, this tau expects {expected}; run `tau guard "
+        "enroll` again",
+        "tr": "{enrolled} modeliyle yapılmış, bu tau {expected} bekliyor; `tau guard enroll` "
+        "komutunu yeniden çalıştır",
     },
     "guard.cli.doctor.model_missing": {
         "en": "{name}: not installed; run `tau guard setup`",
         "tr": "{name}: kurulu değil; `tau guard setup` çalıştır",
     },
     "guard.cli.doctor.model_mismatch": {
-        "en": "{name}: the file does not match the pinned sha256; run `tau guard setup` again",
-        "tr": "{name}: dosya sabitlenmiş sha256 ile eşleşmiyor; `tau guard setup` komutunu yeniden "
-        "çalıştır",
+        "en": "{name}: the file does not match the pinned sha256 {sha}; run `tau guard setup` "
+        "again",
+        "tr": "{name}: dosya sabitlenmiş sha256 {sha} ile eşleşmiyor; `tau guard setup` "
+        "komutunu yeniden çalıştır",
     },
     "guard.cli.doctor.enrolled": {
         "en": "{enrollment}, made {created}",
@@ -368,6 +375,12 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
     "guard.cli.doctor.camera_ok": {
         "en": "{name}; {others} other camera(s) ignored",
         "tr": "{name}; {others} başka kamera yok sayıldı",
+    },
+    "guard.cli.doctor.camera_not_builtin": {
+        "en": "{name} (camera = {camera}) is not the Mac's built-in camera; only the built-in "
+        "camera keeps a virtual camera's injected frames out",
+        "tr": "{name} (camera = {camera}) Mac'in yerleşik kamerası değil; sanal bir kameranın "
+        "enjekte ettiği kareleri yalnızca yerleşik kamera dışarıda tutar",
     },
     "guard.cli.doctor.camera_missing": {
         "en": "no camera matches camera = {camera}",

@@ -19,7 +19,8 @@
   written), and the command says so and exits 1.
 - **verify --explain** prints each frame's numbers (detector score, eye distance, brightness,
   sharpness, yaw proxy, similarity); no frame is saved anywhere.
-- **doctor** reports the platform, OpenCV's camera order, both model checksums, the enrollment,
+- **doctor** reports the platform, OpenCV's camera order, both models with their pinned sha256
+  (and the enrolled and expected SFace sha after a model change), the enrollment,
   whether the template decrypts, the Keychain key, the modes, the camera device, the camera
   permission of this terminal and the hub's last camera answer (naming the app each runs
   under), Touch ID (from issue 114 on) and the failures of the last 24 h.
@@ -62,6 +63,7 @@ from tau_guard.audit import AuditLog
 from tau_guard.config import SettingsError, parse_settings
 from tau_guard.engine import (
     SFACE_SHA256,
+    YUNET_SHA256,
     ModelChecksumError,
     ModelError,
     install_sface,
@@ -654,16 +656,24 @@ def _doctor_lines(ctx: click.Context, config: Config) -> list[tuple[str, str, st
         verified = ", ".join(VERIFIED_OPENCV)
         key = "guard.cli.doctor.opencv_unverified"
         add("warn", "opencv", key, version=version, verified=verified)
-    for name, label in (("yunet", "YuNet 2023mar"), ("sface", "SFace 2021dec")):
+    models = (("yunet", "YuNet 2023mar", YUNET_SHA256), ("sface", "SFace 2021dec", SFACE_SHA256))
+    for name, label, pinned in models:
         state = details.get(name, "missing")
         status = "ok" if state == "ok" else "fail"
         key = {"ok": "model_ok", "mismatch": "model_mismatch"}.get(str(state), "model_missing")
-        add(status, name, f"guard.cli.doctor.{key}", name=label)
+        add(status, name, f"guard.cli.doctor.{key}", name=label, sha=_short(pinned))
     marker = _marker(config)
     if marker is None:
         add("warn", "enrollment", "guard.cli.doctor.not_enrolled")
     elif marker.get("model") != SFACE_SHA256:
-        lines.append(("fail", "enrollment", t("guard.verdict.model_changed", language)))
+        enrolled_with = marker.get("model")
+        add(
+            "fail",
+            "enrollment",
+            "guard.cli.doctor.model_changed",
+            enrolled=_short(enrolled_with) if isinstance(enrolled_with, str) else "-",
+            expected=_short(SFACE_SHA256),
+        )
     else:
         add(
             "ok",
@@ -696,7 +706,15 @@ def _doctor_lines(ctx: click.Context, config: Config) -> list[tuple[str, str, st
         if settings.unlock_liveness == "none":
             add("warn", "liveness", "guard.cli.doctor.liveness_none")
     camera = details.get("camera") if isinstance(details.get("camera"), dict) else {}
-    if camera.get("device"):
+    if camera.get("device") and camera.get("builtin") is False:
+        add(
+            "warn",
+            "camera",
+            "guard.cli.doctor.camera_not_builtin",
+            name=str(camera["device"]),
+            camera=settings.camera if settings else "builtin",
+        )
+    elif camera.get("device"):
         add(
             "ok",
             "camera",
@@ -726,6 +744,11 @@ def _doctor_lines(ctx: click.Context, config: Config) -> list[tuple[str, str, st
     count = _failures(config, datetime.now(UTC))
     add("ok" if count == 0 else "warn", "failures", "guard.cli.doctor.failures", count=count)
     return lines
+
+
+def _short(sha: str) -> str:
+    """A sha256 for a doctor line: its first 12 hex digits."""
+    return f"{sha[:12]}…" if len(sha) > 12 else sha
 
 
 def _marker(config: Config) -> dict[str, Any] | None:

@@ -547,6 +547,7 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
         _, device = select_device(listed, _camera_setting(request))
         camera["device"] = device.name
         camera["others"] = len(listed) - 1
+        camera["builtin"] = device.builtin
     except Exception as exc:
         camera["error"] = type(exc).__name__
     try:

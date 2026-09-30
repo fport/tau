@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 from net_helpers import ALICE, BOB, UNIVERSE, USER_SECRET, Tau, make_tau, poll, send_raw
+from tau_core.guard import ENROLLED_MARKER, reset_guards, resolve_guard
 from tau_net.cli import net
 from tau_net.envelope import BoxError, build_envelope, parse_content
 from tau_net.identity import create_identity
@@ -154,6 +155,19 @@ def test_a_visit_is_answered_by_the_web_sub_tau(scene: Scene) -> None:
     agent = scene.node.turns.visit_agent(scene.node.public_sub("coach"))
     assert agent.catalog.names() == [] and agent.gate.approver.name == "auto-reject"
     agent.close()
+
+    # a visitor is an identified in-hub channel: no guard even while one is active (ADR 0008)
+    marker = scene.bob.config.data_dir / ENROLLED_MARKER
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text('{"v": 1, "enrollment": "E1"}', encoding="utf-8")
+    reset_guards()
+    try:
+        assert resolve_guard(scene.bob.config) is not None
+        agent = scene.node.turns.visit_agent(scene.node.public_sub("coach"))
+        assert agent.guard is None
+        agent.close()
+    finally:
+        reset_guards()
 
     [(reply, content)] = scene.universe.answers()
     assert reply.kind == "message" and reply.sender == BOB and reply.recipient == UNIVERSE

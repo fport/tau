@@ -295,21 +295,12 @@ class NetworkTurns:
             agent.close()
             del self._agents[key]
         session_id = self.store.sessions().get(key)
-        extra: dict[str, Any] = {}
-        if sub is not None:
-            extra["role"] = sub.role
-        agent = build_agent(
-            config=self.config,
-            model=self.model_factory() if self.model_factory is not None else None,
-            tools=[],
-            approver=None,  # the default: every approval is rejected
+        agent = self._narrow_agent(
             session_id=session_id,
             session_store=self.session_store(),
             persona=self.persona_loader if sub is None else self.sub_persona_loader(sub),
-            context_sources=[private_context],
-            channel=CHANNEL,
-            guard=None,  # identified in-hub channel: no tools, approvals refused (ADR 0008)
-            **extra,
+            # A sub-tau runs on its own role; the tau's turns on build_agent's default.
+            role="brain" if sub is None else sub.role,
         )
         self._agents[key] = agent
         self._builds[key] = build
@@ -349,17 +340,37 @@ class NetworkTurns:
     def visit_agent(self, sub: PublicSub) -> TauAgent:
         """A fresh agent for one visit: the sub-tau's persona and role, no tools, the
         auto-reject approver and a throwaway in-memory session."""
+        return self._narrow_agent(
+            session_id=None,
+            session_store=MemorySessionStore(),
+            persona=self.sub_persona_loader(sub),
+            role=sub.role,
+        )
+
+    def _narrow_agent(
+        self,
+        *,
+        session_id: str | None,
+        session_store: SessionStore,
+        persona: PersonaLoader,
+        role: str,
+    ) -> TauAgent:
+        """The one agent every network turn and visit runs on: no tools, the auto-reject
+        approver, :func:`private_context` and no owner guard. A contact or a visitor is an
+        identified in-hub channel, not the owner at the Mac, and with no tools and every
+        approval refused there is nothing for the guard to protect (ADR 0008)."""
         return build_agent(
             config=self.config,
             model=self.model_factory() if self.model_factory is not None else None,
             tools=[],
             approver=None,  # the default: every approval is rejected
-            session_id=None,
-            session_store=MemorySessionStore(),
-            persona=self.sub_persona_loader(sub),
+            session_id=session_id,
+            session_store=session_store,
+            persona=persona,
             context_sources=[private_context],
             channel=CHANNEL,
-            role=sub.role,
+            role=role,
+            guard=None,  # identified in-hub channel: no tools, approvals refused (ADR 0008)
         )
 
     async def run_visit(

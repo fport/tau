@@ -27,26 +27,30 @@ floor of 0.45 is accepted), a presence recheck and a step-up the stricter
   has no face part (the hub runs the worker's ``touch_id`` op instead), and a
   ``face_or_touch_id`` step-up whose face check could not work asks Touch ID in the worker.
 
-**With the challenge** the frontal match comes first; the median yaw proxy of its frames is the
-baseline. Then the steps of :class:`tau_guard.liveness.Challenge`, then a second frontal match
-(3 of the last 5 frontal quality frames within 3.5 s). From the frontal match to the end
-exactly one face stays in view: a counted second face aborts (``multiple_faces``), and a box
-whose IoU with the previous frame's is 0.3 or less, or a face gone for more than
-:data:`CHALLENGE_MAX_GAP` (0.2 s), aborts with ``spoof``. Before the first match a jump or a
-gap of more than :data:`MAX_GAP` (0.5 s) only starts the match over.
+**With the challenge** the frontal match comes first; the median head yaw (degrees,
+:attr:`tau_guard.engine.Face.pose`) of its frames is the baseline, and their fit errors set the
+largest one a challenge frame may have (:func:`tau_guard.liveness.fit_limit`). Then the steps
+of :class:`tau_guard.liveness.Challenge`, then a second frontal match (3 of the last 5 frontal
+quality frames, within :data:`FRONTAL` degrees of the baseline, within 3.5 s). From the frontal
+match to the end exactly one face stays in view: a counted second face aborts
+(``multiple_faces``), and a box whose IoU with the previous frame's is 0.3 or less, or a face
+gone for more than :data:`CHALLENGE_MAX_GAP` (0.2 s), aborts with ``spoof`` (rule
+``face_lost``). Before the first match a jump or a gap of more than :data:`MAX_GAP` (0.5 s)
+only starts the match over.
 
 **Identity during the steps.** The turns themselves are tied to the owner too: every challenge
-frame near the baseline (``|Δp| <= 0.10``: the pause before a prompt, the moment before the
-turn, the return) that passes the quality gates is embedded, and when a step's hold is done
-(``center``) the frames since the previous step's hold must hold at least
-:data:`STEP_MATCHES` (2) at or above the threshold, and at least as many matches as misses;
-otherwise ``spoof``. So the owner's photo held up for the frontal checks, with someone else's
-live head turning in between, fails.
+frame near the baseline (within :data:`~tau_guard.liveness.RETURN_TOLERANCE`, 6 degrees: the
+pause before a prompt, the moment before the turn, the return) that passes the quality gates
+is embedded, and when a step's hold is done (``center``) the frames since the previous step's
+hold must hold at least :data:`STEP_MATCHES` (2) at or above the threshold, and at least as
+many matches as misses; otherwise ``spoof`` (rule ``step_identity``). So the owner's photo held
+up for the frontal checks, with someone else's live head turning in between, fails.
 
 **Verdicts.** ``match`` (with ``score``, the median of the matching similarities, and
-``liveness``), ``no_match`` (quality frames below the threshold and no match), ``too_dark`` or
-``face_too_small`` (the last hint, when no frame ever passed the gates), ``no_face``,
-``multiple_faces``, ``spoof`` or ``timeout``.
+``liveness``: ``challenge`` or ``passive``), ``no_match`` (quality frames below the threshold
+and no match), ``too_dark`` or ``face_too_small`` (the last hint, when no frame ever passed the
+gates), ``no_face``, ``multiple_faces``, ``spoof`` (with the failed rule's code in
+``liveness``, one of :data:`tau_guard.liveness.FAILURES`) or ``timeout``.
 
 **When the frames stop.** The camera stops after 20 s whatever ``verify_timeout_seconds`` says
 (:data:`tau_guard.camera.MAX_OPEN_SECONDS`), and a read can fail. The check knows when the
@@ -59,8 +63,8 @@ phase would have reached at its deadline:
 - during the frontal match, ``no_match`` once a quality frame stayed below the threshold
   (``timeout`` when the few quality frames all matched), else the hint, ``timeout`` or
   ``no_face``;
-- during a published step ``spoof``, as for a step past its deadline; in the pause before a
-  prompt ``timeout``;
+- during a published step ``spoof`` with the rule of a step past its deadline (``no_turn``,
+  ``too_slow`` or ``no_return``); in the pause before a prompt ``timeout``;
 - during the frontal match after the steps ``no_match``.
 
 So a longer ``verify_timeout_seconds`` never turns a stranger's counted failure into an
@@ -81,18 +85,22 @@ from dataclasses import dataclass
 from typing import Any
 
 from tau_guard.camera import FrameSource, opened
-from tau_guard.engine import Face, FaceEngine, cosine, iou
+from tau_guard.engine import Face, FaceEngine, HeadPose, cosine, iou
 from tau_guard.liveness import (
+    FAILURES,
+    MAX_FIT,
     RETURN_TOLERANCE,
     STEP_UP_STEPS,
     UNLOCK_STEPS,
     Calibration,
     Challenge,
     draw_directions,
+    fit_limit,
 )
 
 __all__ = [
     "CHALLENGE_MAX_GAP",
+    "FRONTAL",
     "MAX_GAP",
     "MIN_BRIGHTNESS",
     "MIN_IOD",
@@ -140,8 +148,8 @@ CHALLENGE_MAX_GAP = 0.2
 a frame or two the detector misses, too short to swap one face for another."""
 STEP_MATCHES = 2
 """Matching frames near the baseline each step needs (see the module docstring)."""
-FRONTAL = 0.15
-"""How far from the baseline (``|Δp|``) a frame after the steps may be to count as frontal."""
+FRONTAL = 12.0
+"""How far from the baseline (degrees) a frame after the steps may be to count as frontal."""
 AFTER_SECONDS = 3.5
 HINT_SETTLE = 0.3
 """A live hint is published once it held for this long (no flicker on the owner's screen)."""
@@ -334,6 +342,9 @@ class Progress:
 
 @dataclass(frozen=True)
 class Result:
+    """A check's verdict. ``liveness`` is ``challenge`` or ``passive`` for a match, and for a
+    ``spoof`` the code of the liveness rule that failed (:data:`tau_guard.liveness.FAILURES`)."""
+
     ok: bool
     reason: str
     score: float | None = None
@@ -368,8 +379,10 @@ class Verification:
         self.start: float | None = None
         self.deadline = 0.0
         self.matcher = Matcher(policy.threshold)
-        self.yaws: list[float] = []
+        self.poses: list[HeadPose] = []
         self.baseline = 0.0
+        self.limit = MAX_FIT
+        """The largest fit error of a challenge frame (:func:`~tau_guard.liveness.fit_limit`)."""
         self.before: float | None = None
         self.challenge: Challenge | None = None
         self.after: Matcher | None = None
@@ -396,12 +409,17 @@ class Verification:
         from :data:`MIN_SCORE_CHALLENGE` on, but embeds only frames that pass this)."""
         return MIN_SCORE
 
+    def near_baseline(self, face: Face, degrees: float) -> bool:
+        """``face`` fits a head and is within ``degrees`` of the baseline."""
+        pose = face.pose
+        return pose.fits(self.limit) and abs(pose.yaw - self.baseline) <= degrees
+
     def embeds(self, face: Face) -> bool:
         """Whether a quality frame with ``face`` is embedded: always in the frontal matches,
         near the baseline during the challenge."""
         if self.phase != "challenge":
             return True
-        return abs(face.yaw - self.baseline) <= RETURN_TOLERANCE
+        return self.near_baseline(face, RETURN_TOLERANCE)
 
     def drain(self) -> list[Progress]:
         outbox, self._outbox = self._outbox, []
@@ -455,9 +473,9 @@ class Verification:
             return None
         if self.phase == "look":
             self.matcher.reset()
-            self.yaws.clear()
+            self.poses.clear()
             return None
-        return Result(False, "spoof")
+        return Result(False, "spoof", liveness="face_lost")
 
     def _look(self, now: float, obs: Observation, face: Face | None) -> Result | None:
         if self.hints.update(now, obs.hint):
@@ -465,12 +483,14 @@ class Verification:
         if obs.quality and face is not None and obs.similarity is not None:
             self.saw_quality = True
             self.missed = self.missed or obs.similarity < self.policy.threshold
-            self.yaws.append(face.yaw)
+            self.poses.append(face.pose)
             if self.matcher.feed(obs.similarity):
                 self.before = self.matcher.score
                 if not self.policy.steps:
                     return Result(True, "match", self.before, "passive")
-                self.baseline = statistics.median(self.yaws[-WINDOW:])
+                frontal = self.poses[-WINDOW:]
+                self.baseline = statistics.median(pose.yaw for pose in frontal)
+                self.limit = fit_limit([pose.fit for pose in frontal])
                 self.directions = draw_directions(self.rng, self.policy.steps)
                 self.challenge = Challenge(
                     self.directions,
@@ -480,6 +500,7 @@ class Verification:
                     now,
                     until=self.until,
                     reserve=AFTER_SECONDS,
+                    limit=self.limit,
                 )
                 self.phase = "challenge"
                 return None
@@ -509,11 +530,11 @@ class Verification:
         for prompt in self.challenge.drain():
             if prompt.step == "center":  # a hold is done: who was near the baseline around it?
                 if self.step_hits < STEP_MATCHES or self.step_hits < self.step_misses:
-                    return Result(False, "spoof")
+                    return Result(False, "spoof", liveness="step_identity")
                 self.step_hits = self.step_misses = 0
             self._publish(prompt.step, prompt.deadline)
-        if outcome == "spoof":
-            return Result(False, "spoof")
+        if outcome in FAILURES:
+            return Result(False, "spoof", liveness=outcome)
         if outcome == "out_of_time":
             return Result(False, "timeout")
         if outcome == "passed":
@@ -525,7 +546,7 @@ class Verification:
 
     def _after(self, now: float, obs: Observation, face: Face | None) -> Result | None:
         assert self.after is not None
-        frontal = face is not None and abs(face.yaw - self.baseline) <= FRONTAL
+        frontal = face is not None and self.near_baseline(face, FRONTAL)
         if obs.quality and frontal and obs.similarity is not None:
             if self.after.feed(obs.similarity):
                 scores = [s for s in (self.before, self.after.score) if s is not None]
@@ -543,7 +564,9 @@ class Verification:
             return Result(False, self._look_failure())
         if self.phase == "challenge":
             assert self.challenge is not None
-            return Result(False, "spoof" if self.challenge.pending else "timeout")
+            if self.challenge.pending:
+                return Result(False, "spoof", liveness=self.challenge.expired())
+            return Result(False, "timeout")
         return Result(False, "no_match")
 
 

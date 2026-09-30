@@ -9,7 +9,9 @@ Schema (version 1)::
 - ``at`` is UTC ISO 8601 with seconds; ``event`` is one of :data:`EVENTS`.
 - ``channel``, ``client_id``, ``trigger``, ``ok``, ``reason`` and ``duration_ms`` are always
   present (``null`` when they do not apply); ``score`` (rounded to 2 decimals), ``liveness``,
-  ``request_id``, ``tool``, ``method`` and ``policy`` only when set.
+  ``request_id``, ``tool``, ``method`` and ``policy`` only when set. ``liveness`` is
+  ``challenge`` or ``passive`` for a face match, and for a ``spoof`` the code of the liveness
+  rule that failed (:data:`tau_guard.liveness.FAILURES`).
 - ``method`` (issue 114) is ``face`` or ``touch_id``: on a check, the method that passed or
   the one that was tried; on an ``unlock``, how the owner unlocked. A ``touch_id`` record is
   one LocalAuthentication prompt (or its refusal before the prompt): ``trigger`` is the

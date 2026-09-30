@@ -11,10 +11,20 @@
 - **Embeddings** are L2-normalised 128-d vectors and are compared by cosine similarity, which
   for unit vectors is the dot product (:func:`cosine`).
 
-:class:`Face` is one YuNet row (box, five landmarks, score) with the geometry the checks use:
-the eye distance (:attr:`Face.iod`) and the yaw proxy (:attr:`Face.yaw`,
-``(nose_x - eye_mid_x) / iod``). :class:`FaceEngine` is the seam: :class:`OpenCvFaceEngine` is
-the real one, and tests pass a fake that returns synthetic YuNet rows and embeddings.
+:class:`Face` is one YuNet row (box, five landmarks, score, and the size of the frame it came
+from) with the geometry the checks use: the eye distance (:attr:`Face.iod`) and the head pose
+(:attr:`Face.pose`: yaw and pitch in degrees, see :func:`head_pose`). :class:`FaceEngine` is
+the seam: :class:`OpenCvFaceEngine` is the real one, and tests pass a fake that returns
+synthetic YuNet rows and embeddings.
+
+**Head pose** (issue 127). ``cv2.solvePnP`` fits the five landmarks to a generic head,
+:data:`HEAD_MODEL`, seen by a pinhole camera with the focal length equal to the frame width and
+the principal point in the middle of the frame (``SOLVEPNP_ITERATIVE``, started from a frontal
+pose at the distance the eye distance implies). The yaw is positive when the face turns toward
+the image's right edge (the nose moves right of the eyes: the sign of the old yaw proxy
+``(nose_x - eye_mid_x) / eye distance``, so a calibration sign stored with the proxy still holds).
+:attr:`HeadPose.fit` is the root mean square reprojection error in eye distances: a flat picture
+turned about the vertical axis only squeezes its landmarks, which then stop fitting a head.
 
 Nothing here imports cv2 or numpy at module level; :func:`import_cv2` sets
 ``OPENCV_LOG_LEVEL=ERROR`` and ``OPENCV_AVFOUNDATION_SKIP_AUTH=1`` before the first import, so
@@ -30,6 +40,7 @@ import tempfile
 import urllib.request
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from functools import cached_property
 from importlib import resources
 from pathlib import Path
 from typing import IO, Any, Protocol, runtime_checkable
@@ -37,6 +48,8 @@ from typing import IO, Any, Protocol, runtime_checkable
 __all__ = [
     "DETECT_THRESHOLD",
     "EMBEDDING_DIM",
+    "FRAME_SIZE",
+    "HEAD_MODEL",
     "SFACE_FILE",
     "SFACE_NAME",
     "SFACE_SHA256",
@@ -45,11 +58,13 @@ __all__ = [
     "YUNET_SHA256",
     "Face",
     "FaceEngine",
+    "HeadPose",
     "ModelChecksumError",
     "ModelError",
     "OpenCvFaceEngine",
     "cosine",
     "file_sha256",
+    "head_pose",
     "import_cv2",
     "install_sface",
     "iou",
@@ -97,12 +112,59 @@ def import_cv2() -> Any:
 
 
 Point = tuple[float, float]
+Point3 = tuple[float, float, float]
+
+FRAME_SIZE = (640, 480)
+"""The camera's frame size (:mod:`tau_guard.camera`); a :class:`Face` without a ``size`` is
+taken to come from such a frame."""
+
+HEAD_MODEL: tuple[Point3, ...] = (
+    (-32.0, -37.0, 38.0),  # right eye centre (the subject's right: the image's left)
+    (32.0, -37.0, 38.0),  # left eye centre
+    (0.0, 0.0, 0.0),  # nose tip
+    (-28.0, 28.0, 32.0),  # right mouth corner
+    (28.0, 28.0, 32.0),  # left mouth corner
+)
+"""A generic adult head: YuNet's five landmarks in millimetres, in YuNet's row order, with the
+nose tip at the origin and the axes of the camera looking at a frontal face (x toward the
+image's right edge, y down, z away from the camera).
+
+- **x and y** are the median layout of YuNet 2023mar's own landmarks on frontal portraits,
+  scaled to a 64 mm eye distance: the eyes 37 mm above the nose tip, the mouth corners 28 mm
+  below it and 56 mm apart (a frontal face fits the model; anthropometric means are an
+  interpupillary distance of about 63 mm and a mouth width of 50-54 mm).
+- **z** comes from MediaPipe's metric canonical face model (``canonical_face_model.obj``,
+  Apache-2.0): the eye centres (the mean of each eye's contour) lie 38 mm and the mouth corners
+  (landmarks 61 and 291) 32 mm behind the nose tip (landmark 1).
+
+Checked against MediaPipe's own head pose (its 468-point mesh) on 18 real faces: the yaw from
+this model agrees with a slope of 1.02 and a correlation of 0.83."""
+
+
+@dataclass(frozen=True)
+class HeadPose:
+    """The head's orientation from :func:`head_pose`: ``yaw`` (positive: the face turns toward
+    the image's right edge) and ``pitch`` (positive: up) in degrees, and ``fit``, the root mean
+    square reprojection error of the five landmarks divided by the eye distance (``inf`` when
+    there is no pose)."""
+
+    yaw: float
+    pitch: float
+    fit: float
+
+    def fits(self, limit: float) -> bool:
+        """The landmarks fit a head within ``limit`` eye distances."""
+        return self.fit <= limit
+
+
+NO_POSE = HeadPose(0.0, 0.0, math.inf)
 
 
 @dataclass(frozen=True)
 class Face:
     """One YuNet detection: ``[x, y, w, h, re_x, re_y, le_x, le_y, nose_x, nose_y, mouth_r_x,
-    mouth_r_y, mouth_l_x, mouth_l_y, score]`` in frame pixels."""
+    mouth_r_y, mouth_l_x, mouth_l_y, score]`` in frame pixels, and the ``size`` (width, height)
+    of the frame it was found in (``None``: :data:`FRAME_SIZE`)."""
 
     x: float
     y: float
@@ -114,9 +176,10 @@ class Face:
     mouth_right: Point
     mouth_left: Point
     score: float
+    size: tuple[int, int] | None = None
 
     @classmethod
-    def from_row(cls, row: Sequence[float]) -> Face:
+    def from_row(cls, row: Sequence[float], *, size: tuple[int, int] | None = None) -> Face:
         """A face from a YuNet row; raises ``ValueError`` for a short or non-finite row."""
         values = [float(value) for value in list(row)[:15]]
         if len(values) < 15 or not all(math.isfinite(value) for value in values):
@@ -124,7 +187,7 @@ class Face:
         v = values
         return cls(
             v[0], v[1], v[2], v[3], (v[4], v[5]), (v[6], v[7]), (v[8], v[9]), (v[10], v[11]),
-            (v[12], v[13]), v[14],
+            (v[12], v[13]), v[14], size,
         )  # fmt: skip
 
     def row(self) -> list[float]:
@@ -140,18 +203,70 @@ class Face:
         return math.dist(self.right_eye, self.left_eye)
 
     @property
+    def landmarks(self) -> tuple[Point, ...]:
+        """The five landmarks in :data:`HEAD_MODEL`'s order."""
+        return (self.right_eye, self.left_eye, self.nose, self.mouth_right, self.mouth_left)
+
+    @cached_property
+    def pose(self) -> HeadPose:
+        """The head pose (:func:`head_pose`), computed once per face."""
+        return head_pose(self.landmarks, self.size or FRAME_SIZE)
+
+    @property
     def yaw(self) -> float:
-        """The yaw proxy ``(nose_x - eye_mid_x) / iod``: a real head turn moves the nose out of
-        the eyes' plane and changes it; a flat photo turned about the vertical axis scales every
-        x distance alike and leaves it unchanged."""
-        iod = self.iod
-        if iod <= 1e-6:
-            return 0.0
-        return (self.nose[0] - (self.right_eye[0] + self.left_eye[0]) / 2) / iod
+        """The head's yaw in degrees (:attr:`pose`)."""
+        return self.pose.yaw
 
     @property
     def box(self) -> tuple[float, float, float, float]:
         return (self.x, self.y, self.w, self.h)
+
+
+def head_pose(landmarks: Sequence[Point], size: tuple[int, int]) -> HeadPose:
+    """The pose of the head whose five landmarks (YuNet's order) were seen in a frame of
+    ``size`` (width, height): ``cv2.solvePnP`` against :data:`HEAD_MODEL`, the camera's focal
+    length equal to the width and its principal point in the middle of the frame. The fit starts
+    from a frontal head at the distance the eye distance implies (``SOLVEPNP_ITERATIVE`` with
+    that guess; EPnP is too noisy on five points). A degenerate face or a failed fit gives a
+    pose whose ``fit`` is infinite."""
+    points = [(float(x), float(y)) for x, y in landmarks]
+    width, height = float(size[0]), float(size[1])
+    if len(points) != 5 or width <= 0 or height <= 0:
+        return NO_POSE
+    iod = math.dist(points[0], points[1])
+    if iod <= 1e-6:
+        return NO_POSE
+    cv2 = import_cv2()
+    import numpy as np  # type: ignore[import-not-found]
+
+    model = np.array(HEAD_MODEL, dtype=np.float64)
+    image = np.array(points, dtype=np.float64).reshape(-1, 1, 2)
+    focal, cx, cy = width, width / 2, height / 2
+    camera = np.array([[focal, 0.0, cx], [0.0, focal, cy], [0.0, 0.0, 1.0]])
+    eyes = focal * math.dist(HEAD_MODEL[0][:2], HEAD_MODEL[1][:2]) / iod
+    distance = max(eyes - HEAD_MODEL[0][2], eyes / 2)  # the nose tip's, for a frontal head
+    nose_x, nose_y = points[2]
+    rvec = np.zeros((3, 1))
+    tvec = np.array([[(nose_x - cx) * distance / focal], [(nose_y - cy) * distance / focal]])
+    tvec = np.vstack([tvec, [[distance]]])
+    try:
+        ok, rvec, tvec = cv2.solvePnP(
+            model, image, camera, None, rvec, tvec, True, cv2.SOLVEPNP_ITERATIVE
+        )
+    except cv2.error:
+        return NO_POSE
+    if not ok or not np.all(np.isfinite(rvec)) or not np.all(np.isfinite(tvec)):
+        return NO_POSE
+    projected, _ = cv2.projectPoints(model, rvec, tvec, camera, None)
+    error = projected.reshape(-1, 2) - image.reshape(-1, 2)
+    fit = math.sqrt(float((error**2).sum(axis=1).mean())) / iod
+    rotation, _ = cv2.Rodrigues(rvec)
+    forward = -rotation[:, 2]  # where the face looks (the model's -z), in camera coordinates
+    yaw = math.degrees(math.atan2(float(forward[0]), float(-forward[2])))
+    pitch = math.degrees(math.atan2(float(-forward[1]), math.hypot(forward[0], forward[2])))
+    if not all(math.isfinite(value) for value in (yaw, pitch, fit)):
+        return NO_POSE
+    return HeadPose(yaw, pitch, fit)
 
 
 def iou(a: Face, b: Face) -> float:
@@ -388,7 +503,7 @@ class OpenCvFaceEngine:
         faces = []
         for row in rows.tolist():
             try:
-                faces.append(Face.from_row(row))
+                faces.append(Face.from_row(row, size=(width, height)))
             except ValueError:
                 continue
         return faces

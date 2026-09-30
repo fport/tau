@@ -292,14 +292,71 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
     },
     "guard.cli.verify.liveness.passive": {"en": "passive match", "tr": "pasif eşleşme"},
     "guard.cli.verify.explain_row": {
-        "en": "{t}  {phase}  faces={faces} det={score} eyes={iod} light={brightness} "
-        "sharp={sharpness} yaw={yaw} match={similarity}{hint}",
-        "tr": "{t}  {phase}  yüz={faces} algı={score} göz={iod} ışık={brightness} "
-        "netlik={sharpness} yaw={yaw} eşleşme={similarity}{hint}",
+        "en": "{t}  {step}  yaw={yaw} turn={turn} pitch={pitch} fit={fit}  eyes={iod} "
+        "det={score} light={brightness} sharp={sharpness} faces={faces} match={similarity}{hint}",
+        "tr": "{t}  {step}  yaw={yaw} dönüş={turn} eğim={pitch} uyum={fit}  göz={iod} "
+        "algı={score} ışık={brightness} netlik={sharpness} yüz={faces} eşleşme={similarity}{hint}",
     },
-    "guard.cli.verify.phase.look": {"en": "look     ", "tr": "bakış    "},
-    "guard.cli.verify.phase.challenge": {"en": "challenge", "tr": "sınama   "},
-    "guard.cli.verify.phase.after": {"en": "after    ", "tr": "sonra    "},
+    "guard.cli.verify.tag.look": {"en": "look ", "tr": "bak  "},
+    "guard.cli.verify.tag.turn_left": {"en": "LEFT ", "tr": "SOL  "},
+    "guard.cli.verify.tag.turn_right": {"en": "RIGHT", "tr": "SAĞ  "},
+    "guard.cli.verify.tag.center": {"en": "BACK ", "tr": "GERİ "},
+    "guard.cli.verify.prompt.look": {
+        "en": ">>> LOOK AT THE CAMERA <<<",
+        "tr": ">>> KAMERAYA BAK <<<",
+    },
+    "guard.cli.verify.prompt.turn_left": {
+        "en": ">>> TURN YOUR HEAD LEFT <<<",
+        "tr": ">>> BAŞINI SOLA ÇEVİR <<<",
+    },
+    "guard.cli.verify.prompt.turn_right": {
+        "en": ">>> TURN YOUR HEAD RIGHT <<<",
+        "tr": ">>> BAŞINI SAĞA ÇEVİR <<<",
+    },
+    "guard.cli.verify.prompt.center": {
+        "en": ">>> LOOK STRAIGHT AT THE CAMERA AGAIN <<<",
+        "tr": ">>> YENİDEN KAMERAYA DÜZ BAK <<<",
+    },
+    "guard.cli.verify.rule": {
+        "en": "The liveness rule that failed: {rule} ({code}).",
+        "tr": "Geçilemeyen canlılık kuralı: {rule} ({code}).",
+    },
+    "guard.cli.verify.rule.overshoot_before_target": {
+        "en": "the head moved the other way before the turn reached its target",
+        "tr": "baş, dönüş hedefe ulaşmadan ters yöne gitti",
+    },
+    "guard.cli.verify.rule.oscillation": {
+        "en": "the head turned back and forth within one step",
+        "tr": "baş, tek bir adımda ileri geri döndü",
+    },
+    "guard.cli.verify.rule.moved_between_prompts": {
+        "en": "the head moved while no prompt was up",
+        "tr": "ekranda istem yokken baş hareket etti",
+    },
+    "guard.cli.verify.rule.no_turn": {
+        "en": "the head did not turn far enough the asked way in time",
+        "tr": "baş, istenen yöne zamanında yeterince dönmedi",
+    },
+    "guard.cli.verify.rule.too_slow": {
+        "en": "the turn reached its target but was not held long enough in time",
+        "tr": "dönüş hedefe ulaştı ama zamanında yeterince tutulmadı",
+    },
+    "guard.cli.verify.rule.no_return": {
+        "en": "the head did not come back to the camera in time",
+        "tr": "baş zamanında kameraya geri dönmedi",
+    },
+    "guard.cli.verify.rule.face_lost": {
+        "en": "the face left the view or jumped",
+        "tr": "yüz görüntüden çıktı ya da yer değiştirdi",
+    },
+    "guard.cli.verify.rule.step_identity": {
+        "en": "the face around a turn was not yours",
+        "tr": "dönüş sırasındaki yüz senin değildi",
+    },
+    "guard.cli.verify.rule.abandoned": {
+        "en": "the check was cancelled while a prompt was up",
+        "tr": "istem ekrandayken kontrol iptal edildi",
+    },
     "guard.cli.verify.nothing_saved": {
         "en": "No frame was saved.",
         "tr": "Hiçbir kare kaydedilmedi.",
@@ -384,6 +441,16 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "yok; `tau guard setup` çalıştır",
     },
     "guard.cli.doctor.template_ok": {"en": "decrypts", "tr": "çözülebiliyor"},
+    "guard.cli.doctor.calibration_measured": {
+        "en": "your head-turn range, measured in degrees at enrollment",
+        "tr": "baş çevirme aralığın, kayıtta derece olarak ölçüldü",
+    },
+    "guard.cli.doctor.calibration_default": {
+        "en": "enrolled before head turns were measured in degrees: a 12 degree turn each way "
+        "is asked for; `tau guard enroll` measures your own range",
+        "tr": "baş dönüşleri derece olarak ölçülmeden önce kaydedildi: her yöne 12 derecelik "
+        "bir dönüş istenir; `tau guard enroll` kendi aralığını ölçer",
+    },
     "guard.cli.doctor.keychain_ok": {"en": "readable", "tr": "okunabiliyor"},
     "guard.cli.doctor.keychain_missing": {"en": "no key", "tr": "anahtar yok"},
     "guard.cli.doctor.keychain_unavailable": {

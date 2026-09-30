@@ -42,6 +42,7 @@ from typing import IO, Any
 
 from tau_core.guard import PROGRESS_STEPS, VERDICT_REASONS
 
+from tau_guard.liveness import FAILURES
 from tau_guard.localauth import OUTCOMES as LA_OUTCOMES
 from tau_guard.localauth import POLICIES
 from tau_guard.state import Outcome
@@ -73,7 +74,8 @@ SUCCESS_METHODS = frozenset({"face", "touch_id"})
 HUB_REASONS = frozenset({"cooldown", "locked", "busy", "cancelled"})
 """Verdict reasons only the hub decides; a worker that sends one is malformed."""
 WORKER_REASONS = frozenset(VERDICT_REASONS) - HUB_REASONS
-LIVENESS = frozenset({"challenge", "passive", "none"})
+LIVENESS = frozenset({"challenge", "passive", "none", *FAILURES})
+"""A success's check, or the liveness rule a failure broke (:data:`tau_guard.liveness.FAILURES`)."""
 MAX_CAMERA_MS = 10 * 60 * 1000
 WORKER_ENV = {"OPENCV_LOG_LEVEL": "ERROR", "OPENCV_AVFOUNDATION_SKIP_AUTH": "1"}
 DROPPED_ENV = ("PYTHONPATH", "PYTHON_KEYRING_BACKEND", "KEYCHAIN_PATH")

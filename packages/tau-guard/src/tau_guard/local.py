@@ -54,6 +54,9 @@ EXPLAIN_KEYS = (
     "brightness",
     "sharpness",
     "yaw",
+    "pitch",
+    "fit",
+    "turn",
     "similarity",
     "hint",
 )

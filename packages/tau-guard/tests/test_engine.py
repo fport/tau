@@ -24,6 +24,7 @@ from tau_guard.engine import (
     OpenCvFaceEngine,
     cosine,
     file_sha256,
+    head_pose,
     install_sface,
     iou,
     mean_vector,
@@ -32,24 +33,98 @@ from tau_guard.engine import (
     sface_path,
     vendored_yunet,
 )
-from tau_guard.liveness import Calibration
-from tau_guard.testing import FakeEngine, FakeFrameSource, face_row
+from tau_guard.liveness import MAX_FIT, TURN_FLOOR, Calibration
+from tau_guard.testing import FakeEngine, FakeFrameSource, face_row, project_head
 from tau_guard.verify import Policy, run_check
 
 PACKAGE = Path(__file__).resolve().parents[1]
 
 
 def test_face_geometry_from_a_yunet_row() -> None:
-    face = Face.from_row(face_row(cx=300, iod=80, yaw=0.25))
+    face = Face.from_row(face_row(cx=300, iod=80), size=(640, 480))
     assert face.iod == pytest.approx(80)
-    assert face.yaw == pytest.approx(0.25)
-    assert Face.from_row(face.row()) == face
-    squeezed = Face.from_row(face_row(cx=300, iod=80, yaw=0.25, scale_x=0.6))
-    assert squeezed.iod == pytest.approx(48) and squeezed.yaw == pytest.approx(0.25)
+    assert face.size == (640, 480)
+    assert Face.from_row(face.row(), size=(640, 480)) == face
+    assert Face.from_row(face.row()).size is None  # taken to be the camera's 640x480
+    assert Face.from_row(face.row()).pose == face.pose
     with pytest.raises(ValueError):
         Face.from_row([1.0] * 14)
     with pytest.raises(ValueError):
         Face.from_row([math.nan] * 15)
+
+
+@pytest.mark.parametrize("yaw", [-30, -20, -10, 10, 20, 30])
+@pytest.mark.parametrize(
+    ("iod", "cx", "cy", "pitch"),
+    [(80, 320, 240, 0), (50, 200, 180, 8), (120, 460, 300, -8), (45, 320, 240, 5)],
+)
+def test_head_pose_recovers_a_known_turn(yaw: float, iod: float, cx: float, cy: float, pitch):
+    """The five points of the 3D model, turned by a known angle and projected through the same
+    camera, come back within a degree; with a pixel of detector noise, within a few."""
+    exact = head_pose(project_head(yaw=yaw, pitch=pitch, cx=cx, cy=cy, iod=iod), (640, 480))
+    assert exact.yaw == pytest.approx(yaw, abs=1.0)
+    assert exact.pitch == pytest.approx(pitch, abs=1.0)
+    assert exact.fit < 0.01
+    rng = random.Random(yaw * 1000 + iod)
+    errors = []
+    for _ in range(40):
+        points = project_head(yaw=yaw, pitch=pitch, cx=cx, cy=cy, iod=iod)
+        noisy = [(x + rng.gauss(0, 1.0), y + rng.gauss(0, 1.0)) for x, y in points]
+        errors.append(abs(head_pose(noisy, (640, 480)).yaw - yaw))
+    assert sorted(errors)[len(errors) // 2] < 3.0  # median error
+
+
+def test_the_yaw_sign_follows_the_nose() -> None:
+    """Positive yaw: the face turns toward the image's right edge, the nose right of the eyes
+    (the sign of the old proxy, so a stored calibration sign still holds)."""
+    face = Face.from_row(face_row(yaw=20))
+    eye_mid = (face.right_eye[0] + face.left_eye[0]) / 2
+    assert face.yaw > 15 and face.nose[0] > eye_mid
+    face = Face.from_row(face_row(yaw=-20))
+    assert face.yaw < -15 and face.nose[0] < (face.right_eye[0] + face.left_eye[0]) / 2
+
+
+def test_a_face_without_a_pose() -> None:
+    row = face_row()
+    row[6:8] = row[4:6]  # both eyes on one point: no eye distance
+    assert Face.from_row(row).pose.fit == math.inf
+    assert not Face.from_row(row).pose.fits(1.0)
+    assert head_pose([(1.0, 2.0)] * 4, (640, 480)).fit == math.inf
+    assert head_pose(project_head(), (0, 480)).fit == math.inf
+
+
+GRID = [
+    (iod, cx, cy, tilt, sign)
+    for iod in (45, 60, 80, 120)
+    for cx in (200, 320, 460)
+    for cy in (160, 240)
+    for tilt in (-15, 0, 15)
+    for sign in (1, -1)
+]
+
+
+@pytest.mark.parametrize("angle", [10, 20, 30, 40, 45, 50, 55, 60, 70])
+def test_a_flat_photo_turned_about_the_vertical_axis_does_not_read_as_a_turn(angle: int) -> None:
+    """The anti-photo property: a printed frontal face (all five points in one plane) turned by
+    ``angle`` degrees reads a small fraction of it, and past about 50 degrees its landmarks stop
+    fitting a head (the challenge ignores such frames). Across sizes, seats and a tilt of up to
+    15 degrees the counted change stays below the 12 degree floor; a head reads the full angle."""
+    worst = 0.0
+    for iod, cx, cy, tilt, sign in GRID:
+        start = head_pose(project_head(pitch=tilt, cx=cx, cy=cy, iod=iod, flat=True), (640, 480))
+        turned = head_pose(
+            project_head(yaw=sign * angle, pitch=tilt, cx=cx, cy=cy, iod=iod, flat=True),
+            (640, 480),
+        )
+        if turned.fits(MAX_FIT):
+            worst = max(worst, abs(turned.yaw - start.yaw))
+    assert worst < TURN_FLOOR
+    assert worst <= max(2.5, angle / 3)
+    head = head_pose(project_head(yaw=angle), (640, 480))
+    assert head.yaw == pytest.approx(angle, abs=1.0) and head.fits(MAX_FIT)
+    straight = head_pose(project_head(yaw=angle, flat=True), (640, 480))
+    if angle <= 40:  # square to the camera, the photo barely moves at all
+        assert abs(straight.yaw) <= angle / 10
 
 
 def test_iou_of_face_boxes() -> None:
@@ -116,7 +191,7 @@ def test_the_real_yunet_finds_no_face_in_a_blank_frame() -> None:
     result = run_check(
         Policy("unlock", 0.5, 2, timeout=5),
         [0.0] * 127 + [1.0],
-        Calibration(1, 0.4, 0.4),
+        Calibration(1, 30.0, 30.0),
         engine,
         source,
         rng=random.Random(1),
@@ -132,7 +207,7 @@ def test_the_real_yunet_finds_no_face_in_a_blank_frame() -> None:
     result = run_check(
         Policy("recheck", 0.55, 0, timeout=5),
         [0.0] * 127 + [1.0],
-        Calibration(1, 0.4, 0.4),
+        Calibration(1, 30.0, 30.0),
         engine,
         FakeFrameSource(bright),
         rng=random.Random(1),

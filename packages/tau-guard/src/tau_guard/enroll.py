@@ -6,19 +6,21 @@ same progress lines: ``too_dark``, ``face_too_small`` (too far) and ``multiple_f
 only) as hints, ``turn_more`` as a step when a turn is too small.
 
 - **Samples.** A frame that passes the quality gates of :mod:`tau_guard.verify`, shows one face
-  and is within 0.35 of the frontal yaw becomes a sample, unless its cosine similarity to a
-  sample already kept is above 0.97 (too alike). At most 4 per pose, 10-20 in all.
-- **Calibration.** The ``look`` pose sets the baseline (median yaw proxy of its samples). In the
-  ``turn_left`` and ``turn_right`` poses, frames whose ``Δp`` reaches 0.20 are the turn (in the
-  right pose only those on the other side of the left turn: the way back does not count), and a
-  turn pose moves on once the turn was seen for 0.5 s; the medians of both sides give the sign
-  and the amplitudes (:meth:`Calibration.measure`).
+  and is within 30 degrees of the frontal yaw becomes a sample, unless its cosine similarity to
+  a sample already kept is above 0.97 (too alike). At most 4 per pose, 10-20 in all.
+- **Calibration.** The ``look`` pose sets the baseline (the median head yaw of its samples, in
+  degrees: :attr:`tau_guard.engine.Face.pose`). In the ``turn_left`` and ``turn_right`` poses,
+  frames whose yaw change reaches 12 degrees are the turn (in the right pose only those on the
+  other side of the left turn: the way back does not count), and a turn pose moves on once the
+  turn was seen for 0.5 s; the medians of both sides give the sign and the amplitudes in
+  degrees (:meth:`Calibration.measure`).
 - **Consistency.** Each sample's cosine similarity to the renormalised mean of the others
   (leave-one-out) must be at least 0.55; otherwise the samples do not agree (another face, bad
   light) and the enrollment fails with ``no_match``.
 - **Adding** (``tau guard enroll --add``, other light): the new samples must match the existing
   template (0.50), then they join the old ones (at most 40, the newest kept), the leave-one-out
-  check runs over all of them, and the calibration is averaged with the old one.
+  check runs over all of them, and the calibration is averaged with the old one (a calibration
+  from before issue 127, in units of the old yaw proxy, is replaced by the new measurement).
 
 Failures: ``no_face`` (no face ever), the last live hint when too few samples came
 (``too_dark``, ``face_too_small``, ``multiple_faces``), ``timeout`` (too few samples, or no clear
@@ -63,7 +65,8 @@ DIVERSITY = 0.97
 LOO_MIN = 0.55
 ADD_MATCH = 0.50
 SAMPLE_GAP = 0.15
-MAX_SAMPLE_TURN = 0.35
+MAX_SAMPLE_TURN = 30.0
+"""Degrees from the frontal yaw a sample may be."""
 TURN_MORE_AFTER = 1.5
 TURN_HOLD = 0.5
 """How long a turn pose must see the turn before it moves on."""
@@ -237,7 +240,7 @@ class Enrollment:
 
     def _calibration(self, measured: Calibration | None) -> Calibration | None:
         old = self.existing_calibration
-        if old is None:
+        if old is None or (measured is not None and not old.measured):
             return measured
         if measured is None:
             return old

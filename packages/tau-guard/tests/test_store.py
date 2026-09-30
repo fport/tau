@@ -29,6 +29,7 @@ from tau_guard.store import (
     MemoryKeyStore,
     StoreError,
     decrypt,
+    encrypt,
     first_enrollment,
     forget,
     load_template,
@@ -40,7 +41,7 @@ from tau_guard.store import (
 )
 from tau_guard.testing import OWNER, variant
 
-CALIBRATION = Calibration(sign=1, left=0.42, right=0.38)
+CALIBRATION = Calibration(sign=1, left=25.0, right=21.0)
 OTHER_SHA = "f" * 64
 
 
@@ -69,6 +70,19 @@ def test_round_trip(tmp_path: Path) -> None:
     assert loaded.enrollment == "e1" and loaded.calibration == CALIBRATION
     assert len(loaded.samples) == 12 and len(loaded.vector) == 128
     assert max(abs(a - b) for a, b in zip(loaded.vector, template.vector, strict=True)) < 1e-6
+
+
+def test_a_template_from_before_degrees_still_loads(tmp_path: Path) -> None:
+    """A template saved with the old yaw-proxy calibration keeps working (issue 127): its sign
+    stays, its amplitudes become the defaults, and nothing asks for a re-enrollment."""
+    guard, keys, _ = enrolled(tmp_path)
+    path = guard / TEMPLATE_FILE
+    payload = json.loads(decrypt(path.read_bytes(), keys.key, SFACE_SHA256))
+    payload["calibration"] = {"sign": -1, "left": 0.42, "right": 0.38}
+    path.write_bytes(encrypt(json.dumps(payload).encode(), keys.key, SFACE_SHA256))
+    loaded = load_template(guard, keys, SFACE_SHA256)
+    assert loaded.calibration == Calibration.default(-1)
+    assert not loaded.calibration.measured
 
 
 def test_the_file_format_and_modes(tmp_path: Path) -> None:

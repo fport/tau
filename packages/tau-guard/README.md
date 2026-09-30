@@ -133,21 +133,28 @@ never saved.
 - **Match.** At least 3 of the last 5 quality frames reach the threshold: `unlock_threshold`
   0.50 (never below 0.45), `step_up_threshold` 0.55 for step-ups and presence rechecks.
 - **Head-turn challenge.** After a frontal match, 2 random steps for an unlock and 3 for a
-  step-up: turn left or right past `max(0.20, 0.6 x your calibrated turn)` in the yaw proxy
-  `(nose_x - eye_mid_x) / eye distance`, hold for a random 0.4-0.8 s, come back within 0.10.
-  Each prompt follows a random 0.3-0.9 s pause and has 3.5 s. An overshoot of more than 0.15
-  the other way aborts with `spoof`, and so does moving more than that during a pause, or a
-  step not done in time; a flat photo turned about the vertical axis cannot change the proxy.
-  Exactly one face stays in view (box IoU above 0.3 from frame to frame, never gone for more
-  than 0.2 s), the frames near the centre between the turns must match you too, and a second
-  frontal match closes the check. Cancelling or locking while a turn prompt is up counts like a
-  failed step. A prompt is shown only when its step can end before the camera's 20 s limit. A
-  presence recheck is a passive strict match, and so is a step-up within
+  step-up. The head's yaw comes from `cv2.solvePnP`, which fits YuNet's five landmarks to a
+  generic 3D head (degrees, relative to the frontal frames of the attempt): turn left or right
+  by at least `max(12°, half your calibrated turn)`, hold for a random 0.3-0.6 s, come back
+  within 6° (a swing past the centre on the way back is fine). Each prompt follows a random
+  0.3-0.9 s pause and has 4 s. The check fails as `spoof`, naming the rule in the verdict and
+  the audit log: 8° the wrong way before the turn is held (`overshoot_before_target`), more
+  than 3 reversals within one step (`oscillation`), more than 10° of movement while no prompt
+  is up (`moved_between_prompts`; up to 20° on the far side of a return swing), and a step not
+  done in time (`no_turn`, `too_slow`, `no_return`). A flat photo turned about the vertical
+  axis reads a few degrees at most, and turned further its landmarks stop fitting a head, so
+  those frames count for nothing. Exactly one face stays in view (box IoU above 0.3 from frame
+  to frame, never gone for more than 0.2 s: `face_lost`), the frames near the centre between
+  the turns must match you too (`step_identity`), and a second frontal match closes the check.
+  Cancelling or locking while a turn prompt is up counts like a failed step (`abandoned`). A
+  prompt is shown only when its step can end before the camera's 20 s limit. A presence
+  recheck is a passive strict match, and so is a step-up within
   `step_up_challenge_fresh_seconds` of a passed challenge.
 - **Enrollment.** Guided, 15-20 s at most: look, turn left, turn right, up, down, with live
   hints. 10-20 samples, none closer than 0.97 to another, each at least 0.55 to the mean of the
   others (leave-one-out); the template is their renormalised mean, stored with the turn
-  calibration. It always runs behind LocalAuthentication (Touch ID or the Mac password, asked
+  calibration in degrees (an enrollment from before degrees keeps working with a 12° turn each
+  way; `tau guard enroll` measures your own range). It always runs behind LocalAuthentication (Touch ID or the Mac password, asked
   only once the camera permission is granted), is refused over SSH, and runs through the hub
   when a hub with an active guard runs (`POST /guard/enroll`), else in a local worker. On a
   first `tau guard setup` the hub's guard is not active yet, so the app that runs the hub asks
@@ -230,7 +237,8 @@ a client's request as that default, never as agreement. The hub's own channels f
 ```sh
 tau guard setup [--model-file PATH] # model, enrollment, one check, [component.guard] enabled = true
 tau guard enroll [--add]            # enroll again, or add samples under other light
-tau guard verify [--explain]        # one check; --explain prints each frame's numbers
+tau guard verify [--explain[=all]]  # one check; --explain highlights each prompt and prints
+                                    # every 3rd frame's numbers (=all: every frame)
 tau guard forget                    # remove template, marker and key; the guard is off
                                     # (exit 1 if the Keychain kept the key; run it again)
 tau guard doctor                    # everything the guard depends on, Touch ID included

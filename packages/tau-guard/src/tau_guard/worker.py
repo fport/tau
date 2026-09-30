@@ -20,12 +20,17 @@ Protocol:
   the documented type; anything else (a list where a string belongs) ends the run with
   ``error`` in the hub.
 - A face success reports ``liveness``: ``challenge`` when the head-turn challenge passed,
-  ``passive`` for a passive match. The worker picks the check from the request
+  ``passive`` for a passive match. A ``spoof`` reports the code of the liveness rule that
+  failed there (:data:`tau_guard.liveness.FAILURES`: ``overshoot_before_target``,
+  ``oscillation``, ``moved_between_prompts``, ``no_turn``, ``too_slow``, ``no_return``,
+  ``face_lost``, ``step_identity``), a word and never a value. The worker picks the check from
+  the request
   (:func:`tau_guard.verify.policy_for`); the hub turns a success the attempt's merged ``policy``
   excludes into ``error`` as a second line (see :mod:`tau_guard.state`).
 - With ``"explain": true`` (only ``tau guard verify --explain``, never the hub) ``verify`` also
   writes one ``{"type": "explain", ...}`` line per frame with its numbers (detector score, eye
-  distance, brightness, sharpness, yaw proxy, similarity). No frame is ever saved.
+  distance, brightness, sharpness, head yaw and pitch in degrees, the landmarks' fit error, the
+  turn from the challenge's baseline, similarity). No frame is ever saved.
 - Stderr goes to ``TAU_DATA_DIR/guard/worker.log`` (the caller opens it, 0600). It never gets
   an embedding or a frame, only what went wrong: an unexpected exception is logged as its type
   and traceback frames, never its message, which could quote a value.
@@ -77,12 +82,13 @@ Operations:
 - ``selftest``: the platform and the imports, ``{"type": "verdict", "ok", "reason", "checks"}``
   (``reason`` is ``null`` when every check passed). With ``"deep": true`` (``tau guard
   doctor``) it adds ``details``: OpenCV's version, both model checksums, the Keychain item
-  (``ok``, ``missing``, ``invalid`` or ``unavailable``), whether the template decrypts, the
-  camera device, the camera permission and Touch ID (``touch_id``: its state and why, the lid,
-  and whether the fingerprint set is the pinned one: ``ok``, ``changed``, ``not_pinned`` or
-  ``unknown``). It never opens a camera or shows a LocalAuthentication prompt; reading the
-  Keychain may bring up macOS's Keychain access prompt (after a Python upgrade changed the
-  interpreter), which the doctor explains.
+  (``ok``, ``missing``, ``invalid`` or ``unavailable``), whether the template decrypts and
+  whether its head-turn calibration was ``measured`` or is the ``default`` of a template from
+  before issue 127, the camera device, the camera permission and Touch ID (``touch_id``: its
+  state and why, the lid, and whether the fingerprint set is the pinned one: ``ok``,
+  ``changed``, ``not_pinned`` or ``unknown``). It never opens a camera or shows a
+  LocalAuthentication prompt; reading the Keychain may bring up macOS's Keychain access prompt
+  (after a Python upgrade changed the interpreter), which the doctor explains.
 
 The module imports nothing but the standard library at start, so the worker starts fast;
 camera, pyobjc, keyring and cryptography imports happen inside the operations. Tests call
@@ -372,6 +378,8 @@ def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
         return {**verdict(True, "match", **extra), "method": "face", "liveness": result.liveness}
     if _touch_id_after(request, result.reason):
         return _step_up_touch_id(request, deps, progress, template.domain_state, source)
+    if result.liveness is not None:
+        extra["liveness"] = result.liveness  # the rule that failed
     return verdict(False, result.reason, **extra)
 
 
@@ -406,7 +414,11 @@ def _step_up_touch_id(
 def _explainer(emit: Emit) -> Callable[[Any, str, Any], None]:
     def explain(obs: Any, phase: str, machine: Any) -> None:
         face = obs.primary
+        pose = face.pose if face is not None else None
         start = machine.start if machine.start is not None else obs.at
+        turn = None
+        if pose is not None and phase != "look":
+            turn = pose.yaw - machine.baseline
         emit(
             {
                 "type": "explain",
@@ -417,7 +429,10 @@ def _explainer(emit: Emit) -> Callable[[Any, str, Any], None]:
                 "iod": _round(face.iod if face else None, 1),
                 "brightness": _round(obs.brightness, 1),
                 "sharpness": _round(obs.sharpness, 1),
-                "yaw": _round(face.yaw if face else None, 3),
+                "yaw": _round(pose.yaw if pose else None, 1),
+                "pitch": _round(pose.pitch if pose else None, 1),
+                "fit": _round(pose.fit if pose else None, 3),
+                "turn": _round(turn, 1),
                 "similarity": _round(obs.similarity, 3),
                 "hint": obs.hint,
             }
@@ -829,11 +844,12 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
         details["template"] = "not_enrolled"
     else:
         try:
-            load_template(data_dir / "guard", deps.keys, SFACE_SHA256)
+            template = load_template(data_dir / "guard", deps.keys, SFACE_SHA256)
         except StoreError as exc:
             details["template"] = exc.reason
         else:
             details["template"] = "ok"
+            details["calibration"] = "measured" if template.calibration.measured else "default"
     stored = stored_pin(data_dir / "guard", deps) if data_dir is not None else StoredPin("absent")
     details["touch_id"] = _touch_id_details(deps, stored)
     camera: dict[str, Any] = {"device": None, "others": 0, "permission": None}

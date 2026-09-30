@@ -7,7 +7,9 @@ Layout of ``TAU_DATA_DIR/guard/`` (0700, chmod explicitly):
   is the recognizer's sha256 as lowercase hex (ASCII) and ``payload`` is JSON ``{v,
   enrollment, created, model: {name, sha256}, dim, template, samples, calibration,
   touch_id?}``. The template is the renormalised mean of the samples; the calibration is the
-  head-turn sign and amplitudes (:class:`tau_guard.liveness.Calibration`); ``touch_id`` is
+  head-turn sign and amplitudes in degrees (:class:`tau_guard.liveness.Calibration`; a
+  template from before issue 127 holds them in units of the old yaw proxy and is read with its
+  sign and default amplitudes, so it keeps working without a re-enrollment); ``touch_id`` is
   ``{"domain_state": "<sha256>"}``, the Touch ID fingerprint set pinned at enrollment (issue
   114, :mod:`tau_guard.localauth`), absent on a Mac without Touch ID.
 - ``enrolled`` (0600): the public marker ``{"v": 1, "enrollment", "model", "created"}`` that

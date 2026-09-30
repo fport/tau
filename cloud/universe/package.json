@@ -5,7 +5,9 @@
   "description": "tau's public site and the tau universe: an opt-in directory of taus and their mutual links",
   "type": "module",
   "scripts": {
+    "postinstall": "pnpm --dir ../shared install --frozen-lockfile",
     "configure": "node scripts/configure.mjs",
+    "identity": "node scripts/identity.mjs",
     "build": "node scripts/build.mjs",
     "sync-brand": "node scripts/sync-brand.mjs",
     "dev": "wrangler dev",

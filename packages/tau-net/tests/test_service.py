@@ -240,7 +240,9 @@ def test_two_taus_end_to_end(tmp_path: Path, network: FakeNetwork, caplog) -> No
     question = a_node.store.log(address=BOB)[-1]
 
     async def body(run: Run) -> None:  # B's hub answers with its FakeModel
-        await run.until(lambda: len(a.spine.pending()) == 1)
+        # ... and acknowledges the question: B's reply can reach A's spine before B's ack
+        # reaches its own, and a question left unacked would sit next to A's answer below.
+        await run.until(lambda: len(a.spine.pending()) == 1 and not b.spine.pending())
 
     serve(b, body)
     [mail] = a.spine.pending()

@@ -295,6 +295,13 @@ agent = build_agent(approver=ButtonApprover(), channel="telegram")
 - **Timeouts:** `TierGate(timeout_seconds=...)`, else the approver's own `timeout_seconds`, else
   none. When it runs out the question is cancelled and the decision is `timeout`; silence never
   approves.
+- **Owner guard** (see [Guard](#guard)): with a guard, a tier-1 or tier-2 call is refused
+  without asking when the guard does not admit the turn (approval `locked`, note "tau was
+  locked before the user answered."), and an approved tier-2 call also needs the guard's
+  step-up (anything but a literal `True` turns it into `rejected`, note "The guard could not
+  confirm the user's identity."; the `approval` event gains `step_up: passed | failed`). The
+  guard can only refuse; exempt calls reach neither check. Every `TierGate(...)` in the repo
+  passes `guard=` explicitly (a repo rule).
 - **Exemptions** let registered routines (#037) skip per-call approval:
   `build_agent(exemptions=[fn])` or `agent.gate.add_exemption(fn)` (returns an undo function).
   `fn(tool_name, arguments)` sees a copy of the arguments and must return `True`; it is asked
@@ -349,6 +356,7 @@ for now. `TurnEnd.stop_reason` (`tau_core.STOP_REASONS`):
 | `interrupt` | a hook kept interrupting after `max_turns` refusals; tau cleared the SDK's interrupt state | `notice.interrupt_refused`, `error` event |
 | `error` | the model call failed (`notice.model_error`), the context window overflowed (`notice.overflow`) | `error` event with `where`: `model`, `context` or `interrupt` |
 | `busy` | another invocation held the SDK's concurrency guard; nothing ran | `notice.busy`, no event |
+| `locked` | the owner guard refused the turn before any history, prompt or model work; nothing was appended (see [Guard](#guard)) | `guard.refused.<reason>`, `guard` event |
 
 tau never appends to the history by hand. When a turn leaves the history *dangling* - on a
 `user` message (a failed model call, the loop guard or token budget after a tool result, a
@@ -486,14 +494,28 @@ overrides) and speaks JSON: `GET /health` → `{"ok": true, "pid", "uptime_s"}`,
 `approvals_pending`, `nodes`, plus the keys hub services add (`telegram`). Requests with a
 non-loopback `Host` header get 403.
 
+Every other route is **protected** (ADR 0008): `add_route(method, path, handler, open=False)`,
+and only `/health` and `/status` are open. At start, while it holds the hub lock, the hub writes
+a random token to `<TAU_DATA_DIR>/hub/control.token` (0600, `hub/` chmod 0700) and deletes it
+on a clean stop if it is still its own. The server answers 403 before dispatch when that file is
+missing, empty or not the hub's, when `X-Tau-Token` does not match, when any `Origin` header is
+present, or when a POST is not `application/json`. A request with `X-Tau-Nonce` gets
+`X-Tau-Proof = hex(HMAC-SHA256(token, nonce|method|path|status|body))` on a protected answer, so
+a client can tell the hub from a process that bound the port while it was down. `GET /spend` is
+protected too. Other processes call protected routes with `tau_core.hub.HubClient(config)`:
+loopback only, no proxy, the token re-read on every request and once more after a 403, a nonce
+on every request and the proof checked; it raises `HubUnavailable` (`reason`: `no_hub`,
+`timeout`, `bad_proof`, `bad_response`) or `HubError(status, payload)`.
+
 Extending the hub: a `HubService` has a `name`, `async start(hub)` and `async stop()`; services
 start in order after the crash check and stop in reverse. `tau hub run` starts the control API
 first and then every enabled `tau.hub_services` component (see [Components](#components)): the
 entry point is a `factory(config) -> HubService`, the service is *optional* (one that fails to
 build or to start is logged and skipped, the hub runs on), and inside `start(hub)` it can call
 `hub.add_status_source(fn)` to add keys to `/status` and
-`hub.find_service("control-api").add_route(method, path, handler)` to add routes (handlers run
-in the server thread; reach the event loop with `asyncio.run_coroutine_threadsafe(..., hub.loop)`).
+`hub.find_service("control-api").add_route(method, path, handler)` to add protected routes
+(handlers run in the server thread; reach the event loop with
+`asyncio.run_coroutine_threadsafe(..., hub.loop)`).
 Routes are additive only: `add_route` raises `ValueError` for a `(method, path)` that exists, so
 no service can replace `GET /health`, `GET /status` or another service's route (the service
 then fails to start and is skipped). `find_service` returns only services that have *started*:
@@ -597,6 +619,51 @@ Tests use `tau_core.testing.FakeBotApi`, an offline Bot API: `push_message(chat_
 queues an update, `sent` / `texts()` show what the bot sent, `buttons(chat_id)` and
 `press(chat_id, index)` work the inline buttons, `edits` and `answers` record message edits and
 callback answers, `fail(method, *errors)` scripts network losses and refusals.
+
+## Guard
+
+The owner guard (ADR 0008) decides who may use tau's guarded surfaces right now. tau-core
+ships the seam and imports no camera library; the camera, the state machine and the `/guard/*`
+routes come from the `tau-guard` hub service, and the lock screens from the channels. An install without a guard is unchanged: `resolve_guard(config)`
+returns `None`.
+
+- **Active** when `<TAU_DATA_DIR>/guard/enrolled` exists (JSON `{"v", "enrollment", "model",
+  "created"}`, written by tau-guard) or `[component.guard] enabled = true`. While the marker
+  exists, `enabled = false` is ignored. A non-bool `enabled`, an unknown key in
+  `[component.guard]` or any platform but macOS gives a `LockedGuard` that refuses everything;
+  otherwise `resolve_guard` returns a `HubGuard`, memoized per `(home, data_dir)`.
+- **Admission.** `build_agent(guard=DISCOVER, client_id=None)` resolves the guard unless the
+  caller passes one; `TauAgent` keeps `channel`, `guard` and `client_id` (random per process).
+  `stream()` asks `guard.admit(GuardTurn(channel, session_id, client_id))` inside its lock
+  before anything else; a refused turn yields `Notice(t("guard.refused.<reason>"))` and
+  `TurnEnd("locked")`, emits `guard {"action": "refused", "channel", "reason"}` and changes no
+  history. `ask()` raises `GuardLocked(reason)`, `summarize()` raises `CompactionLocked` (a
+  `CompactionError` and a `GuardLocked`) before any model call. A raising guard, a timeout or
+  an unknown reason refuses (`admit_turn`).
+- **`HubGuard(config)`** talks to the hub through `HubClient`. Only a proven `unlocked` answer
+  (`allowed: true` from `POST /guard/admit`) whose `enrollment` equals the local marker's
+  admits; `off`, 404, 403, 5xx, a timeout, bad JSON, a missing proof or another enrollment
+  mean `unavailable`. `admit` has a 3 s bound, all HTTP runs in daemon threads, and
+  `unlock`/`step_up` post `/guard/verify`, long-poll `GET /guard/status?since=` (calling
+  `on_progress` on every step) and post `/guard/cancel` when cancelled. The route contract is in
+  the `tau_core.guard` module docstring.
+- **Identified in-hub channels opt out in code**: Telegram and network turns pass
+  `guard=None`, and a repo rule refuses `guard=None` anywhere else. No flag, variable or
+  config key selects a channel.
+- **Reports.** `/status` adds `guard_status_line(status, language)` when a guard is active;
+  `tau doctor` adds `guard_doctor_check(config, hub_status)`.
+
+Public API: `Guard` (protocol: `status`, `watch`, `admit`, `unlock`, `cancel`, `lock`,
+`step_up`; every method fails closed), `GuardState`, `GuardStatus`, `GuardVerdict`,
+`GuardProgress`, `GuardTurn`, `Admission`, `GuardLocked`, `LockedGuard`, `HubGuard`,
+`resolve_guard`, `VERDICT_REASONS`, `ADMISSION_REASONS`, `LOCK_TRIGGERS`, `PROGRESS_STEPS`,
+`ALLOWED_WHILE_LOCKED` from `tau_core`; `DISCOVER`, `ENROLLED_MARKER`, `GUARD_CONFIG_KEYS`,
+`LOCKED_NOTE`, `STEP_UP_NOTE`, `admit_turn`, `guard_status_line`, `guard_doctor_check`,
+`read_enrollment` and `reset_guards` from `tau_core.guard`; `HubClient`, `HubUnavailable`,
+`HubError` from `tau_core.hub`. The guard's messages (`guard.*`, `status.guard`,
+`doctor.guard.*`) register themselves with `register_messages`. Tests use
+`tau_core.testing.FakeGuard(state, verdicts=..., step_ups=..., progress=..., admissions=...)`,
+which replays scripted answers and never approves anything.
 
 ## Components
 

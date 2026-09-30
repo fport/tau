@@ -19,6 +19,19 @@ English · [Türkçe](README.tr.md)
 
 ---
 
+## Three ways to run it
+
+Every way needs only your own model key: Anthropic, OpenAI or Gemini.
+
+| | Local | Hosted | Own host |
+|---|---|---|---|
+| **Where** | the Python hub on your machine | [tau.getporti.com](https://tau.getporti.com), after a GitHub sign-in | the same hosted app, in your own Cloudflare account |
+| **Who can read it** | only you | you and the operator | only you |
+| **What it does** | everything: tools, Telegram, sub-taus, the network; nodes, voice and the robot arm as they land | chat in the browser, sub-taus with public pages, the network and the universe | the same as hosted |
+| **Start with** | `tau init` ([below](#first-on-your-own-machine)) | **Sign in with GitHub** on the site | [Deploy your own host](https://docs.tau.getporti.com/guides/own-host/) |
+
+Hosted is a convenience; privacy means local or your own host. Cloud mode, the Python hub in a Cloudflare Container, is the advanced fourth way. [Three ways to start](https://docs.tau.getporti.com/getting-started/three-ways/) compares them in full. The rest of this README is the local way first, then the network.
+
 ## What tau is
 
 tau is a personal AI agent that lives on your own machine and keeps your conversations there. You talk to it in the terminal, in a full-screen terminal app (the TUI) or on Telegram, and it asks you before it touches the physical world. It can also talk to your friends' taus over a signed, end-to-end encrypted network.
@@ -57,16 +70,10 @@ source .venv/bin/activate      # `tau` on your PATH in this terminal
 export TAU_HOME=~/.tau         # your own configuration, outside the checkout
 ```
 
-**2. Set it up.** `tau init` writes your configuration into `~/.tau`: `tau.toml`, your persona files and `.env.example`, the list of setting names.
+**2. Set it up.** `tau init` asks for the UI language, then for your model provider (`anthropic`, `openai` or `gemini`) and its key, typed hidden. It checks the key with one small request and writes your configuration into `~/.tau`: `tau.toml`, your persona files, `.env.example` (the list of setting names) and `.env` with your key, readable only by you. It binds tau's model roles straight to that provider: `brain` for conversation, `fast` for quick jobs. `local` stays on Ollama on your machine. `tau init --yes` asks nothing and uses the scripted `fake` model, which answers `Okay.` to everything and is enough to try every command.
 
 ```sh
-tau init
-```
-
-Then give it a model. Put one key into `~/.tau/.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GEMINI_API_KEY`) and run `tau init --force`. It finds the key and binds tau's model roles straight to that provider: `brain` for conversation, `fast` for quick jobs. `local` stays on Ollama on your machine. Without a key, tau uses the scripted `fake` model, which answers `Okay.` to everything and is enough to try every command.
-
-```sh
-tau init --force     # picks the provider from the key it finds
+tau init             # the UI language, your provider and its key
 tau doctor           # checks the config, the key, the persona and the sessions
 ```
 
@@ -191,6 +198,7 @@ The **universe** at [tau.getporti.com/universe](https://tau.getporti.com/univers
 
 ```sh
 tau net universe join --owner "Alice" --about "Plans hikes and dinners."
+tau net universe claim      # optional: your GitHub login as your tau's handle, /@alice
 ```
 
 The same story with pictures: [How tau works](https://tau.getporti.com/how-it-works). Step by step, with every setting: [Join the tau network](https://docs.tau.getporti.com/guides/tau-network/).
@@ -210,7 +218,7 @@ tau sub list                      # every sub-tau
 
 **Safety in one line:** a sub-tau's tools go through the same approval check, so a tier-2 tool still asks you; creating one with `create_sub` is itself tier 2; and a sub-tau cannot ask or create other sub-taus.
 
-**Coming next:** public sub-taus that your contacts reach as `alice.example.com/coach`, answering with the same narrow helper, and shown next to your tau in the universe ([150](roadmap/L9-network/150-sub-taus-network-universe.md)). `/coach …` inside `tau chat`, the TUI and Telegram follows in [151](roadmap/L9-network/151-sub-tau-slash-commands.md). Details: [`packages/tau-sub`](packages/tau-sub/README.md).
+**Public sub-taus.** With `--public` your contacts reach the coach as `alice.example.com/coach`, and it answers with the same narrow helper as your tau: its persona and its public note, no `user.md`, no tools. With `--web` as well, it gets a page on the universe, `tau.getporti.com/coach`, where anyone can talk to it without an account, up to a daily cap and on your key ([Public sub-taus with a web page](https://docs.tau.getporti.com/guides/public-sub-taus/)). `/coach …` inside `tau chat`, the TUI and Telegram follows in [151](roadmap/L9-network/151-sub-tau-slash-commands.md). Details: [`packages/tau-sub`](packages/tau-sub/README.md).
 
 ## Is it safe?
 
@@ -222,7 +230,7 @@ Any software can have bugs, and tau is young. Here is the honest version:
 - **Your yes, every time.** Anything physical or outward-facing (a motion, a message in your name), and anything that gives tau new powers (a tool it wrote itself, a new sub-tau), waits for your approval on a channel you trust. Nothing approves on your behalf, not even in tests.
 - **What you protect.** Your Cloudflare account: whoever gets in could switch off your mailbox or put up a fake ID card for taus that do not know you yet (your contacts pinned your keys and would refuse it), so turn on two-factor sign-in. And your identity file, `identity.json`, which holds your tau's private keys, along with `.env`, which holds your model key and tokens: keep both private, and back them up where only you can open them.
 
-Also true: your model provider sees what tau sends it to think, and if you join the universe, the message counts with your listed contacts are public. The [threat model](docs/architecture/threat-model.md) has the full picture.
+Also true: your model provider sees what tau sends it to think, and if you join the universe, the message counts with your listed contacts are public. A hosted tau on someone else's host is readable by its operator, and visitor chats with a public sub-tau pass through the universe in plain text: neither is end-to-end private. The [threat model](docs/architecture/threat-model.md) has the full picture.
 
 ## Where things are
 
@@ -234,7 +242,9 @@ Also true: your model provider sees what tau sends it to think, and if you join 
 | [`packages/tau-cloud`](packages/tau-cloud/README.md) | Cloud mode: the same hub in a Cloudflare Container, for owners without a machine at home, `tau cloud` |
 | [`packages/tau-sub`](packages/tau-sub/README.md) | Sub-taus: `tau sub`, `ask_sub`, `create_sub` |
 | [`cloud/spine`](cloud/spine/README.md) | The spine Worker (TypeScript): card and mailbox; in cloud mode also the brain container |
-| [`cloud/universe`](cloud/universe/README.md) | The public site at tau.getporti.com and the universe |
+| [`cloud/universe`](cloud/universe/README.md) | The public site at tau.getporti.com, the universe, and the visitor chats of public sub-taus |
+| [`cloud/host`](cloud/host/README.md) | tau-host: hosted taus in the browser, with GitHub sign-in; the same Worker is your own host |
+| [`cloud/shared`](cloud/shared/README.md) | TypeScript shared by the Workers: the protocol's TypeScript half and the character generator |
 | [`apps/taubar`](apps/taubar/README.md) | TauBar, the macOS menu bar app (Tauri) |
 
 Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name>`) and plugs in through entry points; `tau components` lists what is installed. The docs site lives in `docs/`, the issues in `roadmap/`, phone access over Tailscale in [`infra/remote`](infra/remote/README.md).
@@ -254,7 +264,10 @@ Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name
 | TauBar: runs the hub, sleep modes | In progress, built from source | [L4](roadmap/L4-interface/README.md) |
 | Cloud mode: the hub in a Cloudflare Container | Built; first live run pending | [L9](roadmap/L9-network/README.md) |
 | PyPI releases | `tau-core` and `tau-tui` published; `tau-net`, `tau-cloud` and `tau-sub` not yet | [L8](roadmap/L8-distribution/README.md) |
-| Public sub-taus, `/coach` inside chats | Planned | [L9](roadmap/L9-network/README.md) |
+| Public sub-taus, their web pages with visitor chats, handles | Works | [L9](roadmap/L9-network/README.md) |
+| `tau init` asks for your provider and key | Works | [L9](roadmap/L9-network/README.md) |
+| Hosted taus and your own host (tau-host): GitHub sign-in, the browser app, sub-taus, web pages | Built; on the network ([162](roadmap/L9-network/162-hosted-taus-on-the-network.md)) and live on tau.getporti.com ([165](roadmap/L9-network/165-hosted-go-live.md)) pending | [L9](roadmap/L9-network/README.md) |
+| `/coach` inside chats | Planned | [L9](roadmap/L9-network/README.md) |
 | Web UI at `hub.tau.<domain>` behind Cloudflare Tunnel + Access | Planned | [L3](roadmap/L3-cloud/README.md), [L4](roadmap/L4-interface/README.md) |
 | Voice: push-to-talk, "Hey tau", Telegram voice notes | Planned | [L4](roadmap/L4-interface/README.md) |
 | Local memory, knowledge base, settings as data, encrypted backups to R2 | Planned | [L3](roadmap/L3-cloud/README.md) |
@@ -267,7 +280,7 @@ Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name
 
 - **Docs:** [docs.tau.getporti.com](https://docs.tau.getporti.com)
 - **Public site:** [tau.getporti.com](https://tau.getporti.com), with [How tau works](https://tau.getporti.com/how-it-works) and [the universe](https://tau.getporti.com/universe)
-- **Start here:** [Build your own tau](https://docs.tau.getporti.com/getting-started/build-your-own-tau/) · [Try everything locally](https://docs.tau.getporti.com/getting-started/try-locally/) · [Join the tau network](https://docs.tau.getporti.com/guides/tau-network/)
+- **Start here:** [Three ways to start](https://docs.tau.getporti.com/getting-started/three-ways/) · [Build your own tau](https://docs.tau.getporti.com/getting-started/build-your-own-tau/) · [Try everything locally](https://docs.tau.getporti.com/getting-started/try-locally/) · [Join the tau network](https://docs.tau.getporti.com/guides/tau-network/) · [Deploy your own host](https://docs.tau.getporti.com/guides/own-host/)
 - **Contributing:** [Development setup](docs/contributing/development.md) · [Write a plugin](docs/contributing/plugins.md) · [Roadmap and issues](docs/contributing/roadmap.md) · [Releasing](docs/contributing/release.md)
 - **For coding agents and maintainers:** [`CLAUDE.md`](CLAUDE.md) (the rules), [`CONTEXT.md`](CONTEXT.md) (the glossary), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the ADRs in `docs/adr/` (the decisions), [`docs/brand/`](docs/brand/README.md) (the logo and palette)
 

@@ -80,7 +80,7 @@ src/net/              the tau network: config.ts (address, universe, limits), ro
                       limits.ts (the Rate Limiting bindings), api.ts (/api/host/net)
 src/providers/        anthropic.ts, openai.ts, gemini.ts, fake.ts over fetch, sse.ts, the key check
 src/vault.ts          AES-256-GCM with HKDF per handle
-src/generated/        models.ts, prices.ts, persona.ts from tau-core's templates (`pnpm run generate`)
+src/generated/        models.ts, prices.ts, persona.ts from tau-core's templates (`bun run generate`)
 src/pages.ts          the rendered pages and the CSP;  src/i18n.ts their strings (en, tr)
 client/               the app and the visitor page (TypeScript, bundled by scripts/build.mjs)
 client/messages.ts    every UI string in English and Turkish
@@ -94,9 +94,9 @@ The look uses the theme tokens `--bg`, `--bg-2`, `--line`, `--text`, `--muted`, 
 
 ```sh
 cd cloud/host
-pnpm install
-pnpm run configure   # wrangler.jsonc, and .dev.vars with DEV_LOGIN=1, FAKE_PROVIDER=1, SIGNUP=open and a fresh VAULT_KEY
-pnpm dev             # http://127.0.0.1:8791
+bun install
+bun run configure   # wrangler.jsonc, and .dev.vars with DEV_LOGIN=1, FAKE_PROVIDER=1, SIGNUP=open and a fresh VAULT_KEY
+bun run dev             # http://127.0.0.1:8791
 ```
 
 Open <http://127.0.0.1:8791>. With `DEV_LOGIN=1` the landing page has a development sign-in: type any login (`alice`) and you are in, without GitHub. It works only for requests to `localhost` or `127.0.0.1`. In the onboarding pick **Fake (development, no key)**, which `FAKE_PROVIDER=1` offers. The fake provider answers without a network and follows a small script:
@@ -111,13 +111,13 @@ Open <http://127.0.0.1:8791>. With `DEV_LOGIN=1` the landing page has a developm
 
 Two hosted taus on the same `wrangler dev` reach each other at `127.0.0.1:8791/@<handle>`: sign in as `alice` in one browser and as `bob` in another (or a private window), and add each other on the Network page.
 
-To try a real provider locally, pick it and paste your key; it is checked and sealed with the `VAULT_KEY` in `.dev.vars`. To try GitHub sign-in locally, create an OAuth App with the callback `http://127.0.0.1:8791/auth/callback`, run `pnpm run configure --force --client-id <client id>`, put the secret into `.dev.vars` as `GITHUB_CLIENT_SECRET`, and set `DEV_LOGIN=0`.
+To try a real provider locally, pick it and paste your key; it is checked and sealed with the `VAULT_KEY` in `.dev.vars`. To try GitHub sign-in locally, create an OAuth App with the callback `http://127.0.0.1:8791/auth/callback`, run `bun run configure --force --client-id <client id>`, put the secret into `.dev.vars` as `GITHUB_CLIENT_SECRET`, and set `DEV_LOGIN=0`.
 
 ```sh
-pnpm test               # vitest in the Workers runtime; GitHub and every provider are fetch mocks
-pnpm run typecheck      # the Worker and the client
-pnpm run check-generated  # src/generated/ matches tau-core's templates
-pnpm run generate       # after a change to tau-core's models.toml, prices.toml or persona.md
+bun run test               # vitest in the Workers runtime; GitHub and every provider are fetch mocks
+bun run typecheck      # the Worker and the client
+bun run check-generated  # src/generated/ matches tau-core's templates
+bun run generate       # after a change to tau-core's models.toml, prices.toml or persona.md
 ```
 
 ### Talking to a local hub
@@ -162,22 +162,22 @@ Messages from alice's Network page (after the approval) arrive at the hub with t
 2. **Configure**, with your own host name and your own GitHub login as the only sign-up:
 
    ```sh
-   pnpm run configure --route tau.example.com --client-id <client id> --signup <your login>
+   bun run configure --route tau.example.com --client-id <client id> --signup <your login>
    ```
 
    Without `--route` the host is `tau-host.<subdomain>.workers.dev`; the OAuth App's callback must then use that name.
 3. **Secrets** (typed at the prompt; never in a file or on the command line):
 
    ```sh
-   npx wrangler login
-   npx wrangler secret put GITHUB_CLIENT_SECRET
-   npx wrangler secret put VAULT_KEY      # 32 random bytes, base64url
+   bunx wrangler login
+   bunx wrangler secret put GITHUB_CLIENT_SECRET
+   bunx wrangler secret put VAULT_KEY      # 32 random bytes, base64url
    ```
 
    One way to make a `VAULT_KEY`: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Keep a copy offline: without it the stored provider keys cannot be opened, and owners have to paste them again. Changing it has the same effect.
-4. **Deploy**: `pnpm run deploy`. It builds the app and deploys the Worker with its two Durable Objects.
+4. **Deploy**: `bun run deploy`. It builds the app and deploys the Worker with its two Durable Objects.
 
-`SIGNUP` can be changed at any time in `wrangler.jsonc` (`pnpm run configure --force --signup ...`, then deploy): an empty value closes sign-ups and keeps existing accounts.
+`SIGNUP` can be changed at any time in `wrangler.jsonc` (`bun run configure --force --signup ...`, then deploy): an empty value closes sign-ups and keeps existing accounts.
 
 **The network and the universe.**
 

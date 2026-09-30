@@ -4,7 +4,7 @@ name: host
 # tests pass in the Workers runtime, and the app builds. Nothing is deployed from here.
 #
 # src/generated/ is made from tau-core's templates (models.toml, prices.toml, persona.md) by
-# `pnpm run generate`, so a change to those templates runs this workflow too.
+# `bun run generate`, so a change to those templates runs this workflow too.
 
 on:
   push:
@@ -32,17 +32,23 @@ jobs:
         working-directory: cloud/host
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10
+          bun-version: 1.3.2
+      # bun installs and runs the scripts; Vitest, its Workers pool and Wrangler run on Node,
+      # which `bun run` starts through their `#!/usr/bin/env node` shebangs.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: cloud/host/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('cloud/host/bun.lock', 'cloud/shared/bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      # The postinstall installs cloud/shared's dependencies too (tau-host imports cloud/shared/net).
+      - run: bun install --frozen-lockfile
       - name: The generated files match tau-core's templates
-        run: pnpm run check-generated
-      - run: pnpm run typecheck
-      - run: pnpm test
-      - run: pnpm run build
+        run: bun run check-generated
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run build

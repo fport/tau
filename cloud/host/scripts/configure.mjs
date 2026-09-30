@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// pnpm run configure [--route HOST] [--client-id ID] [--signup open|LOGINS]
+// bun run configure [--route HOST] [--client-id ID] [--signup open|LOGINS]
 //                    [--universe HOST|off] [--universe-service NAME] [--force]
 //
 // Writes the gitignored `wrangler.jsonc` from wrangler.example.jsonc, and `.dev.vars` from
@@ -18,8 +18,8 @@
 //                     over unless given again, and the old file is kept as wrangler.jsonc.bak
 //
 // Secrets are never written here. For a deployment:
-//   npx wrangler secret put GITHUB_CLIENT_SECRET
-//   npx wrangler secret put VAULT_KEY          (32 random bytes, base64url)
+//   bunx wrangler secret put GITHUB_CLIENT_SECRET
+//   bunx wrangler secret put VAULT_KEY          (32 random bytes, base64url)
 
 import { randomBytes } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -207,11 +207,11 @@ if (existsSync(devVars)) {
 
 // 3. Next steps
 const steps = [
-  "pnpm dev                                    # the host at http://127.0.0.1:8791 (development sign-in, fake provider)",
-  "npx wrangler login                          # once, to deploy",
-  "npx wrangler secret put GITHUB_CLIENT_SECRET",
-  "npx wrangler secret put VAULT_KEY           # 32 random bytes, base64url; keep a copy offline",
-  "pnpm run deploy                             # builds the app, deploys the Worker and its Durable Objects",
+  "bun run dev                                    # the host at http://127.0.0.1:8791 (development sign-in, fake provider)",
+  "bunx wrangler login                          # once, to deploy",
+  "bunx wrangler secret put GITHUB_CLIENT_SECRET",
+  "bunx wrangler secret put VAULT_KEY           # 32 random bytes, base64url; keep a copy offline",
+  "bun run deploy                             # builds the app, deploys the Worker and its Durable Objects",
 ];
 console.log(`\nNext steps:\n${steps.map((step) => `  - ${step}`).join("\n")}`);
 process.exit(failed ? 1 : 0);

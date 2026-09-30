@@ -1,4 +1,4 @@
-# Local development values for `wrangler dev`. `pnpm run configure` copies this file to
+# Local development values for `wrangler dev`. `bun run configure` copies this file to
 # `.dev.vars` (gitignored) when it is missing and fills VAULT_KEY with 32 fresh random bytes.
 # Never put real secrets in this example file.
 
@@ -15,5 +15,5 @@ ALLOW_INSECURE_PEERS=1
 # http://127.0.0.1:8791/auth/callback, put its client id into GITHUB_CLIENT_ID in
 # wrangler.jsonc and its secret here.
 GITHUB_CLIENT_SECRET=
-# 32 random bytes, base64url (43 characters). `pnpm run configure` generates one.
+# 32 random bytes, base64url (43 characters). `bun run configure` generates one.
 VAULT_KEY=

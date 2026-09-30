@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// pnpm run build   (also run by `wrangler dev`, `wrangler deploy` and `wrangler types`
+// bun run build   (also run by `wrangler dev`, `wrangler deploy` and `wrangler types`
 // through the `build` section of the Wrangler configuration)
 //
 // Writes the gitignored public/app/assets/:

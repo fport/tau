@@ -1,5 +1,5 @@
 # Headers for the files the asset store serves without the Worker: the bundled scripts and
-# the styles under /app/assets/ (built by `pnpm run build`). Every page, the API and the 404
+# the styles under /app/assets/ (built by `bun run build`). Every page, the API and the 404
 # answers get their headers from the Worker (src/pages.ts).
 /*
   X-Content-Type-Options: nosniff

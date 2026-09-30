@@ -8,7 +8,8 @@
  * - The list under the graph is the keyboard path: every tau is a link to `#<address>`.
  * - Under `prefers-reduced-motion` the layout is computed up front and drawn once.
  *
- * Everything the directory returns is set with textContent, never parsed as HTML.
+ * Everything the directory returns is set with textContent, never parsed as HTML. The
+ * page's own strings come from client/messages.ts, in the language of `<html lang>`.
  */
 
 import {
@@ -24,6 +25,7 @@ import {
 } from "d3-force";
 import { polygonHull } from "d3-polygon";
 import type { PublicLink, PublicTau, Snapshot } from "../src/snapshot";
+import { MESSAGES, pageLanguage } from "./messages";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const NODE_RADIUS = 15;
@@ -72,10 +74,12 @@ interface State {
 }
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-const numberFormat = new Intl.NumberFormat("en", { notation: "compact" });
-const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
-const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-const graphemes = new Intl.Segmenter("en", { granularity: "grapheme" });
+const language = pageLanguage(document.documentElement.lang);
+const t = MESSAGES[language];
+const numberFormat = new Intl.NumberFormat(language, { notation: "compact" });
+const dateFormat = new Intl.DateTimeFormat(language, { dateStyle: "medium" });
+const relative = new Intl.RelativeTimeFormat(language, { numeric: "auto" });
+const graphemes = new Intl.Segmenter(language, { granularity: "grapheme" });
 
 function byId<T extends HTMLElement | SVGElement>(id: string): T {
   const element = document.getElementById(id);
@@ -103,13 +107,20 @@ function html<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-function plural(count: number, one: string, many: string): string {
-  return `${numberFormat.format(count)} ${count === 1 ? one : many}`;
+/** A counted noun: `count(t.taus, 3)` is "3 taus" or "3 tau". */
+function count(message: (count: number, formatted: string) => string, value: number): string {
+  return message(value, numberFormat.format(value));
+}
+
+/** A message with `{cmd}` as text around a code element holding the join command. */
+function withCommand(message: string): (string | Node)[] {
+  const [before = "", after = ""] = message.split("{cmd}");
+  return [before, html("code", undefined, JOIN_COMMAND), after].filter((part) => part !== "");
 }
 
 function ago(seconds: number, now: number): string {
   const delta = Math.max(0, now - seconds);
-  if (delta < 60) return "just now";
+  if (delta < 60) return t.justNow;
   if (delta < 3_600) return relative.format(-Math.floor(delta / 60), "minute");
   if (delta < 86_400) return relative.format(-Math.floor(delta / 3_600), "hour");
   return relative.format(-Math.floor(delta / 86_400), "day");
@@ -181,7 +192,7 @@ function showMessage(parts: (string | Node)[], retry = false): void {
     page.message.append(typeof part === "string" ? html("p", undefined, part) : part);
   }
   if (retry) {
-    const button = html("button", "button", "Try again");
+    const button = html("button", "button", t.tryAgain);
     button.type = "button";
     button.addEventListener("click", () => void load());
     page.message.append(button);
@@ -191,21 +202,21 @@ function showMessage(parts: (string | Node)[], retry = false): void {
 
 function commandLine(): HTMLParagraphElement {
   const line = html("p", "stage-command");
-  line.append("Run ", html("code", undefined, JOIN_COMMAND), " on your hub.");
+  line.append(...withCommand(t.runOnHub));
   return line;
 }
 
 async function load(): Promise<void> {
-  showMessage(["Loading the universe…"]);
-  page.count.textContent = "Loading…";
+  showMessage([t.loadingUniverse]);
+  page.count.textContent = t.loading;
   let snapshot: Snapshot;
   try {
     const response = await fetch("/api/universe", { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     snapshot = (await response.json()) as Snapshot;
   } catch {
-    page.count.textContent = "Not available right now";
-    showMessage(["The universe could not be loaded. Check your connection and try again."], true);
+    page.count.textContent = t.unavailable;
+    showMessage([t.loadFailed], true);
     return;
   }
   render(snapshot);
@@ -214,9 +225,11 @@ async function load(): Promise<void> {
 function render(snapshot: Snapshot): void {
   state?.simulation?.stop();
   const { stats } = snapshot;
-  page.count.textContent =
-    `${plural(stats.messages, "msg", "msgs")} · ` +
-    `${numberFormat.format(stats.online)} of ${plural(stats.taus, "tau", "taus")}`;
+  page.count.textContent = t.skyCount(
+    count(t.msgs, stats.messages),
+    numberFormat.format(stats.online),
+    count(t.taus, stats.taus),
+  );
   page.search.disabled = stats.taus === 0;
   page.legend.hidden = stats.taus === 0;
 
@@ -239,17 +252,13 @@ function render(snapshot: Snapshot): void {
   if (stats.taus === 0) {
     page.graph.toggleAttribute("hidden", true);
     page.note.hidden = true;
-    showMessage(["No taus yet. Yours could be the first.", commandLine()]);
+    showMessage([t.empty, commandLine()]);
     return;
   }
   page.message.hidden = true;
   page.graph.toggleAttribute("hidden", false);
   if (stats.taus < TINY_UNIVERSE) {
-    page.note.replaceChildren(
-      `${plural(stats.taus, "tau", "taus")} so far — yours could be next. Run `,
-      html("code", undefined, JOIN_COMMAND),
-      ".",
-    );
+    page.note.replaceChildren(...withCommand(t.fewSoFar(count(t.taus, stats.taus))));
     page.note.hidden = false;
   } else {
     page.note.hidden = true;
@@ -322,7 +331,11 @@ function buildGraph(s: State): void {
     const line = svg("line", { class: "link-line", "stroke-width": width.toFixed(2) });
     const hit = svg("line", { class: "link-hit" });
     const title = svg("title");
-    title.textContent = `${source.tau.name} and ${target.tau.name}: ${plural(data.messages, "message", "messages")}`;
+    title.textContent = t.linkTitle(
+      source.tau.name,
+      target.tau.name,
+      count(t.messages, data.messages),
+    );
     hit.append(title);
     element.append(line, hit);
     layers.links.append(element);
@@ -335,7 +348,7 @@ function buildGraph(s: State): void {
   seedPositions(s, tall);
   page.graph.setAttribute(
     "aria-label",
-    `Map of ${plural(s.nodes.length, "tau", "taus")} and ${plural(s.links.length, "link", "links")}`,
+    t.mapLabel(count(t.taus, s.nodes.length), count(t.links, s.links.length)),
   );
 
   const simulation = forceSimulation<GraphNode, GraphLink>(s.nodes)
@@ -712,7 +725,7 @@ function showDetail(s: State, address: string, pinned: boolean): void {
   if (pinned) {
     const close = html("button", "detail-close", "×");
     close.type = "button";
-    close.setAttribute("aria-label", "Close");
+    close.setAttribute("aria-label", t.close);
     close.addEventListener("click", () => select(null));
     card.append(close);
   }
@@ -720,7 +733,7 @@ function showDetail(s: State, address: string, pinned: boolean): void {
   const status = html("p", `detail-status ${tau.online ? "is-online" : "is-offline"}`);
   status.append(
     html("span", `dot ${tau.online ? "dot-online" : "dot-offline"}`),
-    tau.online ? "Online" : `Last seen ${ago(tau.last_seen, now)}`,
+    tau.online ? t.online : t.lastSeen(ago(tau.last_seen, now)),
   );
   const name = html("h3", "detail-name", tau.name);
   const addressLine = html("p", "detail-address");
@@ -735,9 +748,9 @@ function showDetail(s: State, address: string, pinned: boolean): void {
     row.append(html("dt", undefined, term), html("dd", undefined, value));
     facts.append(row);
   };
-  if (tau.owner.trim() !== "") fact("Owner", tau.owner);
-  fact("Joined", dateFormat.format(new Date(tau.joined_at * 1000)));
-  if (tau.online) fact("Last report", ago(tau.last_seen, now));
+  if (tau.owner.trim() !== "") fact(t.owner, tau.owner);
+  fact(t.joined, dateFormat.format(new Date(tau.joined_at * 1000)));
+  if (tau.online) fact(t.lastReport, ago(tau.last_seen, now));
   card.append(facts);
 
   const links = s.snapshot.links
@@ -745,16 +758,16 @@ function showDetail(s: State, address: string, pinned: boolean): void {
     .map((link) => ({ peer: link.a === address ? link.b : link.a, messages: link.messages }))
     .sort((x, y) => y.messages - x.messages);
   if (links.length === 0) {
-    card.append(html("p", "detail-none", "No mutual links yet."));
+    card.append(html("p", "detail-none", t.noLinks));
   } else {
-    card.append(html("h4", "detail-heading", "Talks with"));
+    card.append(html("h4", "detail-heading", t.talksWith));
     const list = html("ul", "detail-links");
     for (const link of links) {
       const peer = s.byAddress.get(link.peer);
       const item = html("li");
       const anchor = html("a", undefined, peer?.tau.name ?? link.peer);
       anchor.href = `#${link.peer}`;
-      item.append(anchor, html("span", "detail-count", plural(link.messages, "msg", "msgs")));
+      item.append(anchor, html("span", "detail-count", count(t.msgs, link.messages)));
       list.append(item);
     }
     card.append(list);
@@ -787,14 +800,16 @@ function renderList(s: State): void {
     );
     card.append(head);
     card.append(html("span", "tau-card-address", tau.address));
-    if (tau.owner.trim() !== "") card.append(html("span", "tau-card-owner", `Owner: ${tau.owner}`));
+    if (tau.owner.trim() !== "") {
+      card.append(html("span", "tau-card-owner", t.ownerLine(tau.owner)));
+    }
     if (tau.about.trim() !== "") card.append(html("span", "tau-card-about", tau.about));
     const meta = html("span", "tau-card-meta");
     const links = degree.get(tau.address) ?? 0;
     meta.textContent = [
-      tau.online ? "Online" : `Last seen ${ago(tau.last_seen, now)}`,
-      `joined ${dateFormat.format(new Date(tau.joined_at * 1000))}`,
-      plural(links, "link", "links"),
+      tau.online ? t.online : t.lastSeen(ago(tau.last_seen, now)),
+      t.joinedOn(dateFormat.format(new Date(tau.joined_at * 1000))),
+      count(t.links, links),
     ].join(", ");
     card.append(meta);
 
@@ -825,13 +840,13 @@ function filterList(s: State): void {
   const online = s.snapshot.stats.online;
   page.rosterCount.textContent =
     s.query === ""
-      ? `${numberFormat.format(total)} listed, ${numberFormat.format(online)} online`
-      : `${shown} of ${numberFormat.format(total)} match`;
+      ? t.listed(numberFormat.format(total), numberFormat.format(online))
+      : t.matching(numberFormat.format(shown), numberFormat.format(total));
   if (total === 0) {
-    page.rosterEmpty.textContent = "Nobody has joined yet.";
+    page.rosterEmpty.textContent = t.nobodyYet;
     page.rosterEmpty.hidden = false;
   } else if (shown === 0) {
-    page.rosterEmpty.textContent = `No owner or tau matches “${page.search.value.trim()}”.`;
+    page.rosterEmpty.textContent = t.noMatch(page.search.value.trim());
     page.rosterEmpty.hidden = false;
   } else {
     page.rosterEmpty.hidden = true;
@@ -881,16 +896,16 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-c
     const text = source?.textContent ?? "";
     try {
       await navigator.clipboard.writeText(text);
-      button.textContent = "Copied";
+      button.textContent = t.copied;
     } catch {
       const range = document.createRange();
       if (source !== null) range.selectNodeContents(source);
       window.getSelection()?.removeAllRanges();
       window.getSelection()?.addRange(range);
-      button.textContent = "Selected";
+      button.textContent = t.selected;
     }
     window.setTimeout(() => {
-      button.textContent = "Copy";
+      button.textContent = t.copy;
     }, 2000);
   });
 }

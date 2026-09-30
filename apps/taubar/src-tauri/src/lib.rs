@@ -13,6 +13,7 @@ pub mod settings;
 mod signals;
 pub mod sleep;
 pub mod tray;
+pub mod webview;
 
 use crate::core::{Core, Dirs};
 use crate::hub::supervisor::SystemProbe;
@@ -37,6 +38,8 @@ const HUB_TICK: Duration = Duration::from_secs(1);
 
 pub fn run() {
     let app = tauri::Builder::default()
+        // TauBar holds the camera grant for its hub; no webview may use it (ADR 0008).
+        .on_permission_request(|_, kind| webview::permission(kind))
         // One TauBar per user (roadmap 091). A second launch, from Spotlight, Finder,
         // `open -n` or the build folder of a checkout, hands over to the running TauBar and
         // exits before it touches the hub or the sleep assertion; the running one shows its
@@ -242,6 +245,7 @@ pub fn open_settings(app: &AppHandle) {
             .min_inner_size(460.0, 420.0)
             .center()
             .focused(true)
+            .on_permission_request(|_, kind| webview::permission(kind))
             .build();
     match built {
         Ok(window) => {

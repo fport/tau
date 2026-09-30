@@ -482,6 +482,69 @@ MESSAGES: dict[str, dict[str, str]] = {
     "tui.event.turn_limit": {"en": "turn limit: {n} turns", "tr": "tur sınırı: {n} tur"},
     "tui.event.error": {"en": "error", "tr": "hata"},
     "tui.event.approval": {"en": "approval", "tr": "onay"},
+    # -- tau init: the provider key (ADR 0013 §7) ---------------------------------------------
+    "init.provider.none": {
+        "en": "No model key was found in the environment or {path}. tau needs a key from one "
+        "provider (`tau init --yes` sets up the scripted 'fake' provider without one).",
+        "tr": "Ortamda ya da {path} içinde model anahtarı bulunamadı. tau'nun bir sağlayıcıdan "
+        "anahtara ihtiyacı var (`tau init --yes` anahtarsız, senaryolu 'fake' sağlayıcıyı "
+        "kurar).",
+    },
+    "init.provider.prompt": {"en": "Provider", "tr": "Sağlayıcı"},
+    "init.key.prompt": {
+        "en": "{name} (hidden; empty skips)",
+        "tr": "{name} (gizli; boş bırakırsan atlanır)",
+    },
+    "init.key.checking": {
+        "en": "Checking the key with one small request to {provider}...",
+        "tr": "Anahtar {provider} sağlayıcısına tek bir küçük istekle deneniyor...",
+    },
+    "init.key.ok": {
+        "en": "{provider} accepted the key.",
+        "tr": "{provider} anahtarı kabul etti.",
+    },
+    "init.key.unchecked": {
+        "en": "The key was not checked (--no-check).",
+        "tr": "Anahtar denenmedi (--no-check).",
+    },
+    "init.key.refused": {
+        "en": "{provider} refused the key (HTTP {status}). Check it and run tau init again; "
+        "nothing was written.",
+        "tr": "{provider} anahtarı reddetti (HTTP {status}). Anahtarı kontrol edip tau init'i "
+        "yeniden çalıştır; hiçbir şey yazılmadı.",
+    },
+    "init.key.http": {
+        "en": "{provider} answered the key check with HTTP {status}. Try again later or skip "
+        "the check with --no-check; nothing was written.",
+        "tr": "{provider} anahtar denemesine HTTP {status} ile yanıt verdi. Sonra yeniden dene "
+        "ya da denemeyi --no-check ile atla; hiçbir şey yazılmadı.",
+    },
+    "init.key.unreachable": {
+        "en": "{provider} could not be reached to check the key ({error}). Check the "
+        "connection or skip the check with --no-check; nothing was written.",
+        "tr": "Anahtarı denemek için {provider} sağlayıcısına ulaşılamadı ({error}). Bağlantıyı "
+        "kontrol et ya da denemeyi --no-check ile atla; hiçbir şey yazılmadı.",
+    },
+    "init.key.invalid": {
+        "en": "The key holds spaces, quotes or control characters; paste it again. Nothing "
+        "was written.",
+        "tr": "Anahtarda boşluk, tırnak ya da kontrol karakteri var; yeniden yapıştır. Hiçbir "
+        "şey yazılmadı.",
+    },
+    "init.key.skipped": {
+        "en": "No key given. Add {name} to {path} later; until then the {provider} roles "
+        "cannot start.",
+        "tr": "Anahtar girilmedi. {name} değerini sonra {path} dosyasına ekle; o zamana kadar "
+        "{provider} rolleri başlayamaz.",
+    },
+    "init.key.written": {
+        "en": "wrote {name} to {path} (mode 0600)",
+        "tr": "{name}, {path} dosyasına yazıldı (izin 0600)",
+    },
+    "init.key.kept": {
+        "en": "kept  {name} in {path} (it already has a value)",
+        "tr": "{path} içindeki {name} korundu (zaten bir değeri var)",
+    },
 }
 
 

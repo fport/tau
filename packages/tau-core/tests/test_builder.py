@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner, Result
-from tau_core import Config, ConfigError, registry
+from tau_core import Config, ConfigError, registry, t
 from tau_core.builder import (
     Check,
     env_names,
@@ -40,6 +40,9 @@ CREDENTIALS_UNSET = {
         "AWS_SESSION_TOKEN",
         "AWS_BEARER_TOKEN_BEDROCK",
         "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
         "EXAMPLE_API_KEY",
         "TAU_PROFILE",
         "TAU_ROLE",
@@ -429,10 +432,11 @@ def test_init_asks_the_language_and_keeps_user_md(tmp_path: Path) -> None:
         ["init", "--home", str(home), "--provider", "anthropic", "--profile", "home"],
         tmp_path,
         home=None,
-        stdin="tr\n",
+        stdin="tr\n\n",  # the language, then an empty key: skipped (issue 154)
     )
     assert result.exit_code == 0, result.output
     assert "UI language (en, tr) [en]: tr" in result.output
+    assert t("init.key.prompt", "tr", name="ANTHROPIC_API_KEY") in result.output
     assert f"kept  {home / 'persona' / 'user.md'}" in result.output
     assert (home / "persona" / "user.md").read_text("utf-8") == "- Name: Real Person\n"
     assert (home / ".env").read_text("utf-8") == "TAU_PROFILE=sport"  # existing value kept

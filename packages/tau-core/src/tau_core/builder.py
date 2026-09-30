@@ -8,20 +8,27 @@
   persona files, ``.env`` against ``.env.example`` and whether a hub answers on the control API.
 - :func:`init_home` writes a fresh ``tau.toml`` from the shipped template, the persona files and
   (optionally) ``TAU_PROFILE`` in ``.env``, picking the provider from the credentials present.
+- ``tau init`` without credentials asks for a provider and its key (hidden input), checks the key
+  with one small request (:func:`check_provider_key`) and appends it to ``<home>/.env``, which is
+  kept at mode ``0600`` (:func:`write_env_key`). The key never reaches the output, argv or a log.
 
-All output is English; the helpers are plain functions so tests need no terminal.
+The output is English, except the provider and key prompts of ``tau init``, which come from the
+message table in the language just chosen; the helpers are plain functions so tests need no
+terminal.
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import os
 import re
+import tempfile
 import tomllib
 import urllib.error
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from importlib import resources
 from pathlib import Path
@@ -42,7 +49,7 @@ from tau_core.config import (
     ConfigError,
     RoleConfig,
 )
-from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES
+from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES, t
 from tau_core.models import (
     PLANNED_PROVIDERS,
     missing_credentials,
@@ -772,6 +779,163 @@ def default_home(env: Mapping[str, str]) -> Path:
     return Path(env.get("TAU_HOME") or DEFAULT_HOME).expanduser().resolve()
 
 
+# -- the provider key --------------------------------------------------------------------------
+
+KEY_PROVIDERS = ("anthropic", "openai", "gemini")
+"""The providers ``tau init`` asks a key for (ADR 0013 §7), in the order it offers them."""
+KEY_NAMES = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+}
+"""The ``.env`` name ``tau init`` writes a provider's key under."""
+KEY_CHECK_TIMEOUT = 10.0
+_KEY_CHECKS: dict[str, tuple[str, Callable[[str], dict[str, str]]]] = {
+    "anthropic": (
+        "https://api.anthropic.com/v1/models?limit=1",
+        lambda key: {"x-api-key": key, "anthropic-version": "2023-06-01"},
+    ),
+    "openai": (
+        "https://api.openai.com/v1/models",
+        lambda key: {"authorization": f"Bearer {key}"},
+    ),
+    "gemini": (
+        "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
+        lambda key: {"x-goog-api-key": key},
+    ),
+}
+"""One small, free request per provider: list the models. The key travels only in a header,
+never in the URL, so no proxy or server log can record it."""
+_BARE_VALUE = re.compile(r"[A-Za-z0-9_.:/+=-]+")
+"""A value a ``.env`` line holds without quotes (every provider key tau knows looks like this)."""
+
+
+@dataclass(frozen=True)
+class KeyCheck:
+    """The answer of :func:`check_provider_key`.
+
+    ``code`` is ``ok``, ``refused`` (401/403: the provider does not take the key), ``http``
+    (another status, in ``status``) or ``unreachable`` (no answer; ``error`` names why).
+    Nothing here ever holds the key."""
+
+    code: str
+    status: int = 0
+    error: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.code == "ok"
+
+
+KeyChecker = Callable[[str, str], KeyCheck]
+"""``checker(provider, key) -> KeyCheck``; tests pass a fake as ``obj["init_key_check"]``."""
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None  # a redirect would carry the key's header to another host
+
+
+def check_provider_key(
+    provider: str,
+    key: str,
+    *,
+    opener: urllib.request.OpenerDirector | None = None,
+    timeout: float = KEY_CHECK_TIMEOUT,
+) -> KeyCheck:
+    """Ask ``provider`` whether it takes ``key``: one ``GET`` of its model list with the key in
+    a header. Redirects are never followed. ``ValueError`` for a provider without a check."""
+    try:
+        url, headers = _KEY_CHECKS[provider]
+    except KeyError:
+        raise ValueError(f"no key check for provider {provider!r}") from None
+    request = urllib.request.Request(
+        url,
+        method="GET",
+        headers={**headers(key), "accept": "application/json", "user-agent": "tau-init"},
+    )
+    opener = opener or urllib.request.build_opener(_NoRedirect())
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            status = int(response.status)
+    except urllib.error.HTTPError as exc:
+        status = int(exc.code)
+        exc.close()
+    except (OSError, ValueError, http.client.HTTPException) as exc:
+        reason = getattr(exc, "reason", None)
+        detail = type(exc).__name__
+        if isinstance(reason, BaseException | str) and str(reason):
+            detail = f"{detail}: {' '.join(str(reason).split())[:120]}"
+        return KeyCheck("unreachable", error=detail)
+    if status == 200:
+        return KeyCheck("ok", status=status)
+    if status in (401, 403):
+        return KeyCheck("refused", status=status)
+    return KeyCheck("http", status=status)
+
+
+def key_is_pasteable(value: str) -> bool:
+    """A key without inner whitespace, quotes or control characters (a pasted key often
+    carries a trailing newline, which is stripped before this is asked)."""
+    return bool(value) and not any(ch.isspace() or ch in "'\"\\" or ord(ch) < 0x20 for ch in value)
+
+
+def _env_line(name: str, value: str) -> str:
+    if _BARE_VALUE.fullmatch(value):
+        return f"{name}={value}"
+    if not key_is_pasteable(value):
+        raise ValueError(f"{name}: the value holds whitespace, quotes or control characters")
+    return f"{name}='{value}'"
+
+
+def write_env_key(home: Path, name: str, value: str) -> bool:
+    """Put ``NAME=value`` into ``<home>/.env`` and keep the file at mode ``0600``.
+
+    A new file is created ``0600``. An existing one is made ``0600`` first, then the line is
+    appended (after a newline when the file does not end with one) without touching any other
+    line; a ``NAME=`` line with an empty value is filled in place instead. A ``NAME`` that
+    already has a value is kept: nothing is written and the answer is ``False``. The value is
+    never logged or put into an exception text."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        raise ValueError(f"invalid variable name: {name!r}")
+    value = value.strip()
+    line = _env_line(name, value)
+    path = Path(home) / ".env"
+    if not path.exists():
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+        os.chmod(path, 0o600)
+        logger.info("%s: %s written", path, name)
+        return True
+    if dotenv_values(path).get(name):
+        return False
+    os.chmod(path, 0o600)
+    text = path.read_text(encoding="utf-8")
+    pattern = re.compile(rf"^\s*(?:export\s+)?{re.escape(name)}\s*=")
+    lines = text.splitlines(keepends=True)
+    matches = [i for i, existing in enumerate(lines) if pattern.match(existing)]
+    if matches:
+        # An empty `NAME=` line: fill in the last one, the one dotenv would read.
+        last = matches[-1]
+        ending = "\n" if lines[last].endswith("\n") else ""
+        lines[last] = line + ending
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".env.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write("".join(lines))
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
+    else:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(("" if not text or text.endswith("\n") else "\n") + line + "\n")
+    logger.info("%s: %s written", path, name)
+    return True
+
+
 def init_home(
     home: Path,
     *,
@@ -841,8 +1005,8 @@ _NEXT_STEPS = {
     "a profile, keys or a bearer token).",
     "fake": "No model credentials were found in the environment or <home>/.env, so both roles "
     "use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY "
-    "to <home>/.env (names are in <home>/.env.example) and run `tau init --force`, or edit "
-    "tau.toml.",
+    "to <home>/.env (names are in <home>/.env.example) and run `tau init --force`, run "
+    "`tau init --force` without --yes to type a key, or edit tau.toml.",
 }
 _BUDGET_NOTE = (
     " tau.toml caps brain and fast with budgets tau enforces itself (`tau spend` shows them), "
@@ -850,13 +1014,66 @@ _BUDGET_NOTE = (
 )
 
 
+def _check_failure(check: KeyCheck, provider: str, language: str) -> str:
+    if check.code == "refused":
+        return t("init.key.refused", language, provider=provider, status=check.status)
+    if check.code == "http":
+        return t("init.key.http", language, provider=provider, status=check.status)
+    return t("init.key.unreachable", language, provider=provider, error=check.error or "?")
+
+
+def ask_key(
+    ctx: click.Context,
+    home: Path,
+    provider: str,
+    language: str,
+    *,
+    check: bool,
+    checker: KeyChecker,
+) -> str | None:
+    """Ask for ``provider``'s key with hidden input and check it; ``None`` when the owner
+    left it empty. A key the provider does not take ends the command (exit 1) before
+    anything is written."""
+    name = KEY_NAMES[provider]
+    key = click.prompt(
+        t("init.key.prompt", language, name=name),
+        default="",
+        show_default=False,
+        hide_input=True,
+    )
+    key = str(key).strip()
+    if not key:
+        click.echo(
+            t("init.key.skipped", language, name=name, path=home / ".env", provider=provider)
+        )
+        return None
+    if not key_is_pasteable(key):
+        click.echo(t("init.key.invalid", language), err=True)
+        ctx.exit(1)
+    if not check:
+        click.echo(t("init.key.unchecked", language))
+        return key
+    click.echo(t("init.key.checking", language, provider=provider))
+    result = checker(provider, key)
+    if not result.ok:
+        click.echo(_check_failure(result, provider, language), err=True)
+        ctx.exit(1)
+    click.echo(t("init.key.ok", language, provider=provider))
+    return key
+
+
 @click.command(
     name="init",
-    help="Set up a configuration root: tau.toml from the shipped template (provider picked "
-    "from the credentials present in the environment or <home>/.env: anthropic, openai, "
-    "gemini, bedrock, else fake), persona/persona.md, persona/user.example.md, persona/user.md "
-    "(from the example, unless it exists) and .env.example (the variable names). Existing "
-    "files are kept unless --force is given; user.md and .env.example are never overwritten.",
+    help="Set up a configuration root: tau.toml from the shipped template, "
+    "persona/persona.md, persona/user.example.md, persona/user.md (from the example, unless it "
+    "exists) and .env.example (the variable names). The provider is picked from the "
+    "credentials present in the environment or <home>/.env (anthropic, openai, gemini, "
+    "bedrock). Without any, tau init asks for a provider (anthropic, openai or gemini) and its "
+    "key with hidden input, checks the key with one small request to the provider (--no-check "
+    "skips it) and appends it to <home>/.env, which is kept at mode 0600; a key the provider "
+    "refuses writes nothing. --yes asks nothing and falls back to the scripted 'fake' "
+    "provider. Existing files are kept unless --force is given; user.md and .env.example are "
+    "never overwritten.",
     short_help="Create tau.toml and the persona files.",
 )
 @help_option()
@@ -871,7 +1088,7 @@ _BUDGET_NOTE = (
     "--provider",
     type=click.Choice(PROVIDER_PREFERENCE),
     metavar="NAME",
-    help="Provider for the brain and fast roles (default: the first with credentials).",
+    help="Provider for the brain and fast roles (default: the first with credentials, else asked).",
 )
 @click.option(
     "--language",
@@ -885,7 +1102,15 @@ _BUDGET_NOTE = (
     metavar="NAME",
     help="Write TAU_PROFILE=NAME into <home>/.env (appended; an existing value is kept).",
 )
-@click.option("-y", "--yes", is_flag=True, help="Ask nothing; use defaults for what is not given.")
+@click.option(
+    "--no-check",
+    "no_check",
+    is_flag=True,
+    help="Do not check a typed key with a request to the provider.",
+)
+@click.option(
+    "-y", "--yes", is_flag=True, help="Ask nothing; use defaults for what is not given (no key)."
+)
 @click.option("--force", is_flag=True, help="Overwrite an existing tau.toml and persona.md.")
 @click.pass_context
 def init(
@@ -894,6 +1119,7 @@ def init(
     provider: str | None,
     language: str | None,
     profile: str | None,
+    no_check: bool,
     yes: bool,
     force: bool,
 ) -> None:
@@ -901,10 +1127,13 @@ def init(
     if (home / CONFIG_FILE).exists() and not force:
         click.echo(f"{home / CONFIG_FILE} already exists. Use --force to overwrite it.", err=True)
         ctx.exit(1)
+    env = env_with_dotenv(home, os.environ)
     if provider is None:
-        provider = pick_provider(env_with_dotenv(home, os.environ))
-        note = _NEXT_STEPS[provider] + ("" if provider == "fake" else _BUDGET_NOTE)
-        click.echo(f"Provider: {provider}. {note.replace('<home>', str(home))}")
+        detected = pick_provider(env)
+        if detected != "fake" or yes:
+            provider = detected
+            note = _NEXT_STEPS[provider] + ("" if provider == "fake" else _BUDGET_NOTE)
+            click.echo(f"Provider: {provider}. {note.replace('<home>', str(home))}")
     if language is None:
         language = (
             DEFAULT_LANGUAGE
@@ -916,6 +1145,19 @@ def init(
                 show_choices=True,
             )
         )
+    if provider is None:  # interactive, and no credentials anywhere
+        click.echo(t("init.provider.none", language, path=home / ".env"))
+        provider = click.prompt(
+            t("init.provider.prompt", language),
+            type=click.Choice(KEY_PROVIDERS),
+            default=KEY_PROVIDERS[0],
+            show_choices=True,
+        )
+    key: str | None = None
+    if not yes and provider in KEY_NAMES and missing_credentials(provider_probe(provider), env):
+        obj = ctx.find_object(dict) or {}
+        checker: KeyChecker = obj.get("init_key_check") or check_provider_key
+        key = ask_key(ctx, home, provider, language, check=not no_check, checker=checker)
     try:
         result = init_home(home, provider=provider, language=language, profile=profile, force=force)
     except FileExistsError as exc:
@@ -928,5 +1170,16 @@ def init(
         click.echo(f"wrote {path}")
     for path in result.kept:
         click.echo(f"kept  {path}")
+    if key is not None:
+        name = KEY_NAMES[provider]
+        dotenv = result.home / ".env"
+        try:
+            written = write_env_key(result.home, name, key)
+        except (OSError, ValueError) as exc:
+            reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else "invalid value"
+            click.echo(f"tau init: {name} could not be written to {dotenv}: {reason}", err=True)
+            ctx.exit(1)
+        message = "init.key.written" if written else "init.key.kept"
+        click.echo(t(message, language, name=name, path=dotenv))
     click.echo(f"Configuration root: {result.home} (UI language: {result.language}).")
     click.echo("Next: edit persona/user.md, then run `tau doctor` and `tau chat`.")

@@ -34,12 +34,14 @@ from helpers import (
     two_tool_replies,
     wait_until,
 )
-from tau_core import AgentEvent, MemorySessionStore, Tier, tau_tool
-from tau_core.testing import ToolCall, test_config
+from tau_core import AgentEvent, GuardProgress, MemorySessionStore, Tier, tau_tool
+from tau_core.testing import FakeGuard, ToolCall, test_config
 from tau_tui import ApprovalScreen, SettingsScreen
+from tau_tui.guard import GuardScreen
 from tau_tui.sessions import SessionPicker
 from tau_tui.setup import SetupApp
 from textual.pilot import Pilot
+from textual.widgets import Input
 
 SNAPSHOT_DIR = Path(__file__).parent / "__snapshots__" / Path(__file__).stem
 EXTENSION = ".raw"
@@ -272,3 +274,88 @@ def test_setup_80x24(tmp_path: Path, snap_compare) -> None:
     svg = path.read_text(encoding="utf-8")
     for fragment in PATH_FRAGMENTS + ("/private/",):
         assert fragment not in svg
+
+
+# -- the owner guard (issue 113) ---------------------------------------------------------------
+
+
+def _check_lock(name: str, *hidden: str) -> None:
+    """The lock screen hides the session: no session id and none of ``hidden`` in the file."""
+    path = SNAPSHOT_DIR / f"{name}{EXTENSION}"
+    assert path.is_file(), f"{path.name} missing: run with --snapshot-update"
+    assert [p.name for p in SNAPSHOT_DIR.glob(f"{name}.*")] == [path.name]
+    svg = path.read_text(encoding="utf-8")
+    assert "tau&#160;is&#160;locked" in svg
+    for text in (SESSION_ID, *hidden, *PATH_FRAGMENTS):
+        assert text not in svg, text
+
+
+async def _steady_lock(pilot: Pilot) -> None:
+    app = pilot.app
+    await wait_until(pilot, lambda: isinstance(app.screen, GuardScreen))
+    await wait_until(pilot, lambda: app.guard_status is not None)  # the watcher's first answer
+    pilot.app.screen.query_one(Input).cursor_blink = False
+    await pilot.pause()
+
+
+def test_lock_80x24(tmp_path: Path, snap_compare) -> None:
+    """The first screen with a guard: opaque, the trigger, Enter / Esc / ctrl+q; no session."""
+    guard = FakeGuard("locked")
+    guard.set_state("locked", trigger="idle")
+    app = make_app(tmp_path, [], tools=light_tools(), guard=guard)
+    assert snap_compare(app, terminal_size=(80, 24), run_before=_steady_lock)
+    _check_lock("test_lock_80x24")
+
+
+def test_lock_over_chat_80x24(tmp_path: Path, snap_compare) -> None:
+    """A lock during a session: the transcript behind the lock screen does not show through."""
+    guard = FakeGuard("unlocked")
+    app = make_app(tmp_path, [REPLY_FENCE], tools=light_tools(), guard=guard)
+
+    async def chat_then_lock(pilot: Pilot) -> None:
+        await wait_until(pilot, lambda: app.agent is not None and not app.locked)
+        await steady(pilot)
+        await send(pilot, PROMPT)
+        await finish(pilot)
+        guard.set_state("locked", trigger="screen_lock")
+        await _steady_lock(pilot)
+
+    assert snap_compare(app, terminal_size=(80, 24), run_before=chat_then_lock)
+    _check_lock("test_lock_over_chat_80x24", "Salon", "set_light")
+
+
+class _StepUpGuard(FakeGuard):
+    """A step-up that shows two challenge steps and holds (at most 3 s)."""
+
+    def __init__(self) -> None:
+        super().__init__("unlocked")
+        self.release = asyncio.Event()
+
+    async def step_up(self, request, *, client_id, on_progress=None):  # type: ignore[override]
+        if on_progress is not None:
+            on_progress(GuardProgress("look", 1, None))
+            on_progress(GuardProgress("turn_left", 2, None))
+        try:
+            await asyncio.wait_for(self.release.wait(), 3)
+        except TimeoutError:
+            return False
+        return True
+
+
+def test_step_up_80x24(tmp_path: Path, snap_compare) -> None:
+    """A tier-2 step-up in progress: the challenge step in the busy line, the camera glyph
+    next to the lock glyph in the header."""
+    guard = _StepUpGuard()
+    app = make_app(tmp_path, two_tool_replies(), tools=light_tools(), approve_delay=0, guard=guard)
+
+    async def until_step(pilot: Pilot) -> None:
+        await wait_until(pilot, lambda: app.agent is not None and not app.locked)
+        await steady(pilot)
+        await send(pilot, PROMPT)
+        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+        await pilot.press("y")
+        await wait_until(pilot, lambda: "Turn your head left." in app.transcript.text)
+        await pilot.pause()
+
+    assert snap_compare(app, terminal_size=(80, 24), run_before=until_step)
+    _check("test_step_up_80x24")

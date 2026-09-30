@@ -114,6 +114,7 @@ the UI moves. The composer border is Ember, Signal while busy and Flare while an
 | F10 | the settings screen (`/settings`); inside it `ctrl+s` or F2 saves and Esc closes |
 | ↑ / ↓ | recall sent prompts (single-line composer); navigate the menu while it is open |
 | `?` or F1 | help (only in an empty composer; `?x` is sent as a message) |
+| ctrl+l / F5 | lock the owner guard now (see [Owner guard](#owner-guard)); without a guard a toast says it is off |
 | ctrl+q | quit (ctrl+c copies a selection in the composer; without one it only says how to quit) |
 
 Typing `/` into an empty composer opens a fuzzy menu of the slash commands (`↑↓` pick, Tab
@@ -131,13 +132,66 @@ the same wording as `tau chat`:
 | `/status` | an info card: profile, session, model, context, tools, language, versions, hub |
 | `/model [role]` | list the roles of `tau.toml`, or switch this session to one; the header follows |
 | `/settings [section]` | the settings screen, on a section when one is named (`roles`, `credentials`, `interface`, `agent`, `doctor`, `files`) |
+| `/guard [lock\|unlock]` | the owner guard's state, a lock (like ctrl+l), or an unlock attempt on the lock screen; without a guard it says the guard is off |
 | `/quit` (alias `/exit`) | leave |
 
 The Turkish aliases (`/devam`, `/çık`, `/özet`, `/temizle`, `/durum`, `/rol`, `/ayarlar`, …)
-keep working but are never listed; the menu shows the thirteen canonical names and every row is
+keep working but are never listed; the menu shows the fourteen canonical names and every row is
 on screen at 80x24 (in the `-short` band it scrolls). `/new`, `/resume`, `/compact`, `/clear`,
 `/model <role>` and `/settings` wait for the current turn (a toast says so); `/status` and
 `/model` without an argument run any time.
+
+## Owner guard
+
+With an owner guard active (ADR 0008; `tau_core.guard`) the TUI is a guarded channel. Without
+one nothing below applies and nothing on screen changes except the `/guard` menu row.
+
+- **One guard.** `build_app` resolves the guard once (`guard=` for tests, a `FakeGuard`) and
+  passes the same object to every agent build: the first one, `/new`, `/resume`, `/model`,
+  `/compact` and a settings save. While there is no guard it is resolved again before every
+  build and every submit, so a guard set up while the app runs locks it at once.
+- **The lock comes first.** The app opens on `GuardScreen`, an opaque modal (its
+  `background: $background` rule is in the App CSS, since the app's `ModalScreen` rule is
+  translucent), and builds its first agent only after the first unlock; the setup screen (a
+  guard marker in the data directory keeps it closed) and the start-up settings screen never
+  open while locked.
+
+  ```text
+          ╭──────────────────────────────────────────────────────────────╮
+          │ ⚿ tau is locked                                              │
+          │ Guard: locked · locked after inactivity                      │
+          │                                                              │
+          │  Enter unlocks · /help /lang /guard /quit                    │
+          │                                                              │
+          │ enter unlock · esc cancel · ctrl+q quit                      │
+          ╰──────────────────────────────────────────────────────────────╯
+  ```
+
+  Enter on an empty field unlocks: every challenge step (`on_progress`: "Look at the camera.",
+  "Turn your head left.", with the live hints "It is too dark." and "Move closer to the
+  camera.") replaces the last, the title shows the camera glyph `◉` while the attempt runs, a
+  failed attempt says why ("Try again in 30 s." with a cooldown), and Esc cancels a running
+  attempt (`guard.cancel`). Only `/help`, `/lang`, `/guard` and `/quit` run, their answers on
+  the lock screen; text that is not a command is not sent. `check_action` refuses every app
+  action but ctrl+q. After an unlock the transcript shows "Unlocked (face). Failed attempts
+  since the last unlock: N."; no model call is made and a prompt kept in the composer stays
+  there.
+- **Live locks.** A worker long-polls `guard.watch()` for the life of the app. When the guard
+  reports anything but `unlocked` (idle, screen lock, sleep, max age, a hub restart, `/guard
+  lock` from Telegram, ctrl+l), the app rejects an open approval dialog (`REJECTED`), cancels
+  the running turn the way Esc does (the summarizer of `/compact` too; the turn gets "tau
+  locked; the turn was stopped.") and shows the lock screen; `TuiApprover` rejects at once
+  while locked. When the guard reports `unlocked` (another channel unlocked it) the lock screen
+  closes by itself.
+- **The composer** checks the watched state before it clears itself, so a prompt submitted
+  while locked stays. A turn the guard refused ends with the footer "Locked" and its prompt goes
+  back into an empty composer; a `recheck` refusal runs the passive check in the busy line
+  ("Checking that it is still you…") and resends the prompt.
+- **Step-up.** The tier gate's `guard` events show a tier-2 step-up in the busy line ("Confirm
+  it is you: look at the camera.", then "Identity check: Turn your head left."), each with a
+  bell; a failed one adds "The guard could not confirm it is you; the action was not run."
+- **Header.** With a guard active the context label starts with `⚿` (ASCII `K`), and with
+  `⚿ ◉` (ASCII `K O`) while an attempt runs.
 
 ## Settings
 
@@ -310,13 +364,15 @@ uv run pytest packages/tau-tui --snapshot-update       # after an intended visua
 
 Snapshots live under `tests/__snapshots__/test_snapshots/` as `.raw` files: pytest-textual-snapshot
 1.0 with syrupy 6 writes SVG under that extension, and the extension is pinned in
-`test_snapshots.py` (exactly one file per snapshot test, no glob). There are fourteen: welcome
+`test_snapshots.py` (exactly one file per snapshot test, no glob). There are seventeen: welcome
 at 80x24, 50x24 and in Turkish, chat (a markdown list, a one-line fence and a rejected tier-2
-card), busy, approval, menu (all thirteen rows) and picker at 80x24, wide 100x30 (busy chrome),
+card), busy, approval, menu (all fourteen rows) and picker at 80x24, wide 100x30 (busy chrome),
 ultra 160x45 (a fence and the last turn's cards expanded), the events view at 50x24, short 80x18,
-the settings screen on Model roles at 80x24 (`show_paths=False`) and the setup screen at 80x24.
+the settings screen on Model roles at 80x24 (`show_paths=False`), the setup screen at 80x24, and
+for the owner guard the lock screen at start, the lock screen over a chat (nothing of the chat
+may show through) and a tier-2 step-up in progress, all at 80x24.
 Every snapshot uses the fixed session id `20260929-120000-abcd` (checked in every file except the
-setup screen, which has no session), a fixed clock, UTC event times, no motion and no durations,
+setup screen, which has no session, and the lock screens, which must hide it), a fixed clock, UTC event times, no motion and no durations,
 and is taken after the streams stopped; review a regenerated file before committing it (it must
 never contain a local path, which the test also checks). The pilot tests read the widgets
 through text oracles (`Transcript.text`, `EventLog.text`, `HintBar.text`, `HeaderBar.text`,

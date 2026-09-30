@@ -157,6 +157,8 @@ class Glyphs:
     block_full: str  # preview of a cell with both pixels lit
     block_top: str  # top pixel lit
     block_bottom: str  # bottom pixel lit
+    lock: str  # the owner guard is active (header), the lock screen title
+    camera: str  # a guard attempt runs: the camera is on
 
     @classmethod
     def unicode(cls) -> Glyphs:
@@ -176,6 +178,8 @@ class Glyphs:
             block_full="█",
             block_top="▀",
             block_bottom="▄",
+            lock="⚿",
+            camera="◉",
         )
 
     @classmethod
@@ -196,6 +200,8 @@ class Glyphs:
             block_full="#",
             block_top="^",
             block_bottom="_",
+            lock="K",
+            camera="O",
         )
 
     def as_dict(self) -> dict[str, str]:
@@ -249,6 +255,7 @@ Screen.-ascii.-phone.-events EventsPane, Screen.-ascii.-narrow.-events EventsPan
 Screen.-ascii SessionSidebar { border-right: ascii $primary 35%; }
 ApprovalScreen.-ascii > #dialog, SessionPicker.-ascii #dialog { border: ascii $accent; }
 SettingsScreen.-ascii #dialog, SetupScreen.-ascii #dialog { border: ascii $accent; }
+GuardScreen.-ascii > #dialog { border: ascii $accent; }
 SettingsScreen.-ascii #sections { border-right: ascii $primary 35%; }
 """
 """Appended to ``TauApp.CSS``; active only on screens that carry ``-ascii``."""

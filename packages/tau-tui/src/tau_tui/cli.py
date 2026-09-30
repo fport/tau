@@ -5,6 +5,11 @@ whose role has no credentials the app opens without an agent on the settings scr
 (``build_app`` handles that); with no ``tau.toml`` at all the setup screen creates one (the
 same code as ``tau init``) and the command continues on that home. A broken ``tau.toml`` and
 an unknown ``--resume`` id still end with a plain English message and exit code 2.
+
+With an owner guard active (ADR 0008) the app opens on its lock screen. The setup screen never
+opens while a guard is enrolled for the data directory the new home would use: there is no
+configuration to unlock with yet, so the command says so and exits 2 (``tau init`` creates the
+configuration).
 """
 
 from __future__ import annotations
@@ -20,7 +25,9 @@ from tau_core import (
     configure_logging,
     open_session_store,
 )
-from tau_core.config import DEFAULT_HOME
+from tau_core.builder import env_with_dotenv
+from tau_core.config import DEFAULT_DATA_DIR, DEFAULT_HOME
+from tau_core.guard import ENROLLED_MARKER
 from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES
 
 from tau_tui.app import SessionNotFound, build_app, resolve_resume
@@ -28,6 +35,10 @@ from tau_tui.setup import SetupResult, run_setup
 
 HELP_TEXT = "Show this help and exit."
 SETUP_CANCELLED = "Setup cancelled. Run `tau tui` again, or `tau init`, to create a configuration."
+SETUP_GUARDED = (
+    "The owner guard is enrolled for this data directory, so the setup screen stays closed "
+    "while tau is locked. Create the configuration with `tau init`, then run `tau tui` again."
+)
 
 
 def _shown_home(home: Path) -> str:
@@ -39,6 +50,14 @@ def _shown_home(home: Path) -> str:
         return f"~/{home.relative_to(Path.home())}"
     except ValueError:
         return str(home)
+
+
+def _guard_enrolled(home: Path) -> bool:
+    """A guard marker in the data directory a configuration at ``home`` would use (the
+    ``TAU_DATA_DIR`` of the environment or ``home/.env``, else the default)."""
+    env = env_with_dotenv(home, os.environ)
+    data_dir = Path(env.get("TAU_DATA_DIR") or DEFAULT_DATA_DIR).expanduser()
+    return (data_dir / ENROLLED_MARKER).exists()
 
 
 def _setup(exc: ConfigNotFound) -> SetupResult | None:
@@ -69,6 +88,11 @@ def tui(ctx: click.Context, profile: str | None, resume: str | None) -> None:
     try:
         config = Config.load(home)
     except ConfigNotFound as exc:
+        if _guard_enrolled(exc.home):
+            click.echo(str(exc), err=True)
+            click.echo(SETUP_GUARDED, err=True)
+            ctx.exit(2)
+            return
         result = _setup(exc)
         if result is None:
             click.echo(str(exc), err=True)

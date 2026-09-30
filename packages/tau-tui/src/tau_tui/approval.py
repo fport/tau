@@ -4,7 +4,9 @@
 and waits on a future the dialog resolves. Nothing is approved without a key press or a click;
 a dialog closed any other way, an app that is not running or a cancelled wait all reject.
 Around the dialog it posts :class:`ApprovalPending` / :class:`ApprovalDone` to the app so the
-transcript, the composer and the header can show the attention state.
+transcript, the composer and the header can show the attention state. While the owner guard
+has the app locked nothing is asked (``REJECTED`` at once), and a lock rejects the pending
+dialog (:meth:`TuiApprover.reject_pending`).
 """
 
 from __future__ import annotations
@@ -195,6 +197,19 @@ class TuiApprover:
         self.app = app
         self.approve_delay = approve_delay
         self.pending: ApprovalRequest | None = None
+        self._screen: ApprovalScreen | None = None
+        self._future: asyncio.Future[Decision] | None = None
+
+    def reject_pending(self) -> None:
+        """Reject the open dialog now (the owner guard locked): dismissed as ``REJECTED`` when
+        it is on top, else its wait ends ``REJECTED`` and the dialog can no longer decide."""
+        future, screen, app = self._future, self._screen, self.app
+        if future is None or future.done():
+            return
+        if screen is not None and app is not None and screen.is_attached and app.screen is screen:
+            screen.action_reject()
+        else:
+            future.set_result(Decision.REJECTED)
 
     def attach(self, app: App[Any]) -> None:
         self.app = app
@@ -203,6 +218,9 @@ class TuiApprover:
         app = self.app
         if app is None or not app.is_running:
             logger.warning("no running TUI to ask about %s; rejecting", request.tool)
+            return Decision.REJECTED
+        if getattr(app, "locked", False) is True:
+            logger.info("tau is locked; rejecting %s without asking", request.tool)
             return Decision.REJECTED
         future: asyncio.Future[Decision] = asyncio.get_running_loop().create_future()
 
@@ -214,6 +232,7 @@ class TuiApprover:
 
         screen = ApprovalScreen(request, approve_delay=self.approve_delay)
         self.pending = request
+        self._screen, self._future = screen, future
         decision = Decision.REJECTED
         try:
             app.post_message(ApprovalPending(request))
@@ -227,4 +246,5 @@ class TuiApprover:
             raise
         finally:
             self.pending = None
+            self._screen = self._future = None
             app.post_message(ApprovalDone(request, decision))

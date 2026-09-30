@@ -91,6 +91,16 @@ def describe_event(event: AgentEvent, language: str = "en", *, show_durations: b
         return Text.assemble(
             (glyph("notice") + " ", EMBER), f"{t('tui.event.notice', language)} · {text}"
         )
+    if kind == "guard":
+        parts = [str(data.get("action") or "?")]
+        for key in ("phase", "step", "reason", "tool"):
+            if data.get(key):
+                parts.append(str(data[key]))
+        if "ok" in data:
+            parts.append(glyph("ok") if data["ok"] is True else glyph("fail"))
+        return Text.assemble(
+            (glyph("lock") + " ", FLARE), f"{t('tui.event.guard', language)} · {' · '.join(parts)}"
+        )
     return Text.assemble(
         (glyph("bullet") + " ", "dim"), (kind, "bold"), ": ", (_compact(data), "dim")
     )

@@ -46,9 +46,11 @@ BINDINGS: tuple[KeyBinding, ...] = (
     KeyBinding("f9", "scroll_bottom", "tui.key.bottom", None, "F9"),
     KeyBinding("f10", "settings", "tui.key.settings", None, "F10"),
     KeyBinding("f1", "help", "tui.key.help", None, "? / F1"),
+    KeyBinding("ctrl+l", "lock", "tui.key.lock", "f5", "ctrl+l / F5"),
 )
 """The app's own bindings; ``ctrl+q`` (quit) is Textual's default priority binding. F10 opens
-the settings (``ctrl+,`` is unreliable over mosh, so there is no ctrl mirror)."""
+the settings (``ctrl+,`` is unreliable over mosh, so there is no ctrl mirror). ``ctrl+l`` locks
+the owner guard; its mirror F5 overrides the text area's word selection, like F6 and F7."""
 
 HELP_KEYS: tuple[tuple[str, str], ...] = (
     ("enter", "tui.key.send"),
@@ -63,6 +65,7 @@ HELP_KEYS: tuple[tuple[str, str], ...] = (
     ("F9", "tui.key.bottom"),
     ("F10", "tui.key.settings"),
     ("? / F1", "tui.key.help"),
+    ("ctrl+l / F5", "tui.key.lock"),
     ("ctrl+q", "tui.key.quit"),
 )
 """What the help card lists, in this order (``?`` and ``/`` only in an empty composer)."""

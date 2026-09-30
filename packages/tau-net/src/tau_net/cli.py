@@ -10,7 +10,8 @@ the universe membership (``tau net universe join|leave``) are the owner's profil
 network store (:mod:`tau_net.profile`).
 
 Tests pass a transport through the click context object (``obj={"net_transport": ...}``);
-``net_env`` and ``net_model_factory`` work the same way.
+``net_env`` and ``net_model_factory`` work the same way, and ``spine_runner`` /
+``spine_environ`` replace the program runner and the environment of ``tau net spine deploy``.
 """
 
 from __future__ import annotations
@@ -18,13 +19,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, NoReturn
 
 import click
-from tau_core import Config, ConfigError, t
+from tau_core import LANGUAGES, Config, ConfigError, t
 from tau_core.cli import help_option
+from tau_core.config import resolve_home
+from tau_core.i18n import DEFAULT_LANGUAGE
 
+from tau_net import spine_strings as _spine_strings  # noqa: F401  (registers the spine keys)
 from tau_net import strings as _strings  # noqa: F401  (registers the message keys)
 from tau_net.config import NetConfigError
 from tau_net.contacts import PENDING_IN, ContactError
@@ -41,6 +47,7 @@ from tau_net.node import NetError, NetNode, open_node
 from tau_net.peers import CardError
 from tau_net.service import doctor_check
 from tau_net.spine import SpineError
+from tau_net.spine_kit import SpineKitError, deploy_project, init_project, is_workers_dev
 from tau_net.universe import MalformedRequest, UniverseError, tau_links
 
 __all__ = ["net"]
@@ -602,3 +609,107 @@ def universe_status_command(ctx: click.Context) -> None:
         say("net.universe.status.no_links")
     for peer, messages in links:
         say("net.universe.status.link", peer=peer, messages=messages)
+
+
+# -- spine kit ---------------------------------------------------------------------------------
+
+
+def _spine_say(ctx: click.Context) -> Callable[..., None]:
+    """Output in the UI language without requiring a ``tau.toml`` (the spine usually comes
+    before ``tau init``): ``--lang``/``TAU_LANG``, else ``[ui] language``, else English."""
+    obj = _obj(ctx)
+    language = obj.get("lang")
+    if language not in LANGUAGES:
+        try:
+            language = Config.load(obj.get("home"), env=dict(os.environ)).ui.language
+        except ConfigError:
+            language = os.environ.get("TAU_LANG", "")
+            language = language if language in LANGUAGES else DEFAULT_LANGUAGE
+
+    def say(key: str, /, **kwargs: Any) -> None:
+        click.echo(t(key, language, **kwargs))
+
+    return say
+
+
+_ADDRESS_HELP = "The tau's address when it is a domain of yours, e.g. tau.example.com."
+
+
+@net.group(
+    name="spine",
+    help="Your tau's spine, the Cloudflare Worker behind its address, from the kit inside "
+    "tau-net: write a Wrangler project, then deploy it to your own Cloudflare account. The "
+    "tau repository is not needed.",
+    short_help="Set up and deploy your spine Worker.",
+)
+@help_option()
+def spine_group() -> None:
+    pass
+
+
+@spine_group.command(
+    name="init",
+    help="Write a ready-to-deploy spine project into DIRECTORY, which must be new or empty: "
+    "wrangler.jsonc (local mode), worker.js, package.json, .gitignore, a README and the D1 "
+    "migrations when there are any. With --address HOST the Worker gets the ADDRESS variable "
+    "and a custom-domain route for HOST (the zone must be on your Cloudflare account); "
+    "without it, the address is tau-spine.<subdomain>.workers.dev.",
+    short_help="Write a spine project.",
+)
+@help_option()
+@click.argument("directory", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--address", metavar="HOST", help=_ADDRESS_HELP)
+@click.pass_context
+def spine_init_command(ctx: click.Context, directory: Path, address: str | None) -> None:
+    say = _spine_say(ctx)
+    try:
+        result = init_project(directory, address=address)
+    except SpineKitError as exc:
+        _fail(ctx, exc)
+    say("net.spine.init.done", version=result.version, path=result.path)
+    if result.host is None:
+        say("net.spine.init.no_address")
+    elif is_workers_dev(result.host):
+        say("net.spine.init.workers_dev_address", address=result.host)
+    else:
+        say("net.spine.init.address", address=result.host)
+    click.echo()
+    say("net.spine.next")
+    say("net.spine.init.step_node")
+    say("net.spine.init.step_deploy", path=directory)
+
+
+@spine_group.command(
+    name="deploy",
+    help="Deploy the spine project in DIRECTORY (from `tau net spine init`) with Wrangler: "
+    "check the Cloudflare login, npm install, wrangler deploy and, when the project has a D1 "
+    "database, its migrations. Then set the Worker's HUB_TOKEN secret to TAU_SPINE_TOKEN from "
+    "the hub's .env (generated when missing; passed on stdin, never printed) and write "
+    "TAU_SPINE_URL there: https://HOST for a known address, else the workers.dev URL.",
+    short_help="Deploy a spine project.",
+)
+@help_option()
+@click.argument("directory", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--address", metavar="HOST", help=_ADDRESS_HELP)
+@click.pass_context
+def spine_deploy_command(ctx: click.Context, directory: Path, address: str | None) -> None:
+    obj = _obj(ctx)
+    say = _spine_say(ctx)
+    try:
+        result = deploy_project(
+            directory,
+            home=resolve_home(obj.get("home")),
+            address=address,
+            runner=obj.get("spine_runner"),
+            say=say,
+            echo=lambda line: click.echo(f"  {line}" if line else ""),
+            environ=obj.get("spine_environ"),
+        )
+    except SpineKitError as exc:
+        _fail(ctx, exc)
+    click.echo()
+    say("net.spine.deploy.done", url=result.url)
+    say("net.spine.next")
+    say("net.spine.deploy.step_init")
+    say("net.spine.deploy.step_publish")
+    say("net.spine.deploy.step_status")

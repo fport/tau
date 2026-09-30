@@ -1,0 +1,177 @@
+name: app
+
+# Builds the tau Mac app (apps/tau; ADR 0014 §3, §4, §6; roadmap 170) for every version tag and
+# attaches it to the tag's GitHub release:
+#
+#   tau.dmg              the download: one universal app for Apple silicon and Intel
+#   tau.app.tar.gz       the Tauri updater's archive of the same app
+#   tau.app.tar.gz.sig   its updater signature, bound to the version
+#   latest.json          what installed apps read from the latest release to find an update
+#
+# Signing: every build is signed with one stable self-signed code-signing identity, so its
+# designated requirement stays the same from build to build and macOS keeps the camera and
+# notification permissions across updates. No notarisation yet: Gatekeeper warns on first
+# open, and apps/tau/README.md and the guide say how to open it. The signing and packing are in
+# apps/tau/scripts/pack-release.sh, which runs the same on a Mac.
+#
+# One-time setup by the owner: apps/tau/scripts/make-signing-identity.sh creates the identity and
+# the updater key in apps/tau/.signing/ (gitignored), writes the updater's public key into
+# apps/tau/src-tauri/tauri.conf.json (commit it), and prints the commands that set these
+# repository secrets:
+#   MACOS_SIGNING_P12                    the code-signing identity, a base64 p12
+#   MACOS_SIGNING_PASSWORD               its password
+#   TAURI_SIGNING_PRIVATE_KEY            the updater's private key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   its password
+# Without them (a fork, say) the app is signed ad hoc and there are no updater files; the run
+# says so in warnings and still succeeds.
+#
+# release.yml creates the release for the same tag after publishing to PyPI. Whichever workflow
+# gets there first creates it; the other one uploads its files to it.
+#
+# A manual run (workflow_dispatch) is a dry run by default: build, sign and pack, keep the files
+# as a workflow artifact, attach nothing. To attach by hand, pick the tag under "Use workflow
+# from" and untick "dry run".
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build, sign and pack only; attach nothing to a release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build, sign and pack tau.app
+    runs-on: macos-15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: apps/tau
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The app's version from the tag
+        id: version
+        env:
+          PUBLISH: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        run: |
+          core="$(sed -n 's/^version = "\(.*\)"$/\1/p' ../../packages/tau-core/pyproject.toml | head -n 1)"
+          echo "tau-core $core, ref $GITHUB_REF_TYPE $GITHUB_REF_NAME, publish=$PUBLISH"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [ "$GITHUB_REF_NAME" != "v$core" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match packages/tau-core/pyproject.toml (version $core, expected tag v$core)"
+              exit 1
+            fi
+          elif [ "$PUBLISH" = "true" ]; then
+            echo "::error::attaching the app needs a v<version> tag, not $GITHUB_REF_TYPE $GITHUB_REF_NAME; run again as a dry run or push a tag"
+            exit 1
+          fi
+          # The app carries tau-core's version as semver: 0.5.0 stays, 0.5.0rc1 becomes 0.5.0-rc1.
+          version="$(printf '%s' "$core" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)\.?([a-z].*)$/\1-\2/')"
+          echo "app version $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.2
+      # bun installs and runs the scripts; Vitest, Vite and the Tauri CLI run on Node, which
+      # `bun run` starts through their `#!/usr/bin/env node` shebangs.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Rust for both Mac architectures
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/tau/src-tauri/target/
+          key: app-release-${{ runner.os }}-${{ hashFiles('apps/tau/src-tauri/Cargo.lock') }}
+          restore-keys: app-release-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+
+      # Tauri builds both architectures and joins them with lipo; the bundle is signed ad hoc
+      # here and properly in the next step.
+      - name: Build the universal app
+        env:
+          # Release builds look for updates by themselves (src-tauri/src/update.rs).
+          TAU_APP_RELEASE: "1"
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          bun run tauri build --ci --target universal-apple-darwin --bundles app \
+            --config "{\"version\": \"$VERSION\"}"
+          archs="$(lipo -archs src-tauri/target/universal-apple-darwin/release/bundle/macos/tau.app/Contents/MacOS/tau-app)"
+          echo "architectures: $archs"
+          case " $archs " in
+            *" x86_64 "*" arm64 "* | *" arm64 "*" x86_64 "*) ;;
+            *) echo "::error::tau.app is not universal: $archs"; exit 1 ;;
+          esac
+
+      - name: Sign and pack
+        env:
+          MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAU_RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          scripts/pack-release.sh src-tauri/target/universal-apple-darwin/release/bundle/macos/tau.app \
+            "$RUNNER_TEMP/tau-app" "$VERSION"
+          plutil -p src-tauri/target/universal-apple-darwin/release/bundle/macos/tau.app/Contents/Info.plist \
+            | grep -E 'CFBundle(Identifier|ShortVersionString)|UsageDescription'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tau-app
+          path: ${{ runner.temp }}/tau-app/
+          if-no-files-found: error
+
+  release:
+    name: Attach to the GitHub release
+    needs: build
+    if: github.event_name == 'push' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release when it is missing, and attach the files
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: tau-app
+          path: tau-app
+      - name: Upload to the release of the tag, creating it when release.yml has not yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          ls -l tau-app
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac # 0.5.0-rc1, ...
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # The same title and notes as release.yml. If release.yml creates it in the
+            # meantime, this fails and the upload below attaches the files all the same.
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "$GITHUB_REF_NAME" --generate-notes $prerelease \
+              || echo "the release exists now; uploading to it"
+          fi
+          gh release upload "$GITHUB_REF_NAME" tau-app/* --clobber --repo "$GITHUB_REPOSITORY"

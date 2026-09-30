@@ -292,9 +292,11 @@ jobs:
         run: |
           prerelease=""
           case "$VERSION" in *[a-zA-Z]*) prerelease="--prerelease" ;; esac # 0.3.0a1, 0.3.0rc1, ...
+          # app.yml may have created the release first (it attaches tau.dmg to the same tag).
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/*/* --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$GITHUB_REF_NAME" dist/*/* --repo "$GITHUB_REPOSITORY" \
-              --title "$GITHUB_REF_NAME" --generate-notes $prerelease
+          elif ! gh release create "$GITHUB_REF_NAME" dist/*/* --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" --generate-notes $prerelease; then
+            # app.yml created it in the meantime.
+            gh release upload "$GITHUB_REF_NAME" dist/*/* --clobber --repo "$GITHUB_REPOSITORY"
           fi

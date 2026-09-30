@@ -24,5 +24,6 @@
 | 089 | [A nicer TauBar menu and settings window](089-taubar-ui-polish.md) | AFK | – |
 | 091 | [Two TauBar copies can run at once](091-taubar-single-instance.md) | AFK | – |
 | 130 | [TauBar's login tests trip the "no personal paths" repo rule](130-taubar-test-paths-trip-the-repo-rule.md) | AFK | – |
+| 166 | [TauBar in black and fire: only what is on burns](166-taubar-black-and-fire.md) | AFK | 089 |
 
 Live status: `python3 roadmap/board.py --layer L4`

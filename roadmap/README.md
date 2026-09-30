@@ -13,6 +13,7 @@ tau is built in layers. Each layer becomes useful on its own before the next one
 | [L6 · Robot](L6-robot/README.md) | SO-101 and the workout coach |
 | [L7 · Lab](L7-lab/README.md) | AgentCore and other experiments |
 | [L8 · Distribution](L8-distribution/README.md) | PyPI releases and the docs site |
+| [L9 · Cloud mode and the tau network](L9-network/README.md) | The spine Worker, taus talking to each other, and the hub in a Cloudflare Container ([ADR 0007](../docs/adr/0007-cloud-mode-and-tau-network.md)) |
 | [Backlog](backlog/README.md) | Waiting on hardware or decisions |
 
 ```sh

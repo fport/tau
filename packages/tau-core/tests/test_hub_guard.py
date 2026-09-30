@@ -766,7 +766,7 @@ def test_a_touch_id_unlock_asks_the_hub_to_run_it_and_maps_the_verdict(hub: Fake
         "client_id": "c1",
         "kind": "unlock",
         "policy": {"step_up": "face", "unlock_liveness": "challenge"},
-        "method": "touch_id",  # a request to look, never a result
+        "fallback": "touch_id",  # a request to look, never a result
     }
 
 

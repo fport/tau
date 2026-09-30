@@ -69,6 +69,7 @@ SCHEMAS: dict[tuple[str, str], dict[str, FieldSpec]] = {
         "request_id": OPTIONAL_TEXT,
         "tool": OPTIONAL_TEXT,
         "policy": FieldSpec("policy", nullable=True),
+        "fallback": FieldSpec("choice", choices=("touch_id",)),
     },
     ("POST", "/guard/cancel"): {
         "client_id": TEXT,

@@ -27,12 +27,13 @@ Route contract (all protected control routes, JSON; the hub side is issue 111):
   at least 60 s. A finished attempt with ``ok: true`` has ``reason: "match"``, a ``method``,
   and comes with ``state: "unlocked"`` and the ``enrollment`` id.
 - ``POST /guard/admit`` ``{channel, session_id, client_id}`` → ``{allowed, reason, enrollment}``.
-- ``POST /guard/verify`` ``{channel, client_id, kind, request_id?, tool?, policy?, method?}``
-  → ``202 {attempt, seq}``; a refusal answers 4xx ``{reason, retry_after?}`` (``cooldown``,
-  ``busy``). The result is read through ``/guard/status?attempt=<id>``. ``method:
-  "touch_id"`` (an ``unlock`` only) asks for the Touch ID fallback: the hub runs it only while
-  its status offers it (``fallback``), and runs LocalAuthentication itself, so the sheet
-  appears on the Mac's screen. No route accepts a Touch ID result either.
+- ``POST /guard/verify`` ``{channel, client_id, kind, request_id?, tool?, policy?,
+  fallback?}`` → ``202 {attempt, seq}``; a refusal answers 4xx ``{reason, retry_after?}``
+  (``cooldown``, ``busy``). The result is read through ``/guard/status?attempt=<id>``.
+  ``fallback: "touch_id"`` (an ``unlock`` only; ``unlock(method="touch_id")``) asks for the
+  Touch ID fallback: the hub runs it only while its status offers it (``fallback``), and runs
+  LocalAuthentication itself, so the sheet appears on the Mac's screen. No route accepts a
+  Touch ID result either.
 - ``POST /guard/cancel`` ``{client_id, attempt?}`` → ``{ok}``.
 - ``POST /guard/lock`` ``{channel, client_id, trigger}`` → ``{state: "locked"}``.
 - ``POST /guard/enroll`` ``{client_id}`` → ``202 {attempt, seq}``.
@@ -723,7 +724,7 @@ class HubGuard:
             return GuardVerdict(False, "error")  # the hub picks a recheck's method itself
         body = {"channel": channel, "client_id": client_id, "kind": kind, "policy": self.policy}
         if method == "touch_id":
-            body["method"] = method  # the hub decides whether it is offered and runs it
+            body["fallback"] = "touch_id"  # the hub decides whether it is offered, and runs it
         try:
             return await self._attempt(body, client_id, on_progress)
         except asyncio.CancelledError:

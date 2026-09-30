@@ -4,12 +4,18 @@ decision 13).
 Schema (version 1)::
 
     {v: 1, at, event, channel, client_id, trigger, ok, reason, score?, liveness?,
-     duration_ms, request_id?, tool?}
+     duration_ms, request_id?, tool?, method?, policy?}
 
 - ``at`` is UTC ISO 8601 with seconds; ``event`` is one of :data:`EVENTS`.
 - ``channel``, ``client_id``, ``trigger``, ``ok``, ``reason`` and ``duration_ms`` are always
   present (``null`` when they do not apply); ``score`` (rounded to 2 decimals), ``liveness``,
-  ``request_id`` and ``tool`` only when set.
+  ``request_id``, ``tool``, ``method`` and ``policy`` only when set.
+- ``method`` (issue 114) is ``face`` or ``touch_id``: on a check, the method that passed or
+  the one that was tried; on an ``unlock``, how the owner unlocked. A ``touch_id`` record is
+  one LocalAuthentication prompt (or its refusal before the prompt): ``trigger`` is the
+  attempt's kind, ``reason`` the prompt's outcome (``ok``, ``failed``, ``cancelled``,
+  ``unavailable``, ``timeout`` or ``changed``: the fingerprint set is not the pinned one) and
+  ``policy`` ``biometrics`` (Touch ID only) or ``device_owner`` (Touch ID or the password).
 - A record never holds an embedding, a frame or anything about another person: only the keys
   above, each a string, a bool, a small number or ``null``.
 - Strings are cut to 128 characters and every non-printable character (C0 and C1 controls such
@@ -74,7 +80,7 @@ REQUIRED_KEYS = (
     "reason",
     "duration_ms",
 )
-OPTIONAL_KEYS = ("score", "liveness", "request_id", "tool")
+OPTIONAL_KEYS = ("score", "liveness", "request_id", "tool", "method", "policy")
 MAX_TEXT = 128
 
 
@@ -133,6 +139,8 @@ class AuditLog:
         duration_ms: int | None = None,
         request_id: str | None = None,
         tool: str | None = None,
+        method: str | None = None,
+        policy: str | None = None,
     ) -> dict[str, Any]:
         """Append one record and return it. ``event`` must be one of :data:`EVENTS`."""
         if event not in EVENTS:
@@ -160,6 +168,10 @@ class AuditLog:
             entry["request_id"] = _text(request_id)
         if tool is not None:
             entry["tool"] = _text(tool)
+        if method is not None:
+            entry["method"] = _text(method)
+        if policy is not None:
+            entry["policy"] = _text(policy)
         line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
         with self._lock:
             try:

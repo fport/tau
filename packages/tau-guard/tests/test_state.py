@@ -738,9 +738,10 @@ PASSIVE = Outcome(True, "match", "face", 0.8, "passive")
         ("unlock", PASSIVE, {}, "touch_id", False),
         ("unlock", PASSIVE, {"unlock_liveness": "none"}, "touch_id", True),
         ("unlock", TOUCH_ID, {}, "none", False),
-        ("unlock", TOUCH_ID, {}, "touch_id_or_password", True),
+        ("unlock", TOUCH_ID, {}, "touch_id_or_password", False),  # a face attempt: no Touch ID
         ("recheck", PASSIVE, {}, "touch_id", True),
         ("recheck", TOUCH_ID, {}, "none", False),
+        ("recheck", TOUCH_ID, {}, "touch_id", False),  # a face session rechecks the face
     ],
 )
 def test_a_success_the_policy_excludes_is_an_error(
@@ -777,7 +778,10 @@ def test_challenge_freshness_ends_with_a_lock(clock: FakeClock) -> None:
     enroll = m.request("enroll", channel="enroll", client_id="c1")
     assert not isinstance(enroll, Refusal)
     m.finish(enroll.id, MATCH)  # an enrollment never opens the window
-    run_kind(m, "unlock", TOUCH_ID)
+    for _ in range(2):  # the face check cannot work: the Touch ID fallback is offered
+        run_kind(m, "unlock", Outcome(False, "no_face"))
+    touch = m.request("unlock", channel="tui", client_id="c1", method="touch_id")
+    assert not isinstance(touch, Refusal) and m.finish(touch.id, TOUCH_ID)
     step_up = m.request("step_up", channel="tui", client_id="c1")
     assert not isinstance(step_up, Refusal) and not step_up.challenge_fresh
 

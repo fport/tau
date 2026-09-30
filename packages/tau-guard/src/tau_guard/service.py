@@ -27,13 +27,20 @@ guard's state inside ``tau hub run``:
 Routes (all protected; ``ControlApi`` checks the signature and signs the answer):
 
 - ``GET /guard/status?since=<seq>&wait=<0..25>[&attempt=<id>]``: every ``GuardStatus`` field
-  plus ``enrollment``, ``screen`` (``locked``, ``unlocked`` or ``unknown``) and
+  (``fallback`` too: the Touch ID fallback the lock screen may offer, issue 114) plus
+  ``enrollment``, ``screen`` (``locked``, ``unlocked`` or ``unknown``) and
   ``step_up_active``; ``attempt`` is the running attempt, or with ``attempt=<id>`` that
   attempt's record (queued, running or finished within the last 120 s), else ``null``.
 - ``POST /guard/admit`` → ``{allowed, reason, enrollment, state}``, reflexes evaluated inline.
 - ``POST /guard/verify`` → ``202 {attempt, seq}`` (``seq`` is just below the attempt's, so the
   first poll answers at once); refusals are ``409 {reason}`` (``locked``, ``busy``,
-  ``not_enrolled``, ``unavailable``) or ``429 {reason: "cooldown", retry_after}``, never 403.
+  ``not_enrolled``, ``unavailable``, ``touch_id_unavailable`` for a Touch ID unlock that is not
+  offered, ``error``) or ``429 {reason: "cooldown", retry_after}``, never 403. ``fallback:
+  "touch_id"`` asks for the Touch ID fallback of an unlock (a request to look, never a
+  result): the worker's ``touch_id`` op runs LocalAuthentication on the Mac's screen. The hub
+  also picks the worker per attempt: a recheck in a Touch ID session and a ``step_up =
+  "touch_id"`` step-up run the ``touch_id`` op (no camera), a ``step_up = "none"`` step-up runs
+  nothing. Prompt texts go in the owner's UI language (``guard.cli.la.*``).
 - ``POST /guard/cancel`` → ``{ok}``; ``POST /guard/lock`` → ``{state: "locked"}``
   (idempotent; a caller's ``trigger`` is recorded only when it is ``command`` or
   ``telegram``, anything else is recorded as ``command``: the hub decides the other
@@ -88,6 +95,7 @@ from tau_guard import strings as _strings  # noqa: F401  (registers guard.cli.la
 from tau_guard.audit import AuditLog, secure_dir
 from tau_guard.config import GuardSettings, SettingsError, parse_settings, stricter_policy
 from tau_guard.failures import FailureFile
+from tau_guard.localauth import LA_TIMEOUT
 from tau_guard.presence import PresenceSource, PresenceUnavailable, QuartzPresence
 from tau_guard.routes import SCHEMAS, BadRequest, parse_body, parse_query
 from tau_guard.runner import DEFAULT_COMMAND, Progress, WorkerRun
@@ -132,6 +140,10 @@ Quartz read takes a few milliseconds, and a slower one answers ``False``."""
 CALLER_TRIGGERS = ("command", "telegram")
 """The lock triggers ``POST /guard/lock`` records as the caller says; the hub decides the rest."""
 SUCCESS_METHODS = ("face", "touch_id")
+TOUCH_ID_GRACE = 10.0
+"""Seconds a ``touch_id`` worker may run beyond the 30 s LocalAuthentication limit."""
+MAX_TOOL_TEXT = 60
+"""How much of a tool name goes into a step-up's prompt text."""
 STATUS_FIELDS = (
     "state",
     "enrolled",
@@ -150,6 +162,7 @@ STATUS_FIELDS = (
     "enrollment",
     "screen",
     "step_up_active",
+    "fallback",
 )
 
 Subscriber = Callable[[GuardStatus], None]
@@ -406,7 +419,12 @@ class GuardService:
         if self._stop_event.is_set() or self.mode != "active":
             machine.finish(attempt.id, Outcome(False, "unavailable"))  # never after a stop
             return
-        op = "enroll" if attempt.kind == "enroll" else "verify"
+        if attempt.kind == "enroll":
+            op = "enroll"
+        elif attempt.factor == "touch_id":
+            op = "touch_id"
+        else:
+            op = "verify"
         settings = self.settings
         request: dict[str, Any] = {
             "v": 1,
@@ -419,10 +437,20 @@ class GuardService:
             "challenge_fresh": attempt.challenge_fresh,
         }
         timeout = self.machine.limits.attempt_timeout
+        language = self.config.ui.language
         if op == "enroll":
             request["add"] = attempt.add
-            request["reason_text"] = t("guard.cli.la.enroll", self.config.ui.language)
+            request["reason_text"] = t("guard.cli.la.enroll", language)
             timeout = max(timeout, ENROLL_TIMEOUT)
+        elif attempt.kind == "step_up":
+            tool = (attempt.tool or "")[:MAX_TOOL_TEXT] or "-"
+            request["reason_text"] = t("guard.cli.la.step_up", language, tool=tool)
+        else:
+            request["reason_text"] = t(f"guard.cli.la.{attempt.kind}", language)
+        if op == "touch_id":
+            timeout = LA_TIMEOUT + TOUCH_ID_GRACE
+        elif attempt.policy.get("step_up") == "face_or_touch_id" and attempt.kind == "step_up":
+            timeout += LA_TIMEOUT  # the face check, then maybe the Touch ID prompt
         run = WorkerRun(
             op,
             request,
@@ -617,6 +645,7 @@ class GuardService:
         tool: str | None = None,
         policy: Mapping[str, str] | None = None,
         add: bool = False,
+        method: str = "face",
     ) -> tuple[Attempt | Refusal, int]:
         if not self._accepting():
             return Refusal("unavailable"), self._seq()
@@ -636,6 +665,7 @@ class GuardService:
                 tool=tool,
                 policy=stricter_policy(hub_policy, policy),
                 add=add,
+                method=method,
             )
             seq = max(0, result.seq - 1) if isinstance(result, Attempt) else machine.seq
         return result, seq
@@ -732,6 +762,7 @@ class GuardService:
             request_id=body.get("request_id"),
             tool=body.get("tool"),
             policy=body.get("policy"),
+            method="touch_id" if body.get("fallback") == "touch_id" else "face",
         )
         return _answer(result, seq)
 
@@ -781,11 +812,12 @@ class GuardService:
         client_id: str,
         kind: str = "unlock",
         on_progress: Callable[[GuardProgress], None] | None = None,
+        method: str = "face",
     ) -> GuardVerdict:
         if kind not in ("unlock", "recheck"):
             return GuardVerdict(False, "error")
         try:
-            return await self._attempt(kind, channel, client_id, on_progress)
+            return await self._attempt(kind, channel, client_id, on_progress, method=method)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -867,9 +899,15 @@ class GuardService:
         *,
         request_id: str | None = None,
         tool: str | None = None,
+        method: str = "face",
     ) -> GuardVerdict:
         result = await self._request_off_loop(
-            kind, channel=channel, client_id=client_id, request_id=request_id, tool=tool
+            kind,
+            channel=channel,
+            client_id=client_id,
+            request_id=request_id,
+            tool=tool,
+            method=method,
         )
         if isinstance(result, Refusal):
             return GuardVerdict(False, result.reason, None, result.retry_after)
@@ -914,6 +952,7 @@ class GuardService:
         client_id: str,
         request_id: str | None,
         tool: str | None,
+        method: str = "face",
     ) -> Attempt | Refusal:
         """:meth:`_request_sync` in a daemon thread. A caller cancelled meanwhile withdraws
         from the attempt the request started, however late the request returns."""
@@ -923,7 +962,12 @@ class GuardService:
 
         def request() -> Attempt | Refusal:
             result, _ = self._request_sync(
-                kind, channel=channel, client_id=client_id, request_id=request_id, tool=tool
+                kind,
+                channel=channel,
+                client_id=client_id,
+                request_id=request_id,
+                tool=tool,
+                method=method,
             )
             if isinstance(result, Attempt):
                 with guard:
@@ -989,8 +1033,9 @@ def _verdict(record: Mapping[str, Any], state: str) -> GuardVerdict:
     retry_after = float(retry) if isinstance(retry, int | float) else None
     if record.get("ok") is True:
         method = record.get("method")
-        if reason == "match" and method in SUCCESS_METHODS and state == "unlocked":
-            return GuardVerdict(True, "match", str(method))
+        none = method is None and record.get("kind") == "step_up"  # step_up = "none": no check
+        if reason == "match" and (method in SUCCESS_METHODS or none) and state == "unlocked":
+            return GuardVerdict(True, "match", str(method) if method is not None else None)
         return GuardVerdict(False, "error")
     return GuardVerdict(False, "error" if reason == "match" else reason, None, retry_after)
 

@@ -99,6 +99,15 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "en": "remove your face from the tau guard",
         "tr": "yüzünü tau korumasından silmek",
     },
+    "guard.cli.la.unlock": {"en": "unlock tau", "tr": "tau'nun kilidini açmak"},
+    "guard.cli.la.recheck": {
+        "en": "confirm that you are still at tau",
+        "tr": "hâlâ tau'nun başında olduğunu doğrulamak",
+    },
+    "guard.cli.la.step_up": {
+        "en": "confirm that tau may run {tool}",
+        "tr": "tau'nun {tool} çalıştırabileceğini onaylamak",
+    },
     # -- shared by setup, enroll, verify, forget ------------------------------------------------
     "guard.cli.unsupported": {
         "en": "The face guard works only on macOS.",

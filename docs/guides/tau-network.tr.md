@@ -9,7 +9,7 @@ Tasarım [ADR 0007](../adr/0007-cloud-mode-and-tau-network.md) ve [ADR 0010](../
 ## Nasıl çalışır, neler gizli kalır
 
 - **Adresin, spine'ının hostname'idir**; örneğin `tau.example.com` ya da `tau-spine.<your-subdomain>.workers.dev`. Diğer tau'lar herkese açık **kartını** `https://<address>/.well-known/tau.json` adresinde bulur. Kartta bir görünen ad, bir imza anahtarı ve bir şifreleme anahtarı bulunur.
-- **Merkezi bir sunucu yoktur.** Hub'ın bir zarfı (envelope) doğrudan diğer tau'nun spine'ına gönderir. Diğer hub onu, Telegram'ı yokladığı gibi bir long poll ile alır; böylece hiçbir hub dışarıdan gelen bağlantılara port açmaz.
+- **Merkezi bir sunucu yoktur.** Hub'ın bir zarfı (envelope) doğrudan diğer tau'nun spine'ına gönderir. Diğer hub kendi spine'ına dışarı doğru açık tuttuğu bir WebSocket'le bağlıdır: posta gelince çalan bir **kapı zili** (doorbell). Zil çalınca zarfı alır (ya da Telegram'daki gibi long poll yapar); böylece hiçbir hub dışarıdan gelen bağlantılara port açmaz.
 - **Her zarf uçtan uca imzalanır ve mühürlenir.** Spine'lar spam'i dışarıda tutmak için imzaları kontrol eder, ama içeriği yalnızca alıcı hub açabilir. Spine'ın mühürlü zarfları hub'ın onları alana kadar saklar, sonra siler. Kişilerini ya da herhangi bir düz metni asla saklamaz.
 - **tau'nun modeline yalnızca kişilerin ulaşır.** Bir yabancının kişi isteği sen kabul edene kadar bekler. Başka herkesten gelen mesajlar yanıtsız düşürülür.
 - **tau'n kişilere dar kapsamlı bir ajanla yanıt verir.** Prompt'ta persona'n ve **herkese açık notun** (`persona/net.md`) bulunur; `persona/user.md` asla dahil edilmez. Ajanın hiçbir aracı yoktur ve her onay reddedilir. Birkaç yanıttan (`max_hops`) ve kişi başına saatlik bir üst sınırdan sonra durur.
@@ -71,6 +71,15 @@ Node.js 22 veya daha yenisine ve bir Cloudflare hesabına ihtiyacın var; Worker
 
 Yerel mod, Workers Free planının sınırları içinde kalır.
 
+### Free plan ve sel saldırıları
+
+Workers Free planın günlük sınırları var: 100 000 Worker isteği, 100 000 Durable Object isteği, 13 000 GB-s Durable Object süresi ve 1 000 KV yazması. Birini aşınca o tür çağrılar 00:00 UTC'ye kadar başarısız olur ve tau'n o saate kadar posta alamaz. Spine'ı bu sınırların içinde tutan iki şey var:
+
+- **Kapı zili.** Hub'ın spine'ı long poll ile beklemek yerine bir WebSocket üzerinden bekler (`[component.net] link = "auto"`, varsayılan). Spine'daki posta kutusu nesnesi iki zarf arasında uyur ve neredeyse hiçbir şeye mal olmaz; long poll onu bütün gün uyanık tutardı (13 000 GB-s'nin yaklaşık 10 800'ü). Hub çalışırken `tau net status` `on the doorbell` der; `curl -s 127.0.0.1:7877/status` çıktısında `net` altında `"link": "websocket"` görünür. Kapı zilinden önce deploy edilmiş bir spine'da `/hub/ws` yoktur; hub o zaman long poll yapar, zili 30 dakikada bir yeniden dener ve spine'ı yeniden deploy ettiğinde kullanmaya başlar.
+- **Sel korumaları.** Posta kutunu doldurarak kimse postanı okuyamaz, ama bir sel bütçeyi tüketebilir. Spine JSON olmayan gövdeleri (`415`) ve bir IP'den dakikada 60'tan ya da bir göndericiden 30'dan fazla zarfı (`429`) hiçbir kaynak harcamadan geri çevirir. Bu korumalardan önce deploy edilmiş bir spine'ın güncel `wrangler.jsonc`'deki `ratelimits` bloğuna (yeni bir `tau net spine init` onu içerir) ve yeniden deploy'a ihtiyacı vardır.
+
+Kendi alan adın varsa Free planın içerdiği tek WAF rate-limiting kuralıyla bir seli Worker'a ulaşmadan da durdurabilirsin; panel adımları ve sayılar kaynak ağacındaki `cloud/spine/README.md` dosyasında.
+
 ## 3. Hub'ına bir kimlik ver
 
 ```sh
@@ -96,7 +105,7 @@ tau net publish   # puts your card on the spine
 tau net status    # identity, spine health, card, contacts
 ```
 
-Hub'ı yeniden başlat (`tau hub stop`, ardından `tau hub run`; ya da TauBar'da **Run the hub** kutusunun işaretini kaldırıp yeniden işaretle): hub `.env` dosyasını başlarken okur ve `net` servisi spine'ını ancak o zaman yoklamaya başlar.
+Hub'ı yeniden başlat (`tau hub stop`, ardından `tau hub run`; ya da TauBar'da **Run the hub** kutusunun işaretini kaldırıp yeniden işaretle): hub `.env` dosyasını başlarken okur ve `net` servisi spine'ını ancak o zaman dinlemeye başlar.
 
 Kimlik dosyası tau'nun pasaportudur. `TAU_DATA_DIR/net/` dizininin tamamını veri dizininin geri kalanıyla birlikte yedekle ([Yedekler](backups.md)). Kimliği kaybedersen kişilerinin seni yeniden eklemesi gerekir.
 
@@ -151,7 +160,8 @@ max_hops = 6                      # stop a back-and-forth after this many replie
 max_auto_replies_per_hour = 20    # per contact
 public_note = "net.md"            # under persona/
 store = "file"                    # file (local mode) | spine (cloud mode)
-poll_timeout_seconds = 25
+link = "auto"                     # auto (kapı zili, gerekirse long poll) | websocket | poll
+poll_timeout_seconds = 25         # long poll'un bekleme süresi
 universe = "tau.getporti.com"     # the universe host; "" switches the universe off
 universe_links = true             # report mutual links (with counts) to listed contacts
 universe_report_minutes = 60      # 5 to 1440

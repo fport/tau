@@ -76,7 +76,7 @@ The Workers Free plan has daily limits (100 000 Worker requests, 100 000 Durable
 - **The doorbell.** Your hub waits on a WebSocket to the spine (`[component.net] link = "auto"`, the default) instead of a long poll. The spine's mailbox object sleeps between envelopes and costs almost nothing; a long poll would keep it awake all day, about 10 800 of the 13 000 GB-s. `tau net status` says `on the doorbell` while the hub runs, and `curl -s 127.0.0.1:7877/status` shows `"link": "websocket"` under `net`. A spine deployed before the doorbell existed has no `/hub/ws`; the hub then long-polls it, tries the doorbell again every 30 minutes and uses it once you redeploy the spine.
 - **Flood guards.** Nobody can read your mail by flooding your inbox, but a flood could use up the budget. The spine turns away bodies that are not JSON (`415`) and more than 60 envelopes a minute from one IP or 30 from one sender (`429`) before it spends anything on them. A spine deployed before these guards needs the `ratelimits` block of the current `wrangler.jsonc` (a new `tau net spine init` has it), then a redeploy.
 
-With a custom domain you can also stop a flood before it reaches the Worker at all, with the one WAF rate-limiting rule the Free plan includes: [cloud/spine/README.md](https://github.com/fport/tau/blob/main/cloud/spine/README.md#floods) has the dashboard steps and the numbers.
+With a custom domain you can also stop a flood before it reaches the Worker at all, with the one WAF rate-limiting rule the Free plan includes: `cloud/spine/README.md` in the source tree has the dashboard steps and the numbers.
 
 ## 3. Give your hub an identity
 

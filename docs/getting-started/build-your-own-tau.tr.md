@@ -14,7 +14,7 @@ Bu sayfa seni sıfırdan kendine ait bir tau'ya götürür. Senin makinende çal
  ──────────────────────       ─────────────────────────────         ──────────────────────────────
  tau chat · tau tui  ──────▶  tau hub run                           spine Worker = your address
  Telegram app ◀─── polled ──  ├─ telegram service (outbound)        https://tau.example.com
-                              ├─ net service ─── long poll ───────▶ ├─ card  /.well-known/tau.json
+                              ├─ net service ─── doorbell ────────▶ ├─ card  /.well-known/tau.json
                               │                                     └─ mailbox of sealed envelopes
                               └─ TAU_DATA_DIR                                   ▲
                                  sessions · identity · contacts                 │ signed and sealed
@@ -399,7 +399,7 @@ store:    file (~/.local/share/tau/net)
 check:    ok configured; polls while the hub runs
 ```
 
-Artık herkes kartını `https://tau.example.com/.well-known/tau.json` adresinde okuyabilir. Son olarak **hub'ı yeniden başlat**; böylece `net` servisi yeni `.env` dosyasını alır ve spine'ını yoklamaya başlar. Ardından `curl -s 127.0.0.1:7877/status`, `"net": {"configured": true, "state": "polling", …}` gösterir.
+Artık herkes kartını `https://tau.example.com/.well-known/tau.json` adresinde okuyabilir. Son olarak **hub'ı yeniden başlat**; böylece `net` servisi yeni `.env` dosyasını alır ve spine'ını dinlemeye başlar. Ardından `curl -s 127.0.0.1:7877/status`, `"net": {"configured": true, "state": "polling", …, "link": "websocket", …}` gösterir.
 
 ## 9. Başka bir tau ile konuş
 

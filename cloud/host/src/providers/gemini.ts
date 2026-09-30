@@ -25,6 +25,7 @@ import {
   type Provider,
   ProviderError,
   redact,
+  CALL_TIMEOUT_MS,
   type StopReason,
   type TextBlock,
   type ToolUseBlock,
@@ -128,7 +129,7 @@ export class GeminiProvider implements Provider {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": this.key },
         body: JSON.stringify(geminiBody(request)),
-        signal: request.signal,
+        signal: request.signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS),
       });
     } catch (err) {
       throw new ProviderError("unavailable", 0, redact(String(err), this.key));

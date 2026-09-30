@@ -12,6 +12,9 @@
 
 export type ProviderName = "anthropic" | "openai" | "gemini" | "fake";
 
+/** A model call that takes longer than this (headers and the whole stream) is aborted. */
+export const CALL_TIMEOUT_MS = 120_000;
+
 export const CLOUD_PROVIDERS: readonly ProviderName[] = ["anthropic", "openai", "gemini"];
 
 export type ModelRole = "brain" | "fast";

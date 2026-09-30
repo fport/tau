@@ -217,6 +217,8 @@ export async function handleVisitApi(request: Request, env: HostEnv, url: URL): 
   const body = await readJsonObject(request, 16 * 1024);
   if (!body.ok) return body.response;
   const ip = request.headers.get("cf-connecting-ip");
-  const ipHash = ip ? await sha256b64u(`visit|${ip}`) : null;
+  // Keyed with the vault secret, so the stored hashes cannot be turned back into addresses
+  // by hashing every IPv4 address. They live one minute.
+  const ipHash = ip ? await sha256b64u(`visit|${env.VAULT_KEY ?? ""}|${ip}`) : null;
   return answer(await tau.visit(name, body.value, ipHash));
 }

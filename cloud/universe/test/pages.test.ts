@@ -223,7 +223,17 @@ describe("pages in two languages", () => {
   });
 
   it("explains how tau works in both languages, security and start included", async () => {
-    const sections = ["machine", "address", "talking", "subs", "universe", "hacked", "start"];
+    const sections = [
+      "machine",
+      "address",
+      "talking",
+      "subs",
+      "visitors",
+      "universe",
+      "ways",
+      "hacked",
+      "start",
+    ];
     const english = await html("/how-it-works");
     const turkish = await html("/tr/how-it-works");
     for (const id of sections) {

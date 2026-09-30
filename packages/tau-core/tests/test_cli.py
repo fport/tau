@@ -104,7 +104,7 @@ def test_chat_scripted_conversation(tmp_path: Path) -> None:
     assert "example_echo  tier 0" in out
     assert (
         "Unknown command: /bilinmeyen. Commands: /help, /tools, /sessions, /resume, /new, "
-        "/session, /compact, /clear, /status, /model, /lang, /settings, /quit"
+        "/session, /compact, /clear, /status, /model, /lang, /settings, /guard, /quit"
     ) in out
     assert out.rstrip().endswith("Goodbye.")
     assert (tmp_path / "data" / "logs" / "tau.log").is_file()

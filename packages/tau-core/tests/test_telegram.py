@@ -20,9 +20,10 @@ from tau_core.channels.telegram import (
     split_message,
 )
 from tau_core.config import Config, RoleConfig, SessionsConfig
+from tau_core.guard import ENROLLED_MARKER
 from tau_core.hub.daemon import Hub
 from tau_core.i18n import t
-from tau_core.testing import FakeBotApi, test_config
+from tau_core.testing import FakeBotApi, FakeGuard, test_config
 
 ME = 111
 STRANGER = 999
@@ -415,6 +416,7 @@ def test_the_command_menu_is_set_for_allowed_chats_only_and_follows_lang(tmp_pat
         "status",
         "model",
         "lang",
+        "guard",
     ]
     assert english[0]["description"] == t("command.help", "en")
     assert turkish[0]["description"] == t("command.help", "tr")
@@ -453,7 +455,7 @@ def test_unknown_and_unavailable_commands(tmp_path: Path) -> None:
     unknown, quit_, quit_alias = run.api.texts()
     assert unknown == (
         "Unknown command: /nope. Commands: /help, /tools, /sessions, /resume, /new, /session, "
-        "/compact, /status, /model, /lang"
+        "/compact, /status, /model, /lang, /guard"
     )  # only what works on Telegram
     assert quit_ == quit_alias == t("telegram.unavailable", "en", command="quit")
 
@@ -733,3 +735,108 @@ def test_doctor_check_reports_configuration_and_poller_state(tmp_path: Path) -> 
     assert doctor_check(config, ENV, failed).status == "fail"
     assert doctor_check(config, ENV, {"pid": 1}).status == "warn"  # a hub without the poller
     assert "123:test-token" not in configured.detail
+
+
+# -- /guard (issue 113) ----------------------------------------------------------------------
+
+
+class InHubGuard(FakeGuard):
+    """``FakeGuard`` as the hub's ``guard`` service (``hub.find_service("guard")``)."""
+
+    name = "guard"
+
+
+class DeafGuard(InHubGuard):
+    """A lock that never reaches the state (``HubGuard`` only logs that)."""
+
+    async def lock(self, *, channel: str, client_id: str, trigger: str = "command") -> None:
+        self.calls.append(("lock", trigger))
+
+
+def with_guard(run: Run, guard: FakeGuard | None) -> None:
+    run.hub.find_service = lambda name: guard if name == "guard" else None  # type: ignore[method-assign]
+
+
+def test_guard_without_a_guard_service_says_off_or_no_service(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+
+    async def body(run: Run) -> None:
+        run.api.push_message(ME, "/guard")
+        run.api.push_message(ME, "/guard lock")
+        run.api.push_message(ME, "/koruma unlock")
+        run.api.push_message(ME, "/guard nope")
+        await run.until(replies_to(run, 4))
+        marker = config.data_dir / ENROLLED_MARKER
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text('{"v": 1, "enrollment": "E1"}', encoding="utf-8")
+        run.api.push_message(ME, "/guard")
+        await run.until(replies_to(run, 5))
+
+    run = serve(config, body)
+    assert run.api.texts() == [t("guard.cmd.off", "en")] * 4 + [t("guard.cmd.no_service", "en")]
+
+
+def test_guard_shows_the_state_of_the_in_hub_guard(tmp_path: Path) -> None:
+    guard = InHubGuard("locked")
+    guard.set_state("locked", trigger="idle")
+
+    async def body(run: Run) -> None:
+        with_guard(run, guard)
+        run.api.push_message(ME, "/guard")
+        run.api.push_message(ME, "/lang tr")
+        run.api.push_message(ME, "/guard")
+        run.api.push_message(ME, "/guard nope")
+        await run.until(replies_to(run, 4))
+
+    run = serve(make_config(tmp_path), body)
+    english, _, turkish, usage_ = run.api.texts()
+    assert english == "Guard: locked · locked after inactivity"
+    assert turkish == "Koruma: kilitli · hareketsizlik nedeniyle kilitlendi"
+    assert usage_ == t("guard.cmd.usage", "tr")
+
+
+def test_guard_lock_is_the_remote_kill_switch_and_unlock_stays_at_the_mac(tmp_path: Path) -> None:
+    guard = InHubGuard("unlocked")
+
+    async def body(run: Run) -> None:
+        with_guard(run, guard)
+        run.api.push_message(ME, "/guard lock")
+        run.api.push_message(ME, "/guard unlock")
+        run.api.push_message(ME, "/guard")
+        await run.until(replies_to(run, 3))
+
+    run = serve(make_config(tmp_path), body)
+    locked, unlock, state = run.api.texts()
+    assert locked == t("guard.cmd.lock_done", "en")
+    assert unlock == t("guard.cmd.unlock_at_mac", "en")
+    assert state == "Guard: locked · locked from Telegram"
+    assert ("lock", "telegram") in guard.calls
+    assert not any(name == "unlock" for name, _ in guard.calls)  # never unlocked from here
+    assert guard.state == "locked" and guard.lock_trigger == "telegram"
+
+
+def test_a_lock_that_did_not_take_is_reported(tmp_path: Path) -> None:
+    guard = DeafGuard("unlocked")
+
+    async def body(run: Run) -> None:
+        with_guard(run, guard)
+        run.api.push_message(ME, "/guard lock")
+        await run.until(replies_to(run, 1))
+
+    run = serve(make_config(tmp_path), body)
+    assert run.api.texts() == [t("guard.cmd.lock_failed", "en")]
+    assert ("lock", "telegram") in guard.calls
+
+
+def test_telegram_turns_keep_running_while_the_guard_is_locked(tmp_path: Path) -> None:
+    guard = InHubGuard("locked")
+
+    async def body(run: Run) -> None:
+        with_guard(run, guard)
+        run.api.push_message(ME, "hello")
+        await run.until(replies_to(run, 1))
+
+    run = serve(make_config(tmp_path), body)
+    assert run.api.texts() == ["Okay."]
+    assert run.service._chats[ME].agent.guard is None  # identified channel: no guard on turns
+    assert not any(name == "admit" for name, _ in guard.calls)

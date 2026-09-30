@@ -3,7 +3,9 @@
 Each handler is ``async (app, argument) -> None``. Read-only commands (``/help``, ``/tools``,
 ``/sessions``, ``/session``, ``/status``, ``/model`` without an argument, ``/lang``) run while
 a turn is busy; ``/new``, ``/resume``, ``/compact``, ``/clear``, ``/model <role>`` and
-``/settings`` are refused with a toast until the turn ends.
+``/settings`` are refused with a toast until the turn ends. While the owner guard is locked the
+app runs only ``/help``, ``/lang``, ``/guard`` and ``/quit`` (their answers go to the lock
+screen).
 """
 
 from __future__ import annotations
@@ -149,10 +151,10 @@ async def cmd_lang(app: TauApp, argument: str) -> None:
     lang = app.language
     choices = "|".join(LANGUAGES)
     if not argument:
-        await app.transcript.add_notice(t("lang.usage", lang, choices=choices, language=lang))
+        await app.answer(t("lang.usage", lang, choices=choices, language=lang))
         return
     if argument not in LANGUAGES:
-        await app.transcript.add_notice(t("lang.unknown", lang, language=argument, choices=choices))
+        await app.answer(t("lang.unknown", lang, language=argument, choices=choices))
         return
     app.language = argument
     app.notify(t("lang.switched", argument, language=argument))
@@ -161,6 +163,11 @@ async def cmd_lang(app: TauApp, argument: str) -> None:
 async def cmd_settings(app: TauApp, argument: str) -> None:
     """``/settings [section]``: the settings screen, on a section when one is named."""
     app.open_settings(argument.strip().casefold() or None)
+
+
+async def cmd_guard(app: TauApp, argument: str) -> None:
+    """``/guard [lock|unlock]``: the owner guard's state, a lock, or an unlock attempt."""
+    await app.guard_command(argument)
 
 
 async def cmd_quit(app: TauApp, argument: str) -> None:
@@ -180,6 +187,7 @@ HANDLERS: dict[str, CommandHandler] = {
     "model": cmd_model,
     "lang": cmd_lang,
     "settings": cmd_settings,
+    "guard": cmd_guard,
     "quit": cmd_quit,
 }
 
@@ -187,6 +195,6 @@ SWITCHING = frozenset({"new", "resume", "compact"})
 """Commands refused with the session-switch toast while a turn is busy; ``/clear`` and
 ``/model <role>`` check inside their flows, each with its own wording."""
 
-AGENTLESS = frozenset({"help", "lang", "settings", "quit"})
-"""Commands that work before there is an agent (the no-credentials start); the others are
-answered with the ``settings.no_credentials`` toast."""
+AGENTLESS = frozenset({"help", "lang", "settings", "guard", "quit"})
+"""Commands that work before there is an agent (the no-credentials start, the lock before the
+first agent); the others are answered with the ``settings.no_credentials`` toast."""

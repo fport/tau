@@ -251,6 +251,20 @@ TUI_MESSAGES: dict[str, dict[str, str]] = {
     },
     "tui.setup.empty_home": {"en": "Enter a home directory.", "tr": "Bir ana dizin girin."},
     "tui.setup.failed": {"en": "Setup failed: {error}", "tr": "Kurulum başarısız: {error}"},
+    # -- the owner guard (issue 113) -----------------------------------------------------------
+    "tui.guard.title": {"en": "tau is locked", "tr": "tau kilitli"},
+    "tui.guard.placeholder": {
+        "en": "Enter unlocks · /help /lang /guard /quit",
+        "tr": "Enter kilidi açar · /help /lang /guard /quit",
+    },
+    "tui.guard.hint": {
+        "en": "enter unlock · esc cancel · ctrl+q quit",
+        "tr": "enter kilidi aç · esc iptal · ctrl+q çık",
+    },
+    "tui.busy.step_up": {"en": "Identity check: {step}", "tr": "Kimlik kontrolü: {step}"},
+    "tui.turn.stop.locked": {"en": "Locked", "tr": "Kilitli"},
+    "tui.key.lock": {"en": "lock tau", "tr": "tau'yu kilitle"},
+    "tui.event.guard": {"en": "guard", "tr": "koruma"},
 }
 
 _collisions = set(TUI_MESSAGES) & set(MESSAGES)

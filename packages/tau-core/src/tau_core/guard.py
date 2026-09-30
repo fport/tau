@@ -62,6 +62,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ADMISSION_REASONS",
     "ALLOWED_WHILE_LOCKED",
+    "COUNTED_FAILURES",
     "DISCOVER",
     "ENROLLED_MARKER",
     "GUARD_CONFIG_KEYS",
@@ -88,11 +89,14 @@ __all__ = [
     "guard_active",
     "guard_doctor_check",
     "guard_status_line",
+    "method_text",
     "process_client_id",
+    "progress_text",
     "read_enrollment",
     "reset_guards",
     "resolve_guard",
     "status_from_json",
+    "verdict_text",
 ]
 
 logger = logging.getLogger(__name__)
@@ -167,6 +171,9 @@ PROGRESS_STEPS: tuple[str, ...] = (
 )
 ALLOWED_WHILE_LOCKED = frozenset({"help", "lang", "quit", "guard"})
 """Slash commands a guarded channel runs while locked (issue 113)."""
+COUNTED_FAILURES = frozenset({"no_match", "spoof", "multiple_faces"})
+"""Verdict reasons that count as a failed attempt, for unlock, recheck and step-up alike (ADR
+0008 decision 13); the channels count them for the "Unlocked" notice."""
 
 ENROLLED_MARKER = "guard/enrolled"
 """The public enrollment marker, relative to ``data_dir``: JSON ``{"v": 1, "enrollment":
@@ -922,11 +929,38 @@ def reset_guards() -> None:
 # -- reports -----------------------------------------------------------------------------------
 
 
+def method_text(method: str | None, language: str = DEFAULT_LANGUAGE) -> str:
+    """How the owner unlocked ("face", "Touch ID"), in ``language``; ``—`` for anything else."""
+    if method in SUCCESS_METHODS:
+        return t(f"guard.method.{method}", language)
+    return "—"
+
+
+def progress_text(progress: GuardProgress, language: str = DEFAULT_LANGUAGE) -> str:
+    """One challenge step ("Turn your head left."), with a live hint ("It is too dark.")."""
+    if progress.step in PROGRESS_STEPS:
+        text = t(f"guard.progress.{progress.step}", language)
+    else:
+        text = str(progress.step)
+    if progress.hint in VERDICT_REASONS:
+        text = f"{text} {t(f'guard.verdict.{progress.hint}', language)}"
+    return text
+
+
+def verdict_text(verdict: GuardVerdict, language: str = DEFAULT_LANGUAGE) -> str:
+    """Why an attempt did not pass, with "Try again in N s." for a cooldown."""
+    reason = verdict.reason if verdict.reason in VERDICT_REASONS else "error"
+    text = t(f"guard.verdict.{reason}", language)
+    if verdict.retry_after:
+        text = f"{text} {t('guard.retry_after', language, seconds=f'{verdict.retry_after:.0f}')}"
+    return text
+
+
 def guard_status_line(status: GuardStatus, language: str = DEFAULT_LANGUAGE) -> str:
     """The ``/status`` line for an active guard."""
     parts = [t(f"guard.state.{status.state}", language)]
     if status.state == "unlocked" and status.method in SUCCESS_METHODS:
-        parts.append(str(status.method))
+        parts.append(method_text(status.method, language))
     if status.state == "locked" and status.lock_trigger in LOCK_TRIGGERS:
         parts.append(t(f"guard.lock_trigger.{status.lock_trigger}", language))
     if status.state == "unavailable":
@@ -1262,6 +1296,76 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "unlock then lasts at most idle_lock_minutes.)",
         "tr": "(Hub ekran kilidini okuyamıyor, örneğin grafik oturumun dışında çalışırken; bir "
         "açılış o zaman en fazla idle_lock_minutes sürer.)",
+    },
+    # -- guarded channels (issue 113): /guard, the terminal lock prompt, Telegram -------------
+    "command.guard": {
+        "en": "show the guard state, or lock or unlock tau",
+        "tr": "koruma durumunu gösterir ya da tau'yu kilitler veya açar",
+    },
+    "guard.cmd.off": {"en": "The guard is off.", "tr": "Koruma kapalı."},
+    "guard.cmd.usage": {
+        "en": "Usage: /guard [lock|unlock]",
+        "tr": "Kullanım: /guard [lock|unlock]",
+    },
+    "guard.cmd.lock_done": {
+        "en": "tau is locked. Unlock it at the Mac.",
+        "tr": "tau kilitlendi. Kilidi Mac'in başında aç.",
+    },
+    "guard.cmd.lock_failed": {
+        "en": "The lock did not reach the guard; check that the hub runs (`tau doctor`).",
+        "tr": "Kilit korumaya ulaşmadı; hub'ın çalıştığını denetle (`tau doctor`).",
+    },
+    "guard.cmd.unlock_at_mac": {
+        "en": "Unlocking happens only at the Mac: press Enter on the lock screen of tau tui or "
+        "tau chat.",
+        "tr": "Kilit yalnızca Mac'in başında açılır: tau tui ya da tau chat kilit ekranında "
+        "Enter'a bas.",
+    },
+    "guard.cmd.already_unlocked": {
+        "en": "tau is already unlocked.",
+        "tr": "tau'nun kilidi zaten açık.",
+    },
+    "guard.cmd.no_service": {
+        "en": "The guard is on, but this hub runs no guard service; guarded channels stay locked.",
+        "tr": "Koruma açık ama bu hub'da koruma servisi çalışmıyor; korunan kanallar kilitli "
+        "kalır.",
+    },
+    "guard.cmd.refused": {
+        "en": "/{command} is not available while tau is locked.",
+        "tr": "tau kilitliyken /{command} kullanılamaz.",
+    },
+    "guard.prompt.prompt": {"en": "locked> ", "tr": "kilitli> "},
+    "guard.prompt.banner": {
+        "en": "Press Enter to unlock. While tau is locked only /help, /lang, /guard and /quit "
+        "work.",
+        "tr": "Kilidi açmak için Enter'a bas. tau kilitliyken yalnızca /help, /lang, /guard ve "
+        "/quit çalışır.",
+    },
+    "guard.prompt.not_sent": {
+        "en": "tau is locked; that was not sent. Press Enter on an empty line to unlock.",
+        "tr": "tau kilitli; bu gönderilmedi. Kilidi açmak için boş satırda Enter'a bas.",
+    },
+    "guard.prompt.retry": {
+        "en": "Press Enter to try again.",
+        "tr": "Yeniden denemek için Enter'a bas.",
+    },
+    "guard.retry_after": {
+        "en": "Try again in {seconds} s.",
+        "tr": "{seconds} sn sonra yeniden dene.",
+    },
+    "guard.recheck": {
+        "en": "Checking that it is still you…",
+        "tr": "Hâlâ sen olduğun kontrol ediliyor…",
+    },
+    "guard.recheck_not_sent": {
+        "en": "The prompt was not sent; send it again to repeat the check.",
+        "tr": "İstem gönderilmedi; kontrolü yinelemek için yeniden gönder.",
+    },
+    "guard.method.face": {"en": "face", "tr": "yüz"},
+    "guard.method.touch_id": {"en": "Touch ID", "tr": "Touch ID"},
+    "guard.rearm_failed": {
+        "en": "Nothing was sent: this session could not be reopened under the guard.",
+        "tr": "Hiçbir şey gönderilmedi: bu oturum koruma altında yeniden açılamadı.",
     },
 }
 

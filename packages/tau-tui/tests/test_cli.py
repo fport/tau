@@ -10,6 +10,7 @@ from typing import Any
 from click.testing import CliRunner
 from tau_core import Config, t
 from tau_core.builder import init_home
+from tau_core.guard import ENROLLED_MARKER
 from tau_core.logs import LOG_FILE
 from tau_core.testing import FakeModel
 from tau_tui import SetupResult, build_app
@@ -138,6 +139,25 @@ def test_setup_cancelled_exits_2(tmp_path: Path, monkeypatch) -> None:
     assert result.exit_code == 2
     assert "Configuration file not found" in result.output
     assert "Setup cancelled." in result.output
+
+
+def test_the_setup_screen_stays_closed_while_a_guard_is_enrolled(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """No ``tau.toml``, but the data directory holds a guard marker (issue 113): the setup
+    screen never opens while tau is locked; the command says how to go on and exits 2."""
+
+    def no_setup(**kw: Any) -> SetupResult:
+        raise AssertionError("the setup screen opened while a guard is enrolled")
+
+    monkeypatch.setattr("tau_tui.cli.run_setup", no_setup)
+    marker = tmp_path / "data" / ENROLLED_MARKER
+    marker.parent.mkdir(parents=True)
+    marker.write_text('{"v": 1, "enrollment": "E1"}', encoding="utf-8")
+    result = run([], tmp_path / "missing", tmp_path)
+    assert result.exit_code == 2
+    assert "Configuration file not found" in result.output
+    assert "the setup screen stays closed" in result.output
 
 
 def test_missing_credentials_open_the_app_without_an_agent(tmp_path: Path, monkeypatch) -> None:

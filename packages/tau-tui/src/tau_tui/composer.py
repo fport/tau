@@ -40,15 +40,15 @@ def usage(command: SlashCommand) -> str:
 class CommandMenu(OptionList, can_focus=False):
     """Fuzzy list of the slash commands, shown while the composer holds ``/…`` alone.
 
-    Heights are border-box: ``max-height`` is the thirteen command rows plus the two border
-    rows, so every row is on screen at 80x24 (the transcript keeps four rows and its bottom).
+    Heights are border-box: ``max-height`` is the fourteen command rows plus the two border
+    rows, so every row is on screen at 80x24 (the transcript keeps three rows and its bottom).
     In the ``-short`` band the list scrolls instead of eating the whole screen.
     """
 
     SCOPED_CSS = False  # the -short rule starts with Screen
     DEFAULT_CSS = """
     CommandMenu {
-        display: none; height: auto; max-height: 15; margin: 0 1;
+        display: none; height: auto; max-height: 16; margin: 0 1;
         border: round $primary 60%; background: $panel; padding: 0;
     }
     Screen.-short CommandMenu { max-height: 8; }

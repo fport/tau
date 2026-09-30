@@ -144,6 +144,7 @@ are accepted forever but never shown in hints:
 | `/model [role]` | `/rol` | list the model roles, or switch this session to one (remembered by `/resume`) |
 | `/lang en\|tr` | `/dil` | switch the UI language for this run |
 | `/settings [key value]` | `/ayarlar`, `/ayar` | show the bootstrap config (roles, credential status, language, profile, context, files); `language en\|tr`, `profile NAME`, `model ROLE PROVIDER MODEL_ID`, `set NAME` (hidden prompt), `clear NAME` change one and reload; the TUI opens its settings screen |
+| `/guard [lock\|unlock]` | `/koruma` | the owner guard's state; `lock` locks it; `unlock` unlocks at the lock prompt (see [Guard](#guard)); without a guard it says the guard is off |
 | `/quit` | `/çık`, `/cik`, `/exit` | leave (`/exit` is an alias, `/quit` is the name the hints show) |
 
 Matching is `str.casefold()` on the typed name (`/ARAÇLAR` works). In code:
@@ -301,7 +302,9 @@ agent = build_agent(approver=ButtonApprover(), channel="telegram")
   while the dialog was open refuses the same way; `recheck` goes on), and an approved tier-2
   call then needs the guard's step-up (anything but a literal `True` turns it into `rejected`,
   note "The guard could not confirm the user's identity."; the `approval` event gains
-  `step_up: passed | failed`). The guard can only refuse; exempt calls reach no check. Every
+  `step_up: passed | failed`); after a passed step-up the guard must admit once more (a lock
+  while the step-up ran refuses with approval `locked`). The guard can only refuse; exempt
+  calls reach no check. Every
   `TierGate(...)` in the repo passes `guard=` explicitly (a repo rule).
 - **Exemptions** let registered routines (#037) skip per-call approval:
   `build_agent(exemptions=[fn])` or `agent.gate.add_exemption(fn)` (returns an undo function).
@@ -597,7 +600,7 @@ stop interrupted runs again); `chats.json` maps each chat to its current session
 keeps its conversation across restarts.
 
 The slash commands `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`,
-`/model`, `/compact` and `/lang` resolve through `tau_core.commands` with the terminal's wording
+`/model`, `/compact`, `/lang` and `/guard` resolve through `tau_core.commands` with the terminal's wording
 (Turkish aliases accepted, never shown; `/start` and a bare `/` show the help). On start they
 are set as the bot's command menu (`setMyCommands`) for each allowed chat only, in the UI
 language; `/lang` sets it again. `/clear`, `/quit` and any command that edits the configuration
@@ -618,6 +621,15 @@ hub stops while it waits). Every decision is an `approval` agent event in the se
 terminal approval, and `/status` shows `approvals_pending`. A pending approval does not survive
 a hub restart (068 moves it onto Strands interrupts): its message runs again after the restart
 and asks again. Nothing is ever auto-approved.
+
+The owner guard does not guard Telegram turns: the chat-id allowlist identifies the owner, so
+`_build` passes `guard=None` and a turn runs whatever the guard says (ADR 0008). `/guard` shows
+the guard's state, `/guard lock` locks it with trigger `telegram` (the owner's remote kill
+switch; the answer says whether the lock took, read back from the guard) and `/guard unlock`
+answers that unlocking happens only at the Mac. The service finds the in-hub guard lazily
+through `hub.find_service("guard")` plus an `isinstance(Guard)` check; without a guard service
+`/guard` says the guard is off (or, when a guard is enrolled, that this hub runs no guard
+service).
 
 Tests use `tau_core.testing.FakeBotApi`, an offline Bot API: `push_message(chat_id, text)`
 queues an update, `sent` / `texts()` show what the bot sent, `buttons(chat_id)` and
@@ -659,14 +671,38 @@ returns `None`.
   config key selects a channel.
 - **Reports.** `/status` adds `guard_status_line(status, language)` when a guard is active;
   `tau doctor` adds `guard_doctor_check(config, hub_status)`.
+- **Channels (issue 113).** `tau chat` resolves the guard once (`ReplState.guard`, resolved
+  again before every build and prompt while it is `None`) and passes it to every build. While
+  the guard is not `unlocked` it shows a lock prompt (`locked> `): entering it writes
+  `\x1b[2J\x1b[3J\x1b[H` (screen and scrollback; a terminal app that ignores `\x1b[3J`, or
+  one with its own scrollback outside the terminal such as tmux's copy mode, keeps what was
+  there) and takes readline's line history out until the unlock, so the Up arrow at
+  `locked>` recalls nothing the owner typed. Enter on an empty line (or `/guard unlock`)
+  unlocks and prints every challenge step, Ctrl-C during an attempt cancels it and the REPL
+  goes on, and only `ALLOWED_WHILE_LOCKED` (`/help`, `/lang`, `/guard`, `/quit`) run; `/help`
+  lists only those. The state is read again before every prompt and before a command that is
+  not allowed while locked. After a refused turn the guard's state decides, as in the TUI:
+  anything but `unlocked` returns to the lock prompt. A `recheck` refusal runs the passive
+  check and resends the prompt; a failed or cancelled check keeps `you>` (the guard still
+  reports unlocked) and says the prompt was not sent. Step-up steps print from the agent's
+  `guard` events. A guard found after the agent was built (a window opened before `tau guard
+  setup`) rebuilds the agent on the same session and role at the unlock and before its next
+  turn or `/compact`; when that rebuild fails nothing is sent.
+  **Limit:** the REPL reads the guard only between lines. While it waits at `you>` or at an
+  approval prompt, or while a turn streams, it cannot see a lock: the conversation stays on
+  screen and in the scrollback until the next line, and a running turn goes on (the guard
+  still refuses its tier-1 and tier-2 calls and every later turn, but the reply keeps
+  printing). The TUI watches the guard and locks at once; its lock screen is described in the
+  tau-tui README; Telegram's `/guard` under [Telegram](#telegram).
 
 Public API: `Guard` (protocol: `status`, `watch`, `admit`, `unlock`, `cancel`, `lock`,
 `step_up`; every method fails closed), `GuardState`, `GuardStatus`, `GuardVerdict`,
 `GuardProgress`, `GuardTurn`, `Admission`, `GuardLocked`, `LockedGuard`, `HubGuard`,
 `resolve_guard`, `VERDICT_REASONS`, `ADMISSION_REASONS`, `LOCK_TRIGGERS`, `PROGRESS_STEPS`,
 `ALLOWED_WHILE_LOCKED` from `tau_core`; `DISCOVER`, `ENROLLED_MARKER`, `GUARD_CONFIG_KEYS`,
-`LOCKED_NOTE`, `STEP_UP_NOTE`, `admit_turn`, `guard_status_line`, `guard_doctor_check`,
-`read_enrollment` and `reset_guards` from `tau_core.guard`; `HubClient`, `HubUnavailable`,
+`LOCKED_NOTE`, `STEP_UP_NOTE`, `COUNTED_FAILURES`, `admit_turn`, `guard_status_line`,
+`progress_text`, `verdict_text`, `method_text` (the channels' shared texts),
+`guard_doctor_check`, `read_enrollment` and `reset_guards` from `tau_core.guard`; `HubClient`, `HubUnavailable`,
 `HubError` from `tau_core.hub`. The guard's messages (`guard.*`, `status.guard`,
 `doctor.guard.*`) register themselves with `register_messages`. Tests use
 `tau_core.testing.FakeGuard(state, verdicts=..., step_ups=..., progress=..., admissions=...)`,

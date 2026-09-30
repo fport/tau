@@ -88,6 +88,7 @@ def test_command_names_and_aliases() -> None:
         "model",
         "lang",
         "settings",
+        "guard",
         "quit",
     ]
     by_name = {c.name: c for c in SLASH_COMMANDS}
@@ -99,6 +100,7 @@ def test_command_names_and_aliases() -> None:
     assert by_name["status"].aliases == ("durum",)
     assert by_name["model"].aliases == ("rol",)
     assert by_name["settings"].aliases == ("ayarlar", "ayar")
+    assert by_name["guard"].aliases == ("koruma",) and by_name["guard"].argument == "[lock|unlock]"
     assert by_name["resume"].argument == "[n|id]" and by_name["lang"].argument == "en|tr"
     assert by_name["compact"].argument == "[focus]" and by_name["model"].argument == "[role]"
     assert by_name["clear"].argument is None and by_name["status"].argument is None
@@ -127,6 +129,8 @@ def test_command_names_and_aliases() -> None:
         ("/durum", ("status", "")),
         ("/rol fast", ("model", "fast")),
         ("/model", ("model", "")),
+        ("/guard lock", ("guard", "lock")),
+        ("/Koruma", ("guard", "")),
         ("/nope", None),
         ("help", None),
         ("/", None),
@@ -140,7 +144,7 @@ def test_hint_and_help_lines() -> None:
     hint = command_hint()
     assert hint == (
         "/help, /tools, /sessions, /resume, /new, /session, /compact, /clear, /status, /model, "
-        "/lang, /settings, /quit"
+        "/lang, /settings, /guard, /quit"
     )
     assert command_hint("tr") == hint  # canonical names only, never aliases
     assert "devam" not in hint and "araçlar" not in hint and "özet" not in hint
@@ -154,6 +158,9 @@ def test_hint_and_help_lines() -> None:
     assert {"/compact", "/clear", "/status", "/model"} <= listed
     assert any(line.startswith("  /compact [focus]") and "summarize" in line for line in en)
     assert any(line.startswith("  /model [role]") and "roles" in line for line in en)
+    locked = help_lines("en", only={"help", "lang", "guard", "quit"})
+    assert [line.split()[0] for line in locked] == ["/help", "/lang", "/guard", "/quit"]
+    assert set(locked) <= set(en)  # same column as the full list
 
 
 def test_public_api_exports() -> None:

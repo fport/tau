@@ -1,4 +1,7 @@
-"""The one-row header: the animated ``τ``, ``tau  profile · session`` and the context label."""
+"""The one-row header: the animated ``τ``, ``tau  profile · session`` and the context label.
+
+With an owner guard active the context label starts with the lock glyph, and with the camera
+glyph while a guard attempt (a step-up or a recheck) runs; without a guard nothing changes."""
 
 from __future__ import annotations
 
@@ -41,6 +44,8 @@ class HeaderBar(HorizontalGroup):
         self.language = language
         self.motion = motion
         self.events_view = False
+        self.guard_active = False
+        self.attempt = False
 
     def compose(self):
         yield TauGlyph(motion=self.motion, id="glyph")
@@ -72,17 +77,27 @@ class HeaderBar(HorizontalGroup):
             return Text.assemble(("tau", "bold"), f" · {self.profile}")
         return Text.assemble(("tau", "bold"), f"  {self.profile} · {self.session_id}")
 
+    def guard_marks(self) -> str:
+        """``⚿ `` with a guard active, ``⚿ ◉ `` while an attempt runs, else nothing."""
+        if not self.guard_active:
+            return ""
+        marks = [glyph("lock")] + ([glyph("camera")] if self.attempt else [])
+        return " ".join(marks) + " "
+
     def context_text(self) -> Text:
         band = self._band()
+        marks = self.guard_marks()
         if band in ("phone", "narrow") and self.events_view:
-            return Text(t("tui.header.events", self.language))
+            return Text(marks + t("tui.header.events", self.language))
         if band == "phone":
-            return Text(self.language)
+            return Text(marks + self.language)
         if band == "narrow":
-            return Text(f"{self.role} · {self.language}")
+            return Text(f"{marks}{self.role} · {self.language}")
         if band == "wide":
-            return Text(f"{self.role} · {self.tool_count} tools · {self.language}")
-        return Text(f"{self.role} → {self.provider} · {self.tool_count} tools · {self.language}")
+            return Text(f"{marks}{self.role} · {self.tool_count} tools · {self.language}")
+        return Text(
+            f"{marks}{self.role} → {self.provider} · {self.tool_count} tools · {self.language}"
+        )
 
     def refresh_text(self) -> None:
         if not self.is_mounted:
@@ -107,6 +122,12 @@ class HeaderBar(HorizontalGroup):
         """``/model``: the context label follows the role the agent now runs on."""
         self.role = role
         self.provider = provider
+        self.refresh_text()
+
+    def set_guard(self, active: bool, *, attempt: bool = False) -> None:
+        """The owner guard's marks: active at all, and whether an attempt runs."""
+        self.guard_active = active
+        self.attempt = active and attempt
         self.refresh_text()
 
     def relabel(self, language: str) -> None:

@@ -3,7 +3,7 @@
 Public API::
 
     TauApp, build_app, resolve_resume, SessionNotFound
-    TuiApprover, ApprovalScreen
+    TuiApprover, ApprovalScreen, GuardScreen
     SettingsScreen, SetupScreen, SetupResult, run_setup
     Transcript, EventLog, rasterise
 """
@@ -15,6 +15,7 @@ from tau_tui.app import SessionNotFound, TauApp, build_app, resolve_resume
 from tau_tui.approval import ApprovalScreen, TuiApprover
 from tau_tui.brand import rasterise
 from tau_tui.events import EventLog
+from tau_tui.guard import GuardScreen
 from tau_tui.settings import SettingsScreen
 from tau_tui.setup import SetupResult, SetupScreen, run_setup
 from tau_tui.transcript import Transcript
@@ -27,6 +28,7 @@ except PackageNotFoundError:
 __all__ = [
     "ApprovalScreen",
     "EventLog",
+    "GuardScreen",
     "SessionNotFound",
     "SettingsScreen",
     "SetupResult",

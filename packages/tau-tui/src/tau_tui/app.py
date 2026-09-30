@@ -5,10 +5,21 @@ One row of chrome at the top, a bottom-anchored transcript, the events pane (a c
 ≥140 cols, the composer and one row of hints. The agent is consumed only through the tau-core
 public API: ``TauAgent.stream()`` turn events feed the current :class:`Turn`; the app-scoped
 ``EventBus`` feeds the events pane and enriches the tool cards.
+
+With an owner guard (ADR 0008) ``build_app`` resolves the guard once and passes the same object
+to every agent build. The app starts on the opaque lock screen (:class:`GuardScreen`) and builds
+its first agent only after the first unlock, so the setup screens never open while locked. A
+worker long-polls ``guard.watch()``; when the guard locks, the pending approval is rejected, the
+running turn is cancelled the way Esc cancels it (a running recheck or step-up attempt too) and
+the lock screen comes back. While locked only ctrl+q and the
+:data:`~tau_core.guard.ALLOWED_WHILE_LOCKED` commands run. A guard that appears while the app
+runs (``tau guard setup`` in another window) locks it the same way, and the agent built without
+it is rebuilt with it on the same session before anything runs on it again.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 from collections import deque
@@ -25,6 +36,9 @@ from tau_core import (
     Config,
     ConfigError,
     EventBus,
+    Guard,
+    GuardProgress,
+    GuardStatus,
     MissingCredentials,
     Notice,
     ProviderNotSupported,
@@ -49,6 +63,18 @@ from tau_core import (
     t,
 )
 from tau_core import __version__ as core_version
+from tau_core.commands import help_lines
+from tau_core.guard import (
+    ALLOWED_WHILE_LOCKED,
+    COUNTED_FAILURES,
+    DISCOVER,
+    guard_status_line,
+    method_text,
+    process_client_id,
+    progress_text,
+    resolve_guard,
+    verdict_text,
+)
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -56,12 +82,14 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
+from textual.worker import Worker
 
 import tau_tui.strings  # noqa: F401  (registers the tui.* message keys)
 from tau_tui.approval import APPROVE_DELAY, ApprovalDone, ApprovalPending, TuiApprover
 from tau_tui.commands import AGENTLESS, HANDLERS, SWITCHING
 from tau_tui.composer import CommandMenu, Composer, HintBar
 from tau_tui.events import EventsPane
+from tau_tui.guard import GuardScreen
 from tau_tui.header import HeaderBar
 from tau_tui.history import build_history
 from tau_tui.keys import app_bindings
@@ -77,9 +105,10 @@ DEFAULT_ROLE = "brain"
 NO_SESSION = "—"
 """What the header shows for the session while there is no agent (no credentials yet)."""
 AgentFactory = Callable[..., TauAgent]
-"""``factory(session_id, *, role=None, seed_messages=None, config=None) -> TauAgent``: every
-later agent (``/new``, ``/resume``, ``/compact``, ``/model``, a settings save) on the app's
-bus, store and approver; ``config`` replaces the config every later build uses."""
+"""``factory(session_id, *, role=None, seed_messages=None, config=None, guard=DISCOVER) ->
+TauAgent``: every later agent (``/new``, ``/resume``, ``/compact``, ``/model``, a settings save)
+on the app's bus, store and approver; ``config`` replaces the config every later build uses and
+``guard`` is the app's owner guard."""
 MODAL_BLOCKED_ACTIONS = frozenset(
     {
         "pick_session",
@@ -93,6 +122,11 @@ MODAL_BLOCKED_ACTIONS = frozenset(
 )
 """App actions that stay out of the way while the settings screen is on top (its own F2 saves;
 the app's priority F2 would otherwise open the session picker over it)."""
+LOCKED_ACTIONS = frozenset({"quit", "help_quit"})
+"""App actions that still run while the owner guard is locked: ctrl+q and the ctrl+c hint.
+The lock screen's own Enter and Esc are its bindings, not the app's."""
+WATCH_WAIT = 25.0
+"""Seconds one ``guard.watch()`` long poll waits for a change."""
 
 
 class SessionNotFound(Exception):
@@ -165,6 +199,7 @@ class TauApp(App[None]):
         """
     Screen { layout: vertical; background: $background; color: $foreground; }
     ModalScreen { background: $background 60%; }
+    GuardScreen { background: $background; }
     #body { height: 1fr; }
     #main { height: 1fr; }
     #stage { height: 1fr; }
@@ -177,6 +212,8 @@ class TauApp(App[None]):
     language: reactive[str] = reactive("en", init=False)
     busy: reactive[bool] = reactive(False, init=False)
     attention: reactive[bool] = reactive(False, init=False)
+    attempt_running: reactive[bool] = reactive(False, init=False)
+    """A guard attempt runs (an unlock, a recheck or a step-up): the camera is on."""
 
     def __init__(
         self,
@@ -201,13 +238,17 @@ class TauApp(App[None]):
         unsupported_provider: ProviderNotSupported | None = None,
         show_paths: bool = True,
         version: str | None = None,
+        guard: Guard | None = None,
     ) -> None:
         """``agent=None`` is the agentless start: ``missing_credentials`` says which variables
         the role lacks (the settings screen opens on the Credentials section with them marked)
         or ``unsupported_provider`` names a planned provider the stored config put on the role
         (the screen opens on Model roles). Either way the app opens on ``config``, the composer
         takes only ``/settings``, ``/help``, ``/lang`` and ``/quit``, and the first agent is
-        built for ``session_id`` (``--resume``) on ``role`` once a save removes the blocker."""
+        built for ``session_id`` (``--resume``) on ``role`` once a save removes the blocker.
+
+        ``guard`` is the owner guard every build gets. With a guard and no agent (and no
+        blocker) the first agent is built after the first unlock."""
         super().__init__()
         if agent is None and config is None:
             raise ValueError("TauApp needs an agent or a config")
@@ -246,6 +287,27 @@ class TauApp(App[None]):
         self._compaction_cancel: threading.Event | None = None
         """Set while ``/compact`` is summarizing; Esc sets it to cancel the summarizer."""
         self._compaction_row: BusyRow | None = None
+        self.guard = guard
+        """The owner guard (ADR 0008), the same object for every build. While it is ``None`` it
+        is resolved again before every build and every submit (one stat), so a guard set up
+        while the app runs locks it at once."""
+        self.guard_status: GuardStatus | None = None
+        """The guard's last known state (the watcher, a lock, an unlock)."""
+        self.locked = guard is not None
+        """The guard is not unlocked: only ctrl+q and the allowed commands run."""
+        self.guard_screen: GuardScreen | None = None
+        self._first_build_pending = (
+            agent is None
+            and guard is not None
+            and missing_credentials is None
+            and unsupported_provider is None
+        )
+        self._guard_failures = 0
+        self._unlock_worker: Worker[None] | None = None
+        self._recheck_task: asyncio.Future[Any] | None = None
+        """The passive check of a ``recheck`` admission while it runs (Esc and a lock cancel
+        it)."""
+        self._watching = False
         self.register_theme(TAU_THEME)
         self.register_theme(TAU_ANSI_THEME)
         self.theme = TAU_THEME.name
@@ -375,6 +437,8 @@ class TauApp(App[None]):
     async def on_mount(self) -> None:
         if self.ansi_color:
             self.theme = TAU_ANSI_THEME.name
+        if self.guard is not None:
+            self._show_lock()  # the lock screen comes before anything else
         transcript = self.transcript
         transcript.language = self.language
         transcript.show_durations = self.show_durations
@@ -389,19 +453,27 @@ class TauApp(App[None]):
         if self.agent is not None:
             await self._present_session(resumed=bool(self.agent.messages))
             await self._notice_fallback()
-        else:
-            await transcript.show_welcome(self.welcome_facts())
-            self.header.glyph.state = "attention"
-            blocker = self.missing_credentials or self.unsupported_provider
-            if blocker is not None:
-                await transcript.add_notice(str(blocker))
-            await transcript.add_notice(t(self.blocker_key, self.language))
-        if self.notice:
+        elif not self._first_build_pending:
+            await self._present_blocked()
+        if self.notice and not self._first_build_pending:
             await transcript.add_notice(self.notice)
+        if self.guard is not None:
+            self.header.set_guard(True)
+            self._start_watching()
         self.refresh_chrome()
         self.call_after_refresh(self.refresh_sessions)
-        if self.agent is None:
+        if self.agent is None and not self._first_build_pending:
             self.call_after_refresh(self.open_settings)
+
+    async def _present_blocked(self) -> None:
+        """The agentless start: the welcome card and what blocks the first agent."""
+        transcript = self.transcript
+        await transcript.show_welcome(self.welcome_facts())
+        self.header.glyph.state = "attention"
+        blocker = self.missing_credentials or self.unsupported_provider
+        if blocker is not None:
+            await transcript.add_notice(str(blocker))
+        await transcript.add_notice(t(self.blocker_key, self.language))
 
     def on_unmount(self) -> None:
         if self._unsubscribe is not None:
@@ -530,7 +602,10 @@ class TauApp(App[None]):
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Keep the app's priority keys (F2 picker, ctrl+n, F1, …) out of the settings screen:
-        its own F2 saves. The scroll actions stay, they know about modal targets."""
+        its own F2 saves. The scroll actions stay, they know about modal targets. While the
+        owner guard is locked only ctrl+q (and the ctrl+c hint) run."""
+        if self.locked and action not in LOCKED_ACTIONS:
+            return False
         if action in MODAL_BLOCKED_ACTIONS and isinstance(self.screen, SettingsScreen):
             return False
         return True
@@ -553,6 +628,10 @@ class TauApp(App[None]):
             self.header.glyph.state = self._idle_glyph_state()
         self.refresh_chrome()
 
+    def watch_attempt_running(self, running: bool) -> None:
+        if self.is_running:
+            self.header.set_guard(self.guard is not None, attempt=running)
+
     def _idle_glyph_state(self) -> str:
         return "welcome" if self.transcript.query("#welcome") else "idle"
 
@@ -568,6 +647,8 @@ class TauApp(App[None]):
         self.menu.relabel(language)
         if isinstance(self.screen, SessionPicker):
             self.screen.relabel(language)
+        if self.guard_screen is not None:
+            self.guard_screen.relabel(language)
         self.refresh_chrome()
 
     def action_help_quit(self) -> None:
@@ -579,17 +660,23 @@ class TauApp(App[None]):
         text = message.text.strip()
         if not text:
             return
+        self.current_guard()
         if text.startswith("/"):
             self.composer.clear()
             self.menu.close()
             await self.run_command(text)
             self.refresh_chrome()
             return
+        if self.locked:  # checked before the composer is cleared: the text stays
+            await self.enter_lock()
+            return
         if self.busy:
             self.notify(t("tui.busy", self.language), severity="warning")
             return  # keep the typed text
         if self._require_agent() is None:
             return  # no credentials yet: keep the typed text, the toast says what to do
+        if not await self._arm():
+            return  # the agent could not be rebuilt under a new guard: keep the text
         self.composer.clear()
         self.composer.push_history(text)
         self.run_turn(text)
@@ -601,7 +688,7 @@ class TauApp(App[None]):
         resolved = resolve_command(line)
         if resolved is None:
             name = line[1:].strip().partition(" ")[0]
-            await self.transcript.add_notice(
+            await self.answer(  # on the lock screen while it is up
                 t(
                     "chat.unknown_command",
                     self.language,
@@ -611,6 +698,12 @@ class TauApp(App[None]):
             )
             return
         name, argument = resolved
+        if self.locked and name not in ALLOWED_WHILE_LOCKED:
+            await self.answer(t("guard.cmd.refused", self.language, command=name))
+            return
+        if self.locked and name == "help":
+            self._guard_say(self.locked_help_lines())
+            return
         if name in SWITCHING and self.busy:
             self.notify(t("tui.busy_switch", self.language), severity="warning")
             return
@@ -624,48 +717,95 @@ class TauApp(App[None]):
     async def run_turn(self, prompt: str) -> None:
         """One user turn: the stream drives the current :class:`Turn`."""
         lang = self.language
-        if self.agent is None:
+        agent = self.agent
+        if agent is None:
             return
         turn = await self.transcript.begin_turn(prompt)
         self._current_turn = turn
         self.busy = True
         started = self.clock()
-        elapsed = 0.0
+        refused: list[str] = []  # admission refusals, read synchronously off the bus
+
+        def on_event(event: AgentEvent) -> None:
+            data = event.data
+            if (
+                event.kind == "guard"
+                and data.get("action") == "refused"
+                and "tool" not in data
+                and event.session_id in (None, agent.session_id)
+            ):
+                refused.append(str(data.get("reason")))
+
+        unsubscribe = self.bus.subscribe(on_event)
+        refusal: str | None = None
+        rechecked = False
         try:
-            async for ev in self.agent.stream(prompt):
-                elapsed = (self.clock() - started).total_seconds()
-                match ev:
-                    case TextDelta(text=text):
-                        await turn.feed_text(text)
-                    case ReasoningDelta(text=text):
-                        await turn.feed_reasoning(text)
-                    case ToolUseStarted():
-                        await turn.add_tool(ev)
-                        await turn.set_busy("tui.busy.running", tool=ev.tool)
-                    case ToolProgress():
-                        turn.tool_progress(ev.tool_use_id, ev.tool, ev.text)
-                    case ToolFinished():
-                        await turn.finish_tool(ev)
+            while True:
+                locked = await self._stream_turn(turn, prompt, started)
+                if not locked:
+                    break
+                reason = refused[-1] if refused else "error"
+                if (
+                    reason == "recheck"
+                    and not rechecked
+                    and self.guard is not None
+                    and not (self._cancelling or self.locked)
+                ):
+                    rechecked = True
+                    passed = await self._recheck(turn)
+                    if passed and not (self._cancelling or self.locked):
                         await turn.set_busy("tui.busy.thinking")
-                    case Throttled(delay_seconds=delay):
-                        await turn.set_busy("tui.busy.throttled", seconds=round(delay))
-                    case Notice(text=text):
-                        await turn.add_notice(text)
-                    case TurnEnd(stop_reason=stop_reason):
-                        if stop_reason not in STOP_REASONS:
-                            logger.warning("unknown stop reason %r", stop_reason)
-                        await turn.end(stop_reason, elapsed=elapsed)
+                        continue  # the passive check passed: send the same prompt again
+                refusal = reason
+                # Esc during the check ends the turn as cancelled; a lock or a refusal as locked
+                stop = "cancelled" if self._cancelling and not self.locked else "locked"
+                await turn.end(stop, elapsed=(self.clock() - started).total_seconds())
+                break
         except Exception as exc:
-            logger.exception("TUI turn failed in session %s", self.agent.session_id)
+            logger.exception("TUI turn failed in session %s", agent.session_id)
             await turn.add_notice(t("tui.unexpected_error", lang, detail=short(exc)))
             await turn.end("error", elapsed=(self.clock() - started).total_seconds())
         finally:
+            unsubscribe()
             if turn.running:
                 await turn.end("error", elapsed=(self.clock() - started).total_seconds())
             self._current_turn = None
             self.busy = False
             self.transcript.trim()
             self.refresh_sessions()
+        if refusal is not None:
+            await self._after_refusal(prompt)
+
+    async def _stream_turn(self, turn: Turn, prompt: str, started: datetime) -> bool:
+        """Feed one ``stream(prompt)`` into ``turn``; ``True`` when the guard refused it
+        (``TurnEnd("locked")``, the turn is left open for a recheck)."""
+        assert self.agent is not None
+        async for ev in self.agent.stream(prompt):
+            elapsed = (self.clock() - started).total_seconds()
+            match ev:
+                case TextDelta(text=text):
+                    await turn.feed_text(text)
+                case ReasoningDelta(text=text):
+                    await turn.feed_reasoning(text)
+                case ToolUseStarted():
+                    await turn.add_tool(ev)
+                    await turn.set_busy("tui.busy.running", tool=ev.tool)
+                case ToolProgress():
+                    turn.tool_progress(ev.tool_use_id, ev.tool, ev.text)
+                case ToolFinished():
+                    await turn.finish_tool(ev)
+                    await turn.set_busy("tui.busy.thinking")
+                case Throttled(delay_seconds=delay):
+                    await turn.set_busy("tui.busy.throttled", seconds=round(delay))
+                case Notice(text=text):
+                    await turn.add_notice(text)
+                case TurnEnd(stop_reason="locked"):
+                    return True
+                case TurnEnd(stop_reason=stop_reason):
+                    if stop_reason not in STOP_REASONS:
+                        logger.warning("unknown stop reason %r", stop_reason)
+                    await turn.end(stop_reason, elapsed=elapsed)
+        return False
 
     # -- approvals ---------------------------------------------------------------------------
 
@@ -682,6 +822,8 @@ class TauApp(App[None]):
         self.bell()
 
     async def on_approval_done(self, message: ApprovalDone) -> None:
+        if not self.query("#transcript"):
+            return  # the app is closing (a lock rejected the dialog on the way out)
         card = self.transcript.match_pending(message.request.tool)
         if card is not None:
             if message.decision.value == "approved":
@@ -700,9 +842,43 @@ class TauApp(App[None]):
         event = message.event
         if self.agent is None or event.session_id not in (None, self.agent.session_id):
             return
+        if not self.query("#events"):
+            return  # the app is closing: a turn cut short by a lock may still post events
         self.event_buffer.append(event)
         self.events_pane.add_event(event)
         await self.transcript.enrich(event)
+        if event.kind == "guard":
+            await self._on_guard_event(event.data)
+
+    async def _on_guard_event(self, data: dict[str, Any]) -> None:
+        """A tier-2 step-up in the busy line: its start, every challenge step (with a bell),
+        its end; the camera glyph shows in the header meanwhile."""
+        lang = self.language
+        action = data.get("action")
+        turn = self._current_turn
+        running = turn is not None and turn.running
+        if action == "step_up" and data.get("phase") == "start":
+            self.attempt_running = True
+            if running:
+                await turn.set_busy("guard.step_up.start")  # type: ignore[union-attr]
+            self.bell()
+        elif action == "step_up" and data.get("phase") == "end":
+            self.attempt_running = False
+            if running:
+                if data.get("ok") is not True:
+                    await turn.add_notice(t("guard.step_up.failed", lang))  # type: ignore[union-attr]
+                await turn.set_busy("tui.busy.running", tool=str(data.get("tool") or "?"))  # type: ignore[union-attr]
+        elif action == "challenge":
+            hint = data.get("hint")
+            step = GuardProgress(
+                step=str(data.get("step")),
+                seq=0,
+                deadline=None,
+                hint=hint if isinstance(hint, str) else None,
+            )
+            if running:
+                await turn.set_busy("tui.busy.step_up", step=progress_text(step, lang))  # type: ignore[union-attr]
+            self.bell()
 
     # -- sessions ----------------------------------------------------------------------------
 
@@ -730,9 +906,14 @@ class TauApp(App[None]):
         if self.agent_factory is None:
             return None, t("session.open_failed", lang, error="no factory")
         extra: dict[str, Any] = {} if config is None else {"config": config}
+        guard = self.current_guard()
         try:
             agent = self.agent_factory(
-                session_id, role=role or self.role, seed_messages=seed, **extra
+                session_id,
+                role=role or self.role,
+                seed_messages=seed,
+                guard=guard if guard is not None else DISCOVER,
+                **extra,
             )
         except (MissingCredentials, ConfigError) as exc:
             logger.warning("could not build the agent: %s", exc)
@@ -768,7 +949,11 @@ class TauApp(App[None]):
         """``/settings [section]`` / F10: the settings screen on ``section`` (default: Model
         roles; Credentials with the missing names highlighted while credentials block the
         start). Refused while a turn is busy; a second call while it is open does nothing. A
-        save is applied by :meth:`apply_settings` after the screen closes."""
+        save is applied by :meth:`apply_settings` after the screen closes. Never while the owner
+        guard is locked."""
+        if self.locked:
+            self.notify(t("guard.refused.locked", self.language), severity="warning")
+            return
         if self.busy:
             self.notify(t("tui.busy_settings", self.language), severity="warning")
             return
@@ -918,6 +1103,8 @@ class TauApp(App[None]):
             return
         if self._require_agent() is None:
             return
+        if not await self._arm():  # the summarizer asks the agent's guard: it must be the app's
+            return
         self.busy = True  # before the worker starts, so no turn slips in between
         self.run_worker(
             self._run_compaction(focus), group="compact", exclusive=True, exit_on_error=False
@@ -1017,20 +1204,7 @@ class TauApp(App[None]):
             self.refresh_chrome()
             return
         if self.busy:
-            if not self._cancelling:
-                self._cancelling = True
-                if self._compaction_cancel is not None:
-                    # ``/compact`` is summarizing: stop the throwaway summarizer, not the agent.
-                    self._compaction_cancel.set()
-                    row = self._compaction_row
-                    if row is not None and row.is_mounted:
-                        row.set_verb("tui.busy.cancelling")
-                    return
-                if self.agent is not None:
-                    self.agent.cancel()
-                turn = self._current_turn
-                if turn is not None and turn.running:
-                    await turn.set_busy("tui.busy.cancelling")
+            await self._cancel_busy()
             return
         if self.events_view_active():
             self.chrome_screen.remove_class("-events")
@@ -1040,6 +1214,42 @@ class TauApp(App[None]):
         if not transcript.is_vertical_scroll_end:
             transcript.scroll_end(animate=False)
             transcript.anchor()
+
+    async def _cancel_busy(self) -> None:
+        """Esc while busy: stop the running turn, or the summarizer of ``/compact``."""
+        if not self.busy or self._cancelling:
+            return
+        self._cancelling = True
+        if self._compaction_cancel is not None:
+            # ``/compact`` is summarizing: stop the throwaway summarizer, not the agent.
+            self._compaction_cancel.set()
+            row = self._compaction_row
+            if row is not None and row.is_mounted:
+                row.set_verb("tui.busy.cancelling")
+            return
+        recheck = self._recheck_task
+        if recheck is not None and not recheck.done():
+            recheck.cancel()  # the passive check of a recheck: the prompt is not resent
+        self._cancel_turn_attempt()
+        if self.agent is not None:
+            self.agent.cancel()
+        turn = self._current_turn
+        if turn is not None and turn.running:
+            await turn.set_busy("tui.busy.cancelling")
+
+    def _cancel_turn_attempt(self) -> None:
+        """A recheck or a step-up of the running turn has the camera on: ask the guard to stop
+        it (the step-up then fails and its call is refused). The lock screen's own attempt is
+        :meth:`cancel_unlock`'s."""
+        guard = self.guard
+        if guard is None or not self.attempt_running:
+            return
+        unlocking = self._unlock_worker
+        if unlocking is not None and not unlocking.is_finished:
+            return
+        self.run_worker(
+            guard.cancel(client_id=process_client_id()), group="guard-cancel", exit_on_error=False
+        )
 
     def action_toggle_events(self) -> None:
         screen = self.chrome_screen
@@ -1116,6 +1326,395 @@ class TauApp(App[None]):
         transcript.scroll_end(animate=False)
         transcript.anchor()
 
+    # -- the owner guard ---------------------------------------------------------------------
+
+    def current_guard(self) -> Guard | None:
+        """The app's guard; while there is none it is resolved again (a guard set up while the
+        app runs is found here, and the app locks at once)."""
+        if self.guard is None:
+            found = resolve_guard(self.config)
+            if found is not None:
+                self._activate_guard(found)
+        return self.guard
+
+    def _activate_guard(self, guard: Guard) -> None:
+        """A guard became active while the app runs (``tau guard setup`` in another window).
+        The app locks the way a live lock does: the pending approval is rejected and the
+        running turn, which runs on an agent built without the guard, is cancelled. The agent
+        is rebuilt with the guard at the unlock, or before its next turn or ``/compact``."""
+        logger.info("an owner guard became active; locking")
+        self.guard = guard
+        self._lock_now(None)
+        if not self.is_running:
+            return
+        self.header.set_guard(True)
+        if self.busy:
+            self.call_later(self._stop_for_lock)
+        self._start_watching()
+
+    def _agent_unguarded(self) -> bool:
+        return (
+            self.guard is not None and self.agent is not None and self.agent.guard is not self.guard
+        )
+
+    async def _arm(self) -> bool:
+        """Make sure the agent carries the app's guard. An agent built before the guard
+        appeared is rebuilt on the same session and role, so its turns are admitted and its
+        tier-2 calls stepped up. ``False`` after saying why when that rebuild failed: nothing
+        may run on the agent without the guard then."""
+        if not self._agent_unguarded():
+            return True
+        assert self.agent is not None
+        logger.info("rebuilding session %s under the owner guard", self.agent.session_id)
+        new, error = self._try_build(self.agent.session_id, role=self.role)
+        if new is None:
+            if error:
+                await self.transcript.add_notice(error)
+            await self.transcript.add_notice(t("guard.rearm_failed", self.language))
+            return False
+        self._adopt(new)
+        return True
+
+    def locked_help_lines(self) -> list[str]:
+        """``/help`` on the lock screen: only what works while locked."""
+        lang = self.language
+        lines = help_lines(lang, only=ALLOWED_WHILE_LOCKED)
+        return [t("chat.help_header", lang), *lines, "", t("tui.guard.hint", lang)]
+
+    def _guard_say(self, lines: list[str]) -> bool:
+        """Show ``lines`` on the lock screen when it is up; ``False`` when it is not."""
+        if self.guard_screen is None:
+            return False
+        self.guard_screen.show(lines)
+        return True
+
+    async def answer(self, text: str) -> None:
+        """A one-line answer: on the lock screen while it is up, else in the transcript."""
+        if not self._guard_say([text]):
+            await self.transcript.add_notice(text)
+
+    def _show_lock(self, status: GuardStatus | None = None) -> None:
+        if self.guard_screen is not None:
+            if status is not None:
+                self.guard_screen.set_status(status)
+            return
+        screen = GuardScreen(status)
+        self.guard_screen = screen
+        self.push_screen(screen, callback=self._lock_closed)
+
+    def _lock_closed(self, unlocked: bool | None) -> None:
+        if self.is_running:
+            self.refresh_chrome()
+            if self.screen is self.chrome_screen:  # a picker or settings screen may be back
+                self.composer.prompt.focus()
+
+    def _start_watching(self) -> None:
+        if self.guard is None or self._watching or not self.is_running:
+            return
+        self._watching = True
+        self._follow_guard()
+
+    @work(group="guard-watch", exclusive=True, exit_on_error=False)
+    async def _follow_guard(self) -> None:
+        """Long-poll ``guard.watch()`` for the life of the app and apply every state. Nothing
+        ends the loop but the app: a state that cannot be applied locks (fail closed)."""
+        guard = self.guard
+        if guard is None:
+            return
+        since = -1
+        while True:
+            try:
+                status = await guard.watch(since, wait=WATCH_WAIT)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # the protocol says it never raises; fail closed if it does
+                logger.exception("guard %s failed to answer watch", guard.name)
+                status = GuardStatus(state="unavailable", reason="error")
+                await asyncio.sleep(2.0)
+            since = status.seq
+            try:
+                await self.apply_guard_status(status)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("could not apply the guard state %s; locking", status.state)
+                self.locked = True
+                try:
+                    self._lock_now(None)
+                except Exception:
+                    logger.exception("could not show the lock screen")
+
+    async def apply_guard_status(self, status: GuardStatus) -> None:
+        """Lock on anything but ``unlocked``; leave the lock when the guard reports
+        ``unlocked`` and no attempt of this app is still running (it leaves by itself).
+
+        An ``unlocked`` status older than the last one applied (a lower ``seq``: the answer to
+        a ``status()`` call that crossed a lock on its way) is dropped. A hub restart always
+        comes back locked, so a lower ``seq`` never has to unlock."""
+        last = self.guard_status
+        if status.state == "unlocked":
+            if last is not None and status.seq < last.seq:
+                logger.debug("dropped a stale unlocked status (seq %s < %s)", status.seq, last.seq)
+                return
+            self.guard_status = status
+            if self.locked and not self.attempt_running:
+                await self.leave_lock(status.method)
+            return
+        await self.enter_lock(status)
+
+    async def enter_lock(self, status: GuardStatus | None = None) -> None:
+        """The guard locked: reject the pending approval, cancel the running turn (the Esc
+        path: ``/compact``, a running recheck and a step-up's camera included) and show the
+        lock screen. Called again while locked it updates the shown state and stops whatever
+        still runs; ``status=None`` keeps the state shown."""
+        self._lock_now(status)
+        await self._stop_for_lock()
+
+    def _lock_now(self, status: GuardStatus | None) -> None:
+        """The synchronous part of a lock: locked, the pending approval rejected, the lock
+        screen on top."""
+        self.locked = True
+        if status is not None:
+            self.guard_status = status
+        if self.approver is not None:
+            self.approver.reject_pending()
+        if not self.is_running:
+            return
+        if self.guard_screen is not None:
+            if status is not None:
+                self.guard_screen.set_status(status)
+            return
+        self.menu.close()
+        self._show_lock(status)
+        self.refresh_chrome()
+
+    async def _stop_for_lock(self) -> None:
+        """Cancel what runs under a lock (the Esc path) and say so in the turn."""
+        if not self.busy or self._cancelling:
+            return
+        turn = self._current_turn
+        await self._cancel_busy()
+        if turn is not None and turn.running:
+            await turn.add_notice(t("guard.locked_during_turn", self.language))
+
+    async def leave_lock(self, method: str | None) -> None:
+        """Unlocked: close the lock screen, build the first agent if it waited for this (or
+        rebuild one built before the guard appeared), and show the "Unlocked" notice with the
+        failed attempts. No model call; a prompt kept in the composer stays there."""
+        if not self.locked:
+            return
+        self.locked = False
+        status = self.guard_status
+        failures = max(self._guard_failures, status.failures if status is not None else 0)
+        self._guard_failures = 0
+        screen, self.guard_screen = self.guard_screen, None
+        if screen is not None and screen.is_attached:
+            if self.screen is not screen:
+                screen.pop_until_active()
+            screen.dismiss(True)
+        if self._first_build_pending:
+            self._first_build_pending = False
+            await self._first_build()
+        elif not self.busy:  # a turn still winding down: its next turn rebuilds (_arm)
+            await self._arm()
+        await self.transcript.add_notice(
+            t(
+                "guard.unlocked",
+                self.language,
+                method=method_text(method, self.language),
+                failures=failures,
+            )
+        )
+        self.refresh_chrome()
+
+    async def _first_build(self) -> None:
+        """The first agent, built after the first unlock. Missing credentials or a planned
+        provider open the agentless start (and its settings screen) now."""
+        if self.agent_factory is None:
+            return
+        guard = self.current_guard()
+        try:
+            agent = self.agent_factory(
+                self._session_id,
+                role=self._default_role,
+                guard=guard if guard is not None else DISCOVER,
+            )
+        except MissingCredentials as exc:
+            logger.warning("opening without an agent: %s", exc)
+            self.missing_credentials = exc
+        except ProviderNotSupported as exc:
+            logger.warning("opening without an agent: %s", exc)
+            self.unsupported_provider = exc
+        except Exception as exc:
+            logger.exception("could not build the first agent")
+            await self.transcript.add_notice(
+                t("session.open_failed", self.language, error=short(exc))
+            )
+            return
+        else:
+            self._adopt(agent)
+            self.header.set_session(agent.session_id)
+            with self.batch_update():
+                await self.transcript.reset()
+                await self._present_session(resumed=bool(agent.messages))
+            if self.notice:
+                await self.transcript.add_notice(self.notice)
+            await self._notice_fallback()
+            self.header.glyph.state = self._idle_glyph_state()
+            self.refresh_sessions()
+            return
+        await self._present_blocked()
+        if self.notice:
+            await self.transcript.add_notice(self.notice)
+        self.refresh_chrome()
+        self.open_settings()
+
+    def start_unlock(self) -> None:
+        """Enter on the lock screen (or ``/guard unlock``): one unlock attempt in a worker."""
+        if self.guard is None or not self.locked or self.attempt_running:
+            return
+        self.attempt_running = True
+        self._unlock_worker = self.run_worker(
+            self._unlock(), group="guard-unlock", exclusive=True, exit_on_error=False
+        )
+
+    async def _unlock(self) -> None:
+        guard = self.guard
+        assert guard is not None
+        lang = self.language
+        screen = self.guard_screen
+        if screen is not None:
+            screen.begin_attempt()
+
+        def on_progress(progress: GuardProgress) -> None:
+            if self.guard_screen is not None:
+                self.guard_screen.progress(progress)
+
+        try:
+            verdict = await guard.unlock(
+                channel="tui",
+                client_id=process_client_id(),
+                kind="unlock",
+                on_progress=on_progress,
+            )
+        except asyncio.CancelledError:
+            if screen is not None:
+                screen.end_attempt()
+                screen.show([t("guard.verdict.cancelled", lang), t("guard.prompt.retry", lang)])
+            raise
+        finally:
+            self.attempt_running = False
+        if verdict.ok:
+            await self.leave_lock(verdict.method)
+            return
+        if verdict.reason in COUNTED_FAILURES:
+            self._guard_failures += 1
+        if screen is not None:
+            screen.end_attempt()
+            screen.show([verdict_text(verdict, lang), t("guard.prompt.retry", lang)])
+        status = await guard.status()
+        await self.apply_guard_status(status)
+
+    def cancel_unlock(self) -> None:
+        """Esc on the lock screen: cancel the running attempt (the hub releases the camera)."""
+        worker, guard = self._unlock_worker, self.guard
+        if worker is None or worker.is_finished or guard is None:
+            return
+        worker.cancel()
+        self.run_worker(
+            guard.cancel(client_id=process_client_id()), group="guard-cancel", exit_on_error=False
+        )
+
+    async def _recheck(self, turn: Turn) -> bool:
+        """The passive presence check after a ``recheck`` admission, in the busy line. Esc and
+        a lock cancel it (``False``, the prompt is not resent)."""
+        guard = self.guard
+        assert guard is not None
+        lang = self.language
+        await turn.set_busy("guard.recheck")
+
+        def on_progress(progress: GuardProgress) -> None:
+            row = turn.busy_row
+            if row is not None and row.is_mounted:
+                row.set_verb("tui.busy.step_up", step=progress_text(progress, lang))
+
+        task = asyncio.ensure_future(
+            guard.unlock(
+                channel="tui",
+                client_id=process_client_id(),
+                kind="recheck",
+                on_progress=on_progress,
+            )
+        )
+        self._recheck_task = task
+        self.attempt_running = True
+        try:
+            await asyncio.wait({task})
+        except asyncio.CancelledError:  # the turn itself is cancelled (the app closes)
+            task.cancel()
+            raise
+        finally:
+            self._recheck_task = None
+            self.attempt_running = False
+        if task.cancelled():
+            await turn.add_notice(t("guard.verdict.cancelled", lang))
+            return False
+        verdict = task.result()
+        if not verdict.ok:
+            if verdict.reason in COUNTED_FAILURES:
+                self._guard_failures += 1
+            await turn.add_notice(verdict_text(verdict, lang))
+        return verdict.ok
+
+    async def _after_refusal(self, prompt: str) -> None:
+        """A turn the guard refused: the prompt goes back into an empty composer and the
+        guard's state decides whether the lock screen comes back."""
+        composer = self.composer
+        if not composer.text.strip():
+            composer.prompt.load_text(prompt)
+        guard = self.guard
+        if guard is not None:
+            await self.apply_guard_status(await guard.status())
+
+    async def guard_command(self, argument: str) -> None:
+        """``/guard [lock|unlock]``: the state, a lock, or an unlock attempt while locked."""
+        lang = self.language
+        guard = self.current_guard()
+        if guard is None:
+            await self.answer(t("guard.cmd.off", lang))
+            return
+        word = argument.strip().casefold()
+        if not word:
+            status = await guard.status()
+            await self.apply_guard_status(status)  # a stale answer is dropped there
+            await self.answer(guard_status_line(self.guard_status or status, lang))
+        elif word == "lock":
+            self.action_lock()
+        elif word == "unlock":
+            if self.locked:
+                self.start_unlock()
+            else:
+                await self.answer(t("guard.cmd.already_unlocked", lang))
+        else:
+            await self.answer(t("guard.cmd.usage", lang))
+
+    def action_lock(self) -> None:
+        """ctrl+l / F5 (and ``/guard lock``): lock the guard now, from anywhere."""
+        if self.current_guard() is None:
+            self.notify(t("guard.cmd.off", self.language))
+            return
+        self.run_worker(self._lock(), group="guard-lock", exclusive=True, exit_on_error=False)
+
+    async def _lock(self) -> None:
+        guard = self.guard
+        assert guard is not None
+        await guard.lock(channel="tui", client_id=process_client_id(), trigger="command")
+        status = await guard.status()  # a lock the hub did not confirm must not look locked
+        if status.state == "locked":
+            await self.apply_guard_status(status)
+        else:
+            self.notify(t("guard.cmd.lock_failed", self.language), severity="error")
+
 
 def build_app(
     config: Config | None = None,
@@ -1135,6 +1734,7 @@ def build_app(
     stream_mode: str = "auto",
     show_paths: bool = True,
     version: str | None = None,
+    guard: Any = DISCOVER,
 ) -> TauApp:
     """Build the agent for the ``tui`` channel with a :class:`TuiApprover` and wrap it.
 
@@ -1152,10 +1752,17 @@ def build_app(
     propagates. ``profile`` (``tau tui --profile``) overrides ``TAU_PROFILE`` for the app's
     lifetime, rebuilds after a settings save included. ``show_paths=False`` keeps real paths
     out of the settings screen and ``version`` pins what the welcome card shows (snapshots).
+
+    ``guard`` defaults to the configuration's owner guard (``resolve_guard``, once for the
+    app's lifetime; tests pass a ``FakeGuard``). With a guard the first agent is not built
+    here: the app opens on the lock screen and builds it after the first unlock.
     """
     config = config or Config.load()
     if profile:
         config = config.with_overrides(profile=profile)
+    guard = resolve_guard(config) if guard is DISCOVER else guard
+    if guard is not None and not isinstance(guard, Guard):
+        raise ConfigError(f"guard must implement tau_core.Guard, not {type(guard).__name__}")
     bus = EventBus()
     approver = TuiApprover(approve_delay=approve_delay)
     tool_list = list(tools) if tools is not None else None
@@ -1169,6 +1776,7 @@ def build_app(
         role: str | None = None,
         seed_messages: list | None = None,
         config: Config | None = None,
+        guard: Any = DISCOVER,
     ) -> TauAgent:
         if config is not None:
             current["config"] = config.with_overrides(profile=profile) if profile else config
@@ -1184,12 +1792,15 @@ def build_app(
             channel="tui",
             clock=clock,
             seed_messages=seed_messages,
+            guard=guard,
         )
 
     missing: MissingCredentials | None = None
     unsupported: ProviderNotSupported | None = None
+    agent: TauAgent | None = None
     try:
-        agent: TauAgent | None = agent_factory(session_id)
+        if guard is None:  # with a guard the first agent waits for the first unlock
+            agent = agent_factory(session_id)
     except MissingCredentials as exc:
         logger.warning("opening without an agent: %s", exc)
         agent, missing = None, exc
@@ -1216,4 +1827,5 @@ def build_app(
         unsupported_provider=unsupported,
         show_paths=show_paths,
         version=version,
+        guard=guard,
     )

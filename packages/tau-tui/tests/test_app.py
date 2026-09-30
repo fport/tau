@@ -207,7 +207,7 @@ async def test_help_and_tools_commands_and_aliases(tmp_path: Path) -> None:
         await pilot.pause()
         assert (
             "Unknown command: /unknown. Commands: /help, /tools, /sessions, /resume, /new, "
-            "/session, /compact, /clear, /status, /model, /lang, /settings, /quit"
+            "/session, /compact, /clear, /status, /model, /lang, /settings, /guard, /quit"
         ) in app.query(NoticeRow).last().content.plain
         await send(pilot, "/çık")
         await pilot.pause()

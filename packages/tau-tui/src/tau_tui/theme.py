@@ -140,7 +140,13 @@ STATUS_CLASS = {
 
 @dataclass(frozen=True)
 class Glyphs:
-    """The one-cell vocabulary. ``unicode`` is the default, ``ascii`` the fallback."""
+    """The one-cell vocabulary. ``unicode`` is the default, ``ascii`` the fallback.
+
+    Rich counts every glyph as one cell. ``◆ ● ○ █ ▀ ▄ ⚿`` have East Asian Width "A"
+    (ambiguous): a terminal set to draw ambiguous characters wide (iTerm2's option, CJK
+    locales) draws them two cells wide and shifts the row by one. ``TAU_TUI_ASCII=1`` avoids
+    that; the lock keeps ``⚿`` (Unicode's lock emoji are all wide), in line with the others.
+    """
 
     user: str  # gutter of a user row
     tau: str  # gutter of a reply, the header mark
@@ -157,6 +163,8 @@ class Glyphs:
     block_full: str  # preview of a cell with both pixels lit
     block_top: str  # top pixel lit
     block_bottom: str  # bottom pixel lit
+    lock: str  # the owner guard is active (header), the lock screen title
+    camera: str  # a guard attempt runs: the camera is on
 
     @classmethod
     def unicode(cls) -> Glyphs:
@@ -176,6 +184,8 @@ class Glyphs:
             block_full="█",
             block_top="▀",
             block_bottom="▄",
+            lock="⚿",
+            camera="◉",
         )
 
     @classmethod
@@ -196,6 +206,8 @@ class Glyphs:
             block_full="#",
             block_top="^",
             block_bottom="_",
+            lock="K",
+            camera="O",
         )
 
     def as_dict(self) -> dict[str, str]:
@@ -249,6 +261,7 @@ Screen.-ascii.-phone.-events EventsPane, Screen.-ascii.-narrow.-events EventsPan
 Screen.-ascii SessionSidebar { border-right: ascii $primary 35%; }
 ApprovalScreen.-ascii > #dialog, SessionPicker.-ascii #dialog { border: ascii $accent; }
 SettingsScreen.-ascii #dialog, SetupScreen.-ascii #dialog { border: ascii $accent; }
+GuardScreen.-ascii > #dialog { border: ascii $accent; }
 SettingsScreen.-ascii #sections { border-right: ascii $primary 35%; }
 """
 """Appended to ``TauApp.CSS``; active only on screens that carry ``-ascii``."""

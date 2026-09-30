@@ -195,7 +195,8 @@ class TierGate:
     the guard must admit ``client_id``'s turn (else the call is refused unasked, approval
     ``locked``); after the approver said ``APPROVED`` it must admit once more (a lock while
     the dialog was open refuses with approval ``locked``; ``recheck`` goes on), and a tier-2
-    call then needs ``guard.step_up(...)`` to return exactly ``True`` (else ``REJECTED``).
+    call then needs ``guard.step_up(...)`` to return exactly ``True`` (else ``REJECTED``)
+    and one more admission (a lock while the step-up ran refuses with approval ``locked``).
     Exempt calls reach no check. Every caller passes ``guard=`` explicitly (a repo rule).
     """
 
@@ -356,6 +357,10 @@ class TierGate:
                 step_up = "passed" if passed else "failed"
                 if not passed:
                     decision = Decision.REJECTED
+                elif not await self._admitted(tool_name, recheck_ok=True):
+                    # tau locked while the step-up ran: a passed check cannot outlive the lock
+                    self._record_approval(request, arguments, Decision.REJECTED, step_up)
+                    return False, refusal_text(tool_name, LOCKED_NOTE), "locked"
         self._record_approval(request, arguments, decision, step_up)
         if decision is Decision.APPROVED:
             return True, None, decision.value

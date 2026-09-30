@@ -13,7 +13,14 @@ Protocol:
   ``{"type": "progress", "step", "hint", "deadline"}`` (``step`` one of tau-core's
   ``PROGRESS_STEPS``, ``hint`` a verdict reason or ``null``, ``deadline`` UTC ISO or ``null``),
   then one ``{"type": "verdict", "ok", "reason", "method", "score"?, "liveness"?}``. ``score``
-  is rounded to 2 decimals and only reaches the audit log.
+  is rounded to 2 decimals and only reaches the audit log. Every value has the documented
+  type; anything else (a list where a string belongs) ends the run with ``error``.
+- A face success reports ``liveness``: ``challenge`` when the head-turn challenge passed,
+  ``passive`` for a passive match. The hub turns a success the attempt's merged ``policy``
+  excludes into ``error`` (see :mod:`tau_guard.state`): an unlock needs ``challenge`` unless
+  ``unlock_liveness`` is ``none``; a step-up needs ``challenge`` unless ``challenge_fresh``
+  (then ``passive`` is enough) and its method must fit ``step_up``; ``touch_id`` needs
+  ``unlock_fallback`` other than ``none`` for an unlock or a recheck.
 - Stderr goes to ``TAU_DATA_DIR/guard/worker.log`` (the hub opens it, 0600).
 - The hub kills the worker on cancel, lock, timeout or hub stop: SIGTERM, then SIGKILL after
   1 s.

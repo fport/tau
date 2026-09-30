@@ -24,19 +24,23 @@ camera library ever loads in a channel process.
 - **Locked at every start.** An unlock lives in memory only; a hub start, even after
   `kill -9`, is `locked` with trigger `startup`.
 - **One check at a time, in a worker.** Each unlock, presence recheck or step-up runs in its own
-  short-lived subprocess (`python -m tau_guard.worker`). The hub kills it on cancel, lock,
-  timeout or hub stop (SIGTERM, then SIGKILL after 1 s). Its stderr goes to
+  short-lived subprocess (`python -P -m tau_guard.worker`, run in `TAU_DATA_DIR/guard/`).
+  The hub kills it on cancel, lock, timeout or hub stop (SIGTERM, then SIGKILL after 1 s). Its stderr goes to
   `TAU_DATA_DIR/guard/worker.log`, never to a terminal. Concurrent unlocks share one attempt;
   a step-up waits behind a running check.
 - **Reflex locks without an LLM or the cloud.** The service locks on the longest unlock time,
   on HID idle, when the screen locks and after the Mac slept. It checks these at every admission
-  and every verification, and a reflex loop checks them every 2 s. If the loop stops ticking,
-  admission refuses.
+  and every verification, again when a worker's verdict arrives and when a client reads it,
+  and a reflex loop checks them every 2 s. A lock that comes while a check runs cancels it, so
+  its late match counts for nothing. If the loop stops ticking, admission refuses. No check
+  starts while the screen is locked.
 - **Presence rechecks.** After a few minutes of idle since the last face match, or after
   `presence_recheck_minutes`, admission answers `recheck`, and the channel runs a quick passive
-  check. A non-matching face locks.
+  check. A non-matching face locks, and so does a failed step-up or re-unlock: any check that
+  sees someone else while tau is unlocked.
 - **Cooldown.** Three failed matches (`no_match`, `spoof`, `multiple_faces`) within 10 minutes
   start a 30 s cooldown. The cooldown doubles with each further failure, up to 15 minutes.
+  The count and the cooldown survive a hub restart (`TAU_DATA_DIR/guard/failures.json`, 0600).
 - **An audit log.** `TAU_DATA_DIR/guard/audit.jsonl` (0600, in a 0700 directory) records every
   check, lock, unlock and cooldown. It never holds an embedding, a frame or anything about
   another person. It is rotated at 1 MiB, with 3 files kept. The hub log gets no verdicts and

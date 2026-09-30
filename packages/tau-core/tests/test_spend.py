@@ -204,6 +204,7 @@ def test_spend_service_adds_status_and_route(
     import asyncio
 
     asyncio.run(service.start(Hub()))  # type: ignore[arg-type]
+    assert not api.is_open("GET", "/spend")  # protected: the token is needed over HTTP
     code, payload = api.handle(ControlRequest("GET", "/spend"))
     assert code == 200 and payload["proxy"] == URL
     assert payload["roles"]["brain"]["spend_usd"] == 0.42

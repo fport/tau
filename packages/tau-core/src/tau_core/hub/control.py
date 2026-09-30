@@ -9,22 +9,38 @@ Handlers run in the server's threads, not on the hub's event loop. A handler tha
 uses ``asyncio.run_coroutine_threadsafe(coro, hub.loop)``. Later issues add routes additively
 (``routes=`` or :meth:`ControlApi.add_route`) and extend ``/status`` through
 ``Hub.add_status_source``.
+
+Routes are protected by default (ADR 0008): only ``GET /health`` and ``GET /status`` are open.
+The HTTP handler refuses a protected request with 403 before dispatch when the token file
+``hub_dir/control.token`` is missing, empty or not this hub's, when ``X-Tau-Token`` does not
+match, when an ``Origin`` header is present, or when a body-carrying request is not
+``application/json``. A protected answer to a request with ``X-Tau-Nonce`` carries
+``X-Tau-Proof`` (:func:`response_proof`), so a client can tell the real hub from a process that
+bound the port while the hub was down. :meth:`ControlApi.handle` itself does not check, so unit
+tests route requests without a token.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
+import secrets
 import socketserver
 import threading
 import time
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlsplit
+
+from tau_core.hub.state import write_text_atomic
 
 if TYPE_CHECKING:
     from tau_core.hub.daemon import Hub
@@ -34,6 +50,12 @@ logger = logging.getLogger(__name__)
 HOST = "127.0.0.1"
 LOOPBACK_NAMES = frozenset({"127.0.0.1", "localhost", "[::1]"})
 MAX_BODY_BYTES = 1024 * 1024
+TOKEN_FILE = "control.token"
+"""The control token, ``hub_dir/control.token`` (0600, in a 0700 ``hub_dir``)."""
+OPEN_PATHS = frozenset({"/health", "/status"})
+"""The only paths served without the token."""
+MAX_NONCE_LENGTH = 128
+BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
 
 
 @dataclass(frozen=True)
@@ -66,6 +88,28 @@ def _host_allowed(host: str | None) -> bool:
     return name in LOOPBACK_NAMES
 
 
+def response_proof(token: str, nonce: str, method: str, path: str, status: int, body: bytes) -> str:
+    """``hex(HMAC-SHA256(token, nonce | method | path | status | body))``; ``path`` has no
+    query string."""
+    message = b"|".join(
+        (nonce.encode("utf-8"), method.encode("ascii"), path.encode("utf-8"), str(status).encode())
+    )
+    return hmac.new(token.encode("utf-8"), message + b"|" + body, hashlib.sha256).hexdigest()
+
+
+def read_token(path: Path) -> str | None:
+    """The token in ``path``, ``None`` when the file is missing, unreadable or empty."""
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    return token or None
+
+
+def _is_json(content_type: str | None) -> bool:
+    return (content_type or "").split(";", 1)[0].strip().lower() == "application/json"
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -88,6 +132,17 @@ def _handler_class(api: ControlApi) -> type[BaseHTTPRequestHandler]:
             if not _host_allowed(self.headers.get("Host")):
                 self._send(403, {"error": "local access only"})
                 return
+            url = urlsplit(self.path)
+            token: str | None = None
+            if not api.is_open(method, url.path):
+                token = api.authorize(method, self.headers)
+                if token is None:
+                    self._send(403, {"error": "forbidden"})
+                    return
+            nonce = self.headers.get("X-Tau-Nonce")
+            if nonce is not None and not 0 < len(nonce) <= MAX_NONCE_LENGTH:
+                self._send(400, {"error": "bad nonce"})
+                return
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
@@ -96,7 +151,6 @@ def _handler_class(api: ControlApi) -> type[BaseHTTPRequestHandler]:
                 self._send(413, {"error": "request body too large"})
                 return
             body = self.rfile.read(length) if length else b""
-            url = urlsplit(self.path)
             request = ControlRequest(
                 method=method,
                 path=url.path,
@@ -105,14 +159,24 @@ def _handler_class(api: ControlApi) -> type[BaseHTTPRequestHandler]:
                 body=body,
             )
             status, payload = api.handle(request)
-            self._send(status, payload)
+            proof = None
+            if token is not None and nonce is not None:
+                proof = (token, nonce, method, url.path)
+            self._send(status, payload, proof)
 
-        def _send(self, status: int, payload: Any) -> None:
+        def _send(
+            self, status: int, payload: Any, proof: tuple[str, str, str, str] | None = None
+        ) -> None:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            if proof is not None:
+                token, nonce, method, path = proof
+                self.send_header(
+                    "X-Tau-Proof", response_proof(token, nonce, method, path, status, data)
+                )
             self.end_headers()
             self.wfile.write(data)
 
@@ -141,6 +205,8 @@ class ControlApi:
     """A :class:`~tau_core.hub.daemon.HubService` serving ``/health`` and ``/status``.
 
     ``port=0`` binds an ephemeral port; :attr:`port` holds the bound port after start.
+    ``hub_dir`` is where the control token lives; ``start(hub)`` takes the hub's when it is not
+    given. Without a token every protected route answers 403.
     """
 
     name = "control-api"
@@ -150,28 +216,34 @@ class ControlApi:
         port: int,
         status_provider: Callable[[], dict[str, Any]],
         routes: dict[tuple[str, str], Handler] | None = None,
+        *,
+        hub_dir: Path | None = None,
     ):
         self.port = port
         self.status_provider = status_provider
-        self.routes: dict[tuple[str, str], Handler] = {
-            ("GET", "/health"): self._health,
-            ("GET", "/status"): self._status,
-        }
+        self.hub_dir = Path(hub_dir) if hub_dir is not None else None
+        self.routes: dict[tuple[str, str], Handler] = {}
+        self.open_routes: set[tuple[str, str]] = set()
+        self.add_route("GET", "/health", self._health, open=True)
+        self.add_route("GET", "/status", self._status, open=True)
         for (method, path), handler in (routes or {}).items():
             self.add_route(method, path, handler)
         self._server: _Server | None = None
         self._thread: threading.Thread | None = None
         self._started = time.monotonic()
+        self._token: str | None = None
 
     @property
     def url(self) -> str:
         return f"http://{HOST}:{self.port}"
 
-    def add_route(self, method: str, path: str, handler: Handler) -> None:
+    def add_route(self, method: str, path: str, handler: Handler, *, open: bool = False) -> None:
         """Register ``handler`` for ``method path``. Routes are additive only: a ``(method,
         path)`` that exists raises ``ValueError``, so a ``tau.hub_services`` component can
         neither replace ``GET /health`` / ``GET /status`` (which ``tau hub status``, ``tau
-        doctor`` and TauBar trust) nor another component's route."""
+        doctor`` and TauBar trust) nor another component's route. A route is protected (token,
+        no ``Origin``, JSON bodies, response proof) unless ``open`` is set; only ``/health``
+        and ``/status`` are open in tau-core."""
         key = (method.upper(), path)
         if key in self.routes:
             raise ValueError(
@@ -179,14 +251,79 @@ class ControlApi:
                 "replaced"
             )
         self.routes[key] = handler
+        if open:
+            self.open_routes.add(key)
+
+    def is_open(self, method: str, path: str) -> bool:
+        """Is ``method path`` served without the token? Unknown paths are protected."""
+        return (method.upper(), path) in self.open_routes
+
+    # -- the control token ----------------------------------------------------------------
+
+    @property
+    def token_path(self) -> Path | None:
+        return self.hub_dir / TOKEN_FILE if self.hub_dir is not None else None
+
+    def write_token(self) -> str:
+        """Write a fresh token to ``hub_dir/control.token`` (0600; ``hub_dir`` chmod 0700).
+
+        ``start(hub)`` calls it while the hub lock is held, so a second hub that lost the lock
+        never touches the live token. The file is created exclusively and renamed into place.
+        """
+        path = self.token_path
+        if path is None:
+            raise ValueError("the control api has no hub_dir for its token")
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path.parent, 0o700)
+        token = secrets.token_urlsafe(32)
+        write_text_atomic(path, token, mode=0o600)
+        self._token = token
+        return token
+
+    def remove_token(self) -> None:
+        """Delete the token file, but only while it still holds this hub's token."""
+        token, self._token = self._token, None
+        path = self.token_path
+        if token is None or path is None:
+            return
+        if read_token(path) == token:
+            with suppress(FileNotFoundError):
+                path.unlink()
+
+    def authorize(self, method: str, headers: Mapping[str, str]) -> str | None:
+        """The token when a protected request may pass, else ``None`` (the caller answers 403).
+
+        Refused: no token of this hub in the token file, a missing or wrong ``X-Tau-Token``,
+        any ``Origin`` header, a body-carrying request that is not ``application/json``."""
+        token = self._token
+        path = self.token_path
+        if token is None or path is None or read_token(path) != token:
+            return None
+        if headers.get("Origin") is not None:
+            return None
+        given = headers.get("X-Tau-Token") or ""
+        if not hmac.compare_digest(given.encode("utf-8"), token.encode("utf-8")):
+            return None
+        if method.upper() in BODY_METHODS and not _is_json(headers.get("Content-Type")):
+            return None
+        return token
 
     # -- HubService -----------------------------------------------------------------------
 
     async def start(self, hub: Hub) -> None:
-        self.serve()
+        if self.hub_dir is None and hub is not None:
+            self.hub_dir = hub.files.dir
+        if self.hub_dir is not None:
+            self.write_token()  # before the port opens, so a client never finds it without one
+        try:
+            self.serve()
+        except BaseException:
+            self.remove_token()
+            raise
 
     async def stop(self) -> None:
         await asyncio.to_thread(self.shutdown)
+        self.remove_token()
 
     # -- plain methods (usable without a hub) ---------------------------------------------
 

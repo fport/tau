@@ -138,7 +138,7 @@ def install_launch_agent(
     domain = domain or gui_domain()
     paths = ServicePaths.from_config(config, python=python, path=path)
     plist = (agents_dir or launch_agents_dir()) / PLIST_NAME
-    Path(paths.log_dir).mkdir(parents=True, exist_ok=True)  # launchd does not create it
+    Path(paths.log_dir).mkdir(mode=0o700, parents=True, exist_ok=True)  # launchd does not create it
     replaced = launchctl.is_loaded(domain, LABEL)
     if replaced:
         launchctl.bootout(domain, LABEL)

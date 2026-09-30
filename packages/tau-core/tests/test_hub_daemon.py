@@ -26,9 +26,10 @@ from tau_core.testing import test_config
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # never via a proxy
 
 
-def get_json(url: str, timeout: float = 5) -> tuple[int, Any]:
+def get_json(url: str, timeout: float = 5, token: str | None = None) -> tuple[int, Any]:
+    request = urllib.request.Request(url, headers={"X-Tau-Token": token} if token else {})
     try:
-        with OPENER.open(url, timeout=timeout) as response:
+        with OPENER.open(request, timeout=timeout) as response:
             return response.status, json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read().decode("utf-8"))
@@ -349,7 +350,9 @@ def test_discovered_service_adds_status_keys_and_routes(tmp_path: Path) -> None:
             "configured": False,
             "reason": "TELEGRAM_BOT_TOKEN is not set",
         }
-        code, payload = get_json(f"{api.url}/example")
+        assert get_json(f"{api.url}/example")[0] == 403  # a service's route is protected
+        token = (config.hub_dir / "control.token").read_text()
+        code, payload = get_json(f"{api.url}/example", token=token)
         assert code == 200
         assert payload == {"example": True, "component": {"greeting": "hi"}}
 
@@ -364,7 +367,8 @@ def test_disabled_service_is_not_started(tmp_path: Path) -> None:
 
     def check(hub: Hub, api: ControlApi) -> None:
         assert [s.name for s in hub.services] == ["control-api"]
-        assert get_json(f"{api.url}/example")[0] == 404
+        token = (config.hub_dir / "control.token").read_text()
+        assert get_json(f"{api.url}/example", token=token)[0] == 404
 
     assert run_assembled(config, check) == 0
 
@@ -445,8 +449,12 @@ def test_real_hub_run_starts_the_example_service(config: Config, spawn: Any) -> 
     proc = spawn(port)
     code, status = get_json(f"http://127.0.0.1:{port}/status")
     assert code == 200 and status["example"] == {"profile": "home"}
-    code, payload = get_json(f"http://127.0.0.1:{port}/example")
+    token_file = config.hub_dir / "control.token"
+    token = token_file.read_text()
+    assert token_file.stat().st_mode & 0o777 == 0o600
+    code, payload = get_json(f"http://127.0.0.1:{port}/example", token=token)
     assert code == 200 and payload["example"] is True
     proc.send_signal(signal.SIGTERM)
     out, _ = proc.communicate(timeout=30)
     assert proc.returncode == 0, out
+    assert not token_file.exists()  # a clean stop removes its own token

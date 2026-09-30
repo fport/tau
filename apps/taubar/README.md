@@ -8,6 +8,9 @@ What it does today:
 - **Runs the hub:** with "Run the hub" ticked, TauBar starts `tau hub run`, restarts it after a
   crash, leaves it stopped after `tau hub stop`, stops it when TauBar quits, and never starts a
   second hub. The menu shows whether the hub is up, its Telegram poller and its last crash.
+- **Shows the owner guard** when the hub runs one ([ADR 0008](../../docs/adr/0008-owner-guard.md)):
+  a guard line, **Lock now**, and **Grant camera access…** when the hub cannot use the camera.
+  TauBar holds the camera and microphone permission for the hub it runs.
 - **Sleep modes:** Normal, Keep awake on AC power (default), Keep awake with the lid closed.
 - **Launch at login:** a checkbox that registers TauBar as a login item.
 - A **window** (Settings…) with the same switches, the hub's settings and TauBar's own log.
@@ -19,6 +22,8 @@ The status panel, approvals and voice come with later roadmap issues (025, 031).
 ├─ Hub: up 2 h 5 min · pid 1234
 ├─ Telegram: polling as @your_bot
 ├─ Last crash: none
+├─ Guard: unlocked                          (only with a guard)
+├─   Lock now                               (only with a guard)
 ├─ ✓ Run the hub
 ├─   Open Hub Log
 ├─ ──────────
@@ -70,6 +75,77 @@ replacing TauBar.app with a new build, check that "Launch at login" is still tic
 For a Developer ID signature and notarization, set `APPLE_SIGNING_IDENTITY` (and `APPLE_ID`,
 `APPLE_PASSWORD`, `APPLE_TEAM_ID` for notarization) before `pnpm tauri build`; see Tauri's
 [macOS code signing](https://v2.tauri.app/distribute/sign/macos/) guide.
+
+Every build is signed with the hardened runtime (Tauri's default) and the entitlements in
+[`src-tauri/Entitlements.plist`](src-tauri/Entitlements.plist): the camera
+(`com.apple.security.device.camera`) and the microphone
+(`com.apple.security.device.audio-input`). `src-tauri/Info.plist` adds
+`NSCameraUsageDescription` and `NSMicrophoneUsageDescription`. Without them macOS refuses the
+camera and the microphone to the hub TauBar runs, without asking.
+
+### A stable signing identity (for the camera grant)
+
+macOS keeps a camera grant for an app's *designated requirement*. For an ad-hoc signature that
+is the hash of the build itself, so every rebuild is a new app to macOS: the camera grant is
+gone, and the next camera use asks again or is refused silently. A self-signed code-signing
+certificate gives a designated requirement that stays the same from build to build
+(`identifier "com.tau.taubar" and certificate leaf = H"..."`), so the grant survives rebuilds.
+
+Set it up once (this is a step for you; nothing in the repo does it):
+
+1. Keychain Access → Keychain Access menu → Certificate Assistant → **Create a Certificate…**
+   - Name: any name, for example `TauBar Local Signing` (it stays in your keychain);
+   - Identity Type: **Self Signed Root**;
+   - Certificate Type: **Code Signing**.
+2. Check that it is there: `security find-identity -p codesigning` lists `TauBar Local Signing`.
+   If `codesign` later says the certificate is not trusted, open it in Keychain Access and set
+   Trust → Code Signing to **Always Trust**.
+3. Build with it. The committed `tauri.conf.json` keeps `"signingIdentity": "-"` (a certificate
+   name can be personal, so it never goes into the repo); `APPLE_SIGNING_IDENTITY` wins over it
+   for the build:
+
+   ```sh
+   cd apps/taubar
+   export APPLE_SIGNING_IDENTITY="TauBar Local Signing"   # your certificate's name
+   pnpm tauri build
+   ```
+
+   To keep the name out of your shell history and profile, put the `export` line in a file the
+   repo ignores (`*.local`), for example `apps/taubar/signing.local`, and run
+   `source signing.local && pnpm tauri build`. The first build asks whether `codesign` may use
+   the key: choose **Always Allow**. Without the notarization variables Tauri skips
+   notarization, which a build for your own Mac does not need.
+4. Check the build:
+
+   ```sh
+   APP=src-tauri/target/release/bundle/macos/TauBar.app
+   codesign -dv "$APP" 2>&1 | grep -E 'Authority|Signature'   # Authority=TauBar Local Signing
+   codesign -d -r- "$APP"                  # designated => identifier "com.tau.taubar" and certificate leaf = H"..."
+   codesign -d --entitlements - "$APP"     # com.apple.security.device.camera, ...device.audio-input
+   plutil -p "$APP/Contents/Info.plist" | grep UsageDescription
+   ```
+
+   The `designated =>` line stays the same across rebuilds as long as the certificate does.
+
+### The camera grant
+
+TauBar runs the hub as its child, so macOS asks for the camera in TauBar's name the first time
+the hub's guard opens it ("TauBar would like to access the camera"). Allow it. The grant then
+lives in System Settings → Privacy & Security → **Camera**, where TauBar has its own switch; the
+menu's **Grant camera access…** opens that pane. The camera indicator in the menu bar names
+TauBar while the guard checks.
+
+- **After changing the signing identity** (ad hoc → the certificate above, or a new
+  certificate), macOS sees a new app: grant the camera again.
+- **To start over while testing:** `tccutil reset Camera com.tau.taubar` (and
+  `tccutil reset Microphone com.tau.taubar`), then restart the hub from TauBar (untick and tick
+  **Run the hub**). The next camera use asks again.
+- **Who holds the grant** depends on how the hub runs: TauBar's **Run the hub** → TauBar;
+  `pnpm tauri dev` → the terminal that runs it; `uv run tau hub run` in a terminal → that
+  terminal app; the `com.tau.hub` launchd agent or a hub started over SSH or in tmux → nobody,
+  so the camera is refused.
+- `tau guard doctor` (roadmap 112) reports the camera state; with TauBar running the hub it
+  should say `ok`.
 
 ## Install
 
@@ -140,6 +216,45 @@ uv run tau hub uninstall      # stops the launchd hub and removes the agent
 
 Then tick **Run the hub** (with it already ticked, TauBar starts its hub once the launchd one is
 gone). To go back: untick the switch, then `uv run tau hub install`.
+
+## The owner guard
+
+When the hub runs the owner guard ([ADR 0008](../../docs/adr/0008-owner-guard.md)), the menu and
+the window show it under the hub lines, from the `guard` block of the hub's open `/status`
+(`{state, enrolled, available, reason}`):
+
+```text
+├─ Guard: unavailable (camera denied)
+├─   Lock now
+├─   Grant camera access…
+```
+
+| Guard line | When |
+|---|---|
+| `Guard: locked` | guarded channels (`tau tui`, `tau chat`) refuse turns until the owner's face is checked at the Mac |
+| `Guard: checking…` | a face check is running |
+| `Guard: unlocked` | the owner was verified |
+| `Guard: unavailable (camera denied)` | the guard cannot check; the reason says why |
+| `Guard: locked (not enrolled)` | no face is enrolled yet (`tau guard setup`) |
+
+The whole section is hidden when the hub reports no guard or the state `off`. **Grant camera
+access…** appears when the reason is `camera_denied` or `camera_unavailable` and opens System
+Settings → Privacy & Security → Camera.
+
+**Lock now** asks the hub to lock (`POST /guard/lock`, `{"channel": "taubar", "client_id": …,
+"trigger": "command"}`). TauBar reads `<TAU_DATA_DIR>/hub/control.token` for every request and
+never sends it: it signs the request with it (`X-Tau-Nonce`, `X-Tau-Auth`) and trusts the answer
+only with a valid `X-Tau-Proof`, exactly as tau-core's `HubClient` does. After a 403 it reads
+the token again once (the hub writes a new one on every start). A missing or wrong proof, a
+redirect (never followed) or no answer means the hub is unavailable, and TauBar says that tau
+may not be locked. TauBar never unlocks: that is a face check at the Mac.
+
+**No webview gets the camera.** wry grants a page's `getUserMedia` by default, and TauBar holds
+the camera grant, so every TauBar webview denies every permission request (the app builder and
+each window install the same handler, `src-tauri/src/webview.rs`). To check by hand: in
+`pnpm tauri dev`, right-click the window → Inspect Element → Console, and run
+`await navigator.mediaDevices.getUserMedia({video: true})`; it rejects with `NotAllowedError`
+and no camera turns on.
 
 ## Sleep modes
 
@@ -238,7 +353,9 @@ pnpm build                         # tsc + vite
 
 The supervisor tests run real `/bin/sh` children as stand-in hubs (crash, `kill -9`, clean
 exit, a SIGTERM-deaf hub, a foreign lock holder, an orphan to adopt) against a fake probe, so
-they need no tau checkout and never touch a real hub.
+they need no tau checkout and never touch a real hub. The signing tests use the byte vectors
+tau-core pins, and "Lock now" runs against a fake hub on a loopback port (a 403 and a token
+re-read, a missing or wrong proof, a redirect).
 
 | File | Job |
 |---|---|
@@ -247,6 +364,9 @@ they need no tau checkout and never touch a real hub.
 | `src-tauri/src/hub/supervisor.rs` | the hub supervisor (start, reap, restart, stop, adopt, never a second hub) |
 | `src-tauri/src/hub/policy.rs` | which exits are restarted, and the backoff |
 | `src-tauri/src/hub/probe.rs`, `launch.rs`, `display.rs` | lock/control API/launchd probes, the command and environment, the menu lines |
+| `src-tauri/src/hub/control.rs`, `guard.rs` | signed control requests (token, nonce, proof); the guard line and "Lock now" |
+| `src-tauri/src/webview.rs` | denies every webview permission request |
+| `src-tauri/Info.plist`, `Entitlements.plist` | usage descriptions and the camera/microphone entitlements (checked by `tests/bundle_config.rs`) |
 | `src-tauri/src/sleep.rs` | the three modes behind a `Power` trait (a fake in tests) |
 | `src-tauri/src/login.rs` | `SMAppService.mainApp` |
 | `src-tauri/src/tray.rs` | the native menu |

@@ -25,9 +25,11 @@ Face fakes (issue 112), for the verify, liveness and enrollment state machines a
 operations run in-process:
 
 - :func:`identity` and :func:`variant`: synthetic unit embeddings (a person, and one frame of
-  that person); :func:`face_row`: a synthetic YuNet row with a given centre, eye distance and
-  yaw proxy (``scale_x`` squeezes every x distance, as a flat photo turned about the vertical
-  axis does).
+  that person); :func:`project_head`: the five landmarks of :data:`tau_guard.engine.HEAD_MODEL`
+  turned by a yaw, pitch and roll in degrees and projected through the camera model of
+  :func:`tau_guard.engine.head_pose` (``flat=True``: all five points in one plane, a printed
+  frontal face turned instead of a head); :func:`face_row`: a synthetic YuNet row built from
+  it.
 - :class:`Scene`, :class:`FakeEngine`: a "frame" is a :class:`Scene` (rows, embeddings,
   brightness, sharpness) and the engine reads it back; :class:`FakeFrameSource` yields frames
   and records ``open``/``close``.
@@ -40,6 +42,7 @@ operations run in-process:
 from __future__ import annotations
 
 import json
+import math
 import os
 import signal
 import sys
@@ -67,6 +70,7 @@ __all__ = [
     "fake_worker_command",
     "identity",
     "match",
+    "project_head",
     "read_requests",
     "variant",
     "write_script",
@@ -170,27 +174,79 @@ OWNER = identity(1)
 STRANGER = identity(2)
 
 
+def _rotation(yaw: float, pitch: float, roll: float) -> list[list[float]]:
+    """The head's rotation (degrees): yaw about the camera's vertical axis (positive: the face
+    turns toward the image's right edge), then pitch (positive: up), then roll."""
+    y, p, r = (math.radians(a) for a in (yaw, pitch, roll))
+    ry = [[math.cos(y), 0.0, -math.sin(y)], [0.0, 1.0, 0.0], [math.sin(y), 0.0, math.cos(y)]]
+    rx = [[1.0, 0.0, 0.0], [0.0, math.cos(p), math.sin(p)], [0.0, -math.sin(p), math.cos(p)]]
+    rz = [[math.cos(r), -math.sin(r), 0.0], [math.sin(r), math.cos(r), 0.0], [0.0, 0.0, 1.0]]
+
+    def mul(a: list[list[float]], b: list[list[float]]) -> list[list[float]]:
+        return [[sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+
+    return mul(mul(ry, rx), rz)
+
+
+def project_head(
+    *,
+    yaw: float = 0.0,
+    pitch: float = 0.0,
+    roll: float = 0.0,
+    cx: float = 320.0,
+    cy: float = 240.0,
+    iod: float = 80.0,
+    size: tuple[int, int] = (640, 480),
+    flat: bool = False,
+) -> list[tuple[float, float]]:
+    """The five landmarks (YuNet's order) of :data:`~tau_guard.engine.HEAD_MODEL` turned by
+    ``yaw``, ``pitch`` and ``roll`` degrees, at the distance where a frontal head has an eye
+    distance of ``iod`` px with its nose tip at (``cx``, ``cy``), through the camera model of
+    :func:`~tau_guard.engine.head_pose` (focal length = frame width, principal point in the
+    middle). ``flat=True`` puts all five points in one plane first: a printed frontal face,
+    turned about the vertical axis by ``yaw``."""
+    from tau_guard.engine import HEAD_MODEL
+
+    width, height = size
+    focal = float(width)
+    eyes = focal * math.dist(HEAD_MODEL[0][:2], HEAD_MODEL[1][:2]) / iod  # the eyes' distance
+    distance = eyes - HEAD_MODEL[0][2]  # the nose tip's
+    shift = ((cx - width / 2) * distance / focal, (cy - height / 2) * distance / focal, distance)
+    rotation = _rotation(yaw, pitch, roll)
+    points = []
+    for x, y, z in HEAD_MODEL:
+        z = 0.0 if flat else z
+        cam = [sum(rotation[i][k] * (x, y, z)[k] for k in range(3)) + shift[i] for i in range(3)]
+        points.append((focal * cam[0] / cam[2] + width / 2, focal * cam[1] / cam[2] + height / 2))
+    return points
+
+
 def face_row(
     *,
     cx: float = 320.0,
     cy: float = 240.0,
     iod: float = 80.0,
     yaw: float = 0.0,
+    pitch: float = 0.0,
+    roll: float = 0.0,
     score: float = 0.98,
-    scale_x: float = 1.0,
+    flat: bool = False,
+    jitter: tuple[float, ...] | None = None,
+    size: tuple[int, int] = (640, 480),
 ) -> list[float]:
-    """A YuNet row: eyes ``iod`` apart (before ``scale_x``), nose placed for the yaw proxy
-    ``yaw``. ``scale_x`` scales every x distance from ``cx``, which leaves the proxy alone."""
-    half = iod / 2 * scale_x
-    eye_y = cy - 0.2 * iod
-    width, height = 2.0 * iod * scale_x, 2.4 * iod
-    return [
-        cx - width / 2, cy - height / 2, width, height,
-        cx - half, eye_y, cx + half, eye_y,
-        cx + yaw * iod * scale_x, cy,
-        cx - 0.35 * iod * scale_x, cy + 0.45 * iod, cx + 0.35 * iod * scale_x, cy + 0.45 * iod,
-        score,
-    ]  # fmt: skip
+    """A YuNet row for :func:`project_head` (degrees; ``flat`` for a turned flat photo), with
+    a box of 2 x 2.4 eye distances around the landmarks; ``jitter`` adds ten pixel offsets to
+    the landmarks (detector noise)."""
+    points = project_head(
+        yaw=yaw, pitch=pitch, roll=roll, cx=cx, cy=cy, iod=iod, size=size, flat=flat
+    )
+    marks = [value for point in points for value in point]
+    if jitter is not None:
+        marks = [value + offset for value, offset in zip(marks, jitter, strict=True)]
+    mid_x = sum(marks[0::2]) / 5
+    mid_y = sum(marks[1::2]) / 5
+    width, height = 2.0 * iod, 2.4 * iod
+    return [mid_x - width / 2, mid_y - height / 2, width, height, *marks, score]
 
 
 @dataclass
@@ -201,6 +257,7 @@ class Scene:
     embeddings: list[tuple[float, ...]]
     brightness: float = 120.0
     sharpness: float = 150.0
+    size: tuple[int, int] = (640, 480)
 
 
 class FakeEngine:
@@ -215,7 +272,7 @@ class FakeEngine:
     def detect(self, frame: Scene) -> list[Any]:
         from tau_guard.engine import Face
 
-        return [Face.from_row(row) for row in frame.rows]
+        return [Face.from_row(row, size=frame.size) for row in frame.rows]
 
     def brightness(self, frame: Scene, face: Any) -> float:
         return frame.brightness
@@ -224,7 +281,7 @@ class FakeEngine:
         from tau_guard.engine import Face
 
         for index, row in enumerate(frame.rows):
-            if Face.from_row(row) == face:
+            if Face.from_row(row, size=frame.size) == face:
                 return frame, index
         raise LookupError("the face is not in this frame")
 
@@ -296,15 +353,22 @@ class SimulatedUser:
 
     Frames come at ``fps`` from ``start``; :meth:`on_progress` takes the published steps
     (``Progress`` values or protocol lines) and the user reacts after ``reaction`` seconds,
-    turning at ``speed`` (yaw proxy per second) to ``amplitude`` in the asked direction
-    (``sign`` is how the camera sees a left turn). Switches for failures: ``wrong_way``,
-    ``hold=False`` (turn back as soon as the turn is reached), ``returns=False`` (never turn
-    back), ``turn=False`` (never turn), ``photo=True`` (a flat photo rotated instead of a head:
-    only ``scale_x`` changes), ``second_face`` (a ``(from, to)`` time window with a second face
-    of ``second_iod``), ``jump_at`` (the box moves away at that time), ``gap`` (a ``(from,
-    to)`` time window without any face), ``stranger_after`` (the embedding becomes someone
-    else's from that time) and ``stranger_after_centers`` (the same, once that many ``center``
-    prompts were published: a face swapped in place)."""
+    turning at ``speed`` (degrees per second) to ``amplitude`` degrees in the asked direction
+    from the ``frontal`` yaw (``sign`` is how the camera sees a left turn). The head is the 3D
+    model of :func:`project_head` with an eye distance of ``iod`` px. Natural touches:
+    ``overshoot`` (degrees the head swings past the frontal yaw on the way back before it
+    settles), ``sway`` (a slow 0.3 Hz sway of that many degrees, all the time), ``lean`` (the
+    head rolls by ``lean`` degrees per degree of turn, toward the side it turns to, as when the
+    neck bends into a turn) and ``jitter`` (the detector's landmark noise, standard deviation in
+    px, seeded by ``frame_seed``).
+    Switches for failures: ``wrong_way``, ``hold=False`` (turn back as soon as the turn is
+    reached), ``returns=False`` (never turn back), ``turn=False`` (never turn), ``photo=True``
+    (a flat photo of the frontal face turned about the vertical axis instead of a head),
+    ``second_face`` (a ``(from, to)`` time window with a second face of ``second_iod``),
+    ``jump_at`` (the box moves away at that time), ``gap`` (a ``(from, to)`` time window
+    without any face), ``stranger_after`` (the embedding becomes someone else's from that time)
+    and ``stranger_after_centers`` (the same, once that many ``center`` prompts were published:
+    a face swapped in place)."""
 
     embedding: tuple[float, ...] = OWNER
     fps: float = 30.0
@@ -312,10 +376,14 @@ class SimulatedUser:
     duration: float = 30.0
     frontal: float = 0.0
     sign: int = 1
-    amplitude: float = 0.45
+    amplitude: float = 25.0
     reaction: float = 0.35
-    speed: float = 2.5
+    speed: float = 120.0
     iod: float = 80.0
+    overshoot: float = 0.0
+    sway: float = 0.0
+    lean: float = 0.0
+    jitter: float = 0.0
     brightness: float = 120.0
     sharpness: float = 150.0
     score: float = 0.98
@@ -336,7 +404,6 @@ class SimulatedUser:
     def __post_init__(self) -> None:
         self.t = self.start
         self.yaw = self.frontal
-        self.scale = 1.0
         self.pending: list[tuple[float, float]] = []
         self.target = self.frontal
         self.index = 0
@@ -362,21 +429,42 @@ class SimulatedUser:
             if not self.hold:
                 self.pending.append((when + size / self.speed + 0.05, self.frontal))
         elif step in ("center", "look", "look_up", "look_down") and self.returns:
-            self.pending.append((when, self.frontal))
+            side = 1 if self.target - self.frontal >= 0 else -1
+            if self.overshoot and self.target != self.frontal:
+                swing = self.frontal - side * self.overshoot
+                self.pending.append((when, swing))
+                span = abs(self.target - swing) / self.speed + 0.15
+                self.pending.append((when + span, self.frontal))
+            else:
+                self.pending.append((when, self.frontal))
 
     def _move(self, dt: float) -> None:
         while self.pending and self.pending[0][0] <= self.t:
             self.target = self.pending.pop(0)[1]
-        goal = self.target
-        if self.photo:  # a flat photo turned about the vertical axis: only x distances shrink
-            wanted = 1.0 - min(0.6, abs(goal - self.frontal))
-            self.scale += max(-self.speed * dt, min(self.speed * dt, wanted - self.scale))
-            return
-        self.yaw += max(-self.speed * dt, min(self.speed * dt, goal - self.yaw))
+        step = self.speed * dt
+        self.yaw += max(-step, min(step, self.target - self.yaw))
+
+    def _jitter(self) -> tuple[float, ...] | None:
+        if not self.jitter:
+            return None
+        import random as _random
+
+        rng = _random.Random(self.frame_seed * 7919 + self.index)
+        return tuple(rng.gauss(0.0, self.jitter) for _ in range(10))
 
     def scene(self) -> Scene:
         cx = 320.0 if self.jump_at is None or self.t < self.jump_at else 520.0
-        rows = [face_row(cx=cx, iod=self.iod, yaw=self.yaw, score=self.score, scale_x=self.scale)]
+        yaw = self.yaw + self.sway * math.sin(2 * math.pi * 0.3 * (self.t - self.start))
+        row = face_row(
+            cx=cx,
+            iod=self.iod,
+            yaw=yaw,
+            roll=self.lean * (self.yaw - self.frontal),
+            score=self.score,
+            flat=self.photo,
+            jitter=self._jitter(),
+        )
+        rows = [row]
         person = self.embedding
         if self.stranger_after is not None and self.t >= self.stranger_after:
             person = STRANGER

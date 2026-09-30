@@ -1,6 +1,6 @@
 # 127 · Tune the head-turn challenge on real captures
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L10 · Guard
 Packages: tau-guard

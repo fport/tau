@@ -7,7 +7,9 @@ Layout of ``TAU_DATA_DIR/guard/`` (0700, chmod explicitly):
   is the recognizer's sha256 as lowercase hex (ASCII) and ``payload`` is JSON ``{v,
   enrollment, created, model: {name, sha256}, dim, template, samples, calibration}``. The
   template is the renormalised mean of the samples; the calibration is the head-turn sign and
-  amplitudes (:class:`tau_guard.liveness.Calibration`).
+  amplitudes in degrees (:class:`tau_guard.liveness.Calibration`; a template from before issue
+  127 holds them in units of the old yaw proxy and is read with its sign and default
+  amplitudes, so it keeps working without a re-enrollment).
 - ``enrolled`` (0600): the public marker ``{"v": 1, "enrollment", "model", "created"}`` that
   tau-core's ``resolve_guard`` and ``read_enrollment`` read. It holds no biometric data.
 

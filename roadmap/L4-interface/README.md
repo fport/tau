@@ -22,5 +22,6 @@
 | 086 | [TauBar follows the UI language setting](086-taubar-ui-language.md) | AFK | 024 |
 | 088 | [Opening TauBar again does not show its window](088-taubar-reopen-shows-no-window.md) | AFK | – |
 | 089 | [A nicer TauBar menu and settings window](089-taubar-ui-polish.md) | AFK | – |
+| 091 | [Two TauBar copies can run at once](091-taubar-single-instance.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py --layer L4`

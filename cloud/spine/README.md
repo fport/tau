@@ -33,16 +33,16 @@ scripts/          configure.mjs, send-dev-envelope.mjs
 
 ## Local development
 
-Requirements: Node 24 and pnpm 10. No Cloudflare account and no Docker are needed.
+Requirements: bun (and Node 24). No Cloudflare account and no Docker are needed. bun installs the packages and runs the scripts; Vitest, the Workers pool and Wrangler still run on Node, because `bun run` and `bunx` start a program with the `node` its shebang names (without Node on `PATH`, bun runs them itself: the Vitest Workers pool then times out and `wrangler dev` answers no requests).
 
 ```sh
 cd cloud/spine
-pnpm install
-pnpm run configure    # writes wrangler.jsonc (local mode) and .dev.vars with a random HUB_TOKEN
-pnpm dev              # http://127.0.0.1:8787
+bun install
+bun run configure     # writes wrangler.jsonc (local mode) and .dev.vars with a random HUB_TOKEN
+bun run dev           # http://127.0.0.1:8787
 ```
 
-`pnpm run configure` never prints the token. It is in `cloud/spine/.dev.vars`; the hub needs the same value:
+`bun run configure` never prints the token. It is in `cloud/spine/.dev.vars`; the hub needs the same value:
 
 ```sh
 # the hub's .env (repository root)
@@ -63,13 +63,13 @@ Other commands:
 
 | Command | What it does |
 |---|---|
-| `pnpm test` | the Vitest suite in the Workers runtime; a `local` and a `cloud` project |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm run types` | regenerates `worker-configuration.d.ts` (the `Env` type) from `wrangler.cloud.example.jsonc`. It is tracked, since it is small and lets CI type-check without a config; `wrangler dev` in local mode reports it as "out of date", which is expected |
-| `pnpm run dev:cloud` | the spine in cloud mode from `wrangler.cloud.example.jsonc`, whatever mode your `wrangler.jsonc` is in: applies the D1 migrations locally, then runs with containers off. The store routes answer, `/hub/brain` is 503, no Docker needed. For testing the `spine` session backend of `tau-cloud` |
+| `bun run test` | the Vitest suite in the Workers runtime; a `local` and a `cloud` project |
+| `bun run typecheck` | `tsc --noEmit` |
+| `bun run types` | regenerates `worker-configuration.d.ts` (the `Env` type) from `wrangler.cloud.example.jsonc`. It is tracked, since it is small and lets CI type-check without a config; `wrangler dev` in local mode reports it as "out of date", which is expected |
+| `bun run dev:cloud` | the spine in cloud mode from `wrangler.cloud.example.jsonc`, whatever mode your `wrangler.jsonc` is in: applies the D1 migrations locally, then runs with containers off. The store routes answer, `/hub/brain` is 503, no Docker needed. For testing the `spine` session backend of `tau-cloud` |
 | `curl http://127.0.0.1:8787/cdn-cgi/local/scheduled` | runs the cron once (`wrangler dev` does not run crons by itself) |
 
-With the cloud configuration in `wrangler.jsonc`, plain `pnpm dev` also builds and runs the brain container, which needs Docker. `pnpm dev` applies no D1 migrations, so run `pnpm exec wrangler d1 migrations apply DB --local` once first.
+With the cloud configuration in `wrangler.jsonc`, plain `bun run dev` also builds and runs the brain container, which needs Docker. `bun run dev` applies no D1 migrations, so run `bunx wrangler d1 migrations apply DB --local` once first.
 
 ### Two taus on one machine
 
@@ -77,10 +77,10 @@ Two spines can talk to each other locally. Each needs its own port, persistence 
 
 ```sh
 # Spine A: 127.0.0.1:8787 (the dev address in wrangler.jsonc; its address is the request host)
-pnpm dev
+bun run dev
 
 # Spine B: 127.0.0.1:8788, own state, explicit address (a second terminal)
-pnpm exec wrangler dev --port 8788 --inspector-port 9230 \
+bunx wrangler dev --port 8788 --inspector-port 9230 \
   --persist-to .wrangler/state-b --var ADDRESS:127.0.0.1:8788
 ```
 
@@ -100,10 +100,10 @@ Local mode is the default (ADR 0006 unchanged): the hub runs at home, and the sp
 
 ```sh
 cd cloud/spine
-pnpm run configure             # if you have not yet
-npx wrangler login
-pnpm run deploy                # wrangler deploy; there is no database to migrate
-npx wrangler secret put HUB_TOKEN
+bun run configure              # if you have not yet
+bunx wrangler login
+bun run deploy                 # wrangler deploy; there is no database to migrate
+bunx wrangler secret put HUB_TOKEN
 ```
 
 - The first deploy provisions the KV namespace and writes its id into your `wrangler.jsonc` (gitignored; keep it). The Mailbox Durable Object needs no provisioning: its class is created by the `v1` migration in the config, and it creates its tables on first use.
@@ -117,7 +117,7 @@ npx wrangler secret put HUB_TOKEN
 "vars": { "ADDRESS": "tau.example.com", ... }
 ```
 
-Then `pnpm run deploy` again. The address becomes `tau.example.com`; contacts know your tau by its address, so pick it before you add any.
+Then `bun run deploy` again. The address becomes `tau.example.com`; contacts know your tau by its address, so pick it before you add any.
 
 ## Deploy: cloud mode
 
@@ -125,7 +125,7 @@ Cloud mode runs the hub itself in your Cloudflare account: no machine at home. L
 
 ```sh
 cd cloud/spine
-pnpm run configure --cloud     # --force replaces a local-mode wrangler.jsonc and keeps its ids
+bun run configure --cloud      # --force replaces a local-mode wrangler.jsonc and keeps its ids
 ```
 
 Cloud mode adds a D1 database (`DB`, the cloud store for state and sessions), which counts against your account's D1 databases. The mailbox stays in the Mailbox Durable Object, so switching keeps the mail in transit.
@@ -133,17 +133,17 @@ Cloud mode adds a D1 database (`DB`, the cloud store for state and sessions), wh
 Set `vars.SPINE_URL` in `wrangler.jsonc` to your deployed URL (`https://tau-spine.<your-subdomain>.workers.dev`, or your custom domain); the brain reaches its store through it. Then:
 
 ```sh
-npx wrangler login
-pnpm run deploy:cloud          # checks the config, builds the image, deploys, migrates D1
-npx wrangler secret put HUB_TOKEN
+bunx wrangler login
+bun run deploy:cloud           # checks the config, builds the image, deploys, migrates D1
+bunx wrangler secret put HUB_TOKEN
 # model credentials: ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID), or AWS_REGION with
 #   AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY or AWS_BEARER_TOKEN_BEDROCK; OPENAI_API_KEY
 #   and GEMINI_API_KEY (or GOOGLE_API_KEY) only when a role uses those providers
-npx wrangler secret put ANTHROPIC_API_KEY
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npx wrangler secret put TELEGRAM_ALLOWED_CHAT_IDS
-npx wrangler secret put TAU_NET_IDENTITY   # the identity as base64url JSON (tau net init)
-npx wrangler secret put TAU_LANG           # optional: tr
+bunx wrangler secret put ANTHROPIC_API_KEY
+bunx wrangler secret put TELEGRAM_BOT_TOKEN
+bunx wrangler secret put TELEGRAM_ALLOWED_CHAT_IDS
+bunx wrangler secret put TAU_NET_IDENTITY  # the identity as base64url JSON (tau net init)
+bunx wrangler secret put TAU_LANG          # optional: tr
 ```
 
 The container gets `TAU_SPINE_URL`, `TAU_SPINE_TOKEN` and each of these secrets that is set as environment variables. Secrets reach a running container only when it starts again; after changing one, redeploy or wait for the next start.
@@ -165,7 +165,7 @@ docker build -f cloud/spine/container/Dockerfile -t tau-brain .
 docker run --rm tau-brain tau cloud --help
 ```
 
-**Back to local mode.** `pnpm run configure --force` writes the local config again (the KV id and your address are kept; the local config has no D1 binding). The deployed Worker still has the `TauBrain` Durable Object class, which a deploy cannot drop silently, so extend `migrations` in your `wrangler.jsonc` before `pnpm run deploy`:
+**Back to local mode.** `bun run configure --force` writes the local config again (the KV id and your address are kept; the local config has no D1 binding). The deployed Worker still has the `TauBrain` Durable Object class, which a deploy cannot drop silently, so extend `migrations` in your `wrangler.jsonc` before `bun run deploy`:
 
 ```jsonc
 "migrations": [

@@ -6,7 +6,7 @@
 // only this mode has a D1 database), `tau.toml` and persona files in KV.
 // Needs the Workers Paid plan (Containers) and a running Docker to build the image.
 //
-// `pnpm run configure --cloud` copies this file to the gitignored `wrangler.jsonc`.
+// `bun run configure --cloud` copies this file to the gitignored `wrangler.jsonc`.
 // No resource ids or personal hostnames belong here.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -31,13 +31,13 @@
     // time for the whole month (see README).
     "KEEP_AWAKE": "1",
     // The spine's public URL, handed to the container as TAU_SPINE_URL so the brain can
-    // reach its store API. Set it to your deployed URL before `pnpm run deploy:cloud`,
+    // reach its store API. Set it to your deployed URL before `bun run deploy:cloud`,
     // for example "https://tau-spine.<your-subdomain>.workers.dev".
     "SPINE_URL": ""
   },
   "kv_namespaces": [{ "binding": "TAU" }],
   // The cloud store: state and sessions. No database_id: provisioned (or looked up by this
-  // name) on the first deploy. `pnpm run deploy:cloud` and `pnpm run dev:cloud` apply the
+  // name) on the first deploy. `bun run deploy:cloud` and `bun run dev:cloud` apply the
   // migrations.
   "d1_databases": [
     {

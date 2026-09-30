@@ -115,7 +115,7 @@ def test_the_kit_holds_nothing_personal() -> None:
 
 def _source_hash(spine: Path) -> str:
     """The rule of cloud/spine/scripts/kit.mjs: sha256 over `<sha256>  <path>\\n` lines."""
-    files = ["package.json", "pnpm-lock.yaml", "tsconfig.json", "wrangler.example.jsonc"]
+    files = ["package.json", "bun.lock", "tsconfig.json", "wrangler.example.jsonc"]
     files.append("scripts/kit.mjs")
     for folder in ("src", "migrations"):
         files += [
@@ -130,12 +130,12 @@ def _source_hash(spine: Path) -> str:
 
 @pytest.mark.skipif(not (SPINE / "src").is_dir(), reason="needs the repository's cloud/spine")
 def test_the_kit_is_fresh() -> None:
-    """The kit matches cloud/spine; after a change there, run `pnpm run kit` in cloud/spine."""
+    """The kit matches cloud/spine; after a change there, run `bun run kit` in cloud/spine."""
     kit = load_kit()
     version, _, digest = kit.version.partition("+")
     spine_package = json.loads((SPINE / "package.json").read_text(encoding="utf-8"))
     assert version == spine_package["version"]
-    assert _source_hash(SPINE).startswith(digest), "stale kit: run `pnpm run kit` in cloud/spine"
+    assert _source_hash(SPINE).startswith(digest), "stale kit: run `bun run kit` in cloud/spine"
 
     example = parse_jsonc((SPINE / "wrangler.example.jsonc").read_text(encoding="utf-8"))
     if example.get("d1_databases"):
@@ -144,12 +144,11 @@ def test_the_kit_is_fresh() -> None:
     else:
         assert not kit.migrations
 
-    lock = (SPINE / "pnpm-lock.yaml").read_text(encoding="utf-8")
-    pinned = re.search(
-        r"\n      wrangler:\n        specifier: .*\n        version: ([0-9.]+)", lock
-    )
-    assert pinned is not None
-    assert json.loads(kit.package)["devDependencies"]["wrangler"] == pinned.group(1)
+    # bun.lock is JSON with trailing commas; a top-level package is keyed by its bare name.
+    lock = parse_jsonc((SPINE / "bun.lock").read_text(encoding="utf-8"))
+    name, _, pinned = lock["packages"]["wrangler"][0].rpartition("@")
+    assert name == "wrangler" and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", pinned)
+    assert json.loads(kit.package)["devDependencies"]["wrangler"] == pinned
 
 
 @pytest.mark.skipif(shutil.which("uv") is None, reason="needs uv to build the wheel")

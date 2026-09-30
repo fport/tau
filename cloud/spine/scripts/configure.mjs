@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// pnpm run configure [--cloud] [--force]
-// node scripts/configure.mjs --check-cloud    (run by `pnpm run deploy:cloud`)
+// bun run configure [--cloud] [--force]
+// node scripts/configure.mjs --check-cloud    (run by `bun run deploy:cloud`)
 //
 // Writes the gitignored `wrangler.jsonc` from wrangler.example.jsonc (local mode) or
 // wrangler.cloud.example.jsonc (--cloud), and creates `.dev.vars` with a random HUB_TOKEN
@@ -24,7 +24,7 @@ for (const arg of args) {
   }
 }
 if (args.has("--help") || args.has("-h")) {
-  console.log("Usage: pnpm run configure [--cloud] [--force]");
+  console.log("Usage: bun run configure [--cloud] [--force]");
   process.exit(0);
 }
 
@@ -114,7 +114,7 @@ function carryOver(text, old) {
 // --check-cloud: refuse a cloud deploy that would give the brain no way back to its spine.
 if (args.has("--check-cloud")) {
   if (!existsSync(target)) {
-    console.error("No wrangler.jsonc; run `pnpm run configure --cloud` first.");
+    console.error("No wrangler.jsonc; run `bun run configure --cloud` first.");
     process.exit(1);
   }
   const config = parseJsonc(readFileSync(target, "utf8"));
@@ -190,15 +190,15 @@ const steps = cloud
   ? [
       "Set SPINE_URL in wrangler.jsonc to your deployed URL (https://tau-spine.<subdomain>.workers.dev).",
       "Start Docker; the brain image is built on deploy.",
-      "npx wrangler login",
-      "pnpm run deploy:cloud",
-      "npx wrangler secret put HUB_TOKEN   # and the model / Telegram secrets, see README.md",
+      "bunx wrangler login",
+      "bun run deploy:cloud",
+      "bunx wrangler secret put HUB_TOKEN  # and the model / Telegram secrets, see README.md",
       "tau cloud push                      # from the hub machine, with TAU_SPINE_URL and TAU_SPINE_TOKEN set",
     ]
   : [
-      "pnpm dev                            # local spine at http://127.0.0.1:8787",
+      "bun run dev                         # local spine at http://127.0.0.1:8787",
       "Hub .env: TAU_SPINE_URL=http://127.0.0.1:8787, TAU_SPINE_TOKEN=<HUB_TOKEN from .dev.vars>",
-      "To deploy: npx wrangler login, pnpm run deploy, npx wrangler secret put HUB_TOKEN",
+      "To deploy: bunx wrangler login, bun run deploy, bunx wrangler secret put HUB_TOKEN",
     ];
 console.log(`\nNext steps:\n${steps.map((step) => `  - ${step}`).join("\n")}`);
 process.exit(failed ? 1 : 0);

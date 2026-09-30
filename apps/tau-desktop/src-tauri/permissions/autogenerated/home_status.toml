@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-home-status"
+description = "Enables the home_status command without any pre-configured scope."
+commands.allow = ["home_status"]
+
+[[permission]]
+identifier = "deny-home-status"
+description = "Denies the home_status command without any pre-configured scope."
+commands.deny = ["home_status"]

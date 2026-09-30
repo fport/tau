@@ -19,8 +19,10 @@ talks to it with signed requests whose wire body has the shape of an envelope::
 - **Claims** (ADR 0013 §6, issue 157): a ``claim`` is not posted by the tau. :func:`claim_link`
   signs one and puts its wire body into ``https://<universe>/claim#<b64u(wire JSON)>``; the
   owner opens the link, signs in with GitHub there, and the universe binds the handle to the
-  address. A claim is valid for :data:`CLAIM_VALID_SECONDS` after its ``ts``, and its random
-  ``nonce`` makes it single-use.
+  address. A claim is valid while ``abs(now - ts)`` is at most :data:`CLAIM_VALID_SECONDS`
+  and, like every request, only with a ``ts`` greater than the last one the universe accepted
+  from the address (a report the hub sends after the link was made spoils it: make a new
+  one); its random ``nonce`` makes it single-use.
 
 :class:`UniverseClient` builds, signs and posts them, reads the public snapshot and one tau's
 entry, and maps the universe's error codes to :class:`UniverseError`. The scheme is the one of
@@ -93,7 +95,7 @@ UNIVERSE_CONTEXT = b"tau-universe/1\n"
 """The domain prefix of every universe signature."""
 UNIVERSE_KINDS = ("join", "report", "leave", "claim")
 CLAIM_VALID_SECONDS = 3600
-"""A ``claim`` is valid this long after its ``ts`` (the other kinds: 300 s either way)."""
+"""A ``claim`` is valid while ``abs(now - ts)`` is at most this (the other kinds: 300 s)."""
 NONCE_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,64}")
 """A claim's ``nonce``: 16 to 64 base64url characters (the client sends 16 random bytes)."""
 DEFAULT_UNIVERSE = "tau.getporti.com"
@@ -293,8 +295,8 @@ def make_payload(
 
 
 def new_nonce() -> str:
-    """A claim's nonce: 16 random bytes, base64url (22 characters)."""
-    return b64u_encode(secrets.token_bytes(16))
+    """A claim's nonce: 18 random bytes, base64url (24 characters)."""
+    return b64u_encode(secrets.token_bytes(18))
 
 
 def claim_link(
@@ -631,7 +633,7 @@ class UniverseClient:
             identity,
             universe=self.host,
             address=address,
-            ts=int(self.clock()),
+            ts=self._next_ts(),
             nonce=nonce,
             base=self.base,
         )

@@ -27,6 +27,7 @@ __all__ = [
     "ADDRESS_PATTERN",
     "ALLOW_INSECURE_ENV",
     "HANDLE_PATTERN",
+    "RESERVED_SUB_NAMES",
     "HOST_PATTERN",
     "ID_PATTERN",
     "INSECURE_HOSTS",
@@ -72,6 +73,8 @@ ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,64}")
 
 SUB_NAME_PATTERN = re.compile(r"[a-z][a-z0-9-]{1,30}")
 """A sub-tau name (ADR 0012: ``^[a-z][a-z0-9-]{1,30}$``), used with ``fullmatch``."""
+RESERVED_SUB_NAMES = frozenset({"net", "app", "api", "auth", "claim", "hub"})
+"""Paths a tau's host serves itself (ADR 0013 §3): never a sub-tau, so never a target."""
 
 _B64U = re.compile(r"[A-Za-z0-9_-]*={0,2}")
 
@@ -174,8 +177,9 @@ def parse_target(text: str) -> tuple[str, str | None]:
     """``(address, sub)`` from ``address`` or ``address/name`` typed by a person, where the
     address is ``host[:port]`` or ``host[:port]/@handle``: ``tau.example.com/coach`` and
     ``tau.example.com/@alice/coach`` both name ``/coach``. The address part is forgiven like
-    :func:`parse_address` (``https://``, upper case), the name must be a sub-tau name;
-    :class:`AddressError` otherwise (also for anything after the name)."""
+    :func:`parse_address` (``https://``, upper case), the name must be a sub-tau name and
+    not one of :data:`RESERVED_SUB_NAMES`; :class:`AddressError` otherwise (also for anything
+    after the name)."""
     parts = _typed(text).split("/")
     address, rest = parts[0], parts[1:]
     if rest and rest[0].startswith("@"):
@@ -190,6 +194,8 @@ def parse_target(text: str) -> tuple[str, str | None]:
             f"not a sub-tau name: {sub!r} (2 to 31 lowercase letters, digits and '-', "
             "starting with a letter)"
         )
+    if sub in RESERVED_SUB_NAMES:
+        raise AddressError(f"/{sub} is a path of the tau's host, never a sub-tau")
     return parse_address(address), sub
 
 

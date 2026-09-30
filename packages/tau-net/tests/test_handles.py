@@ -130,6 +130,8 @@ def test_targets_with_handles_read_one_way_only() -> None:
         "tau.example.com/@alice/@bob",
         "tau.example.com/@alice/Co ach",
         "tau.example.com/@al ice",
+        "tau.example.com/api",
+        "tau.example.com/@alice/claim",
     ):
         with pytest.raises(AddressError):
             parse_target(bad)

@@ -82,8 +82,9 @@ MAX_ENVELOPE_BYTES = 65_536
 """The largest ``POST /net/inbox`` body a spine accepts."""
 MAX_MESSAGE_CHARS = 8_000
 """The longest ``message`` text."""
-MAX_VISIT_CHARS = 2_000
-"""The longest ``visit`` text: a universe takes at most this much from a visitor."""
+MAX_VISIT_CHARS = MAX_MESSAGE_CHARS
+"""The longest ``visit`` text: the same as a ``message`` (a universe takes less from a
+visitor)."""
 NONCE_BYTES = 12
 KEY_BYTES = 32
 

@@ -114,7 +114,8 @@ def test_the_visit_content_is_text_and_sub() -> None:
         with pytest.raises(BoxError):
             parse_content("visit", bad)
     with pytest.raises(BoxError):
-        parse_content("visit", {"text": "x" * 2001, "sub": "coach"})
+        parse_content("visit", {"text": "x" * 8001, "sub": "coach"})
+    assert parse_content("visit", {"text": "x" * 8000, "sub": "coach"})["text"] == "x" * 8000
 
 
 def test_the_frame_marks_the_visitor_as_untrusted() -> None:

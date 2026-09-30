@@ -81,7 +81,9 @@ def test_claims_have_a_fresh_nonce_and_accept_handle_addresses() -> None:
     second = client.claim_link(VECTOR_IDENTITY, "tau.example.com/@alice")
     assert first.startswith(f"https://{UNIVERSE}/claim#") and first != second
     payload = parse_request(b64u_decode(first.split("#", 1)[1])).payload
-    assert payload["address"] == "tau.example.com/@alice" and len(payload["nonce"]) == 22
+    assert payload["address"] == "tau.example.com/@alice" and len(payload["nonce"]) == 24
+    # the client's ts never repeats, like the other requests
+    assert payload["ts"] < parse_request(b64u_decode(second.split("#", 1)[1])).payload["ts"]
     assert list(payload) == ["v", "kind", "universe", "address", "ts", "nonce"]
 
 

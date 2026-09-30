@@ -1,7 +1,9 @@
 /**
- * The universe page's script strings, in English (the source) and Turkish.
+ * The site's script strings, in English (the source) and Turkish: the universe graph (on
+ * the landing page and /universe), the person page, the sub-tau page and its visitor chat,
+ * and the claim page.
  *
- * The page picks a table by `<html lang>`. Numbers, dates and relative times come
+ * A page picks a table by `<html lang>`. Numbers, dates and relative times come
  * formatted from Intl in the same language; a message only puts them in place. `{cmd}`
  * marks where the join command goes, set as code by the page.
  *
@@ -32,6 +34,7 @@ export interface Messages {
   mapLabel: (taus: string, links: string) => string;
   close: string;
   online: string;
+  offline: string;
   lastSeen: (ago: string) => string;
   justNow: string;
   owner: string;
@@ -52,6 +55,64 @@ export interface Messages {
   copy: string;
   copied: string;
   selected: string;
+  /** The detail card's link to a tau's person page or a sub-tau's page. */
+  openPage: string;
+
+  // The person page (`/@handle`).
+  /** The document title. */
+  personTitle: (handle: string) => string;
+  personMissing: string;
+  personMissingHint: (handle: string) => string;
+  pageFailed: string;
+  buildingSince: (date: string) => string;
+  publicSubs: (count: number, formatted: string) => string;
+  /** A sub-tau card's line: when the universe first saw it. */
+  firstSeen: (date: string) => string;
+  /** The tag of a sub-tau that takes visitor chats. */
+  chatTag: string;
+
+  // The sub-tau page (`/<slug>`, `/@handle/<name>`) and its chat.
+  subTitle: (name: string) => string;
+  subMissing: string;
+  subMissingHint: (path: string) => string;
+  by: (owner: string) => string;
+  offlineWaits: string;
+  noChat: (name: string) => string;
+  messagePlaceholder: (name: string) => string;
+  you: string;
+  waiting: string;
+  waitingOffline: string;
+  stillWaiting: string;
+  rateLimited: string;
+  tooLong: (max: string) => string;
+  dailyCap: string;
+  overBudget: string;
+  chatClosed: string;
+  chatFailed: string;
+  aboutSub: (name: string) => string;
+  factAddress: string;
+  factFirstSeen: string;
+  factRunsOn: string;
+  runsHosted: string;
+  runsHub: string;
+
+  // The claim page (`/claim#…`).
+  claimCrumb: string;
+  claimBad: string;
+  claimOtherUniverse: (universe: string) => string;
+  claimExpired: string;
+  claimExpires: (when: string) => string;
+  claimBinding: string;
+  claimBound: (handle: string) => string;
+  claimMoved: (handle: string) => string;
+  claimRefused: string;
+  claimSignIn: string;
+  claimUnavailable: string;
+  claimCard: string;
+  claimNotJoined: string;
+  claimBadSignature: string;
+  claimFailed: string;
+  claimOpenPage: string;
 }
 
 const en: Messages = {
@@ -72,6 +133,7 @@ const en: Messages = {
   mapLabel: (taus, links) => `Map of ${taus} and ${links}`,
   close: "Close",
   online: "Online",
+  offline: "Offline",
   lastSeen: (ago) => `Last seen ${ago}`,
   justNow: "just now",
   owner: "Owner",
@@ -90,6 +152,57 @@ const en: Messages = {
   copy: "Copy",
   copied: "Copied",
   selected: "Selected",
+  openPage: "Open page",
+
+  personTitle: (handle) => `@${handle} · tau`,
+  personMissing: "Nobody here yet.",
+  personMissingHint: (handle) => `No tau in this universe has claimed @${handle}.`,
+  pageFailed: "This page could not be loaded. Check your connection and try again.",
+  buildingSince: (date) => `building since ${date}`,
+  publicSubs: (count, n) => `${n} public ${count === 1 ? "sub-tau" : "sub-taus"}`,
+  firstSeen: (date) => `alive since ${date}`,
+  chatTag: "chat",
+
+  subTitle: (name) => `${name} · tau`,
+  subMissing: "No sub-tau at this address.",
+  subMissingHint: (path) => `Nothing in this universe answers to ${path}.`,
+  by: (owner) => `by ${owner}`,
+  offlineWaits: "offline — messages wait",
+  noChat: (name) => `${name} has no public chat. Its owner can turn one on.`,
+  messagePlaceholder: (name) => `Message ${name}…`,
+  you: "You",
+  waiting: "Thinking…",
+  waitingOffline: "Its tau is offline. Your message waits until it is back.",
+  stillWaiting: "Still no answer. Keep the page open, or come back later.",
+  rateLimited: "Too many messages. Wait a minute and try again.",
+  tooLong: (max) => `Keep it under ${max} characters.`,
+  dailyCap: "It has talked to all the visitors it can today. Try again tomorrow.",
+  overBudget: "Its owner’s budget for this month is used up.",
+  chatClosed: "This sub-tau does not take visitor chats.",
+  chatFailed: "The message could not be sent. Try again.",
+  aboutSub: (name) => `About ${name}`,
+  factAddress: "Address",
+  factFirstSeen: "First seen",
+  factRunsOn: "Runs on",
+  runsHosted: "a tau-host, in the cloud",
+  runsHub: "its owner’s own machine",
+
+  claimCrumb: "claim",
+  claimBad: "This link holds no claim. Copy the whole link that tau net universe claim printed.",
+  claimOtherUniverse: (universe) => `This claim is for ${universe}, not for this universe.`,
+  claimExpired: "This claim has expired. Run tau net universe claim again.",
+  claimExpires: (when) => `expires ${when}`,
+  claimBinding: "Binding…",
+  claimBound: (handle) => `Done. Your tau is now @${handle}.`,
+  claimMoved: (handle) => `Done. @${handle} now points to this tau.`,
+  claimRefused: "This handle is bound to another GitHub account.",
+  claimSignIn: "Sign in with GitHub first.",
+  claimUnavailable: "This universe cannot bind handles.",
+  claimCard: "The universe could not fetch your tau’s card. Is its address online?",
+  claimNotJoined: "This tau is not in the universe yet. Run tau net universe join first.",
+  claimBadSignature: "The claim’s signature does not match your tau’s card. Run tau net universe claim again.",
+  claimFailed: "The claim did not go through. Try again.",
+  claimOpenPage: "Open your page",
 };
 
 // Turkish puts no plural ending after a number ("3 tau", "14 mesaj"), and a suffix after a
@@ -113,6 +226,7 @@ const tr: Messages = {
   mapLabel: (taus, links) => `${taus} ve ${links} gösteren harita`,
   close: "Kapat",
   online: "Çevrimiçi",
+  offline: "Çevrimdışı",
   lastSeen: (ago) => `Son görülme: ${ago}`,
   justNow: "az önce",
   owner: "Sahibi",
@@ -131,6 +245,59 @@ const tr: Messages = {
   copy: "Kopyala",
   copied: "Kopyalandı",
   selected: "Seçildi",
+  openPage: "Sayfayı aç",
+
+  personTitle: (handle) => `@${handle} · tau`,
+  personMissing: "Burada henüz kimse yok.",
+  personMissingHint: (handle) => `Bu evrende @${handle} kullanıcı adını alan bir tau yok.`,
+  pageFailed: "Bu sayfa yüklenemedi. Bağlantını kontrol edip tekrar dene.",
+  buildingSince: (date) => `${date} itibarıyla üretiyor`,
+  publicSubs: (_count, n) => `${n} açık sub-tau`,
+  firstSeen: (date) => `ilk görülme: ${date}`,
+  chatTag: "sohbet",
+
+  subTitle: (name) => `${name} · tau`,
+  subMissing: "Bu adreste bir sub-tau yok.",
+  subMissingHint: (path) => `Bu evrende ${path} adresine yanıt veren bir şey yok.`,
+  by: (owner) => `${owner} tarafından`,
+  offlineWaits: "çevrimdışı — mesajlar bekler",
+  noChat: (name) => `${name} için açık sohbet yok. Sahibi açabilir.`,
+  messagePlaceholder: (name) => `${name} ile konuş…`,
+  you: "Sen",
+  waiting: "Düşünüyor…",
+  waitingOffline: "tau’su şu an çevrimdışı. Mesajın o dönene kadar bekler.",
+  stillWaiting: "Hâlâ cevap yok. Sayfayı açık tut ya da sonra tekrar gel.",
+  rateLimited: "Çok fazla mesaj. Bir dakika bekleyip tekrar dene.",
+  tooLong: (max) => `En fazla ${max} karakter yaz.`,
+  dailyCap: "Bugün konuşabileceği tüm ziyaretçilerle konuştu. Yarın tekrar dene.",
+  overBudget: "Sahibinin bu ayki bütçesi doldu.",
+  chatClosed: "Bu sub-tau ziyaretçi sohbeti kabul etmiyor.",
+  chatFailed: "Mesaj gönderilemedi. Tekrar dene.",
+  aboutSub: (name) => `${name} hakkında`,
+  factAddress: "Adres",
+  factFirstSeen: "İlk görülme",
+  factRunsOn: "Çalıştığı yer",
+  runsHosted: "bulutta, bir tau-host üzerinde",
+  runsHub: "sahibinin kendi makinesi",
+
+  claimCrumb: "talep",
+  claimBad:
+    "Bu bağlantıda bir talep yok. tau net universe claim komutunun yazdığı bağlantının tamamını kopyala.",
+  claimOtherUniverse: (universe) => `Bu talep bu evren için değil; hedefi ${universe}.`,
+  claimExpired: "Bu talebin süresi doldu. tau net universe claim komutunu yeniden çalıştır.",
+  claimExpires: (when) => `geçerlilik sonu: ${when}`,
+  claimBinding: "Bağlanıyor…",
+  claimBound: (handle) => `Tamam. tau’n artık @${handle}.`,
+  claimMoved: (handle) => `Tamam. @${handle} artık bu tau’yu gösteriyor.`,
+  claimRefused: "Bu kullanıcı adı başka bir GitHub hesabına bağlı.",
+  claimSignIn: "Önce GitHub ile giriş yap.",
+  claimUnavailable: "Bu evren kullanıcı adı bağlayamıyor.",
+  claimCard: "Evren tau’nun kimlik kartını alamadı. Adresi çevrimiçi mi?",
+  claimNotJoined: "Bu tau henüz evrende değil. Önce tau net universe join komutunu çalıştır.",
+  claimBadSignature:
+    "Talebin imzası tau’nun kimlik kartıyla eşleşmiyor. tau net universe claim komutunu yeniden çalıştır.",
+  claimFailed: "Talep tamamlanamadı. Tekrar dene.",
+  claimOpenPage: "Sayfanı aç",
 };
 
 export const MESSAGES: Readonly<Record<PageLanguage, Messages>> = { en, tr };

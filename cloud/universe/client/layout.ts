@@ -12,10 +12,10 @@
 
 import type { PublicSub, PublicTau, Snapshot } from "../src/snapshot";
 
-/** The radius of a tau's disc, in the graph's units. */
-export const NODE_RADIUS = 15;
-/** The radius of a sub-tau's disc. */
-export const SUB_RADIUS = 6.5;
+/** The radius of a tau's node (its character and hit area), in the graph's units. */
+export const NODE_RADIUS = 18;
+/** The radius of a sub-tau's node. */
+export const SUB_RADIUS = 8;
 /** The shortest distance from a tau's centre to its sub-taus' centres. */
 export const MIN_ORBIT = NODE_RADIUS + 14;
 /** The space between two neighbouring sub-taus on an orbit. */

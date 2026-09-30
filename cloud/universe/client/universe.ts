@@ -1,14 +1,22 @@
 /**
- * The universe page: reads /api/universe and draws the taus as a force-directed graph.
+ * The universe graph: reads /api/universe and draws the taus as a force-directed graph, on
+ * the universe page (`/universe`) and, full screen behind the hero, on the landing page.
  *
- * - Taus of the same owner share a soft hull; a tau without an owner is a group of its own.
- * - A tau's public sub-taus circle it as small nodes inside the hull (client/layout.ts).
+ * - Every tau and sub-tau is drawn as its character (cloud/shared/character.ts), seeded
+ *   with its address (a sub-tau: `<address>/<name>`).
+ * - Taus of the same owner share a hull; a tau without an owner is a group of its own.
+ * - A tau's public sub-taus circle it as small characters inside the hull (client/layout.ts).
  * - A mutual link is a dashed line, wider for more messages.
- * - Online taus glow (Flare), offline ones are dim.
+ * - Online taus carry a lit ring, offline ones are dim.
  * - Hover or tap shows a tau's card; `#<address>` in the URL pins it, and
- *   `#<address>/<name>` pins the card of one of its sub-taus.
+ *   `#<address>/<name>` pins the card of one of its sub-taus. A card links the tau's person
+ *   page and a sub-tau's page when the universe knows them.
  * - The list under the graph is the keyboard path: every tau is a link to `#<address>`.
- * - Under `prefers-reduced-motion` the layout is computed up front and drawn once.
+ * - Under `prefers-reduced-motion` the layout is computed up front and drawn once, and the
+ *   characters stand still.
+ * - On the landing page (`body.page-home`) there is no list, search or pinned card: a click
+ *   opens the tau's person page (or its place on /universe), and the drawing keeps clear of
+ *   the hero's text.
  *
  * Everything the directory returns is set with textContent, never parsed as HTML. The
  * page's own strings come from client/messages.ts, in the language of `<html lang>`.
@@ -26,7 +34,9 @@ import {
   type SimulationNodeDatum,
 } from "d3-force";
 import { polygonHull } from "d3-polygon";
-import type { PublicLink, PublicTau, Snapshot } from "../src/snapshot";
+import type { PublicLink } from "../src/snapshot";
+import { getJson } from "./api";
+import { byId, characterElement, html, link, maybeId, svg } from "./dom";
 import {
   groupKey,
   hash01,
@@ -41,8 +51,12 @@ import {
   tauSubNodes,
 } from "./layout";
 import { MESSAGES, pageLanguage } from "./messages";
+import { HANDLE, personPath, subPath, universePath } from "./paths";
+import type { SiteSnapshot, SnapshotSub, SnapshotTau } from "./types";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
+type PublicTau = SnapshotTau;
+type Snapshot = SiteSnapshot;
+
 const HULL_PADDING = 16;
 /** Sub-taus sit closer to the hull's edge than taus do. */
 const SUB_HULL_PADDING = 10;
@@ -51,6 +65,8 @@ const MAX_SCALE = 1.8;
 const NAME_LABEL_LIMIT = 40;
 const TINY_UNIVERSE = 5;
 const JOIN_COMMAND = "tau net universe join";
+/** A character is drawn this many times its node's radius wide. */
+const CHARACTER_SCALE = 2.7;
 
 interface GraphNode extends SimulationNodeDatum {
   tau: PublicTau;
@@ -111,33 +127,8 @@ const t = MESSAGES[language];
 const numberFormat = new Intl.NumberFormat(language, { notation: "compact" });
 const dateFormat = new Intl.DateTimeFormat(language, { dateStyle: "medium" });
 const relative = new Intl.RelativeTimeFormat(language, { numeric: "auto" });
-const graphemes = new Intl.Segmenter(language, { granularity: "grapheme" });
-
-function byId<T extends HTMLElement | SVGElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (element === null) throw new Error(`missing #${id}`);
-  return element as T;
-}
-
-function svg<K extends keyof SVGElementTagNameMap>(
-  name: K,
-  attributes: Record<string, string | number> = {},
-): SVGElementTagNameMap[K] {
-  const element = document.createElementNS(SVG_NS, name);
-  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
-  return element;
-}
-
-function html<K extends keyof HTMLElementTagNameMap>(
-  name: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const element = document.createElement(name);
-  if (className) element.className = className;
-  if (text !== undefined) element.textContent = text;
-  return element;
-}
+/** The landing page: the graph is the hero's backdrop. */
+const hero = document.body.classList.contains("page-home");
 
 /** A counted noun: `count(t.taus, 3)` is "3 taus" or "3 tau". */
 function count(message: (count: number, formatted: string) => string, value: number): string {
@@ -158,27 +149,38 @@ function ago(seconds: number, now: number): string {
   return relative.format(-Math.floor(delta / 86_400), "day");
 }
 
-function initial(name: string): string {
-  for (const { segment } of graphemes.segment(name.trim())) return segment.toUpperCase();
-  return "·";
+/** A tau's handle from the snapshot, when it is a valid one. */
+function handleOf(tau: PublicTau): string | null {
+  return typeof tau.handle === "string" && HANDLE.test(tau.handle) ? tau.handle : null;
+}
+
+/** The page of a sub-tau, when the universe gives one or its tau has a handle. */
+function pageOfSub(tau: PublicTau, name: string): string | null {
+  const sub = subsOf(tau).find((candidate) => candidate.name === name) as SnapshotSub | undefined;
+  if (sub === undefined) return null;
+  return subPath(sub, handleOf(tau), language);
 }
 
 // ---------------------------------------------------------------------------------------
 // Page elements
 
 const page = {
-  count: byId<HTMLParagraphElement>("sky-count"),
-  search: byId<HTMLInputElement>("search"),
+  count: byId<HTMLElement>("sky-count"),
   box: byId<HTMLDivElement>("graph-box"),
   graph: byId<SVGSVGElement>("graph"),
   message: byId<HTMLDivElement>("stage-message"),
   note: byId<HTMLParagraphElement>("stage-note"),
   detail: byId<HTMLElement>("detail"),
-  list: byId<HTMLUListElement>("tau-list"),
-  rosterCount: byId<HTMLParagraphElement>("roster-count"),
-  rosterEmpty: byId<HTMLParagraphElement>("roster-empty"),
-  legend: byId<HTMLParagraphElement>("legend"),
   sky: byId<HTMLElement>("sky"),
+  // The universe page only: the search, the list of taus and the legend.
+  search: maybeId<HTMLInputElement>("search"),
+  list: maybeId<HTMLUListElement>("tau-list"),
+  rosterCount: maybeId<HTMLParagraphElement>("roster-count"),
+  rosterEmpty: maybeId<HTMLParagraphElement>("roster-empty"),
+  legend: maybeId<HTMLParagraphElement>("legend"),
+  // The landing page only: the hero's text, which the drawing keeps clear of.
+  heroCopy: maybeId<HTMLElement>("hero-copy"),
+  header: document.querySelector<HTMLElement>(".site-header"),
 };
 
 function layer(name: string): SVGGElement {
@@ -222,17 +224,13 @@ function commandLine(): HTMLParagraphElement {
 async function load(): Promise<void> {
   showMessage([t.loadingUniverse]);
   page.count.textContent = t.loading;
-  let snapshot: Snapshot;
-  try {
-    const response = await fetch("/api/universe", { headers: { accept: "application/json" } });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    snapshot = (await response.json()) as Snapshot;
-  } catch {
+  const result = await getJson<Snapshot>("/api/universe");
+  if (result.status !== 200 || result.data === null || !Array.isArray(result.data.taus)) {
     page.count.textContent = t.unavailable;
     showMessage([t.loadFailed], true);
     return;
   }
-  render(snapshot);
+  render(result.data);
 }
 
 function render(snapshot: Snapshot): void {
@@ -243,8 +241,8 @@ function render(snapshot: Snapshot): void {
     numberFormat.format(stats.online),
     count(t.taus, stats.taus),
   );
-  page.search.disabled = stats.taus === 0;
-  page.legend.hidden = stats.taus === 0;
+  if (page.search !== null) page.search.disabled = stats.taus === 0;
+  if (page.legend !== null) page.legend.hidden = stats.taus === 0;
 
   state = {
     snapshot,
@@ -254,7 +252,7 @@ function render(snapshot: Snapshot): void {
     byAddress: new Map(),
     subsById: new Map(),
     cards: new Map(),
-    query: page.search.value.trim().toLowerCase(),
+    query: page.search?.value.trim().toLowerCase() ?? "",
     selected: null,
     selectedSub: null,
     hovered: null,
@@ -273,7 +271,7 @@ function render(snapshot: Snapshot): void {
   }
   page.message.hidden = true;
   page.graph.toggleAttribute("hidden", false);
-  if (stats.taus < TINY_UNIVERSE) {
+  if (stats.taus < TINY_UNIVERSE && !hero) {
     page.note.replaceChildren(...withCommand(t.fewSoFar(count(t.taus, stats.taus))));
     page.note.hidden = false;
   } else {
@@ -281,11 +279,21 @@ function render(snapshot: Snapshot): void {
   }
 
   buildGraph(state);
-  applyHash();
+  if (!hero) applyHash();
 }
 
 // ---------------------------------------------------------------------------------------
 // The graph
+
+/** A character centred on its node: the body's middle sits on the node's centre. */
+function placedCharacter(seed: string, radius: number): SVGSVGElement {
+  const size = radius * CHARACTER_SCALE;
+  const element = characterElement(seed, { size, animated: !reducedMotion.matches });
+  element.setAttribute("x", (-size / 2).toFixed(1));
+  element.setAttribute("y", (-size * 0.6).toFixed(1));
+  element.classList.add("node-character");
+  return element;
+}
 
 function buildGraph(s: State): void {
   layers.hulls.replaceChildren();
@@ -315,12 +323,10 @@ function buildGraph(s: State): void {
     }
 
     const element = svg("g", { class: `node ${tau.online ? "online" : "offline"}` });
-    if (tau.online) element.append(svg("circle", { class: "halo", r: NODE_RADIUS + 3 }));
-    element.append(svg("circle", { class: "ring", r: NODE_RADIUS + 6 }));
-    element.append(svg("circle", { class: "disc", r: NODE_RADIUS }));
-    const letter = svg("text", { class: "initial", "text-anchor": "middle", dy: "0.35em" });
-    letter.textContent = initial(tau.name);
-    element.append(letter);
+    if (tau.online) element.append(svg("circle", { class: "halo", r: NODE_RADIUS + 2 }));
+    element.append(svg("circle", { class: "ring", r: NODE_RADIUS + 7 }));
+    element.append(svg("circle", { class: "node-hit", r: NODE_RADIUS + 2 }));
+    element.append(placedCharacter(tau.address, NODE_RADIUS));
     const subData = tauSubNodes(tau);
     let label: SVGTextElement | null = null;
     if (showNames) {
@@ -358,7 +364,7 @@ function buildGraph(s: State): void {
     const target = s.byAddress.get(data.b);
     if (source === undefined || target === undefined) continue;
     const element = svg("g", { class: "link" });
-    const width = 1.2 + 3.3 * Math.sqrt(data.messages / most);
+    const width = 1 + 2.6 * Math.sqrt(data.messages / most);
     const line = svg("line", { class: "link-line", "stroke-width": width.toFixed(2) });
     const hit = svg("line", { class: "link-hit" });
     const title = svg("title");
@@ -373,9 +379,13 @@ function buildGraph(s: State): void {
     s.links.push({ source, target, data, element, line, hit });
   }
 
-  // Spread the layout the way the box is shaped: wide on a desktop, tall on a phone.
+  // Spread the layout the way the free part of the box is shaped: wide on a desktop, tall on
+  // a phone.
   const rect = page.box.getBoundingClientRect();
-  const tall = rect.width > 0 && rect.height > 0 && rect.width / rect.height < 1;
+  const inset = insets(s, rect);
+  const freeWidth = rect.width - inset.left - inset.right;
+  const freeHeight = rect.height - inset.top - inset.bottom;
+  const tall = freeWidth > 0 && freeHeight > 0 && freeWidth / freeHeight < 1;
   seedPositions(s, tall);
   page.graph.setAttribute(
     "aria-label",
@@ -386,11 +396,11 @@ function buildGraph(s: State): void {
     .force(
       "link",
       forceLink<GraphNode, GraphLink>(s.links)
-        .distance((link) => (sameGroup(link) ? 56 : 150) + extra(link))
+        .distance((link) => (sameGroup(link) ? 60 : 150) + extra(link))
         .strength((link) => (sameGroup(link) ? 0.6 : 0.12)),
     )
-    .force("charge", forceManyBody<GraphNode>().strength(-240).distanceMax(520))
-    .force("collide", forceCollide<GraphNode>((node) => node.reach + 12))
+    .force("charge", forceManyBody<GraphNode>().strength(-260).distanceMax(520))
+    .force("collide", forceCollide<GraphNode>((node) => node.reach + 14))
     .force("cluster", clusterForce(s))
     .force("x", forceX<GraphNode>(0).strength(tall ? 0.1 : 0.035))
     .force("y", forceY<GraphNode>(0).strength(tall ? 0.025 : 0.06));
@@ -422,8 +432,8 @@ function extra(link: GraphLink): number {
 
 /**
  * A sub-tau's small node, drawn in its own layer under the taus: a short tether to its tau,
- * its disc and, when names are shown, its `/name` outside the orbit. Its position is set
- * from its tau's in draw().
+ * its character and, when names are shown, its `/name` outside the orbit. Its position is
+ * set from its tau's in draw().
  */
 function buildSub(parent: GraphNode, data: SubNodeData, showNames: boolean): SubNode {
   const element = svg("g", { class: `sub ${parent.tau.online ? "online" : "offline"}` });
@@ -441,8 +451,8 @@ function buildSub(parent: GraphNode, data: SubNodeData, showNames: boolean): Sub
     }),
   );
   element.append(svg("circle", { class: "sub-hit", r: SUB_RADIUS + 5 }));
-  element.append(svg("circle", { class: "sub-ring", r: SUB_RADIUS + 3.5 }));
-  element.append(svg("circle", { class: "sub-disc", r: SUB_RADIUS }));
+  element.append(svg("circle", { class: "sub-ring", r: SUB_RADIUS + 4 }));
+  element.append(placedCharacter(data.id, SUB_RADIUS));
   if (showNames) {
     const label = svg("text", {
       class: "sub-name",
@@ -494,41 +504,34 @@ function clusterForce(s: State) {
 }
 
 /**
- * A closed, smoothed path through the hull of the circles around a group's members and
- * their sub-taus, so the sub-taus are inside their owner's hull.
+ * A closed path through the hull of octagons around a group's members and their sub-taus,
+ * so the sub-taus are inside their owner's hull. The edges stay straight: a hard, faceted
+ * outline rather than a soft blob.
  */
 function hullPath(members: GraphNode[]): { d: string; top: number; cx: number } {
   const points: [number, number][] = [];
-  const circle = (x: number, y: number, r: number) => {
-    for (let i = 0; i < 16; i++) {
-      const angle = (i / 16) * Math.PI * 2;
+  const octagon = (x: number, y: number, r: number) => {
+    for (let i = 0; i < 8; i++) {
+      const angle = ((i + 0.5) / 8) * Math.PI * 2;
       points.push([x + Math.cos(angle) * r, y + Math.sin(angle) * r]);
     }
   };
   for (const node of members) {
     const x = node.x ?? 0;
     const y = node.y ?? 0;
-    circle(x, y, NODE_RADIUS + HULL_PADDING);
+    octagon(x, y, NODE_RADIUS + HULL_PADDING);
     for (const sub of node.subs) {
-      circle(x + sub.data.dx, y + sub.data.dy, SUB_RADIUS + SUB_HULL_PADDING);
+      octagon(x + sub.data.dx, y + sub.data.dy, SUB_RADIUS + SUB_HULL_PADDING);
     }
   }
   const hull = polygonHull(points) ?? points;
-  const mid = (p: [number, number], q: [number, number]) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-  const last = hull[hull.length - 1]!;
-  const start = mid(last, hull[0]!);
-  let d = `M${start[0]!.toFixed(1)},${start[1]!.toFixed(1)}`;
-  for (let i = 0; i < hull.length; i++) {
-    const p = hull[i]!;
-    const q = hull[(i + 1) % hull.length]!;
-    const m = mid(p, q);
-    d += `Q${p[0].toFixed(1)},${p[1].toFixed(1)} ${m[0]!.toFixed(1)},${m[1]!.toFixed(1)}`;
-  }
+  let d = "";
   let top = Infinity;
-  let cx = 0;
-  for (const [x, y] of hull) {
+  hull.forEach(([x, y], index) => {
+    d += `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     if (y < top) top = y;
-  }
+  });
+  let cx = 0;
   for (const node of members) cx += node.x ?? 0;
   cx /= members.length;
   return { d: `${d}Z`, top, cx };
@@ -567,10 +570,46 @@ function draw(s: State, settled: boolean): void {
   fit(s, settled);
 }
 
+interface Insets {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 /**
- * Moves the viewBox toward the bounds of the drawing, keeping the box's aspect ratio. A
- * pinned detail card that floats over the graph (wide screens) keeps its part of the box
- * free: the drawing fits into the rest.
+ * The parts of the box the drawing keeps clear of, in pixels: a pinned card floating over the
+ * graph (wide screens), and on the landing page the header and the hero's text when they
+ * lie over the box.
+ */
+function insets(s: State, rect: DOMRect): Insets {
+  const out: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
+  const floating =
+    s.selected !== null &&
+    !page.detail.hidden &&
+    page.detail.classList.contains("pinned") &&
+    window.getComputedStyle(page.detail).position === "absolute";
+  if (floating) out.right = Math.min(page.detail.offsetWidth + 24, rect.width * 0.55);
+  if (hero && page.heroCopy !== null) {
+    const copy = page.heroCopy.getBoundingClientRect();
+    const overlapX = Math.min(rect.right, copy.right) - Math.max(rect.left, copy.left);
+    const overlapY = Math.min(rect.bottom, copy.bottom) - Math.max(rect.top, copy.top);
+    if (overlapX > 0 && overlapY > 0) {
+      if (copy.width < rect.width * 0.6) out.left = Math.max(out.left, copy.right - rect.left + 8);
+      else out.bottom = Math.max(out.bottom, rect.bottom - copy.top + 8);
+    }
+  }
+  if (hero && page.header !== null) {
+    const bar = page.header.getBoundingClientRect();
+    if (bar.bottom > rect.top && bar.top < rect.bottom) out.top = bar.bottom - rect.top + 8;
+  }
+  return out;
+}
+
+/**
+ * Moves the viewBox toward the bounds of the drawing: the drawing fits into the part of the
+ * box that nothing covers (see insets), the viewBox covers the whole box at the same scale,
+ * so links and hulls may run on under the covered parts.
  */
 function fit(s: State, immediate: boolean): void {
   let minX = Infinity;
@@ -593,19 +632,27 @@ function fit(s: State, immediate: boolean): void {
   minY -= pad + 14;
   maxY += pad + 18;
   const rect = page.box.getBoundingClientRect();
-  const floating =
-    s.selected !== null &&
-    !page.detail.hidden &&
-    window.getComputedStyle(page.detail).position === "absolute";
-  const reserved = floating ? Math.min(page.detail.offsetWidth + 24, rect.width * 0.55) : 0;
-  const usable = Math.max(1, rect.width - reserved);
-  const aspect = rect.width > 0 && rect.height > 0 ? usable / rect.height : 16 / 9;
-  let w = Math.max(maxX - minX, usable / MAX_SCALE);
-  let h = Math.max(maxY - minY, w / aspect);
-  w = Math.max(w, h * aspect);
-  h = w / aspect;
-  const total = rect.width > 0 ? (w * rect.width) / usable : w;
-  const target = { x: (minX + maxX) / 2 - w / 2, y: (minY + maxY) / 2 - h / 2, w: total, h };
+  const width = rect.width > 0 ? rect.width : 16;
+  const height = rect.height > 0 ? rect.height : 9;
+  const inset = rect.width > 0 ? insets(s, rect) : { left: 0, right: 0, top: 0, bottom: 0 };
+  // A covered part never takes more than two thirds of the box.
+  const usableW = Math.max(width / 3, width - inset.left - inset.right);
+  const usableH = Math.max(height / 3, height - inset.top - inset.bottom);
+  const scale = Math.min(
+    usableW / Math.max(1, maxX - minX),
+    usableH / Math.max(1, maxY - minY),
+    rect.width > 0 ? MAX_SCALE : Infinity,
+  );
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const left = Math.min(inset.left, width - usableW);
+  const top = Math.min(inset.top, height - usableH);
+  const target = {
+    x: cx - (left + usableW / 2) / scale,
+    y: cy - (top + usableH / 2) / scale,
+    w: width / scale,
+    h: height / scale,
+  };
   const view = s.view;
   const next =
     immediate || view === null
@@ -733,10 +780,35 @@ function toGraph(clientX: number, clientY: number): { x: number; y: number } {
 }
 
 /**
+ * On the landing page a click leaves for the tau's page: its person page when it has a
+ * handle, a sub-tau's page when it has one, and otherwise its place on /universe.
+ */
+function leaveFor(target: string): void {
+  const s = state;
+  if (s === null) return;
+  const found = parseTarget(s.snapshot, target);
+  if (found === null) return;
+  const tau = s.byAddress.get(found.address)?.tau;
+  if (tau === undefined) return;
+  const handle = handleOf(tau);
+  const destination =
+    found.sub !== null
+      ? (pageOfSub(tau, found.sub) ?? universePath(target, language))
+      : handle !== null
+        ? personPath(handle, language)
+        : universePath(found.address, language);
+  window.location.assign(destination);
+}
+
+/**
  * Selecting goes through the URL, so a pinned tau can be shared and the back button works.
  * `target` is a tau's address or a sub-tau's id (`<address>/<name>`).
  */
 function select(target: string | null): void {
+  if (hero) {
+    if (target !== null) leaveFor(target);
+    return;
+  }
   if (target === null) {
     if (window.location.hash !== "") {
       history.pushState(null, "", window.location.pathname + window.location.search);
@@ -762,9 +834,9 @@ function applyHash(): void {
   s.selected = target?.address ?? null;
   s.selectedSub = target?.sub != null ? `${target.address}/${target.sub}` : null;
   for (const [key, card] of s.cards) {
-    const link = card.querySelector("a");
-    if (key === s.selected) link?.setAttribute("aria-current", "true");
-    else link?.removeAttribute("aria-current");
+    const anchor = card.querySelector("a");
+    if (key === s.selected) anchor?.setAttribute("aria-current", "true");
+    else anchor?.removeAttribute("aria-current");
   }
   highlight(s);
   const sub = s.selectedSub !== null ? s.subsById.get(s.selectedSub) : undefined;
@@ -841,7 +913,7 @@ function openCard(element: SVGGElement, pinned: boolean): HTMLElement {
   // A hover card goes to the side away from the tau, so it never covers it. A pinned card
   // stays on the right, where fit() keeps the graph out of its way.
   let onLeft = false;
-  if (!pinned) {
+  if (!pinned && !hero) {
     const box = page.box.getBoundingClientRect();
     const spot = element.getBoundingClientRect();
     onLeft = spot.left + spot.width / 2 > box.left + box.width / 2;
@@ -859,12 +931,21 @@ function openCard(element: SVGGElement, pinned: boolean): HTMLElement {
 }
 
 function statusLine(tau: PublicTau, now: number): HTMLParagraphElement {
-  const status = html("p", `detail-status ${tau.online ? "is-online" : "is-offline"}`);
+  const status = html("p", `detail-status kicker ${tau.online ? "is-online" : "is-offline"}`);
   status.append(
-    html("span", `dot ${tau.online ? "dot-online" : "dot-offline"}`),
+    html("span", `pip ${tau.online ? "" : "pip-off"}`),
     tau.online ? t.online : t.lastSeen(ago(tau.last_seen, now)),
   );
   return status;
+}
+
+/** The card's head: the character, the status line and the name. */
+function cardHead(seed: string, tau: PublicTau, name: string, now: number): HTMLElement {
+  const head = html("div", "detail-head");
+  const text = html("div", "detail-titles");
+  text.append(statusLine(tau, now), html("h3", "detail-name", name));
+  head.append(characterElement(seed, { size: 56, animated: !reducedMotion.matches }), text);
+  return head;
 }
 
 /** The card of one sub-tau: its name, the tau it belongs to, its address and about line. */
@@ -872,15 +953,16 @@ function showSubDetail(s: State, sub: SubNode, pinned: boolean): void {
   const { data } = sub;
   const tau = sub.parent.tau;
   const card = openCard(sub.element, pinned);
-  const name = html("h3", "detail-name", data.label);
   const parent = html("p", "detail-parent");
-  const link = html("a", undefined, tau.name);
-  link.href = `#${tau.address}`;
-  parent.append(`${t.subOf} `, link);
+  const back = html("a", undefined, tau.name);
+  back.href = hero ? universePath(tau.address, language) : `#${tau.address}`;
+  parent.append(`${t.subOf} `, back);
   const addressLine = html("p", "detail-address");
   addressLine.append(html("code", undefined, data.id));
-  card.append(statusLine(tau, s.snapshot.generated_at), name, parent, addressLine);
+  card.append(cardHead(data.id, tau, data.label, s.snapshot.generated_at), parent, addressLine);
   if (data.about.trim() !== "") card.append(html("p", "detail-about", data.about));
+  const own = pageOfSub(tau, data.name);
+  if (own !== null && pinned) card.append(link(own, `${t.openPage} →`, "detail-page"));
   card.hidden = false;
 }
 
@@ -890,11 +972,13 @@ function showDetail(s: State, address: string, pinned: boolean): void {
   const { tau } = node;
   const now = s.snapshot.generated_at;
   const card = openCard(node.element, pinned);
-  const status = statusLine(tau, now);
-  const name = html("h3", "detail-name", tau.name);
   const addressLine = html("p", "detail-address");
   addressLine.append(html("code", undefined, tau.address));
-  card.append(status, name, addressLine);
+  card.append(cardHead(tau.address, tau, tau.name, now), addressLine);
+  const handle = handleOf(tau);
+  if (handle !== null) {
+    card.append(link(personPath(handle, language), `@${handle}`, "detail-handle"));
+  }
 
   if (tau.about.trim() !== "") card.append(html("p", "detail-about", tau.about));
 
@@ -915,7 +999,9 @@ function showDetail(s: State, address: string, pinned: boolean): void {
     const list = html("ul", "detail-subs");
     for (const sub of subs) {
       const chip = html("a", "sub-chip", `/${sub.name}`);
-      chip.href = `#${tau.address}/${sub.name}`;
+      chip.href = hero
+        ? (pageOfSub(tau, sub.name) ?? universePath(`${tau.address}/${sub.name}`, language))
+        : `#${tau.address}/${sub.name}`;
       if (sub.about.trim() !== "") chip.title = sub.about;
       const item = html("li");
       item.append(chip);
@@ -933,15 +1019,18 @@ function showDetail(s: State, address: string, pinned: boolean): void {
   } else {
     card.append(html("h4", "detail-heading", t.talksWith));
     const list = html("ul", "detail-links");
-    for (const link of links) {
-      const peer = s.byAddress.get(link.peer);
+    for (const entry of links) {
+      const peer = s.byAddress.get(entry.peer);
       const item = html("li");
-      const anchor = html("a", undefined, peer?.tau.name ?? link.peer);
-      anchor.href = `#${link.peer}`;
-      item.append(anchor, html("span", "detail-count", count(t.msgs, link.messages)));
+      const anchor = html("a", undefined, peer?.tau.name ?? entry.peer);
+      anchor.href = hero ? universePath(entry.peer, language) : `#${entry.peer}`;
+      item.append(anchor, html("span", "detail-count", count(t.msgs, entry.messages)));
       list.append(item);
     }
     card.append(list);
+  }
+  if (handle !== null && pinned) {
+    card.append(link(personPath(handle, language), `${t.openPage} →`, "detail-page"));
   }
   card.hidden = false;
 }
@@ -950,13 +1039,15 @@ function showDetail(s: State, address: string, pinned: boolean): void {
 // The list under the graph (also the keyboard path into the graph)
 
 function renderList(s: State): void {
-  page.list.replaceChildren();
+  const list = page.list;
+  if (list === null) return;
+  list.replaceChildren();
   s.cards.clear();
   const now = s.snapshot.generated_at;
   const degree = new Map<string, number>();
-  for (const link of s.snapshot.links) {
-    degree.set(link.a, (degree.get(link.a) ?? 0) + 1);
-    degree.set(link.b, (degree.get(link.b) ?? 0) + 1);
+  for (const entry of s.snapshot.links) {
+    degree.set(entry.a, (degree.get(entry.a) ?? 0) + 1);
+    degree.set(entry.b, (degree.get(entry.b) ?? 0) + 1);
   }
 
   for (const tau of s.snapshot.taus) {
@@ -965,12 +1056,14 @@ function renderList(s: State): void {
     card.href = `#${tau.address}`;
 
     const head = html("span", "tau-card-head");
-    head.append(
-      html("span", `dot ${tau.online ? "dot-online" : "dot-offline"}`),
-      html("span", "tau-card-name", tau.name),
-    );
+    const titles = html("span", "tau-card-titles");
+    const status = html("span", "tau-card-name");
+    status.append(html("span", `pip ${tau.online ? "" : "pip-off"}`), tau.name);
+    titles.append(status, html("span", "tau-card-address", tau.address));
+    head.append(characterElement(tau.address, { size: 44, animated: false }), titles);
     card.append(head);
-    card.append(html("span", "tau-card-address", tau.address));
+    const handle = handleOf(tau);
+    if (handle !== null) card.append(html("span", "tau-card-handle", `@${handle}`));
     if (tau.owner.trim() !== "") {
       card.append(html("span", "tau-card-owner", t.ownerLine(tau.owner)));
     }
@@ -1004,13 +1097,14 @@ function renderList(s: State): void {
     });
 
     item.append(card);
-    page.list.append(item);
+    list.append(item);
     s.cards.set(tau.address, item);
   }
   filterList(s);
 }
 
 function filterList(s: State): void {
+  if (page.list === null) return;
   const total = s.snapshot.taus.length;
   let shown = 0;
   for (const tau of s.snapshot.taus) {
@@ -1020,49 +1114,56 @@ function filterList(s: State): void {
     if (visible) shown++;
   }
   const online = s.snapshot.stats.online;
-  page.rosterCount.textContent =
-    s.query === ""
-      ? t.listed(numberFormat.format(total), numberFormat.format(online))
-      : t.matching(numberFormat.format(shown), numberFormat.format(total));
+  if (page.rosterCount !== null) {
+    page.rosterCount.textContent =
+      s.query === ""
+        ? t.listed(numberFormat.format(total), numberFormat.format(online))
+        : t.matching(numberFormat.format(shown), numberFormat.format(total));
+  }
+  const empty = page.rosterEmpty;
+  if (empty === null) return;
   if (total === 0) {
-    page.rosterEmpty.textContent = t.nobodyYet;
-    page.rosterEmpty.hidden = false;
+    empty.textContent = t.nobodyYet;
+    empty.hidden = false;
   } else if (shown === 0) {
-    page.rosterEmpty.textContent = t.noMatch(page.search.value.trim());
-    page.rosterEmpty.hidden = false;
+    empty.textContent = t.noMatch(page.search?.value.trim() ?? "");
+    empty.hidden = false;
   } else {
-    page.rosterEmpty.hidden = true;
+    empty.hidden = true;
   }
 }
 
 // ---------------------------------------------------------------------------------------
 // Wiring
 
-page.search.addEventListener("input", () => {
-  if (state === null) return;
-  state.query = page.search.value.trim().toLowerCase();
-  filterList(state);
-  highlight(state);
-});
-
-page.search.addEventListener("keydown", (event) => {
-  if (state === null) return;
-  if (event.key === "Enter") {
-    const first = state.snapshot.taus.find((tau) => matches(tau, state?.query ?? ""));
-    if (first !== undefined) select(first.address);
-  } else if (event.key === "Escape") {
-    page.search.value = "";
-    state.query = "";
+const search = page.search;
+if (search !== null) {
+  search.addEventListener("input", () => {
+    if (state === null) return;
+    state.query = search.value.trim().toLowerCase();
     filterList(state);
     highlight(state);
-  }
-});
+  });
+
+  search.addEventListener("keydown", (event) => {
+    if (state === null) return;
+    if (event.key === "Enter") {
+      const first = state.snapshot.taus.find((tau) => matches(tau, state?.query ?? ""));
+      if (first !== undefined) select(first.address);
+    } else if (event.key === "Escape") {
+      search.value = "";
+      state.query = "";
+      filterList(state);
+      highlight(state);
+    }
+  });
+}
 
 page.graph.addEventListener("pointerdown", (event) => {
   if (event.target === page.graph) select(null);
 });
 
-window.addEventListener("hashchange", applyHash);
+if (!hero) window.addEventListener("hashchange", applyHash);
 
 let resizeFrame = 0;
 new ResizeObserver(() => {

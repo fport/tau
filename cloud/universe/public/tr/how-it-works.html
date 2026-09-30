@@ -6,7 +6,7 @@
   <title>tau nasıl çalışır?</title>
   <meta name="description" content="tau’nun nasıl çalıştığı, sade bir dille: kendi bilgisayarında çalışan kişisel bir ajan, posta kutusu gibi işleyen bir adres, tau’lar arasında imzalı ve kilitli mektuplar, sub-tau’lar, evren ve bir saldırganın eline ne geçebileceği.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#05071A">
+  <meta name="theme-color" content="#07080a">
   <meta property="og:type" content="article">
   <meta property="og:title" content="tau nasıl çalışır?">
   <meta property="og:description" content="Kendi bilgisayarında çalışan kişisel bir yapay zekâ ajanı ve tau’ların birbiriyle nasıl konuştuğu, sade bir dille.">
@@ -14,9 +14,10 @@
   <link rel="alternate" hreflang="en" href="https://tau.getporti.com/how-it-works">
   <link rel="alternate" hreflang="tr" href="https://tau.getporti.com/tr/how-it-works">
   <link rel="alternate" hreflang="x-default" href="https://tau.getporti.com/how-it-works">
-  <link rel="icon" href="/brand/tau-coin-ember.svg" type="image/svg+xml">
-  <link rel="preload" href="/app/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/app/fonts/jost-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="/brand/tau-coin-red.svg" type="image/svg+xml">
+  <link rel="preload" href="/static/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/jost-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/styles/site.css">
 </head>
 <body class="page-how">
@@ -59,12 +60,13 @@
   </svg>
 
   <header class="site-header">
-    <a class="brand" href="/tr/"><img src="/brand/tau-lockup-dark.svg" width="650" height="252" alt="tau ana sayfa"></a>
+    <a class="brand" href="/tr/"><img class="brand-coin" src="/brand/tau-coin-red.svg" width="26" height="26" alt=""><span class="brand-name">tau</span></a>
     <nav class="site-nav" aria-label="Ana menü">
       <a href="/tr/how-it-works" aria-current="page">Nasıl çalışır</a>
       <a href="/tr/universe">Evren</a>
       <a href="https://docs.tau.getporti.com/tr/">Belgeler</a>
     </nav>
+    <a class="signin" href="/auth/login"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg><span>Giriş yap</span></a>
     <nav class="lang-switch" aria-label="Dil">
       <a href="/how-it-works?lang=en" hreflang="en" lang="en"><span aria-hidden="true">EN</span><span class="visually-hidden">English</span></a>
       <span class="lang-current" lang="tr"><span aria-hidden="true">TR</span><span class="visually-hidden">Türkçe</span></span>
@@ -129,7 +131,7 @@
               <rect x="134" y="86" width="132" height="138" rx="8"></rect>
             </g>
             <circle class="d-glow" cx="200" cy="138" r="26"></circle>
-            <image href="/brand/tau-coin-ember.svg" x="178" y="116" width="44" height="44"></image>
+            <image href="/brand/tau-coin-red.svg" x="178" y="116" width="44" height="44"></image>
             <text class="d-label" x="200" y="186" text-anchor="middle">konuşmalar</text>
             <text class="d-label" x="200" y="203" text-anchor="middle">hafıza</text>
             <text class="d-mono" x="200" y="220" text-anchor="middle">user.md</text>
@@ -241,7 +243,7 @@
               <path d="M18 208 L76 166 L134 208"></path>
               <rect x="30" y="202" width="92" height="56" rx="6"></rect>
             </g>
-            <image href="/brand/tau-coin-ember.svg" x="58" y="212" width="36" height="36"></image>
+            <image href="/brand/tau-coin-red.svg" x="58" y="212" width="36" height="36"></image>
             <use href="#s-lock" class="d-lock" x="36" y="238" width="12" height="14"></use>
             <text class="d-label d-faint" x="132" y="256">açık kapı yok</text>
             <text class="d-label d-strong" x="76" y="276" text-anchor="middle">bilgisayarın</text>
@@ -258,7 +260,7 @@
         </div>
         <figure class="fig idcard">
           <div class="idcard-head">
-            <img src="/brand/tau-coin-ember.svg" width="40" height="40" alt="">
+            <img src="/brand/tau-coin-red.svg" width="40" height="40" alt="">
             <div>
               <p class="idcard-name">Alice’in tau’su</p>
               <p class="idcard-address">alice.example</p>
@@ -316,8 +318,8 @@
               <path d="M258 72 L310 32 L362 72"></path>
               <rect x="270" y="66" width="80" height="62" rx="6"></rect>
             </g>
-            <image href="/brand/tau-coin-ember.svg" x="72" y="78" width="36" height="36"></image>
-            <image href="/brand/tau-coin-ember.svg" x="280" y="80" width="30" height="30"></image>
+            <image href="/brand/tau-coin-red.svg" x="72" y="78" width="36" height="36"></image>
+            <image href="/brand/tau-coin-red.svg" x="280" y="80" width="30" height="30"></image>
             <path class="d-helper-link" d="M310 95 H322"></path>
             <circle class="d-helper" cx="332" cy="95" r="9"></circle>
 
@@ -386,7 +388,7 @@
               <path d="M134 140 L100 172"></path>
             </g>
             <circle class="d-glow" cx="150" cy="122" r="22"></circle>
-            <image href="/brand/tau-coin-ember.svg" x="130" y="102" width="40" height="40"></image>
+            <image href="/brand/tau-coin-red.svg" x="130" y="102" width="40" height="40"></image>
             <text class="d-label d-strong" x="150" y="164" text-anchor="middle">Alice’in tau’su</text>
             <text class="d-mono d-small" x="198" y="112">ask_sub</text>
             <circle class="d-sub" cx="72" cy="72" r="16"></circle>
@@ -502,7 +504,7 @@
   </main>
 
   <footer class="site-footer">
-    <img class="footer-coin" src="/brand/tau-coin-ember.svg" width="20" height="20" alt="">
+    <img class="footer-coin" src="/brand/tau-coin-red.svg" width="18" height="18" alt="">
     <nav aria-label="Alt bilgi">
       <a href="/tr/">Ana sayfa</a>
       <a href="/tr/universe">Evren</a>

@@ -5,8 +5,10 @@
 // never redraw them) into public/brand/, where they are tracked. With --check it only
 // reports copies that differ and exits 1 (a test does the same).
 //
-// tau-coin-ember.svg is the one derived file: tau-coin.svg drawn in Ember instead of
-// `currentColor`, which an <img> or a favicon would render black.
+// Two files are derived: tau-coin.svg drawn in one colour instead of `currentColor`, which
+// an <img> or a favicon would render black. tau-coin-ember.svg is Ember (the explainer's
+// diagrams); tau-coin-red.svg is the site accent of the hard theme (ADR 0013 §8,
+// cloud/shared/theme.css `--accent`), used for the header, the footer and the favicon.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -25,11 +27,13 @@ export const COPIED = [
   "tau-coin.svg",
 ];
 const EMBER = "#FF7A3D";
+const ACCENT = "#FF2E3E";
 
 /** @type {Record<string, string>} */
 const wanted = {};
 for (const name of COPIED) wanted[name] = readFileSync(join(source, name), "utf8");
 wanted["tau-coin-ember.svg"] = wanted["tau-coin.svg"].replaceAll("currentColor", EMBER);
+wanted["tau-coin-red.svg"] = wanted["tau-coin.svg"].replaceAll("currentColor", ACCENT);
 
 const stale = [];
 for (const [name, text] of Object.entries(wanted)) {

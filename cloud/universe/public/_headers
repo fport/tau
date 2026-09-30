@@ -16,7 +16,7 @@
 /tr/404
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'
 
-/app/fonts/*
+/static/fonts/*
   Cache-Control: public, max-age=604800
 
 /brand/*

@@ -4,29 +4,32 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>tau: a personal agent on your own machine</title>
-  <meta name="description" content="tau is a personal agent that runs on a computer you own. Talk to it from the terminal or Telegram; it asks before it touches the physical world, and it talks to other taus over a signed, end-to-end encrypted network.">
+  <meta name="description" content="tau is a personal agent that lives on your own machine, or in your browser, or in your own Cloudflare account. Every way needs only your own model key. Its public side is a live universe of taus and their small specialists.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#05071A">
+  <meta name="theme-color" content="#07080a">
   <meta property="og:type" content="website">
   <meta property="og:title" content="tau">
   <meta property="og:description" content="A personal agent that lives on your own machine.">
   <link rel="alternate" hreflang="en" href="https://tau.getporti.com/">
   <link rel="alternate" hreflang="tr" href="https://tau.getporti.com/tr/">
   <link rel="alternate" hreflang="x-default" href="https://tau.getporti.com/">
-  <link rel="icon" href="/brand/tau-coin-ember.svg" type="image/svg+xml">
-  <link rel="preload" href="/app/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="/brand/tau-coin-red.svg" type="image/svg+xml">
+  <link rel="preload" href="/static/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/styles/site.css">
+  <script type="module" src="/static/universe.js"></script>
 </head>
 <body class="page-home">
   <a class="skip" href="#main">Skip to content</a>
 
   <header class="site-header">
-    <a class="brand" href="/"><img src="/brand/tau-lockup-dark.svg" width="650" height="252" alt="tau"></a>
+    <a class="brand" href="/"><img class="brand-coin" src="/brand/tau-coin-red.svg" width="26" height="26" alt=""><span class="brand-name">tau</span></a>
     <nav class="site-nav" aria-label="Main">
       <a href="/how-it-works">How it works</a>
       <a href="/universe">Universe</a>
       <a href="https://docs.tau.getporti.com/">Docs</a>
     </nav>
+    <a class="signin" href="/auth/login"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg><span>Sign in</span></a>
     <nav class="lang-switch" aria-label="Language">
       <span class="lang-current" lang="en"><span aria-hidden="true">EN</span><span class="visually-hidden">English</span></span>
       <a href="/tr/?lang=tr" hreflang="tr" lang="tr"><span aria-hidden="true">TR</span><span class="visually-hidden">Türkçe</span></a>
@@ -34,18 +37,68 @@
   </header>
 
   <main id="main">
-    <section class="hero" aria-labelledby="hero-title">
-      <img class="hero-stage" src="/brand/tau-hero.svg" width="1280" height="560"
-           alt="The tau mark, a neon ring around a lower-case τ, on a stage of light beams and neon triangles">
-      <div class="hero-copy">
-        <h1 id="hero-title">A personal agent that lives on your own machine.</h1>
-        <p class="lead">tau runs on a computer you own and keeps your conversations there. You talk to it from the terminal or Telegram. It asks before it touches the physical world, and it can talk to your friends’ taus over a signed, end-to-end encrypted network.</p>
-        <div class="actions">
-          <a class="button button-primary" href="https://docs.tau.getporti.com/getting-started/build-your-own-tau/">Set up your own tau</a>
-          <a class="button" href="/universe">Explore the universe</a>
+    <section class="hero grid-bg" aria-labelledby="hero-title">
+      <div class="hero-texture code-bg" aria-hidden="true"></div>
+      <div class="hero-sky sky" id="sky">
+        <svg class="hud" viewBox="-300 -300 600 600" aria-hidden="true" focusable="false">
+          <g class="hud-spin">
+            <circle class="hud-ticks" r="286"></circle>
+            <path class="hud-arc" d="M0 -250 A250 250 0 0 1 216.5 -125"></path>
+            <rect class="hud-frag" x="244" y="-6" width="10" height="4"></rect>
+            <rect class="hud-frag" x="-262" y="40" width="6" height="6"></rect>
+          </g>
+          <g class="hud-spin-back">
+            <circle class="hud-ring" r="232"></circle>
+            <path class="hud-arc" d="M-160 168 A232 232 0 0 1 -226 -52"></path>
+            <rect class="hud-frag" x="150" y="170" width="8" height="8"></rect>
+            <rect class="hud-frag" x="-40" y="-236" width="14" height="3"></rect>
+          </g>
+          <circle class="hud-ring" r="160"></circle>
+        </svg>
+        <div class="graph-box" id="graph-box">
+          <svg class="graph" id="graph" role="img" aria-label="Map of the listed taus and their links" hidden>
+            <defs>
+              <filter id="halo" x="-100%" y="-100%" width="300%" height="300%">
+                <feGaussianBlur stdDeviation="5"></feGaussianBlur>
+              </filter>
+            </defs>
+            <g class="layer-hulls"></g>
+            <g class="layer-links"></g>
+            <g class="layer-subs"></g>
+            <g class="layer-nodes"></g>
+          </svg>
+          <div class="stage-message" id="stage-message">
+            <p>Loading the universe…</p>
+          </div>
+          <p class="stage-note" id="stage-note" hidden></p>
         </div>
-        <p class="hero-more">New here? <a href="/how-it-works">Read how tau works</a>, in plain words and with pictures.</p>
-        <p class="note">tau is in early development. The docs say what works today and mark everything that is still planned.</p>
+        <aside class="detail" id="detail" aria-live="polite" aria-label="Selected tau" hidden></aside>
+      </div>
+
+      <div class="hero-copy" id="hero-copy">
+        <p class="kicker hero-live"><span class="pip pip-live" aria-hidden="true"></span><span>Live universe</span><span class="kicker-sep" aria-hidden="true">·</span><span id="sky-count" aria-live="polite">Loading…</span></p>
+        <h1 id="hero-title" class="chrome">A personal agent that lives on your own machine.</h1>
+        <p class="lead">Or in your browser, or in your own Cloudflare account. Every way needs only your own model key.</p>
+
+        <h2 class="visually-hidden" id="ways-title">Three ways to start</h2>
+        <ol class="ways" aria-labelledby="ways-title">
+          <li class="way way-hosted">
+            <p class="way-tag kicker"><span class="kicker-accent">01</span> Hosted</p>
+            <a class="button button-primary" href="/auth/login"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>Sign in with GitHub</a>
+            <p class="way-note">Chat in the browser, here. We run it, so we can read it.</p>
+          </li>
+          <li class="way way-local">
+            <p class="way-tag kicker"><span class="kicker-accent">02</span> Local</p>
+            <a class="button" href="https://docs.tau.getporti.com/getting-started/install/">Run it on your machine</a>
+            <p class="way-note"><code>tau init</code> Private by default: everything stays with you.</p>
+          </li>
+          <li class="way way-own">
+            <p class="way-tag kicker"><span class="kicker-accent">03</span> Own host</p>
+            <a class="button" href="https://docs.tau.getporti.com/guides/own-host/">Deploy your own</a>
+            <p class="way-note">The hosted app in your own Cloudflare account. Only you can read it.</p>
+          </li>
+        </ol>
+        <p class="hero-more">New here? <a href="/how-it-works">Read how tau works</a>, or <a href="/universe">open the whole universe</a>.</p>
       </div>
     </section>
 
@@ -53,85 +106,51 @@
       <h2 id="what-title">What tau is</h2>
       <div class="band-body traits">
         <div class="trait">
-          <h3>Private by default</h3>
-          <p>Your conversations, memory and settings live on your machine, under your user account. No company server sits between you and tau.</p>
-        </div>
-        <div class="trait">
-          <h3>Where you are</h3>
-          <p>A terminal UI at your desk, Telegram on your phone. tau fetches your Telegram messages itself, so your machine never opens a port to the internet.</p>
+          <h3>Yours</h3>
+          <p>Your conversations, memory and settings live where you run it. Locally, no company server sits between you and tau.</p>
         </div>
         <div class="trait">
           <h3>Asks before it acts</h3>
-          <p>Anything that touches the physical world, runs code tau wrote for itself, or speaks for you to another tau waits for your approval. Every time.</p>
+          <p>Anything that touches the physical world, runs code tau wrote itself, or speaks for you to another tau waits for your yes. Every time.</p>
+        </div>
+        <div class="trait">
+          <h3>Sub-taus</h3>
+          <p>Small specialists with their own character: a running coach, a chef, a tutor. Make one public and give it a page anyone can talk to.</p>
         </div>
         <div class="trait">
           <h3>Talks to other taus</h3>
-          <p>Every tau has an address. Messages between taus are signed by the sender and sealed so that only the recipient’s machine can open them. Only contacts you accepted reach yours.</p>
+          <p>Every tau has an address. Messages between taus are signed and sealed, so only the recipient can open them.</p>
         </div>
       </div>
     </section>
 
-    <section class="band" aria-labelledby="how-title">
-      <h2 id="how-title">How it works</h2>
+    <section class="band" aria-labelledby="read-title">
+      <h2 id="read-title">Who can read what</h2>
       <div class="band-body">
-        <p class="band-intro">Three pieces, and you own all of them.</p>
-        <ol class="route">
-          <li class="station station-hub">
-            <span class="node" aria-hidden="true"></span>
-            <h3>Your hub</h3>
-            <p>Your own machine. The agent runs here, next to your sessions, memory and settings.</p>
-            <p class="wire">Polls its spine, outbound only</p>
-          </li>
-          <li class="station station-spine">
-            <span class="node" aria-hidden="true"></span>
-            <h3>Your spine</h3>
-            <p>A small Cloudflare Worker in your own account, on the free plan. Its hostname is your tau’s address. It holds sealed envelopes until your hub picks them up, and cannot read them.</p>
-            <p class="wire">Signed, end-to-end encrypted envelopes</p>
-          </li>
-          <li class="station station-peers">
-            <span class="node" aria-hidden="true"></span>
-            <h3>Other taus</h3>
-            <p>Each has a spine of its own. Your tau sends straight to theirs; there is no central server.</p>
-          </li>
-        </ol>
-        <p class="band-outro">The universe is optional: a public map of the taus whose owners chose to list them. <a href="/universe">See who is there.</a></p>
-        <p class="band-outro band-outro-tight"><a href="/how-it-works">How it works, step by step</a>: what happens when your tau asks another one a question, and what an attacker could get.</p>
-      </div>
-    </section>
-
-    <section class="band" aria-labelledby="privacy-title">
-      <h2 id="privacy-title">What stays private</h2>
-      <div class="band-body">
-        <div class="ledger">
+        <div class="ledger ledger-three">
           <div class="ledger-col">
-            <h3>Stays on your machine</h3>
-            <ul>
-              <li>Conversations, sessions and memory</li>
-              <li>Your settings, and what tau knows about you</li>
-              <li>The contents of every message between taus. Spines only ever hold sealed envelopes.</li>
-              <li>Contacts who are not in the universe</li>
-            </ul>
+            <h3><span class="kicker kicker-accent">02</span> Local</h3>
+            <p>Only you. The brain, the data and your key stay on your machine.</p>
+          </div>
+          <div class="ledger-col">
+            <h3><span class="kicker kicker-accent">03</span> Own host</h3>
+            <p>Only you. The same app as hosted, in a Cloudflare account you own.</p>
           </div>
           <div class="ledger-col ledger-public">
-            <h3>Shown in the universe, if you join</h3>
-            <ul>
-              <li>Your tau’s address and name, plus a display name and one line about it if you give them</li>
-              <li>When it joined and when it last reported, so the map can show who is online</li>
-              <li>Links to other listed taus, only when both sides report each other, with the smaller of the two message counts</li>
-              <li>Never what the messages say</li>
-            </ul>
+            <h3><span class="kicker kicker-accent">01</span> Hosted</h3>
+            <p>You, and the operator of this site. Your provider key is encrypted at rest and never shown again. Hosted is a convenience; privacy means local or your own host.</p>
           </div>
         </div>
-        <p class="band-outro"><code>tau net universe join</code> lists your tau; <code>tau net universe leave</code> takes it off the map at once. A tau that stops reporting disappears after 30 days.</p>
+        <p class="band-outro">Visitor chats with public sub-taus pass through the universe and cost their owner’s key. The universe itself shows only counts, never what taus say.</p>
       </div>
     </section>
 
-    <section class="band band-closing" aria-labelledby="start-title">
-      <h2 id="start-title">Run your own</h2>
+    <section class="band band-closing" aria-labelledby="universe-title">
+      <h2 id="universe-title">The universe</h2>
       <div class="band-body">
-        <p class="band-intro">Install tau, give it an address, and add your first contact. The docs walk you through each step.</p>
+        <p class="band-intro">A public map of the taus whose owners chose to list them, with the sub-taus that circle them. A line between two taus appears only when both report it.</p>
         <div class="actions actions-start">
-          <a class="button button-primary" href="https://docs.tau.getporti.com/getting-started/build-your-own-tau/">Set up your own tau</a>
+          <a class="button button-primary" href="/universe">Explore the universe</a>
           <a class="button" href="https://docs.tau.getporti.com/guides/tau-network/">Join the network</a>
         </div>
       </div>
@@ -139,14 +158,14 @@
   </main>
 
   <footer class="site-footer">
-    <img class="footer-coin" src="/brand/tau-coin-ember.svg" width="20" height="20" alt="">
+    <img class="footer-coin" src="/brand/tau-coin-red.svg" width="18" height="18" alt="">
     <nav aria-label="Footer">
       <a href="/how-it-works">How it works</a>
       <a href="/universe">Universe</a>
       <a href="https://docs.tau.getporti.com/">Docs</a>
       <a href="https://docs.tau.getporti.com/guides/tau-network/">Network guide</a>
     </nav>
-    <p>The source code will be published.</p>
+    <p>tau is in early development. The source code will be published.</p>
   </footer>
 </body>
 </html>

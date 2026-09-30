@@ -7,7 +7,7 @@ It is built on [Strands Agents](https://strandsagents.com/) and is published on 
 
 ```sh
 pip install tau-core        # or, inside the tau repo: uv sync --all-packages --group dev
-tau --help                  # chat, hub, components, doctor, init, spend, version, plus plugin commands (tui, net, ...)
+tau --help                  # chat, hub, components, doctor, init, spend, telegram, version, plus plugin commands (tui, net, ...)
 tau init                    # create ~/.tau/tau.toml and the persona files from the templates
 tau doctor                  # check config, credentials, budgets, sessions, persona, .env, the hub
 tau spend                   # what every model role spent in its budget period
@@ -674,7 +674,7 @@ It reads two names from `.env` (or the environment):
 | variable | meaning |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | the bot token from @BotFather (`/newbot`) |
-| `TELEGRAM_ALLOWED_CHAT_IDS` | the chat ids the bot answers, comma-separated (yours: send the bot a message, then read `message.chat.id` from `getUpdates`) |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | the chat ids the bot answers, comma-separated (`tau telegram pair` sets yours; by hand: send the bot a message, then read `message.chat.id` from `getUpdates`) |
 
 and its own table in `tau.toml`:
 
@@ -685,14 +685,25 @@ backoff_max_seconds = 60     # cap of the exponential backoff after network erro
 approval_timeout_seconds = 300   # an unanswered tier-2 approval counts as not approved
 ```
 
-Without a token, or without an allowed chat, the service starts idle, logs one line and reports
-`"telegram": {"configured": false, "reason": ...}` in `/status`; it never fails the hub. When it
-runs, `/status` shows `state` (`starting`, `polling`, `retrying`, `failed`, `stopped`), `bot`,
-`allowed_chats`, `last_poll_at`, `last_error`, `retry_in_s`, `handled` and `dropped`, never the
-token or a chat id; `tau doctor` prints the same as its `telegram` line. On start it calls
-`deleteWebhook` (Telegram refuses `getUpdates` while a webhook is set). Network errors back off
-exponentially (1 s, 2 s, 4 s, … up to `backoff_max_seconds`) and the hub stays up; a token the
-Bot API rejects (401) stops the poller until the next hub start.
+Without a token, or without an allowed chat and no pairing code waiting, the service starts
+idle, logs one line and reports `"telegram": {"configured": false, "reason": ...}` in `/status`;
+it never fails the hub. When it runs, `/status` shows `state` (`starting`, `polling`,
+`retrying`, `failed`, `stopped`), `pairing`, `bot`, `allowed_chats`, `last_poll_at`,
+`last_error`, `retry_in_s`, `handled` and `dropped`, never the token or a chat id; `tau doctor`
+prints the same as its `telegram` line. On start it calls `deleteWebhook` (Telegram refuses
+`getUpdates` while a webhook is set). Network errors back off exponentially (1 s, 2 s, 4 s, … up
+to `backoff_max_seconds`) and the hub stays up; a token the Bot API rejects (401) stops the
+poller until the next hub start.
+
+**Pairing** (issue 172, `tau_core.channels.telegram_pairing` and `tau telegram pair|status`):
+the command writes the token to `.env` and a one-time code, stored as a salted PBKDF2 hash in
+`TAU_DATA_DIR/telegram/pairing.json` (10 minutes, one use, 10 wrong tries). With a hub running
+it calls the protected `POST /telegram/reload`: the service re-reads the two variables (`.env`
+first) and the code, and polls even with an empty allowlist while the code waits. `/start <code>`
+from a private chat makes that chat `TELEGRAM_ALLOWED_CHAT_IDS` (the `.env` line replaced, the
+rest kept) and the chat is told so; wrong, expired or group codes are dropped unanswered. Without
+a hub the command polls `getUpdates` itself from the same `offset` and stops right after the
+pairing update, so exactly one process polls the bot at a time.
 
 Each allowed chat has a worker that handles its messages in order, so the poller keeps polling
 while a turn runs (and while it waits for an approval); messages that arrive meanwhile queue up.

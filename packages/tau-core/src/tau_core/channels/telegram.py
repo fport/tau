@@ -9,14 +9,23 @@ does not confirm its existence to strangers.
 
 Configuration comes from ``.env`` (``TELEGRAM_BOT_TOKEN``, ``TELEGRAM_ALLOWED_CHAT_IDS``,
 comma-separated) and ``[component.telegram]`` in ``tau.toml`` (``poll_timeout_seconds``,
-``backoff_max_seconds``). Without a token, or without an allowed chat, the service starts idle,
-logs one line and reports ``telegram: {configured: false}`` in ``/status``; it never fails
-the hub.
+``backoff_max_seconds``). Without a token, or without an allowed chat and no pairing code
+waiting, the service starts idle, logs one line and reports ``telegram: {configured: false}``
+in ``/status``; it never fails the hub.
+
+Pairing (issue 172, :mod:`tau_core.channels.telegram_pairing`): ``tau telegram pair`` writes
+the token and a hashed one-time code, then calls the protected ``POST /telegram/reload``. The
+service re-reads its two variables (``.env`` first, since that is where the command writes) and
+the code, and polls even with an empty allowlist while the code waits. ``/start <code>`` from a
+private chat within the code's lifetime makes that chat the allowed one (``.env`` updated, the
+chat told "paired"); a wrong or expired code is dropped unanswered like any stranger's message.
+When the code runs out with no chat allowed, the poller goes idle again.
 
 State lives under ``TAU_DATA_DIR/telegram/``: ``offset`` (the next ``update_id`` to ask for,
 written after each update is handled, so a restart neither re-processes nor skips one; an
-update whose turn a stop interrupted runs again after the restart) and ``chats.json`` (chat id
-→ current session id, so a chat keeps its session across restarts).
+update whose turn a stop interrupted runs again after the restart), ``chats.json`` (chat id
+→ current session id, so a chat keeps its session across restarts) and, while ``tau telegram
+pair`` waits, ``pairing.json`` (the hashed one-time code).
 
 Tier-2 calls are approved with inline buttons (issue 017): :class:`TelegramApprover` sends the
 tool, its arguments and its effect with **Approve** / **Reject**, and the button press comes back
@@ -57,6 +66,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from tau_core.agent import Notice, TauAgent, TextDelta, ToolFinished, build_agent
 from tau_core.approval import ApprovalRequest, Decision, _printable
+from tau_core.channels.telegram_pairing import PairingStore, start_payload, try_pair
 from tau_core.commands import SLASH_COMMANDS, SlashCommand, resolve_command, usage
 from tau_core.compaction import (
     CompactionError,
@@ -75,11 +85,14 @@ from tau_core.tiers import tier_of
 
 if TYPE_CHECKING:
     from tau_core.builder import Check
+    from tau_core.hub.control import ControlRequest
     from tau_core.hub.daemon import Hub
 
 __all__ = [
     "ALLOWED_CHATS_ENV",
+    "ALLOWED_UPDATES",
     "MAX_MESSAGE_LENGTH",
+    "RELOAD_PATH",
     "TOKEN_ENV",
     "BotApi",
     "HttpBotApi",
@@ -120,6 +133,10 @@ SCAN_LIMIT = 100
 
 SEND_ATTEMPTS = 5
 """A reply is retried this often on network errors and flood control before it is dropped."""
+
+RELOAD_PATH = "/telegram/reload"
+"""The protected control route ``tau telegram pair`` calls after it wrote the token and code."""
+RELOAD_TIMEOUT = 10.0
 
 
 # -- small pure helpers ----------------------------------------------------------------------
@@ -443,7 +460,8 @@ def _write_atomic(path: Path, text: str) -> None:
 
 
 class TelegramFiles:
-    """``TAU_DATA_DIR/telegram/offset`` and ``chats.json``."""
+    """``TAU_DATA_DIR/telegram/offset``, ``chats.json`` and ``inflight.json`` (the pairing
+    record is :class:`~tau_core.channels.telegram_pairing.PairingStore`'s)."""
 
     def __init__(self, root: Path):
         self.root = root
@@ -567,18 +585,15 @@ class TelegramService:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ):
         self.config = config
+        self._base_env = env
+        """The mapping tests pass; ``None`` means the process environment."""
         if env is None:
             from tau_core.builder import env_with_dotenv
 
             env = env_with_dotenv(config.home, os.environ)
-        self.token = (env.get(TOKEN_ENV) or "").strip()
-        self.allowed, invalid = parse_chat_ids(env.get(ALLOWED_CHATS_ENV))
-        if invalid:
-            logger.warning(
-                "telegram: %s has entries that are not chat ids, ignored: %s",
-                ALLOWED_CHATS_ENV,
-                ", ".join(invalid),
-            )
+        self.token = ""
+        self.allowed: frozenset[int] = frozenset()
+        self._set_env(env)
         settings = config.component(SERVICE_NAME)
         self.poll_timeout = int(
             _positive(settings.get("poll_timeout_seconds"), DEFAULT_POLL_TIMEOUT)
@@ -588,10 +603,17 @@ class TelegramService:
             settings.get("approval_timeout_seconds"), DEFAULT_APPROVAL_TIMEOUT
         )
         self.api: BotApi | None = api
+        self._own_api = api is None
+        """A token change on reload replaces an API this service built, never an injected one."""
         self.store = store
         self.hub: Hub | None = None
         """The hub this service started in; ``/guard`` finds the in-hub guard through it."""
         self.files = TelegramFiles(config.data_dir / "telegram")
+        self.pairing = PairingStore(self.files.root)
+        """The one-time code of ``tau telegram pair`` (issue 172)."""
+        self._loaded = False
+        self._replayed = False
+        self._route_added = False
         self.approvals: dict[str, PendingApproval] = {}
         """Tier-2 requests waiting for a button press, by request id."""
         self._inflight: dict[int, dict[str, Any]] = {}
@@ -615,36 +637,129 @@ class TelegramService:
     def configured(self) -> bool:
         return bool(self.token) and bool(self.allowed)
 
+    def _set_env(self, env: Mapping[str, str]) -> None:
+        self.token = (env.get(TOKEN_ENV) or "").strip()
+        self.allowed, invalid = parse_chat_ids(env.get(ALLOWED_CHATS_ENV))
+        if invalid:
+            logger.warning(
+                "telegram: %s has entries that are not chat ids, ignored: %s",
+                ALLOWED_CHATS_ENV,
+                ", ".join(invalid),
+            )
+
+    def _reload_env(self) -> dict[str, str]:
+        """The two variables for a reload: ``<home>/.env`` first, then the environment. The
+        hub loaded ``.env`` into its environment when it started, so the file has to win for
+        a token or an allowlist that ``tau telegram pair`` wrote since."""
+        from dotenv import dotenv_values
+
+        env = dict(os.environ if self._base_env is None else self._base_env)
+        dotenv = self.config.home / ".env"
+        if dotenv.is_file():
+            values = dotenv_values(dotenv)
+            for name in (TOKEN_ENV, ALLOWED_CHATS_ENV):
+                value = values.get(name)
+                if value is not None:
+                    env[name] = value
+        return env
+
+    def _idle_why(self) -> str | None:
+        if not self.token:
+            return f"{TOKEN_ENV} is not set"
+        if not self.allowed and not self.pairing.pending():
+            return f"{ALLOWED_CHATS_ENV} is empty"
+        return None
+
+    @property
+    def polling(self) -> bool:
+        """Is the poller task running?"""
+        return self._task is not None and not self._task.done()
+
     async def start(self, hub: Hub) -> None:
         self.hub = hub
         hub.add_status_source(lambda: {SERVICE_NAME: self.status()})
-        if not self.token:
-            self.idle_reason = f"{TOKEN_ENV} is not set"
-        elif not self.allowed:
-            self.idle_reason = f"{ALLOWED_CHATS_ENV} is empty"
+        self._add_route(hub)
+        self._begin()
+
+    def _add_route(self, hub: Hub) -> None:
+        """``POST /telegram/reload`` on the control API (protected: signed requests only)."""
+        api = hub.find_service("control-api")
+        if api is None or self._route_added:
+            return
+        api.add_route("POST", RELOAD_PATH, self._route_reload)  # type: ignore[attr-defined]
+        self._route_added = True
+
+    def _begin(self) -> None:
+        """Start the poller, or stay idle with a reason."""
+        self.idle_reason = self._idle_why()
         if self.idle_reason is not None:
-            logger.info("telegram: %s; the channel stays idle", self.idle_reason)
+            if not self.allowed and self.token:
+                logger.info(
+                    "telegram: %s; the channel stays idle (tau telegram pair sets it up)",
+                    self.idle_reason,
+                )
+            else:
+                logger.info("telegram: %s; the channel stays idle", self.idle_reason)
+            self.state = "idle"
             return
         if self.api is None:
             self.api = HttpBotApi(self.token)
         if self.store is None:
             self.store = open_session_store(self.config)
-        self.offset = self.files.read_offset()
-        self._inflight = self.files.read_inflight()
-        self._sessions = {
-            chat: session
-            for chat, session in self.files.read_chats().items()
-            if chat in self.allowed
-        }
+        stored = self.files.read_offset()
+        if stored is not None and (self.offset is None or stored > self.offset):
+            self.offset = stored  # `tau telegram pair` polled while no poller ran here
+        if not self._loaded:
+            self._loaded = True
+            self._inflight = self.files.read_inflight()
+            self._sessions = {
+                chat: session
+                for chat, session in self.files.read_chats().items()
+                if chat in self.allowed
+            }
+        if not self.allowed:
+            logger.info("telegram: polling for a pairing code (tau telegram pair)")
         self.state = "starting"
         self._task = asyncio.create_task(self._run(), name="tau-telegram-poller")
 
-    async def stop(self) -> None:
+    async def _stop_poller(self) -> None:
         task, self._task = self._task, None
         if task is not None:
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
+
+    async def reload(self) -> dict[str, Any]:
+        """Re-read the token and the allowlist (:meth:`_reload_env`) and a waiting pairing
+        code, then (re)start the poller when the token or the allowlist changed or it was not
+        running; a running poller with the same settings keeps going and sees the code on its
+        next update. The chats' workers keep running. Returns :meth:`status`."""
+        token, allowed = self.token, self.allowed
+        self._set_env(self._reload_env())
+        if self.token != token and self._own_api:
+            self.api = None  # a new HttpBotApi for the new token in _begin
+        if self.polling and self.token == token and self.allowed == allowed:
+            self.idle_reason = None
+            return self.status()
+        await self._stop_poller()
+        self._begin()
+        return self.status()
+
+    def _route_reload(self, request: ControlRequest) -> tuple[int, Any]:
+        """``POST /telegram/reload``: run :meth:`reload` on the hub's loop."""
+        hub = self.hub
+        loop = hub.loop if hub is not None else None
+        if loop is None or loop.is_closed():
+            return 503, {"error": "the hub is not running"}
+        future = asyncio.run_coroutine_threadsafe(self.reload(), loop)
+        try:
+            return 200, future.result(timeout=RELOAD_TIMEOUT)
+        except TimeoutError:
+            future.cancel()
+            return 504, {"error": "the telegram service did not reload in time"}
+
+    async def stop(self) -> None:
+        await self._stop_poller()
         # A worker in the middle of a turn keeps its update in inflight.json: it runs again
         # after the restart. A pending approval is closed as "the hub stopped".
         workers = [chat.worker for chat in self._chats.values() if chat.worker is not None]
@@ -657,16 +772,21 @@ class TelegramService:
             chat.worker = None
             if chat.agent is not None:
                 chat.agent.close()
-        if self.configured:
+        if self.state != "idle":
             self.state = "stopped"
 
     def status(self) -> dict[str, Any]:
         """The ``telegram`` key of the hub's ``/status``: poller state, never the token or a
-        chat id."""
-        if not self.configured:
-            return {"configured": False, "reason": self.idle_reason}
+        chat id. ``pairing`` says whether a code of ``tau telegram pair`` waits."""
+        pairing = self.pairing.pending()
+        if self.state == "idle":
+            idle: dict[str, Any] = {"configured": False, "reason": self.idle_reason}
+            if pairing:
+                idle["pairing"] = True
+            return idle
         return {
             "configured": True,
+            "pairing": pairing,
             "state": self.state,
             "bot": self.bot,
             "allowed_chats": len(self.allowed),
@@ -740,16 +860,34 @@ class TelegramService:
         )
         return False
 
+    def _replay(self) -> None:
+        """Run the updates a stop interrupted (or ``tau telegram pair`` handed over) again,
+        once per hub run, and only for chats that are still allowed."""
+        if self._replayed:
+            return
+        self._replayed = True
+        for update_id in sorted(self._inflight):
+            update = self._inflight[update_id]
+            chat_id = ((update.get("message") or {}).get("chat") or {}).get("id")
+            if chat_id not in self.allowed:
+                self._inflight.pop(update_id, None)
+                self._write_inflight()
+                self._drop(chat_id, "message")
+                continue
+            logger.info("telegram: running update %s again (a stop interrupted it)", update_id)
+            self._dispatch(update)
+
     async def _run(self) -> None:
         assert self.api is not None
         if not await self._prepare():
             return
-        for update_id in sorted(self._inflight):
-            update = self._inflight[update_id]
-            logger.info("telegram: running update %s again (a stop interrupted it)", update_id)
-            self._dispatch(update)
+        self._replay()
         failures = 0
         while True:
+            if not self.allowed and not self.pairing.pending():
+                self.state, self.idle_reason = "idle", f"{ALLOWED_CHATS_ENV} is empty"
+                logger.info("telegram: no pairing code waits and no chat is allowed; idle")
+                return
             params: dict[str, Any] = {
                 "timeout": self.poll_timeout,
                 "allowed_updates": list(ALLOWED_UPDATES),
@@ -797,7 +935,9 @@ class TelegramService:
                 await self.handle_callback(callback)
             elif isinstance(message, dict) and update_id not in self._inflight:
                 chat_id = (message.get("chat") or {}).get("id")
-                if chat_id not in self.allowed:
+                if await self._pair(message):
+                    pass
+                elif chat_id not in self.allowed:
                     self._drop(chat_id, "message")
                 else:
                     self._inflight[update_id] = update
@@ -818,6 +958,37 @@ class TelegramService:
             self.files.write_inflight(self._inflight)
         except OSError as exc:
             logger.warning("telegram: could not write %s: %s", self.files.inflight_path, exc)
+
+    async def _pair(self, message: dict[str, Any]) -> bool:
+        """Accept ``/start <code>`` of ``tau telegram pair`` (issue 172). ``True`` when the
+        message paired its chat, which is then the one allowed chat and is told so. ``False``
+        for everything else, a refused code included: the caller then drops the message (a
+        stranger, unanswered) or handles it as usual (an allowed chat)."""
+        if start_payload(message.get("text")) is None:
+            return False
+        try:
+            result = await asyncio.to_thread(try_pair, self.pairing, self.config.home, message)
+        except Exception:
+            logger.exception("telegram: a pairing attempt failed")
+            return False
+        chat_id = (message.get("chat") or {}).get("id")
+        if result is None:
+            return False
+        if not result.ok or result.chat_id is None:
+            logger.info(
+                "telegram: refused a pairing code from chat %s (%s)", chat_id, result.reason
+            )
+            return False
+        self.allowed = result.allowed
+        self.idle_reason = None
+        logger.info("telegram: paired chat %s; it is the allowed chat now", result.chat_id)
+        language = self.config.ui.language
+        await self.register_commands(result.chat_id, language)
+        try:
+            await self._send_one(result.chat_id, t("telegram.pair.done", language))
+        except Exception as exc:
+            logger.warning("telegram: could not confirm the pairing in the chat: %s", exc)
+        return True
 
     def _dispatch(self, update: dict[str, Any]) -> None:
         chat = self._chat(update["message"]["chat"]["id"])
@@ -1381,7 +1552,12 @@ def doctor_check(config: Config, env: Mapping[str, str], hub_status: Any) -> Che
             f"{ALLOWED_CHATS_ENV} has entries that are not chat ids: " + ", ".join(invalid),
         )
     if not allowed:
-        return Check("telegram", "warn", f"{ALLOWED_CHATS_ENV} is empty; the poller stays idle")
+        return Check(
+            "telegram",
+            "warn",
+            f"{ALLOWED_CHATS_ENV} is empty; the poller stays idle (pair your chat with "
+            "`tau telegram pair`)",
+        )
     chats = f"{len(allowed)} allowed chat{'s' if len(allowed) != 1 else ''}"
     poller = hub_status.get(SERVICE_NAME) if isinstance(hub_status, dict) else None
     if not isinstance(poller, dict):

@@ -40,6 +40,7 @@ builtin = "tau_core.builtin_tools:TOOLS"
 [project.entry-points."tau.commands"]
 chat = "tau_core.channels.terminal:chat"
 hub = "tau_core.hub.cli:hub"
+telegram = "tau_core.channels.telegram_cli:telegram"
 components = "tau_core.builder:components"
 doctor = "tau_core.builder:doctor"
 init = "tau_core.builder:init"

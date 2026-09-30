@@ -401,6 +401,198 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "This request is no longer waiting for an answer.",
         "tr": "Bu istek artık cevap beklemiyor.",
     },
+    # -- tau telegram pair / status (issue 172) ------------------------------------------------
+    "telegram.pair.done": {
+        "en": "Paired. From now on tau answers only this chat here. /help lists the commands.",
+        "tr": "Eşleşme tamam. tau bundan sonra burada yalnızca bu sohbete yanıt verir. /help "
+        "komutları listeler.",
+    },
+    "telegram.pair.token_prompt": {
+        "en": "Bot token from @BotFather (hidden)",
+        "tr": "@BotFather'dan aldığın bot token'ı (gizli)",
+    },
+    "telegram.pair.token_prompt_keep": {
+        "en": "Bot token from @BotFather (hidden; Enter keeps the current one)",
+        "tr": "@BotFather'dan aldığın bot token'ı (gizli; Enter mevcut olanı korur)",
+    },
+    "telegram.pair.no_token": {
+        "en": "No token given. Create a bot with @BotFather (/newbot) and paste its token.",
+        "tr": "Token girilmedi. @BotFather ile bir bot oluştur (/newbot) ve token'ını yapıştır.",
+    },
+    "telegram.pair.token_invalid": {
+        "en": "That does not look like a bot token (digits, a colon, then letters and digits). "
+        "Nothing was written.",
+        "tr": "Bu bir bot token'ına benzemiyor (rakamlar, iki nokta, sonra harf ve rakamlar). "
+        "Hiçbir şey yazılmadı.",
+    },
+    "telegram.pair.bad_json": {
+        "en": '--json reads one JSON object on stdin, with the token under "token".',
+        "tr": '--json stdin\'den tek bir JSON nesnesi okur; token "token" alanında olmalı.',
+    },
+    "telegram.pair.checking": {
+        "en": "Checking the token with Telegram...",
+        "tr": "Token Telegram'a soruluyor...",
+    },
+    "telegram.pair.token_refused": {
+        "en": "Telegram refused the token ({detail}). Check it in @BotFather; nothing was written.",
+        "tr": "Telegram token'ı reddetti ({detail}). @BotFather'da kontrol et; hiçbir şey "
+        "yazılmadı.",
+    },
+    "telegram.pair.unreachable": {
+        "en": "Telegram could not be reached ({detail}). Check the connection and try again; "
+        "nothing was written.",
+        "tr": "Telegram'a ulaşılamadı ({detail}). Bağlantıyı kontrol edip yeniden dene; hiçbir "
+        "şey yazılmadı.",
+    },
+    "telegram.pair.token_ok": {
+        "en": "Telegram knows the bot as @{bot}.",
+        "tr": "Telegram botu @{bot} olarak tanıyor.",
+    },
+    "telegram.pair.token_written": {
+        "en": "wrote {name} to {path} (mode 0600)",
+        "tr": "{name}, {path} dosyasına yazıldı (izin 0600)",
+    },
+    "telegram.pair.token_kept": {
+        "en": "kept  {name} in {path}",
+        "tr": "{path} içindeki {name} korundu",
+    },
+    "telegram.pair.env_failed": {
+        "en": "{name} could not be written to {path}: {reason}",
+        "tr": "{name}, {path} dosyasına yazılamadı: {reason}",
+    },
+    "telegram.pair.env_shadowed": {
+        "en": "Note: {name} is also set in this shell's environment. A hub started from this "
+        "shell uses that value, not the one in .env.",
+        "tr": "Not: {name} bu kabuğun ortamında da tanımlı. Bu kabuktan başlatılan bir hub "
+        ".env'dekini değil, o değeri kullanır.",
+    },
+    "telegram.pair.instructions": {
+        "en": "Open t.me/{bot} in Telegram and send: /start {code}",
+        "tr": "Telegram'da t.me/{bot} adresini aç ve şunu gönder: /start {code}",
+    },
+    "telegram.pair.link": {
+        "en": "Or in one tap: {link}",
+        "tr": "Ya da tek dokunuşla: {link}",
+    },
+    "telegram.pair.valid": {
+        "en": "The code works once, for {minutes} minutes (until {time}). Waiting for it; "
+        "Ctrl-C cancels.",
+        "tr": "Kod bir kez ve {minutes} dakika geçerli ({time} saatine kadar). Bekleniyor; "
+        "Ctrl-C iptal eder.",
+    },
+    "telegram.pair.via_hub": {
+        "en": "The running hub takes the code.",
+        "tr": "Kodu çalışan hub alacak.",
+    },
+    "telegram.pair.via_cli": {
+        "en": "The hub is not running, so this command polls Telegram itself until the code "
+        "arrives.",
+        "tr": "Hub çalışmıyor; bu komut kod gelene kadar Telegram'ı kendisi yoklayacak.",
+    },
+    "telegram.pair.conflict": {
+        "en": "Another process is polling this bot (a hub elsewhere with the same token?); "
+        "retrying.",
+        "tr": "Bu botu başka bir süreç yokluyor (aynı token'la başka bir yerde çalışan bir "
+        "hub?); yeniden deneniyor.",
+    },
+    "telegram.pair.hub_conflict": {
+        "en": "The running hub polls Telegram but cannot take a pairing code (an older "
+        "version?). Restart it (tau hub stop, then tau hub run) and run tau telegram pair again.",
+        "tr": "Çalışan hub Telegram'ı yokluyor ama eşleşme kodu alamıyor (eski bir sürüm mü?). "
+        "Yeniden başlat (tau hub stop, sonra tau hub run) ve tau telegram pair'i tekrar "
+        "çalıştır.",
+    },
+    "telegram.pair.hub_mismatch": {
+        "en": "The running hub did not take the pairing code ({reason}). Does it use another "
+        "TAU_HOME or TAU_DATA_DIR? Nothing was paired.",
+        "tr": "Çalışan hub eşleşme kodunu almadı ({reason}). Başka bir TAU_HOME ya da "
+        "TAU_DATA_DIR mi kullanıyor? Eşleşme yapılmadı.",
+    },
+    "telegram.pair.hub_error": {
+        "en": "The hub refused to reload its Telegram channel ({detail}); see its log.",
+        "tr": "Hub Telegram kanalını yeniden yüklemeyi reddetti ({detail}); günlüğüne bak.",
+    },
+    "telegram.pair.paired": {
+        "en": "Paired with {name}. tau answers only this chat on Telegram from now on.",
+        "tr": "{name} ile eşleşildi. tau bundan sonra Telegram'da yalnızca bu sohbete yanıt verir.",
+    },
+    "telegram.pair.dropped": {
+        "en": "Chats that were allowed before and are not any more: {n}.",
+        "tr": "Daha önce izinli olup artık izinli olmayan sohbetler: {n}.",
+    },
+    "telegram.pair.start_hub": {
+        "en": "Start the hub to talk to tau there: tau hub run (or tau hub install).",
+        "tr": "Orada tau ile konuşmak için hub'ı başlat: tau hub run (ya da tau hub install).",
+    },
+    "telegram.pair.expired": {
+        "en": "The code expired before it arrived. Run tau telegram pair again.",
+        "tr": "Kod gelmeden süresi doldu. tau telegram pair'i yeniden çalıştır.",
+    },
+    "telegram.pair.void": {
+        "en": "Too many wrong codes were sent, so this code no longer works. Run tau telegram "
+        "pair again.",
+        "tr": "Çok fazla yanlış kod gönderildi; bu kod artık çalışmıyor. tau telegram pair'i "
+        "yeniden çalıştır.",
+    },
+    "telegram.pair.cancelled": {
+        "en": "Pairing cancelled; the code no longer works.",
+        "tr": "Eşleşme iptal edildi; kod artık çalışmıyor.",
+    },
+    "telegram.pair.locked": {
+        "en": "A paired chat talks to tau without the guard, so pairing needs tau unlocked. "
+        "Unlock it at the Mac (tau guard verify), then run tau telegram pair again.",
+        "tr": "Eşleşen sohbet tau ile korumaya takılmadan konuşur; bu yüzden eşleşme için tau'nun "
+        "kilidi açık olmalı. Mac'in başında kilidi aç (tau guard verify), sonra tau telegram "
+        "pair'i yeniden çalıştır.",
+    },
+    "telegram.status.token_ok": {
+        "en": "Bot token: set (@{bot})",
+        "tr": "Bot token'ı: tanımlı (@{bot})",
+    },
+    "telegram.status.token_refused": {
+        "en": "Bot token: set, but Telegram refused it ({detail})",
+        "tr": "Bot token'ı: tanımlı ama Telegram reddetti ({detail})",
+    },
+    "telegram.status.token_unchecked": {
+        "en": "Bot token: set (Telegram could not be reached: {detail})",
+        "tr": "Bot token'ı: tanımlı (Telegram'a ulaşılamadı: {detail})",
+    },
+    "telegram.status.token_missing": {
+        "en": "Bot token: not set (tau telegram pair sets it)",
+        "tr": "Bot token'ı: tanımlı değil (tau telegram pair tanımlar)",
+    },
+    "telegram.status.paired": {
+        "en": "Owner chat: paired ({n} allowed)",
+        "tr": "Sahip sohbeti: eşleşmiş ({n} izinli)",
+    },
+    "telegram.status.unpaired": {
+        "en": "Owner chat: not paired (tau telegram pair)",
+        "tr": "Sahip sohbeti: eşleşmemiş (tau telegram pair)",
+    },
+    "telegram.status.pairing": {
+        "en": "Pairing code: waiting until {time}",
+        "tr": "Eşleşme kodu: {time} saatine kadar bekliyor",
+    },
+    "telegram.status.hub_off": {
+        "en": "Hub: not running",
+        "tr": "Hub: çalışmıyor",
+    },
+    "telegram.status.hub_none": {
+        "en": "Hub: running, without a Telegram channel",
+        "tr": "Hub: çalışıyor, Telegram kanalı yok",
+    },
+    "telegram.status.hub_idle": {
+        "en": "Hub: running; the Telegram channel is idle ({reason})",
+        "tr": "Hub: çalışıyor; Telegram kanalı boşta ({reason})",
+    },
+    "telegram.status.hub_state": {
+        "en": "Hub: running; the Telegram channel is {state}",
+        "tr": "Hub: çalışıyor; Telegram kanalı durumu: {state}",
+    },
+    "telegram.status.hub_polling": {
+        "en": "Hub: running; polling as {bot}",
+        "tr": "Hub: çalışıyor; {bot} olarak yokluyor",
+    },
     # -- TUI (consumed by tau-tui; kept here so both channels share one table) --------------------
     "tui.placeholder": {
         "en": "Type a message · /help · /quit",

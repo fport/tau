@@ -28,6 +28,10 @@ use tauri::{
 const WINDOW_PREFIX: &str = "term-";
 const MENU_NEW_WINDOW: &str = "new-window";
 const MENU_QUIT: &str = "quit";
+/// ⌘N and ⌘Q, and Super on other systems: never `CmdOrCtrl`, which would become ctrl+n and
+/// ctrl+q there and take the TUI's own new-session and quit keys before xterm.js sees them.
+const NEW_WINDOW_ACCELERATOR: &str = "Cmd+N";
+const QUIT_ACCELERATOR: &str = "Cmd+Q";
 /// Void, the brand background, so a new window never flashes white.
 const BACKGROUND: Color = Color(0x05, 0x07, 0x1a, 0xff);
 /// How far a new window sits from the one in front.
@@ -153,10 +157,10 @@ pub fn run() {
 /// The macOS menu: New Window (⌘N), Close Window (⌘W), Copy and Paste for the terminal, Quit.
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let new_window = MenuItemBuilder::with_id(MENU_NEW_WINDOW, "New Window")
-        .accelerator("CmdOrCtrl+N")
+        .accelerator(NEW_WINDOW_ACCELERATOR)
         .build(app)?;
     let quit = MenuItemBuilder::with_id(MENU_QUIT, "Quit tau Desktop")
-        .accelerator("CmdOrCtrl+Q")
+        .accelerator(QUIT_ACCELERATOR)
         .build(app)?;
     let app_menu = SubmenuBuilder::new(app, "tau Desktop")
         .about(None)
@@ -338,6 +342,19 @@ mod tests {
             "about:blank",
         ] {
             assert!(!is_app_url(&url.parse().unwrap()), "{url}");
+        }
+    }
+
+    #[test]
+    fn menu_keys_leave_ctrl_to_the_tui() {
+        for accelerator in [NEW_WINDOW_ACCELERATOR, QUIT_ACCELERATOR] {
+            let modifiers: Vec<String> = accelerator
+                .split('+')
+                .rev()
+                .skip(1)
+                .map(str::to_ascii_lowercase)
+                .collect();
+            assert_eq!(modifiers, ["cmd"], "{accelerator}");
         }
     }
 }

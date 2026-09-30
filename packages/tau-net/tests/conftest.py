@@ -13,6 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 
 from net_helpers import ALICE, BOB, Pair, connect, make_tau  # noqa: E402
+from tau_net import tools  # noqa: E402
 from tau_net.testing import FakeNetwork  # noqa: E402
 
 
@@ -24,6 +25,14 @@ def restore_environ() -> Iterator[None]:
     yield
     os.environ.clear()
     os.environ.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def no_active_node() -> Iterator[None]:
+    """A test that starts the hub service registers its node for the tools; clear it."""
+    yield
+    tools.set_active_node(None)
+    tools.node_factory = None
 
 
 @pytest.fixture

@@ -158,6 +158,9 @@ def test_hint_and_help_lines() -> None:
     assert {"/compact", "/clear", "/status", "/model"} <= listed
     assert any(line.startswith("  /compact [focus]") and "summarize" in line for line in en)
     assert any(line.startswith("  /model [role]") and "roles" in line for line in en)
+    locked = help_lines("en", only={"help", "lang", "guard", "quit"})
+    assert [line.split()[0] for line in locked] == ["/help", "/lang", "/guard", "/quit"]
+    assert set(locked) <= set(en)  # same column as the full list
 
 
 def test_public_api_exports() -> None:

@@ -6,6 +6,7 @@ Canonical names are English; the Turkish aliases are accepted forever and never 
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from tau_core.i18n import DEFAULT_LANGUAGE, t
@@ -82,10 +83,16 @@ def command_hint(language: str = DEFAULT_LANGUAGE) -> str:
     return ", ".join(f"/{command.name}" for command in SLASH_COMMANDS)
 
 
-def help_lines(language: str = DEFAULT_LANGUAGE) -> list[str]:
-    """One line per command: usage padded to a column, then its help text in ``language``."""
+def help_lines(
+    language: str = DEFAULT_LANGUAGE, *, only: Collection[str] | None = None
+) -> list[str]:
+    """One line per command: usage padded to a column, then its help text in ``language``.
+
+    ``only`` keeps the commands with those canonical names (a locked channel lists
+    ``ALLOWED_WHILE_LOCKED``); the column stays as wide as for the full list."""
     width = max(len(usage(command)) for command in SLASH_COMMANDS)
     return [
         f"  {usage(command):<{width}}  {t(command.help_key, language)}"
         for command in SLASH_COMMANDS
+        if only is None or command.name in only
     ]

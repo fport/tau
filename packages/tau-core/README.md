@@ -689,8 +689,9 @@ Public API: `Guard` (protocol: `status`, `watch`, `admit`, `unlock`, `cancel`, `
 `GuardProgress`, `GuardTurn`, `Admission`, `GuardLocked`, `LockedGuard`, `HubGuard`,
 `resolve_guard`, `VERDICT_REASONS`, `ADMISSION_REASONS`, `LOCK_TRIGGERS`, `PROGRESS_STEPS`,
 `ALLOWED_WHILE_LOCKED` from `tau_core`; `DISCOVER`, `ENROLLED_MARKER`, `GUARD_CONFIG_KEYS`,
-`LOCKED_NOTE`, `STEP_UP_NOTE`, `admit_turn`, `guard_status_line`, `guard_doctor_check`,
-`read_enrollment` and `reset_guards` from `tau_core.guard`; `HubClient`, `HubUnavailable`,
+`LOCKED_NOTE`, `STEP_UP_NOTE`, `COUNTED_FAILURES`, `admit_turn`, `guard_status_line`,
+`progress_text`, `verdict_text`, `method_text` (the channels' shared texts),
+`guard_doctor_check`, `read_enrollment` and `reset_guards` from `tau_core.guard`; `HubClient`, `HubUnavailable`,
 `HubError` from `tau_core.hub`. The guard's messages (`guard.*`, `status.guard`,
 `doctor.guard.*`) register themselves with `register_messages`. Tests use
 `tau_core.testing.FakeGuard(state, verdicts=..., step_ups=..., progress=..., admissions=...)`,

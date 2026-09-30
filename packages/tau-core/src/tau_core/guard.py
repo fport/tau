@@ -61,6 +61,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ADMISSION_REASONS",
     "ALLOWED_WHILE_LOCKED",
+    "COUNTED_FAILURES",
     "DISCOVER",
     "ENROLLED_MARKER",
     "GUARD_CONFIG_KEYS",
@@ -87,11 +88,14 @@ __all__ = [
     "guard_active",
     "guard_doctor_check",
     "guard_status_line",
+    "method_text",
     "process_client_id",
+    "progress_text",
     "read_enrollment",
     "reset_guards",
     "resolve_guard",
     "status_from_json",
+    "verdict_text",
 ]
 
 logger = logging.getLogger(__name__)
@@ -162,6 +166,9 @@ PROGRESS_STEPS: tuple[str, ...] = (
 )
 ALLOWED_WHILE_LOCKED = frozenset({"help", "lang", "quit", "guard"})
 """Slash commands a guarded channel runs while locked (issue 113)."""
+COUNTED_FAILURES = frozenset({"no_match", "spoof", "multiple_faces"})
+"""Verdict reasons that count as a failed attempt, for unlock, recheck and step-up alike (ADR
+0008 decision 13); the channels count them for the "Unlocked" notice."""
 
 ENROLLED_MARKER = "guard/enrolled"
 """The public enrollment marker, relative to ``data_dir``: JSON ``{"v": 1, "enrollment":
@@ -917,11 +924,38 @@ def reset_guards() -> None:
 # -- reports -----------------------------------------------------------------------------------
 
 
+def method_text(method: str | None, language: str = DEFAULT_LANGUAGE) -> str:
+    """How the owner unlocked ("face", "Touch ID"), in ``language``; ``—`` for anything else."""
+    if method in SUCCESS_METHODS:
+        return t(f"guard.method.{method}", language)
+    return "—"
+
+
+def progress_text(progress: GuardProgress, language: str = DEFAULT_LANGUAGE) -> str:
+    """One challenge step ("Turn your head left."), with a live hint ("It is too dark.")."""
+    if progress.step in PROGRESS_STEPS:
+        text = t(f"guard.progress.{progress.step}", language)
+    else:
+        text = str(progress.step)
+    if progress.hint in VERDICT_REASONS:
+        text = f"{text} {t(f'guard.verdict.{progress.hint}', language)}"
+    return text
+
+
+def verdict_text(verdict: GuardVerdict, language: str = DEFAULT_LANGUAGE) -> str:
+    """Why an attempt did not pass, with "Try again in N s." for a cooldown."""
+    reason = verdict.reason if verdict.reason in VERDICT_REASONS else "error"
+    text = t(f"guard.verdict.{reason}", language)
+    if verdict.retry_after:
+        text = f"{text} {t('guard.retry_after', language, seconds=f'{verdict.retry_after:.0f}')}"
+    return text
+
+
 def guard_status_line(status: GuardStatus, language: str = DEFAULT_LANGUAGE) -> str:
     """The ``/status`` line for an active guard."""
     parts = [t(f"guard.state.{status.state}", language)]
     if status.state == "unlocked" and status.method in SUCCESS_METHODS:
-        parts.append(str(status.method))
+        parts.append(method_text(status.method, language))
     if status.state == "locked" and status.lock_trigger in LOCK_TRIGGERS:
         parts.append(t(f"guard.lock_trigger.{status.lock_trigger}", language))
     if status.state == "unavailable":
@@ -1275,6 +1309,16 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
     "guard.recheck": {
         "en": "Checking that it is still you…",
         "tr": "Hâlâ sen olduğun kontrol ediliyor…",
+    },
+    "guard.recheck_not_sent": {
+        "en": "The prompt was not sent; send it again to repeat the check.",
+        "tr": "İstem gönderilmedi; kontrolü yinelemek için yeniden gönder.",
+    },
+    "guard.method.face": {"en": "face", "tr": "yüz"},
+    "guard.method.touch_id": {"en": "Touch ID", "tr": "Touch ID"},
+    "guard.rearm_failed": {
+        "en": "Nothing was sent: this session could not be reopened under the guard.",
+        "tr": "Hiçbir şey gönderilmedi: bu oturum koruma altında yeniden açılamadı.",
     },
 }
 

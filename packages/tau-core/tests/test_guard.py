@@ -766,11 +766,31 @@ def test_other_platforms_lock_an_active_guard(tmp_path: Path) -> None:
 
 def test_guard_status_line() -> None:
     assert guard_status_line(GuardStatus("unlocked", method="face")) == "Guard: unlocked · face"
+    touch = GuardStatus("unlocked", method="touch_id")
+    assert guard_status_line(touch, "tr") == "Koruma: açık · Touch ID"
+    assert guard_status_line(GuardStatus("unlocked", method="face"), "tr") == "Koruma: açık · yüz"
     locked = GuardStatus("locked", lock_trigger="idle")
     assert guard_status_line(locked, "tr") == "Koruma: kilitli · hareketsizlik nedeniyle kilitlendi"
     no_hub = guard_status_line(GuardStatus("unavailable", reason="no_hub"))
     assert no_hub == f"Guard: unavailable · {t('guard.start_hub', 'en')}"
     assert guard_status_line(GuardStatus("unavailable", reason="guard_off")).endswith("guard_off")
+
+
+def test_the_shared_channel_texts() -> None:
+    """One copy for the terminal and the TUI: steps, verdicts, methods, counted failures."""
+    from tau_core.guard import COUNTED_FAILURES, method_text, progress_text, verdict_text
+
+    assert progress_text(GuardProgress("look", 1, None, "too_dark")) == (
+        "Look at the camera. It is too dark."
+    )
+    assert progress_text(GuardProgress("turn_left", 1, None), "tr") == "Başını sola çevir."
+    assert progress_text(GuardProgress("mystery", 1, None, "not_a_reason")) == "mystery"
+    cooldown = GuardVerdict(False, "cooldown", retry_after=29.6)
+    assert verdict_text(cooldown).endswith("Try again in 30 s.")
+    assert verdict_text(GuardVerdict(False, "weird")) == t("guard.verdict.error", "en")
+    assert method_text("face", "tr") == "yüz" and method_text("touch_id") == "Touch ID"
+    assert method_text(None) == "—" and method_text("password") == "—"
+    assert COUNTED_FAILURES == {"no_match", "spoof", "multiple_faces"}  # ADR 0008 decision 13
 
 
 def test_status_shows_the_guard_only_when_one_is_active(

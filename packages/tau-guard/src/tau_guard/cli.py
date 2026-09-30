@@ -34,6 +34,7 @@ from tau_core.hub import HubClient, HubError, HubUnavailable
 
 from tau_guard import strings as _strings  # noqa: F401  (registers the message keys)
 from tau_guard.audit import EVENTS, AuditLog, printable
+from tau_guard.liveness import FAILURES
 from tau_guard.service import GUARD_DIR
 
 __all__ = ["guard", "parse_since"]
@@ -244,7 +245,9 @@ def _entry_line(entry: dict[str, Any], language: str) -> str:
         parts.append(t("guard.cli.log.failed", language))
     reason = entry.get("reason")
     if isinstance(reason, str) and reason != "match":
-        parts.append(reason)
+        liveness = entry.get("liveness")
+        rule = f" ({liveness})" if reason == "spoof" and liveness in FAILURES else ""
+        parts.append(reason + rule)
     trigger = entry.get("trigger")
     if trigger in LOCK_TRIGGERS:
         parts.append(t(f"guard.lock_trigger.{trigger}", language))

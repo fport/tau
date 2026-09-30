@@ -355,7 +355,8 @@ def test_cancelling_at_a_head_turn_prompt_is_a_counted_failure(clock: FakeClock,
     assert record is not None and record["reason"] == "spoof" and record["ok"] is False
     effects = m.drain()
     assert effects.kill == [(attempt.id, "cancelled")]  # the worker still stops
-    assert ("verify", "spoof") in [(e["event"], e.get("reason")) for e in effects.audit]
+    audited = [(e["event"], e.get("reason"), e.get("liveness")) for e in effects.audit]
+    assert ("verify", "spoof", "abandoned") in audited
 
 
 @pytest.mark.parametrize("step", ["starting", "look"])

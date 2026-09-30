@@ -9,7 +9,9 @@ Schema (version 1)::
 - ``at`` is UTC ISO 8601 with seconds; ``event`` is one of :data:`EVENTS`.
 - ``channel``, ``client_id``, ``trigger``, ``ok``, ``reason`` and ``duration_ms`` are always
   present (``null`` when they do not apply); ``score`` (rounded to 2 decimals), ``liveness``,
-  ``request_id`` and ``tool`` only when set.
+  ``request_id`` and ``tool`` only when set. ``liveness`` is ``challenge`` or ``passive`` for a
+  face match, and for a ``spoof`` the code of the liveness rule that failed
+  (:data:`tau_guard.liveness.FAILURES`).
 - A record never holds an embedding, a frame or anything about another person: only the keys
   above, each a string, a bool, a small number or ``null``.
 - Strings are cut to 128 characters and every non-printable character (C0 and C1 controls such

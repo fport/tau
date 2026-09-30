@@ -20,12 +20,17 @@ Protocol:
   the documented type; anything else (a list where a string belongs) ends the run with
   ``error`` in the hub.
 - A face success reports ``liveness``: ``challenge`` when the head-turn challenge passed,
-  ``passive`` for a passive match. The worker picks the check from the request
+  ``passive`` for a passive match. A ``spoof`` reports the code of the liveness rule that
+  failed there (:data:`tau_guard.liveness.FAILURES`: ``overshoot_before_target``,
+  ``oscillation``, ``moved_between_prompts``, ``no_turn``, ``too_slow``, ``no_return``,
+  ``face_lost``, ``step_identity``), a word and never a value. The worker picks the check from
+  the request
   (:func:`tau_guard.verify.policy_for`); the hub turns a success the attempt's merged ``policy``
   excludes into ``error`` as a second line (see :mod:`tau_guard.state`).
 - With ``"explain": true`` (only ``tau guard verify --explain``, never the hub) ``verify`` also
   writes one ``{"type": "explain", ...}`` line per frame with its numbers (detector score, eye
-  distance, brightness, sharpness, yaw proxy, similarity). No frame is ever saved.
+  distance, brightness, sharpness, head yaw and pitch in degrees, the landmarks' fit error, the
+  turn from the challenge's baseline, similarity). No frame is ever saved.
 - Stderr goes to ``TAU_DATA_DIR/guard/worker.log`` (the caller opens it, 0600). It never gets
   an embedding or a frame, only what went wrong: an unexpected exception is logged as its type
   and traceback frames, never its message, which could quote a value.
@@ -300,6 +305,8 @@ def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
     extra = {**_score(result.score), **_camera_ms(source)}
     if result.ok:
         return {**verdict(True, "match", **extra), "method": "face", "liveness": result.liveness}
+    if result.liveness is not None:
+        extra["liveness"] = result.liveness  # the rule that failed
     return verdict(False, result.reason, **extra)
 
 

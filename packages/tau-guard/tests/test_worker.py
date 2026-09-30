@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tau_guard.liveness import FAILURES
 from tau_guard.runner import (
     DEFAULT_COMMAND,
     KILL_GRACE,
@@ -140,6 +141,13 @@ def test_parse_progress_and_verdict() -> None:
     assert progress.hint == "too_dark" and progress.deadline is not None
     verdict = parse_line(line({"type": "verdict", **match()["verdict"], "score": 0.7149}))
     assert verdict == Outcome(True, "match", "face", 0.71, "challenge")
+
+
+@pytest.mark.parametrize("rule", FAILURES)
+def test_a_spoof_carries_the_liveness_rule_that_failed(rule: str) -> None:
+    message = {"type": "verdict", "ok": False, "reason": "spoof", "liveness": rule}
+    verdict = parse_line(line(message))
+    assert verdict == Outcome(False, "spoof", liveness=rule)
 
 
 @pytest.mark.parametrize(

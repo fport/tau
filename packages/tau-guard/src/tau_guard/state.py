@@ -38,12 +38,13 @@ Rules the table in the ADR leaves to the implementation:
   ``challenge_fresh`` window, and every lock ends it.
 - **Abandoned challenges count.** A check dropped while its record shows a head-turn prompt
   (step ``turn_left``, ``turn_right`` or ``center``) by a client's cancel, any lock (``/guard
-  lock``, a screen lock, a sleep, the hub stopping) or the last client leaving ends as ``spoof``:
-  it counts like a step past its deadline, and a strict attempt locks with ``step_up_failed``
-  (a lock that is already happening keeps its own trigger). Otherwise someone holding up a clip
-  could cancel whenever the drawn direction does not fit it and retry at once, and a step-up
-  could escape its lock. A check dropped before its first prompt (camera start-up, the frontal
-  match) still ends as ``cancelled`` and counts for nothing.
+  lock``, a screen lock, a sleep, the hub stopping) or the last client leaving ends as ``spoof``
+  (liveness rule ``abandoned`` in the audit): it counts like a step past its deadline, and a
+  strict attempt locks with ``step_up_failed`` (a lock that is already happening keeps its own
+  trigger). Otherwise someone holding up a clip could cancel whenever the drawn direction does
+  not fit it and retry at once, and a step-up could escape its lock. A check dropped before its
+  first prompt (camera start-up, the frontal match) still ends as ``cancelled`` and counts for
+  nothing.
 - An enrollment (``kind="enroll"``) runs behind LocalAuthentication; its failures do not
   count and its success resets nothing.
 - A verdict with ``camera_ms`` also writes a ``camera_open`` audit record (``reason`` is the
@@ -686,7 +687,7 @@ class GuardMachine:
             self._outbox.kill.append((attempt.id, reason))
             outcome = Outcome(False, reason)
             if attempt.kind != "enroll" and attempt.step in CHALLENGE_STEPS:
-                outcome = Outcome(False, "spoof")
+                outcome = Outcome(False, "spoof", liveness="abandoned")
             self._conclude(attempt, outcome, relock=not locking)
         else:
             if attempt in self.queue:

@@ -104,18 +104,20 @@ def test_log_reads_the_audit_file(tmp_path: Path) -> None:
     clock.advance(3600)
     audit.record("verify", channel="tui", client_id="c1", ok=False, reason="no_match", score=0.3)
     audit.record("cooldown", ok=False, reason="cooldown", duration_ms=30000)
+    audit.record("verify", channel="tui", ok=False, reason="spoof", liveness="no_return")
     result = invoke(config, "log")
     assert result.exit_code == 0
     lines = result.output.splitlines()
-    assert len(lines) == 3
+    assert len(lines) == 4
     assert t("guard.cli.log.event.lock") in lines[0] and t("guard.lock_trigger.startup") in lines[0]
     assert "no_match" in lines[1] and "tui" in lines[1] and "0.30" in lines[1]
     assert "30 s" in lines[2]
+    assert "spoof (no_return)" in lines[3]  # which liveness rule failed
     raw = invoke(config, "log", "--json").output.splitlines()
-    assert [json.loads(line)["event"] for line in raw] == ["lock", "verify", "cooldown"]
+    assert [json.loads(line)["event"] for line in raw] == ["lock", "verify", "cooldown", "verify"]
     since = clock.wall().isoformat()  # the hour of the last two entries
     recent = invoke(config, "log", "--json", "--since", since).output.splitlines()
-    assert [json.loads(line)["event"] for line in recent] == ["verify", "cooldown"]
+    assert [json.loads(line)["event"] for line in recent] == ["verify", "cooldown", "verify"]
 
 
 def test_log_when_empty_and_a_bad_since(tmp_path: Path) -> None:

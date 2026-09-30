@@ -674,8 +674,8 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
             raise StoreError("key_unavailable", "the key disappeared during the enrollment")
         if first:
             deps.keys.set(key)
-            stored = deps.keys.get()  # a key store that drops writes must not pass
-            if stored is None or not hmac.compare_digest(stored, key):
+            kept = deps.keys.get()  # a key store that drops writes must not pass
+            if kept is None or not hmac.compare_digest(kept, key):
                 raise StoreError("key_unavailable", "the key store did not keep the key")
     except (KeyUnavailable, StoreError) as exc:
         log(f"enroll: the key cannot be stored ({type(exc).__name__})")

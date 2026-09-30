@@ -135,6 +135,52 @@ jobs:
           "$UV_TOOL_BIN_DIR/tau" version
           "$UV_TOOL_BIN_DIR/tau" tui --help
 
+      # `tau setup` (issue 169) in a fresh virtualenv, which is not a uv tool environment, so
+      # it installs nothing: `tau init --yes`, the chosen features, `tau doctor`. Then the JSON
+      # status the Mac app reads must parse and show what was set up.
+      - name: Smoke-test tau setup in a fresh virtualenv
+        env:
+          TAU_HOME: ${{ runner.temp }}/tau-setup-home
+          TAU_DATA_DIR: ${{ runner.temp }}/tau-setup-data
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/smoke-setup"
+          uv pip install --python "$RUNNER_TEMP/smoke-setup/bin/python" \
+            dist/tau-core/*.whl dist/tau-tui/*.whl dist/tau-sub/*.whl
+          tau="$RUNNER_TEMP/smoke-setup/bin/tau"
+          "$tau" setup --yes --features tui,sub --no-install
+          test -f "$TAU_HOME/tau.toml"
+          "$tau" setup status --json > "$RUNNER_TEMP/setup-status.json"
+          "$RUNNER_TEMP/smoke-setup/bin/python" - "$RUNNER_TEMP/setup-status.json" <<'EOF'
+          import json, sys
+          status = json.load(open(sys.argv[1], encoding="utf-8"))
+          features = {feature["id"]: feature for feature in status["features"]}
+          assert status["protocol"] == 1 and status["config"] is True, status
+          assert features["tui"]["state"] == "done" and features["sub"]["state"] == "done", features
+          print("tau setup status:", {key: value["state"] for key, value in features.items()})
+          EOF
+
+      # The one-line installer with the real uv, against the files just built: they are not on
+      # PyPI yet, so UV_FIND_LINKS offers them next to the index. Then `tau setup` adds a
+      # feature the real way: one `uv tool install --force`, then the re-execution.
+      - name: Smoke-test install.sh and tau setup with the real uv
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/uv-tools-installer
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/uv-bin-installer
+          TAU_HOME: ${{ runner.temp }}/tau-installer-home
+          TAU_DATA_DIR: ${{ runner.temp }}/tau-installer-data
+          TAU_INSTALL_NO_SETUP: "1"
+          TAU_INSTALL_VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/wheels"
+          cp dist/tau-core/*.whl dist/tau-tui/*.whl dist/tau-sub/*.whl "$RUNNER_TEMP/wheels/"
+          export UV_FIND_LINKS="$RUNNER_TEMP/wheels"
+          sh cloud/universe/public/install.sh
+          tau="$UV_TOOL_BIN_DIR/tau"
+          "$tau" version
+          "$tau" setup --yes --features sub
+          "$tau" version | grep -q '^tau-sub '
+          "$tau" setup status --json | grep -q '"mode": "uv-tool"'
+
       # Wrangler (in the spine kit) needs Node.js 22 or newer.
       - uses: actions/setup-node@v7
         with:

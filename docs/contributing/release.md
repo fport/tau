@@ -176,3 +176,4 @@ code runs at the edge; the Worker `tau-docs` only serves the uploaded files.
 | `mkdocs build --strict` | `ci.yml` and `docs.yml` | a page listed in `nav` is missing or a link points nowhere |
 | tag ↔ version | `release.yml` | the tag is not `v<tau-core version>`, or `tau-tui` has another version |
 | wheel smoke test | `release.yml` | the `tau` command, its `tui` subcommand, the templates `tau init` writes or the entry points are missing from the wheels |
+| setup smoke test | `release.yml` | `tau setup --yes --features tui,sub --no-install` fails in a fresh virtualenv, `tau setup status --json` does not parse, or `install.sh` with the real uv and a `tau setup` that adds a feature (one `uv tool install`, then the re-execution) fail |

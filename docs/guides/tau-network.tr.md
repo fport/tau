@@ -154,7 +154,7 @@ tau net send alice.example.com/coach "Plan my week, please."
 - `/coach`, tau'nla aynı dar kapsamlı ajanla yanıt verir: kendi persona'sı ve kendi açık notu (`persona/subs/coach.public.md`; not belirtilmemişse `persona/net.md`), asla `persona/user.md` değil. Hiçbir aracı yoktur, her onay reddedilir; aynı `max_hops` ve saatlik üst sınır geçerlidir (sınır, kim yanıt verirse versin kişiyi sayar). Her kişiyle ayrı bir oturumu olur: `tau network · <name> · /coach`.
 - Yanıt `/coach` işaretiyle geri gelir ve ona verilen yanıt yine `/coach`'a gider; böylece konuşma koçta kalır. `tau net log`, `alice.example.com/coach` gösterir.
 - Gizli ya da bilinmeyen bir sub-tau'ya gelen mesaj, bir yabancınınki gibi yanıtsız düşürülür. Daha eski bir tau-net kullanan bir tau böyle bir mesajı ana tau olarak yanıtlar.
-- tau'n evrende listelendiği sürece hub'ın raporu açık sub-tau'larını (adı ve tanıtım satırı) listeler, sayfa da onları senin çerçevenin (hull) içinde çizer. Gizli sub-tau'lar hub'dan asla çıkmaz.
+- tau'n evrende listelendiği sürece hub'ın raporu açık sub-tau'larını (adı ve tanıtım satırı) listeler, sayfa da onları tau'nun çevresinde dönerken çizer. Gizli sub-tau'lar hub'dan asla çıkmaz.
 - `web = true` ile açık bir sub-tau, evrende herkesin günlük bir sınır içinde kullanabileceği bir sohbet sayfası da alır: [Web sayfalı açık sub-tau'lar](public-sub-taus.md).
 
 ## 5. Evrene katıl (isteğe bağlı)

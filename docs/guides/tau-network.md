@@ -152,7 +152,7 @@ tau net send alice.example.com/coach "Plan my week, please."
 - `/coach` answers with the same narrow agent as your tau: its own persona and its public note (`persona/subs/coach.public.md`, or `persona/net.md` when it names none), never `persona/user.md`. It has no tools, every approval is refused, and the same `max_hops` and hourly cap apply (the cap counts the contact, whoever answers). Each contact gets a session of its own with it, `tau network · <name> · /coach`.
 - The answer comes back marked `/coach`, and a reply to it goes to `/coach` again, so the thread stays with the coach. `tau net log` shows `alice.example.com/coach`.
 - A message for a private or unknown sub-tau is dropped unanswered, like one from a stranger. A tau with an older tau-net answers such a message as the main tau.
-- While your tau is in the universe, the hub's report lists your public sub-taus (name and about line), and the page draws them inside your hull. Private sub-taus never leave the hub.
+- While your tau is in the universe, the hub's report lists your public sub-taus (name and about line), and the page draws them circling your tau. Private sub-taus never leave the hub.
 - With `web = true` a public sub-tau also gets a chat page on the universe that anyone can use, within a daily cap: [Public sub-taus with a web page](public-sub-taus.md).
 
 ## 5. Join the universe (optional)

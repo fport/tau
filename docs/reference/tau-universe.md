@@ -31,7 +31,7 @@ The fields that depend on `kind`:
 
 | `kind` | Extra fields |
 |---|---|
-| `join` | `owner` (str, 0–60 characters: the owner's display name, may be empty), `about` (str, 0–200 characters) |
+| `join` | `owner` (str, 0–60 characters: the owner's display name, may be empty), `about` (str, 0–200 characters). Clients always send both; a universe treats a missing one as `""` |
 | `report` | `links`: a list of at most 500 `{"peer": address, "messages": int ≥ 0}` items; `messages` is the number of `message` envelopes exchanged with that peer, both directions, as counted by the reporter |
 | `leave` | nothing |
 
@@ -46,7 +46,7 @@ The universe's own host is the `UNIVERSE` variable when it is set, otherwise the
 | `GET /` | the landing page (static) |
 | `GET /universe` | the universe page (static; its script reads `/api/universe`) |
 | `GET /api/universe` | `200` the public snapshot (below); `Cache-Control: public, max-age=60`; `Access-Control-Allow-Origin: *` |
-| `GET /api/taus/<address>` | `200` one tau with its visible links, or `404 {"error": "not_found"}` |
+| `GET /api/taus/<address>` | `200` the tau's snapshot fields at the top level plus `links: [{"peer": address, "messages": int}]` (visible links only), or `404 {"error": "not_found"}` |
 | `POST /api/join` | a signed `join` |
 | `POST /api/report` | a signed `report` |
 | `POST /api/leave` | a signed `leave` |
@@ -68,8 +68,8 @@ The universe's own host is the `UNIVERSE` variable when it is set, otherwise the
 Effects:
 
 - **`join`** creates or updates the tau: address, card name, `sign_key`, `owner`, `about`, `joined_at` (first join) and `last_seen = ts`. It answers `200 {"ok": true, "url": "https://<universe>/universe#<address>"}`.
-- **`report`** replaces the tau's reported links with the new list, refreshes the card name and `last_seen`, and answers `200 {"ok": true, "visible_links": int}`. Peers that are not joined are ignored.
-- **`leave`** deletes the tau and its reported links, and answers `200 {"ok": true}`.
+- **`report`** replaces the tau's reported links with the new list (only peers joined at that moment are kept), refreshes the card name and `last_seen`, and answers `200 {"ok": true, "visible_links": int}`. Peers that are not joined are ignored.
+- **`leave`** deletes the tau and its own reported links, and answers `200 {"ok": true}`. Other taus' reports stay; their links to it simply stop being mutual.
 
 The public snapshot:
 
@@ -116,14 +116,19 @@ The card name comes from the profile first, then from `[component.net] name` in 
 
 The CLI:
 
-- **`tau net universe join [--owner NAME] [--about TEXT] [--no-links]`** writes the profile, sends a `join` and then a `report`, and prints the tau's universe URL.
+- **`tau net universe join [--owner NAME] [--about TEXT] [--no-links | --links]`** writes the profile, publishes the card first when it is missing or different, sends a `join` and then a `report`, and prints the tau's universe URL. `--no-links` and `--links` store a `universe_links` override in the profile; without one, `tau.toml` applies.
+- **`tau net name NAME`** sets the card name in the profile.
 - **`tau net universe leave`** sends a `leave` and sets `universe_join = false`.
 - **`tau net universe status`** shows the setting, whether the universe lists this tau, and its visible links.
+
+Clients keep `ts` strictly increasing per tau and retry a `stale` answer up to three times with the next `ts`, because the CLI and the hub can report in the same second. `universe_report_minutes` is limited to 5–1440.
 
 The `net` hub service reports while the profile's `universe_join` is true:
 
 - once at start, then every `universe_report_minutes`;
-- a failure is a warning in `/status` (`net.universe`), never a crash.
+- a failure is a warning in `/status` (`net.universe`), never a crash;
+- the profile is read again at every interval, so `join` and `leave` take effect without a hub restart;
+- a `not_joined` answer while the profile says joined makes the hub join again, for example after the 30-day expiry.
 
 A report works like this:
 

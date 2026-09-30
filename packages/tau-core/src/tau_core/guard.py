@@ -160,6 +160,10 @@ PROGRESS_STEPS: tuple[str, ...] = (
     "center",
     "touch_id",
     "done",
+    # enrollment poses and its "turn a little further" nudge (issue 112)
+    "look_up",
+    "look_down",
+    "turn_more",
 )
 ALLOWED_WHILE_LOCKED = frozenset({"help", "lang", "quit", "guard"})
 """Slash commands a guarded channel runs while locked (issue 113)."""
@@ -1127,6 +1131,15 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Touch ID sensörüne dokun.",
     },
     "guard.progress.done": {"en": "Done.", "tr": "Tamam."},
+    "guard.progress.look_up": {
+        "en": "Tilt your head up a little.",
+        "tr": "Başını biraz yukarı kaldır.",
+    },
+    "guard.progress.look_down": {
+        "en": "Tilt your head down a little.",
+        "tr": "Başını biraz aşağı indir.",
+    },
+    "guard.progress.turn_more": {"en": "Turn a little further.", "tr": "Biraz daha çevir."},
     # lock triggers
     "guard.lock_trigger.command": {"en": "locked by command", "tr": "komutla kilitlendi"},
     "guard.lock_trigger.idle": {

@@ -1,0 +1,6 @@
+data: {"candidates": [{"content": {"parts": [{"text": "Hello"}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 410,"totalTokenCount": 410},"modelVersion": "gemini-3.5-flash","responseId": "resp-TEST"}
+
+data: {"candidates": [{"content": {"parts": [{"text": ", how can I help?"}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 410,"totalTokenCount": 419},"modelVersion": "gemini-3.5-flash","responseId": "resp-TEST"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "","thoughtSignature": "c2lnLXRleHQ"}],"role": "model"},"finishReason": "STOP","index": 0}],"usageMetadata": {"promptTokenCount": 410,"candidatesTokenCount": 9,"thoughtsTokenCount": 20,"cachedContentTokenCount": 100,"totalTokenCount": 439},"modelVersion": "gemini-3.5-flash","responseId": "resp-TEST"}
+

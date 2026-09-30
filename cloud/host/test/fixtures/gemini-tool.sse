@@ -1,0 +1,2 @@
+data: {"candidates": [{"content": {"parts": [{"functionCall": {"name": "ask_sub","args": {"name": "coach","question": "A plan for Monday?"}},"thoughtSignature": "c2lnLWNhbGw"}],"role": "model"},"finishReason": "STOP","index": 0}],"usageMetadata": {"promptTokenCount": 300,"candidatesTokenCount": 15,"totalTokenCount": 315},"modelVersion": "gemini-3.5-flash","responseId": "resp-TOOL"}
+

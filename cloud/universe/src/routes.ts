@@ -25,6 +25,7 @@ export const RESERVED_NAMES: ReadonlySet<string> = new Set([
   "person",
   "sub",
   "404",
+  "soon",
   "brand",
   "styles",
   "app",

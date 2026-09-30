@@ -31,7 +31,15 @@ import { forward } from "./host";
 import { error, methodNotAllowed, notFound, nowSeconds } from "./http";
 import { serveCard } from "./identity";
 import { receiveInbox } from "./inbox";
-import { isPage, notFoundPage, servePage, serveRoute, withSecurityHeaders } from "./pages";
+import {
+  cookieLanguage,
+  isPage,
+  notFoundPage,
+  preferredLanguage,
+  servePage,
+  serveRoute,
+  withSecurityHeaders,
+} from "./pages";
 import { isForwarded, pageRoute } from "./routes";
 
 export { Directory } from "./directory";
@@ -48,7 +56,9 @@ async function route(
   // The universe's own network identity: its card and its inbox.
   if (path === "/.well-known/tau.json") return serveCard(request, env, url);
   if (path === "/net/inbox") return receiveInbox(request, env, url);
-  // tau-host's paths on a universe without tau-host.
+  // tau-host's paths on a universe without tau-host. Sign-in explains that hosted taus
+  // are not open here yet instead of answering 404.
+  if (path === "/auth/login" && read) return signInSoon(request);
   if (isForwarded(path)) {
     return read && !path.startsWith("/api/") ? notFoundPage(request, env) : notFound();
   }
@@ -58,6 +68,16 @@ async function route(
   const page = pageRoute(path);
   if (page !== null) return serveRoute(request, env, url, page);
   return notFoundPage(request, env);
+}
+
+/** `/auth/login` without tau-host: the "opening soon" page in the visitor's language. */
+function signInSoon(request: Request): Response {
+  const lang =
+    cookieLanguage(request.headers.get("cookie")) ??
+    preferredLanguage(request.headers.get("accept-language")) ??
+    "en";
+  const location = lang === "tr" ? "/tr/soon" : "/soon";
+  return new Response(null, { status: 302, headers: { location, "cache-control": "no-store" } });
 }
 
 export default {

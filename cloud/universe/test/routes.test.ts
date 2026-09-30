@@ -214,8 +214,25 @@ describe("forwarding to tau-host", () => {
     }
   });
 
+  it("sends sign-in to the opening-soon page on a universe without tau-host", async () => {
+    const en = await universe("/auth/login", { redirect: "manual" });
+    expect(en.status).toBe(302);
+    expect(en.headers.get("location")).toBe("/soon");
+    const tr = await universe("/auth/login?next=/app", {
+      redirect: "manual",
+      headers: { cookie: "lang=tr" },
+    });
+    expect(tr.headers.get("location")).toBe("/tr/soon");
+    const accept = await universe("/auth/login", {
+      redirect: "manual",
+      headers: { "accept-language": "tr-TR,tr" },
+    });
+    expect(accept.headers.get("location")).toBe("/tr/soon");
+  });
+
   it("is 404 for tau-host's paths on a universe without tau-host", async () => {
     for (const [method, path, body] of forwarded) {
+      if (method === "GET" && path === "/auth/login") continue;
       const res = await universe(path, { method, ...(body === null ? {} : { body }) });
       const where = `${method} ${path}`;
       expect(res.status, where).toBe(404);

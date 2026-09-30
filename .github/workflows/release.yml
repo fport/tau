@@ -1,23 +1,26 @@
 name: release
 
-# Publishes tau-core and tau-tui to PyPI when a version tag is pushed, and creates the
-# matching GitHub release with the built files attached.
+# Publishes tau-core, tau-tui and tau-guard to PyPI when a version tag is pushed, and creates
+# the matching GitHub release with the built files attached.
 #
 # Tag rule: the tag is `v<version>`, where <version> is the version in
-# packages/tau-core/pyproject.toml. tau-tui is released in lockstep and must carry the same
-# version. The `check` step fails the run before anything is built when they disagree.
+# packages/tau-core/pyproject.toml. tau-tui and tau-guard are released in lockstep and must
+# carry the same version. The `check` step fails the run before anything is built when they
+# disagree.
 #
 # One-time setup by the owner (details in docs/contributing/release.md):
-#   PyPI, once per project (tau-core and tau-tui):
+#   PyPI, once per project (tau-core, tau-tui and tau-guard):
 #     https://pypi.org/manage/account/publishing/ -> "Add a new pending publisher" for a
 #     project that does not exist yet, or Manage -> Publishing on an existing project, with
-#       PyPI project name: tau-core (then again for tau-tui with environment pypi-tui)
+#       PyPI project name: tau-core (then tau-tui with environment pypi-tui, and tau-guard
+#                          with environment pypi-guard)
 #       Owner:             fport
 #       Repository:        tau
 #       Workflow name:     release.yml
-#       Environment name:  pypi   (tau-tui: pypi-tui)
-#   GitHub: environments `pypi` and `pypi-tui` (Settings -> Environments); the first run creates them
-#     if it is missing. Optional: required reviewers, so a tag waits for a click before upload.
+#       Environment name:  pypi   (tau-tui: pypi-tui, tau-guard: pypi-guard)
+#   GitHub: environments `pypi`, `pypi-tui` and `pypi-guard` (Settings -> Environments); the
+#     first run creates one if it is missing. Optional: required reviewers, so a tag waits for
+#     a click before upload.
 # No API token is stored anywhere: the publish job exchanges its GitHub OIDC token for a
 # short-lived PyPI token (trusted publishing), which is why it needs `id-token: write`.
 #
@@ -58,9 +61,14 @@ jobs:
         run: |
           core="$(uv version --package tau-core --short)"
           tui="$(uv version --package tau-tui --short)"
-          echo "tau-core $core, tau-tui $tui, ref $GITHUB_REF_TYPE $GITHUB_REF_NAME, publish=$PUBLISH"
+          guard="$(uv version --package tau-guard --short)"
+          echo "tau-core $core, tau-tui $tui, tau-guard $guard, ref $GITHUB_REF_TYPE $GITHUB_REF_NAME, publish=$PUBLISH"
           if [ "$tui" != "$core" ]; then
             echo "::error::tau-tui is $tui but tau-core is $core; both packages are released with the same version"
+            exit 1
+          fi
+          if [ "$guard" != "$core" ]; then
+            echo "::error::tau-guard is $guard but tau-core is $core; both packages are released with the same version"
             exit 1
           fi
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
@@ -78,6 +86,7 @@ jobs:
         run: |
           uv build --package tau-core --out-dir dist/tau-core
           uv build --package tau-tui --out-dir dist/tau-tui
+          uv build --package tau-guard --out-dir dist/tau-guard
           ls -l dist/*
 
       # The same commands "install it yourself" relies on, against the files that will be
@@ -89,7 +98,7 @@ jobs:
           TAU_DATA_DIR: ${{ runner.temp }}/tau-data
         run: |
           uv venv --python 3.12 "$RUNNER_TEMP/smoke"
-          uv pip install --python "$RUNNER_TEMP/smoke/bin/python" dist/tau-core/*.whl dist/tau-tui/*.whl
+          uv pip install --python "$RUNNER_TEMP/smoke/bin/python" dist/tau-core/*.whl dist/tau-tui/*.whl dist/tau-guard/*.whl
           tau="$RUNNER_TEMP/smoke/bin/tau"
           "$tau" --help
           "$tau" version
@@ -98,6 +107,8 @@ jobs:
           "$tau" components
           printf '/help\n/status\nhello\n/quit\n' | "$tau" chat
           "$tau" tui --help
+          "$tau" guard --help
+          "$tau" guard status
 
       - name: Smoke-test the documented install (uv tool install)
         env:
@@ -121,8 +132,8 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       # One environment per package: PyPI accepts a single pending trusted publisher per
-      # (repository, workflow, environment) tuple, so tau-core publishes from `pypi` and
-      # tau-tui from `pypi-tui`.
+      # (repository, workflow, environment) tuple, so tau-core publishes from `pypi`, tau-tui
+      # from `pypi-tui` and tau-guard from `pypi-guard`.
       name: ${{ matrix.environment }}
       url: https://pypi.org/project/${{ matrix.package }}/${{ needs.build.outputs.version }}/
     permissions:
@@ -136,6 +147,8 @@ jobs:
             environment: pypi
           - package: tau-tui
             environment: pypi-tui
+          - package: tau-guard
+            environment: pypi-guard
     steps:
       - uses: actions/download-artifact@v8
         with:

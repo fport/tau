@@ -23,6 +23,7 @@ jobs:
       - run: uv run pytest -q
       - run: uv build --package tau-core
       - run: uv build --package tau-tui
+      - run: uv build --package tau-guard
 
   docs:
     runs-on: ubuntu-latest

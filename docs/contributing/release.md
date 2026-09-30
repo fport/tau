@@ -1,19 +1,19 @@
 # Releasing
 
-tau ships as two PyPI distributions, `tau-core` and `tau-tui`, released together with the same
-version. A release is one tag away: push `vX.Y.Z` and the `release` workflow builds both
-packages, smoke-tests the wheels, publishes them to PyPI through trusted publishing and creates
+tau ships as three PyPI distributions, `tau-core`, `tau-tui` and `tau-guard`, released
+together with the same version. A release is one tag away: push `vX.Y.Z` and the `release`
+workflow builds the packages, smoke-tests the wheels, publishes them to PyPI through trusted publishing and creates
 the GitHub release with the files attached. The docs site deploys itself on every push to
 `main`. This is the "installable by anyone" half of
 [ADR 0006](../adr/0006-private-first-topology.md).
 
 ## Versioning
 
-- Both packages carry the same version. `tau-tui` depends on `tau-core` and is released with
-  it, even when only one of them changed.
+- The packages carry the same version. `tau-tui` and `tau-guard` depend on `tau-core` and are
+  released with it, even when only one of them changed.
 - The tag is `v` plus the version in `packages/tau-core/pyproject.toml`, for example
-  `v0.3.0`. The workflow refuses a tag that does not match it, and a `tau-tui` version that
-  differs from `tau-core`.
+  `v0.3.0`. The workflow refuses a tag that does not match it, and a `tau-tui` or `tau-guard`
+  version that differs from `tau-core`.
 - Versions follow [PEP 440](https://peps.python.org/pep-0440/). A pre-release such as
   `0.3.0rc1` is tagged `v0.3.0rc1` and becomes a GitHub pre-release.
 
@@ -22,11 +22,12 @@ the GitHub release with the files attached. The docs site deploys itself on ever
 !!! note "Before you start"
     `main` is green in CI and everything you want to ship is merged. Tags are cut from `main`.
 
-1. Bump both versions (this also updates `uv.lock`):
+1. Bump every version (this also updates `uv.lock`):
 
     ```sh
     uv version --package tau-core 0.3.0
     uv version --package tau-tui 0.3.0
+    uv version --package tau-guard 0.3.0
     ```
 
 2. Commit and tag:
@@ -40,7 +41,7 @@ the GitHub release with the files attached. The docs site deploys itself on ever
 3. Watch the run under **Actions → release**. The `build` job checks the tag against the
    version, builds the sdists and wheels, installs them into a fresh virtualenv and runs
    `tau --help`, `tau version`, `tau init --yes`, `tau doctor`, `tau components`, a scripted
-   `tau chat` and `tau tui --help`, then repeats the documented `uv tool install`. `publish`
+   `tau chat`, `tau tui --help` and `tau guard status`, then repeats the documented `uv tool install`. `publish`
    uploads each package (one job per package) and `github-release` creates the release.
 
 4. Write the changelog. The release is created with notes generated from the pull requests
@@ -77,6 +78,7 @@ locally, against wheels built into a scratch directory:
 ```sh
 uv build --package tau-core --out-dir /tmp/tau-dist
 uv build --package tau-tui --out-dir /tmp/tau-dist
+uv build --package tau-guard --out-dir /tmp/tau-dist
 uv venv --python 3.12 /tmp/tau-venv
 uv pip install --python /tmp/tau-venv/bin/python /tmp/tau-dist/*.whl
 /tmp/tau-venv/bin/tau init --yes --home /tmp/tau-home --provider fake --language en
@@ -107,12 +109,14 @@ project:
     | Workflow name | `release.yml` |
     | Environment name | `pypi` |
 
-3. Repeat with the project name `tau-tui` and the environment name `pypi-tui`. PyPI accepts
-   only one pending publisher per (repository, workflow, environment) tuple, so each package
-   publishes from its own GitHub environment; the workflow's matrix already maps
-   `tau-core → pypi` and `tau-tui → pypi-tui`.
-4. On GitHub, **Settings → Environments → New environment** → `pypi`, then `pypi-tui`
-   (or `gh api -X PUT repos/fport/tau/environments/pypi` and the same for `pypi-tui`).
+3. Repeat with the project name `tau-tui` and the environment name `pypi-tui`, then with
+   `tau-guard` and `pypi-guard`. PyPI accepts only one pending publisher per (repository,
+   workflow, environment) tuple, so each package publishes from its own GitHub environment;
+   the workflow's matrix already maps `tau-core → pypi`, `tau-tui → pypi-tui` and
+   `tau-guard → pypi-guard`.
+4. On GitHub, **Settings → Environments → New environment** → `pypi`, `pypi-tui` and
+   `pypi-guard` (or `gh api -X PUT repos/fport/tau/environments/pypi` and the same for the
+   others).
    Optional: add yourself as a required reviewer, so every tag waits for a click before
    anything is uploaded. The first run creates a missing environment; the reviewer rule is
    the reason to create it by hand.

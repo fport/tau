@@ -56,3 +56,16 @@ def test_reset_removes_handlers_and_restores_the_level() -> None:
     assert len(_tau_handlers()) == 1
     reset_logging()
     assert _tau_handlers() == [] and root.level == before
+
+
+def test_the_log_file_is_private(tmp_path: Path) -> None:
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "tau.log").write_text("earlier lines\n")
+    (logs / "tau.log").chmod(0o644)
+    path = configure_logging(logs, console=False)
+    assert path is not None and path.stat().st_mode & 0o777 == 0o600
+    assert path.read_text(encoding="utf-8") == "earlier lines\n"  # appended, not truncated
+    fresh = configure_logging(tmp_path / "new" / "logs", console=False)
+    assert fresh is not None and fresh.stat().st_mode & 0o777 == 0o600
+    assert fresh.parent.stat().st_mode & 0o777 == 0o700

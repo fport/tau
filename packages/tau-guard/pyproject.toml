@@ -1,0 +1,50 @@
+[project]
+name = "tau-guard"
+version = "0.3.1"
+description = "The owner guard for tau: the hub's guard service with reflex locks, a worker subprocess per check, protected /guard routes, an audit log and the tau guard command."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1",
+    "cryptography>=44",
+    "numpy>=2",
+    "opencv-python-headless>=4.14,<5",
+    "tau-core>=0.3.1",
+    "keyring>=25; sys_platform == 'darwin'",
+    "pyobjc-framework-AVFoundation>=12; sys_platform == 'darwin'",
+    "pyobjc-framework-LocalAuthentication>=12; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=12; sys_platform == 'darwin'",
+]
+keywords = ["tau", "agent", "assistant", "guard", "face", "presence", "macos"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+    "Topic :: Security",
+]
+
+[project.urls]
+Homepage = "https://github.com/fport/tau"
+Documentation = "https://docs.tau.getporti.com"
+Issues = "https://github.com/fport/tau/issues"
+Changelog = "https://github.com/fport/tau/releases"
+
+[project.entry-points."tau.commands"]
+guard = "tau_guard.cli:guard"
+
+[project.entry-points."tau.hub_services"]
+guard = "tau_guard.service:make_service"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tau_guard"]

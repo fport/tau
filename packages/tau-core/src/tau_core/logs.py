@@ -1,12 +1,14 @@
 """Logging setup for tau's command-line entry points.
 
-Details go to ``<data_dir>/logs/tau.log``; the terminal only gets short warnings, never a
+Details go to ``<data_dir>/logs/tau.log`` (0600); the terminal only gets short warnings, never a
 traceback (the user sees a short notice, the log keeps the details).
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -77,7 +79,11 @@ def configure_logging(
         return None
     path = Path(logs_dir) / LOG_FILE
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # The log is private (0600); an existing file keeps its content but not a wider mode.
+        os.close(os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600))
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
         file_handler = logging.FileHandler(path, encoding="utf-8")
     except OSError:
         return None

@@ -1019,23 +1019,24 @@ export class Tau extends DurableObject<HostEnv> {
     if (text.length > CHAT_TEXT_MAX) return failResponse(fail(413, "too_large", `at most ${CHAT_TEXT_MAX} characters`));
     const ready = this.ready();
     if (!ready.ok) return failResponse(ready);
+    // Every refusal comes before a new session is made, so a refused turn leaves nothing.
+    const budget = this.budget();
+    if (budget.exhausted) return failResponse(fail(402, "budget", JSON.stringify(budget)));
 
     let session: SessionRow | null;
     if (typeof input.session === "string" && input.session) {
       session = this.sessionRow(input.session);
       if (session === null) return failResponse(fail(404, "not_found", "no such session"));
+      if (this.busy.has(session.id)) return failResponse(fail(409, "busy", "a turn is running in this session"));
+      if (this.pendingIn(session.id)) {
+        return failResponse(fail(409, "awaiting_approval", "answer the approval in this session first"));
+      }
     } else {
-      const sub = typeof input.sub === "string" ? input.sub : "";
-      const created = this.newSession(sub);
+      const wanted = typeof input.sub === "string" ? input.sub : "";
+      const created = this.newSession(wanted);
       if (!created.ok) return failResponse(created);
       session = created.value;
     }
-    if (this.busy.has(session.id)) return failResponse(fail(409, "busy", "a turn is running in this session"));
-    if (this.pendingIn(session.id)) {
-      return failResponse(fail(409, "awaiting_approval", "answer the approval in this session first"));
-    }
-    const budget = this.budget();
-    if (budget.exhausted) return failResponse(fail(402, "budget", JSON.stringify(budget)));
 
     const sub = session.sub ? this.subRow(session.sub) : null;
     const role: ModelRole = sub?.role ?? "brain";

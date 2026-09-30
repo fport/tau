@@ -311,6 +311,8 @@ describe("budget", () => {
     const detail = JSON.parse(body.detail);
     expect(detail).toMatchObject({ budget_usd: 5, exhausted: true });
     expect(detail.spent_usd).toBeCloseTo(5.01);
+    // A refused turn leaves no empty session behind.
+    expect((await state(owner)).sessions).toEqual([]);
     // Raising the budget lets turns start again.
     await api(owner, "PATCH", "/api/host/settings", { budget_usd: 10 });
     expect((await chat(owner, { text: "Hi" })).response.status).toBe(200);

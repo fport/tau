@@ -119,6 +119,8 @@ let openSession: string | null = null;
 /** The sub-tau a new chat goes to ('' = the main tau). */
 let target = "";
 let busy = false;
+/** An error of the last turn, shown once the chat view is drawn again. */
+let flash = "";
 
 function setLanguage(next: UiLanguage | null): void {
   lang = next ?? lang;
@@ -653,7 +655,8 @@ async function chatView(main: HTMLElement, sessionId: string | null): Promise<vo
     maxlength: 20000,
   });
   const send = h("button", { class: "btn primary", type: "submit" }, m.send);
-  const errorLine = h("p", { class: "error-line", role: "alert" });
+  const errorLine = h("p", { class: "error-line", role: "alert" }, flash);
+  flash = "";
   const composer = h("form", { class: "composer" }, text, send);
 
   const submit = async () => {
@@ -715,10 +718,9 @@ async function chatView(main: HTMLElement, sessionId: string | null): Promise<vo
       openSession = sessionOfTurn;
       history.replaceState(null, "", `/app/chat/${sessionOfTurn}`);
     }
-    const error = errorLine.textContent;
-    void render().then(() => {
-      if (error) main.querySelector(".error-line")?.append(error);
-    });
+    // The view is drawn again from what was stored; the error stays on screen.
+    flash = errorLine.textContent ?? "";
+    void render();
   };
   composer.addEventListener("submit", (event) => {
     event.preventDefault();

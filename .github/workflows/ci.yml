@@ -45,7 +45,12 @@ jobs:
       - run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3"
+          bun-version: 1.3.2
+      # bun installs and runs the scripts; Vitest and Vite run on Node, which `bun run` starts
+      # through their `#!/usr/bin/env node` shebangs.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       - run: bun install --frozen-lockfile
       - run: bun run test
       # tsc (the type check) and vite; it also makes the dist/ that Tauri's build script checks.

@@ -4,6 +4,7 @@
 !packages/tau-core
 !packages/tau-net
 !packages/tau-cloud
+!packages/tau-sub
 **/__pycache__
 **/.pytest_cache
 **/.ruff_cache

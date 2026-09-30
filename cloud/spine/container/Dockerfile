@@ -17,11 +17,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_NO_CACHE=1
 
-# The packages the brain runs: the agent core, the network and the cloud-mode commands.
+# The packages the brain runs: the agent core, the network, the cloud-mode commands and
+# sub-taus (persona/subs/, which `tau cloud run` pulls with the other persona files).
 COPY packages/tau-core /src/tau-core
 COPY packages/tau-net /src/tau-net
 COPY packages/tau-cloud /src/tau-cloud
-RUN uv pip install --system /src/tau-core /src/tau-net /src/tau-cloud
+COPY packages/tau-sub /src/tau-sub
+RUN uv pip install --system /src/tau-core /src/tau-net /src/tau-cloud /src/tau-sub
 
 # Config root and data directory; `tau cloud run` fills them from the spine at start.
 ENV TAU_HOME=/tau \

@@ -53,5 +53,10 @@ def test_the_image_installs_this_package() -> None:
     root = Path(__file__).resolve().parents[3]
     dockerfile = (root / "cloud" / "spine" / "container" / "Dockerfile").read_text(encoding="utf-8")
     assert "COPY packages/tau-cloud /src/tau-cloud" in dockerfile
+    # Sub-taus (ADR 0012): the brain finds persona/subs/ and answers for public ones.
+    assert "COPY packages/tau-sub /src/tau-sub" in dockerfile
+    assert "/src/tau-sub\n" in dockerfile  # installed, not only copied
+    for ignore in (".dockerignore", "cloud/spine/container/Dockerfile.dockerignore"):
+        assert "!packages/tau-sub\n" in (root / ignore).read_text(encoding="utf-8"), ignore
     assert 'CMD ["tau", "cloud", "run"]' in dockerfile
     assert "EXPOSE 8080" in dockerfile

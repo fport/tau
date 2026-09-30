@@ -3,11 +3,12 @@
 #
 # Docker reads this file when the Dockerfile is given by path
 # (`docker build -f cloud/spine/container/Dockerfile .`). The Dockerfile itself only
-# copies these three directories.
+# copies these four directories.
 *
 !packages/tau-core
 !packages/tau-net
 !packages/tau-cloud
+!packages/tau-sub
 **/__pycache__
 **/.pytest_cache
 **/.ruff_cache

@@ -176,7 +176,14 @@ Visitors talk to a web sub-tau through the universe page:
 
 - The public site opens on the universe itself, a full-screen live graph, with the three ways to start as its only text above the fold.
 - The theme is hard, not soft: near-black with a faint grid and code texture, one neon red accent drawn from the tau triangle, chrome-white type, thin lines, square corners and HUD rings.
-- Every tau and sub-tau gets a **character**, generated deterministically from its address, or its address and name. It is a small creature built on the tau triangle: a triangle body shape, a colour from a fixed neon palette, eyes, and at most one accessory, with an idle animation that respects `prefers-reduced-motion`.
+- Every tau and sub-tau gets a **character**, generated deterministically from its address, or its address and name. It is an **ember sigil**:
+  - a sharp neon triangle with a flame of angular tongues and a white-hot core;
+  - a hue from the brand's fire family, with a minority of "cold fire" hues;
+  - HUD accents (a partial τ ring, ticks, a floor line);
+  - a flicker that respects `prefers-reduced-motion`.
+
+  A tau's sigil adds a second triangle and a ring. Its sub-taus carry one flame in the owner's hue.
+- *Amended 2026-09-30:* the first version drew mascots with eyes and accessories. The owner found them toy-like and asked for a professional, sci-fi, fire-and-triangle look, so sigils replaced them, and the site moved to the brand palette (Void, Signal, Ember) with technical type (Chakra Petch, IBM Plex Sans, JetBrains Mono).
 - The generator is one pure function (`cloud/shared/character.ts`, a seed in and SVG out) used by the site and by tau-host.
 - The docs site follows the same palette.
 

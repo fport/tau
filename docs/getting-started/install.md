@@ -7,7 +7,8 @@ tau is a set of Python packages. `tau-core` holds the agent and the `tau` comman
 - **Python 3.12 or newer.** Nothing older works; the packages declare `requires-python = ">=3.12"`.
 - **[uv](https://docs.astral.sh/uv/)**, the Python package manager tau's workspace is built on. It installs its own Python if you have none.
 - macOS or Linux. The hub runs on a MacBook today and on a Raspberry Pi 5 later; the same code runs on both.
-- A model provider, or none. tau ships a scripted `fake` provider so you can try everything without an account. Real answers need Amazon Bedrock or Anthropic credentials (see [First run](first-run.md)).
+- A model provider, or none. tau ships a scripted `fake` provider so you can try everything without an account. Real answers need an Anthropic API key (see [First run](first-run.md)).
+- **Docker**, optional: Docker Desktop on macOS, `docker.io` on the Raspberry Pi. tau's default setup sends every model role through a LiteLLM proxy in a container, which puts a hard spend cap on each role ([Model proxy and budgets](../guides/model-proxy.md)). Without Docker, tau calls Anthropic directly, with no budgets.
 
 === "macOS"
 
@@ -39,7 +40,7 @@ tau is a set of Python packages. `tau-core` holds the agent and the `tau` comman
     uv run tau --help
     ```
 
-    Everything below applies unchanged; read `tau …` as `uv run tau …` while you are inside the checkout. The repository root holds a `tau.toml`, so it is also your configuration root until you run `tau init` elsewhere.
+    Everything below applies unchanged; read `tau …` as `uv run tau …` while you are inside the checkout. The repository root holds a `tau.toml`, so it is also your configuration root until you run `tau init` elsewhere. That file sends every role through the model proxy: set the proxy up ([Model proxy and budgets](../guides/model-proxy.md)), or use a root that `tau init` wrote for the direct provider.
 
 Once the packages are published, the documented install is one `uv tool` command that puts `tau` on your `PATH` with the TUI included:
 
@@ -68,7 +69,7 @@ It asks one question, the UI language (`en` or `tr`), and then writes:
 | `persona/user.md` | Your copy of the example. Edit it; it is the only place for real facts about you. |
 | `.env.example` | The names of every credential and setting `tau doctor` knows about. Your real values go into `.env` next to it. |
 
-`tau init` picks the provider from the credentials it can see: Bedrock first, then Anthropic, else `fake`. With no credentials at all you get a working configuration on the `fake` provider and a note saying so. Existing files are kept unless you pass `--force`; `user.md` and `.env.example` are never overwritten.
+`tau init` picks the provider from the credentials it can see: the model proxy when a proxy key (`TAU_PROXY_KEY_BRAIN`) is present, then Anthropic directly (`ANTHROPIC_API_KEY`), then Bedrock, else `fake`. On a fresh machine with only an Anthropic key that means the direct `anthropic` provider, which needs no Docker; the [model proxy guide](../guides/model-proxy.md) switches to the proxy later. With no credentials at all you get a working configuration on the `fake` provider and a note saying so. Existing files are kept unless you pass `--force`; `user.md` and `.env.example` are never overwritten.
 
 !!! note "Where is the root?"
     tau looks for `tau.toml` in this order: the `--home DIR` option, the `TAU_HOME` variable, the current directory when it holds a `tau.toml`, then `~/.tau`. Mutable state (sessions, logs, hub files) lives elsewhere, in `TAU_DATA_DIR`, default `~/.local/share/tau`. See [Environment variables](../reference/environment.md).
@@ -106,4 +107,5 @@ tau tui
 
 - [First run](first-run.md): credentials in `.env`, the fake provider, `tau doctor` explained.
 - [Configure](configure.md): a walk through `tau.toml`.
+- [Model proxy and budgets](../guides/model-proxy.md): a hard spend cap per model role.
 - [Run tau as a service](../guides/hub-service.md) when you want the hub to stay up.

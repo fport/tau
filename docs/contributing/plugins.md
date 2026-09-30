@@ -51,7 +51,7 @@ build-backend = "hatchling.build"
 packages = ["src/tau_example"]
 ```
 
-The entry-point **name** (`example`) is what `tau components`, `tau.toml` and `[components]` refer to. It must not collide with a built-in seed (`bedrock`, `anthropic`, `fake`, `memory`, `file`); a colliding entry point is logged and ignored.
+The entry-point **name** (`example`) is what `tau components`, `tau.toml` and `[components]` refer to. It must not collide with a built-in seed (`proxy`, `anthropic`, `bedrock`, `ollama`, `fake`, `memory`, `file`); a colliding entry point is logged and ignored.
 
 ## Tools: `tau.tools`
 

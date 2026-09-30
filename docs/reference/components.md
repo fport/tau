@@ -19,7 +19,7 @@ A *plugin* is a third-party distribution that provides components. To write one,
 
 ### Precedence
 
-- A **seed** name (`bedrock`, `anthropic`, `fake`, `memory`, `file`) wins over an entry point of the same name; the entry point is logged and ignored, so an installed package cannot silently replace `bedrock`.
+- A **seed** name (`proxy`, `anthropic`, `bedrock`, `ollama`, `fake`, `memory`, `file`) wins over an entry point of the same name; the entry point is logged and ignored, so an installed package cannot silently replace `bedrock`.
 - An **in-process registration** (`register_provider`, `register_session_backend`) replaces anything, because it is explicit code.
 - `Config.load` validates provider and backend **names** without loading any entry point, so `tau version` and `tau hub status` never import a provider SDK. A name that is declared but fails to load errors when the role is resolved, with the entry point's own error: `Model provider 'x' from <distribution> failed to load: …`. Only a name no distribution declares is an `Unknown model provider`.
 
@@ -65,20 +65,25 @@ tau.commands
   doctor      tau-core 0.3.1  enabled  tau doctor
   hub         tau-core 0.3.1  enabled  tau hub
   init        tau-core 0.3.1  enabled  tau init
+  proxy       tau-core 0.3.1  enabled  tau proxy
 tau.providers
-  bedrock    tau-core 0.3.1              enabled  in use: brain, fast (built-in)
-  anthropic  tau-core 0.3.1              enabled  in use: brain, fast (built-in)
+  proxy      tau-core 0.3.1              enabled  in use: brain, fast, local (built-in)
+  anthropic  tau-core 0.3.1              enabled  available (built-in)
+  bedrock    tau-core 0.3.1              enabled  available (built-in)
+  ollama     tau-core 0.3.1              enabled  available (built-in)
   fake       tau-core 0.3.1              enabled  available (built-in)
   fake2      tau-example-provider 0.0.1  enabled  available
-  ollama     - -                         disabled not available until issue 012; used by local (planned)
 tau.sessions
   memory   tau-core 0.3.1              enabled  available (built-in)
   file     tau-core 0.3.1              enabled  in use (built-in)
   example  tau-example-provider 0.0.1  enabled  available
 tau.context
   example  tau-example-service 0.0.1  enabled
+  budget   tau-core 0.3.1             enabled
 tau.hub_services
-  example  tau-example-service 0.0.1  enabled
+  example   tau-example-service 0.0.1  enabled
+  spend     tau-core 0.3.1             enabled
+  telegram  tau-core 0.3.1             enabled
 ```
 
 Columns: name, distribution and version, `enabled`/`disabled` (from `[components]`), then a note: `tier N` for a tool (or `no tier: never registered`), `tau <name>` for a command, `in use: <roles>` / `available` / `planned` for a provider, `in use` / `available` for a backend, and the load error for anything that failed. `--json` gives the same rows as objects with `group`, `name`, `distribution`, `version`, `source` (`built-in`, `entry point`, `registered`, `planned`), `enabled`, `note`, `error`.

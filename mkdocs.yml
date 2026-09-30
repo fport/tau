@@ -78,6 +78,7 @@ nav:
       - Voice: guides/voice.md
       - Backups (encrypted, R2): guides/backups.md
       - Run tau as a service: guides/hub-service.md
+      - Model proxy and budgets: guides/model-proxy.md
       - TauBar (macOS menu bar): guides/taubar.md
       - Move the hub to a Raspberry Pi: guides/raspberry-pi.md
       - Join the tau network: guides/tau-network.md
@@ -102,6 +103,7 @@ nav:
           - 0005 Components and entry-point groups: adr/0005-components-and-entry-point-groups.md
           - 0006 Private-first topology: adr/0006-private-first-topology.md
           - 0007 Cloud mode and the tau network: adr/0007-cloud-mode-and-tau-network.md
+          - 0009 Anthropic-only models behind the proxy: adr/0009-anthropic-only-models-behind-the-proxy.md
   - Contributing:
       - Development setup: contributing/development.md
       - Write a plugin: contributing/plugins.md

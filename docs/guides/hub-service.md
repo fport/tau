@@ -47,6 +47,7 @@ The hub listens on `127.0.0.1:<control_port>` only (default 7877; `TAU_HUB_PORT`
 |---|---|
 | `GET /health` | `{"ok": true, "pid": …, "uptime_s": …}` |
 | `GET /status` | role, profile, version, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`, `approvals_pending`, `nodes`, plus keys that hub services add |
+| `GET /spend` | spend per proxy role, read from the LiteLLM proxy now (the `spend` hub service; `/status` carries the cached copy under `spend`); see [Model proxy and budgets](model-proxy.md) |
 
 A request with a non-loopback `Host` header gets 403, so the API cannot be reached through a tunnel or a proxy by accident. `tau doctor` and `/status` in a session probe `/health` with a one-second timeout, for information only.
 

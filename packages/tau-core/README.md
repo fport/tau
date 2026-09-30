@@ -7,9 +7,10 @@ It is built on [Strands Agents](https://strandsagents.com/) and is published on 
 
 ```sh
 pip install tau-core        # or, inside the tau repo: uv sync --all-packages --group dev
-tau --help                  # chat, hub, components, doctor, init, version, plus plugin commands (tui, ...)
+tau --help                  # chat, hub, components, doctor, init, proxy, version, plus plugin commands (tui, net, ...)
 tau init                    # create ~/.tau/tau.toml and the persona files from the templates
-tau doctor                  # check config, credentials, sessions, persona, .env, the hub
+tau doctor                  # check config, credentials, the model proxy, sessions, persona, .env, the hub
+tau proxy keys              # one virtual key per proxy role, carrying its budget from tau.toml
 tau chat                    # talk to tau in the terminal
 tau --lang tr chat          # same, with Turkish UI chrome
 ```
@@ -33,17 +34,24 @@ asks for a role (`brain`, `fast`, `local`). Credentials and roots come from the 
 default: the current directory if it has a `tau.toml`, else `~/.tau`), `TAU_DATA_DIR` (mutable
 state, default `~/.local/share/tau`), `TAU_PROFILE` (`home` | `travel` | `sport`, default
 `home`), `TAU_ROLE` (`hub`|`node`), `TAU_HUB_PORT`, `TAU_LANG` (see below). Built-in providers:
-`bedrock`, `anthropic` (with an optional per-role `fallback`) and `fake`; a `tau.providers`
-component adds more (see [Components](#components)). A missing credential stops `tau chat` with
-a message naming the variables; `tau doctor` reports it without starting anything, and `tau tui`
+`proxy` (the LiteLLM proxy, what the shipped `tau.toml` uses for every role), `anthropic`,
+`bedrock` (optional, direct), `ollama` (the `local` role without the proxy) and `fake`; any role
+may name a `fallback` used when its primary has no credentials, and a `tau.providers` component
+adds more providers (see [Components](#components)). A missing credential stops `tau chat` with a
+message naming the variables; `tau doctor` reports it without starting anything, and `tau tui`
 opens its settings screen so the key can be added in place.
 
 ```toml
 [models.roles.brain]
-provider = "bedrock"
-model_id = "..."
+provider = "proxy"        # the LiteLLM proxy (infra/litellm); model_id is its model group
+model_id = "brain"
 max_tokens = 4096
-cache = { strategy = "auto", ttl = "1h" }  # optional: Strands CacheConfig (bedrock, anthropic)
+budget = { usd = 15, period = "1mo", degrade_to = "fast" }  # hard cap on the role's proxy key
+
+[models.roles.fast]
+provider = "anthropic"    # direct: no Docker, no budget
+model_id = "claude-haiku-4-5"
+cache = { strategy = "auto", ttl = "1h" }  # optional: Strands CacheConfig (anthropic, bedrock)
 
 [agent]
 max_turns = 12            # model calls per user turn (Limits(turns=...))
@@ -51,6 +59,49 @@ context = "sliding"       # sliding | summarize: the model's window on a long se
 window_size = 60          # sliding: messages kept; summarize: recent messages never summarized
 max_total_tokens = 200000 # optional per-turn token budget (Limits(total_tokens=...))
 ```
+
+### Model proxy and budgets
+
+Anthropic is the only cloud provider of tau's own setup, and every role goes through the LiteLLM
+proxy (`infra/litellm` in the tau repo, ADR 0009). The `proxy` provider is Strands' `OpenAIModel`
+pointed at it, never `LiteLLMModel` (that would import the `litellm` package, which only ever runs
+inside the pinned container). `model_id` is the proxy's model group (`brain`, `fast`, `local`),
+which the proxy's `config.yaml` maps to a real model. Each group calls with its own virtual key
+from `TAU_PROXY_KEY_<GROUP>` (the group upper-cased, anything not alphanumeric → `_`;
+`params.api_key_env` names another variable); the URL is `params.base_url`, else
+`TAU_PROXY_URL`, else `http://127.0.0.1:4000`. `ollama` calls Ollama's OpenAI-compatible endpoint
+directly (`params.base_url`, else `TAU_OLLAMA_URL`, else `http://127.0.0.1:11434`) and needs no
+credentials; without the proxy it has no budget and no fallback.
+
+`budget` (a `[models.roles.<role>.budget]` table or an inline table) is the role's hard spend
+cap: `usd` (a positive number of dollars), `period` (LiteLLM's `budget_duration`, a number plus
+`s`, `m`, `h`, `d` or `mo`; resets in UTC) and optional `degrade_to` (another defined role; not the
+role itself, no loops). It is not allowed inside a `fallback`, only the proxy enforces it, and
+`tau doctor` warns about a budget on any other provider. The proxy refuses a spent key with
+`429 budget_exceeded`; `ProxyModel` catches that before Strands can retry it as throttling and
+either answers with `degrade_to` (the turn goes on and yields `Notice(notice.budget_degraded)`:
+`The brain budget is spent until 01.10.2026 03:00; fast answered instead.`) or raises
+`BudgetExhausted`, which ends the turn with stop reason `error` and `notice.budget_exhausted`:
+`The brain budget is spent ($15.00 of $15.00) and resets at 01.10.2026 03:00. To raise the cap,
+change it in tau.toml and run tau proxy keys.` A proxy that does not answer raises
+`ProxyUnavailable` (`notice.proxy_down`, `The model proxy at … is not answering. Start it with
+infra/litellm/proxy.sh up.`). Both are `ModelNotice`s: one sentence in the UI language, a warning
+in the log, never a trace. A fallback the proxy made itself (`brain` → `fast` on provider
+errors, `local` → `fast` when Ollama is away) is logged as a warning from its response headers.
+
+```sh
+tau proxy keys [ROLE...] [--replace]   # create missing keys (into <home>/.env), align group + cap with tau.toml
+tau proxy rotate ROLE                  # new key, same spend this period; restart the hub afterwards
+tau proxy spend [--json]               # spend, cap, period and reset per proxy role
+```
+
+`keys` and `rotate` need `LITELLM_MASTER_KEY`; `spend` reads each key's own record
+(`GET /key/info`), no master key. `keys` is safe to rerun and refuses to take over a key the
+proxy already holds under the alias `tau-<role>` unless `--replace` (its spend carries over).
+Spend is cached per configuration in `tau_core.spend` (`SpendTracker`, refreshed from
+`/key/info` and from the key-spend header of every proxied answer) and shown in four places: the
+`budget` context source (`- Budget: …` under `## Now`), the last line of `/status`, the `spend`
+hub service (`GET /spend`, see [Hub](#hub)) and `tau proxy spend`.
 
 ### Editing the two files: `tau_core.settings`
 
@@ -90,9 +141,11 @@ file's mode, and `.env` is created private and kept private. No function returns
 prints a credential value; the UI shows `mask(value)` (`sk-…abcd` from 20 characters on,
 `ab…yz` for 12 to 19, only `…` and the last two below that) or a `set` / `not set` flag, and
 `credential_source` says whether the shell environment or `.env` supplies a value (the shell
-always wins). `set_role` and `check_document` refuse a planned provider a save would newly
-introduce (`ollama` until issue 012), since a role on it cannot start; one that is already in
-the file is left alone. `known_env_names(home)` lists what a credentials editor
+always wins). `set_role` and `check_document` refuse a planned provider (one a later issue
+builds, listed in `PLANNED_PROVIDERS`; none today) that a save would newly introduce, since a
+role on it cannot start; one that is already in the file is left alone. `set_role` leaves a
+role's `budget` table as it is, so moving a role off `proxy` keeps a budget nothing enforces
+until you remove it (`tau doctor` warns). `known_env_names(home)` lists what a credentials editor
 should offer: the variables of the configured providers, then every other provider's, then the
 names in `.env.example` and `.env`. `report_lines(config, language=…)` is the `/settings`
 listing both channels print. `Config.load` raises `ConfigNotFound` (a `ConfigError`) when there
@@ -107,7 +160,7 @@ with a different [agent] context setting; set it back to sliding or start a new 
 --resume`, `/resume` and the TUI's picker and sidebar alike; the current session is kept. The SDK's
 `context_manager = "auto"`/`"agentic"` presets are rejected with a `ConfigError`: they register
 untiered SDK tools that the tier gate would refuse. `cache` accepts the `CacheConfig` fields
-(`strategy`, `ttl`, `system_prompt_ttl`, `tools_ttl`); the fake provider ignores it.
+(`strategy`, `ttl`, `system_prompt_ttl`, `tools_ttl`); `proxy`, `ollama` and `fake` ignore it.
 
 ## UI language and commands
 
@@ -140,7 +193,7 @@ are accepted forever but never shown in hints:
 | `/session` | `/oturum` | current session id, title, message count, store |
 | `/compact [focus]` | `/özet`, `/ozet` | summarize this session into a new one and continue there; the old one is kept (see [Compaction](#compaction)) |
 | `/clear` | `/temizle`, `/cls` | clear the screen; the session continues, nothing is deleted (`--resume` shows the history again) |
-| `/status` | `/durum` | profile, session, model, context, tools, UI language, versions, hub |
+| `/status` | `/durum` | profile, session, model, context, tools, UI language, versions, hub, budget |
 | `/model [role]` | `/rol` | list the model roles, or switch this session to one (remembered by `/resume`) |
 | `/lang en\|tr` | `/dil` | switch the UI language for this run |
 | `/settings [key value]` | `/ayarlar`, `/ayar` | show the bootstrap config (roles, credential status, language, profile, context, files); `language en\|tr`, `profile NAME`, `model ROLE PROVIDER MODEL_ID`, `set NAME` (hidden prompt), `clear NAME` change one and reload; the TUI opens its settings screen |
@@ -212,10 +265,16 @@ unknown, and a source that raises is skipped and logged once. Without an explici
 agent = build_agent(
     context_sources=[
         lambda: {"nodes": ["mac", "arm"]},  # live nodes (L5)
-        lambda: {"budget": "fast 0,12 $ / 1 $"},  # today's spend (L2)
+        lambda: {"budget": "fast $0.12 of $1.00 per 1d (resets 01.10.2026 03:00)"},  # spend (L2)
     ],
 )
 ```
+
+tau-core ships one context source itself, `budget` (`tau_core.spend:context_source`): with at
+least one `proxy` role it fills `budget` from the cached spend of every proxy role, e.g.
+`brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00); fast $0.00 of $1.00 per 1d (resets
+…)`, and never waits on the network (a stale cache refreshes in a background thread). Without a
+proxy role it provides nothing and the line reads `unknown`.
 
 ## Tiers and approval
 
@@ -347,7 +406,7 @@ for now. `TurnEnd.stop_reason` (`tau_core.STOP_REASONS`):
 | `max_tokens` | the reply hit the provider's output limit; the partial reply is kept | `notice.max_tokens`, `notice` event |
 | `cancelled` | `TauAgent.cancel()` stopped the turn at the SDK's next safe point; a cancel while no turn runs is ignored | `notice.cancelled`, `notice` event |
 | `interrupt` | a hook kept interrupting after `max_turns` refusals; tau cleared the SDK's interrupt state | `notice.interrupt_refused`, `error` event |
-| `error` | the model call failed (`notice.model_error`), the context window overflowed (`notice.overflow`) | `error` event with `where`: `model`, `context` or `interrupt` |
+| `error` | the model call failed (`notice.model_error`, or a `ModelNotice`'s own sentence for a spent budget or a stopped proxy), the context window overflowed (`notice.overflow`) | `error` event with `where`: `model`, `context` or `interrupt` |
 | `busy` | another invocation held the SDK's concurrency guard; nothing ran | `notice.busy`, no event |
 
 tau never appends to the history by hand. When a turn leaves the history *dangling* - on a
@@ -413,9 +472,11 @@ In `tau chat`:
 - `/status` prints the profile, the session (id, title, stored message count, role), the model
   (role → provider, whether the role's `fallback` is in use, the model id; never a key), the
   context mode and window with the in-memory message count, the tools (registered, how many
-  need approval), the UI language, the installed `tau-*` versions and whether a hub answers on
+  need approval), the UI language, the installed `tau-*` versions, whether a hub answers on
   `http://127.0.0.1:<control_port>/health` (the `tau doctor` probe, one second, information
-  only).
+  only) and, when a role uses the proxy, the spend of every proxy role read fresh from the proxy
+  (`Budget: brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00); fast $0.00 of $1.00 per 1d
+  (resets …)`, or `not read yet (the proxy did not answer)`).
 - `/model` lists the roles of `tau.toml` with their providers and marks the current one;
   `/model fast` rebuilds the agent on the **same** session with that role: the new agent is
   built first (`build_agent(role=..., session_id=<current>)`, which restores the stored history
@@ -483,8 +544,22 @@ tau hub systemd-unit   # prints the systemd user unit (RPi5 hub)
 The control API listens on `127.0.0.1:<control_port>` only (default 7877, `TAU_HUB_PORT`
 overrides) and speaks JSON: `GET /health` → `{"ok": true, "pid", "uptime_s"}`, `GET /status` →
 `role`, `profile`, `version`, `started_at`, `heartbeat_at`, `uptime_s`, `last_crash`,
-`approvals_pending`, `nodes`, plus the keys hub services add (`telegram`). Requests with a
-non-loopback `Host` header get 403.
+`approvals_pending`, `nodes`, plus the keys hub services add (`telegram`, `spend`). Requests
+with a non-loopback `Host` header get 403.
+
+The `spend` service adds `GET /spend`, which reads every proxy role's key from the proxy on the
+spot (`/status` carries the cached copy under `spend`):
+
+```json
+{"proxy": "http://127.0.0.1:4000",
+ "roles": {"brain": {"group": "brain", "spend_usd": 0.42, "max_budget_usd": 15.0, "period": "1mo",
+                     "reset_at": "2026-10-01T00:00:00+00:00", "exhausted": false,
+                     "configured": {"usd": 15.0, "period": "1mo", "degrade_to": "fast"},
+                     "error": null}}}
+```
+
+`proxy` is `null` and `roles` empty when no role uses the proxy; a role whose key could not be
+read keeps its last known numbers and says why in `error`.
 
 Extending the hub: a `HubService` has a `name`, `async start(hub)` and `async stop()`; services
 start in order after the crash check and stop in reverse. `tau hub run` starts the control API
@@ -520,7 +595,8 @@ def make_service(config):  # [project.entry-points."tau.hub_services"] voice = "
     return VoiceService(config)
 ```
 
-tau-core itself ships one hub service, `telegram` (see [Telegram](#telegram)).
+tau-core itself ships two hub services: `telegram` (see [Telegram](#telegram)) and `spend`
+(`GET /spend` and the `spend` key of `/status`, see above).
 
 launchd is driven through the `Launchctl`
 protocol; tests pass `FakeLaunchctl` to the CLI as `obj={"launchctl": fake}`. The launchd plist
@@ -626,7 +702,7 @@ mine = "my_package:TOOLS"              # tools carry a tier (tau_tool); untiered
 mine = "my_package.cli:command"        # `tau mine`
 
 [project.entry-points."tau.providers"]
-ollama = "my_package.models:make_model"   # make_model(role_cfg, env) -> Model; make_model.required_env = []
+example = "my_package.models:make_model"  # make_model(role_cfg, env) -> Model; make_model.required_env = []
 
 [project.entry-points."tau.sessions"]
 cloud = "my_package.sessions:make_store"  # make_store(config) -> SessionStore
@@ -667,17 +743,24 @@ Three commands show, check and set up an installation (English, `--json` where u
 
 ```sh
 tau components          # every component in every group: distribution, version, enabled/disabled, load error
-tau doctor              # config, per-role provider + credentials (no client built), session store, persona
-                        # files, .env names vs .env.example, component load errors, [components] names that
-                        # no installed component provides, control API reachable, Telegram poller state;
-                        # exit 1 when a check fails
-                        # ("warn" for a planned provider such as ollama and for the unknown names)
-tau init                # tau.toml from the shipped template (provider: bedrock > anthropic > fake, by the
-                        # credentials present in the environment or <home>/.env), persona/persona.md,
+tau doctor              # config, per-role provider + credentials (no client built), the model proxy (does it
+                        # answer, does it accept each proxy role's key, does the key's cap match tau.toml),
+                        # session store, persona files, .env names vs .env.example, component load errors,
+                        # [components] names that no installed component provides, control API reachable,
+                        # Telegram poller state; exit 1 when a check fails ("warn" for a planned provider,
+                        # a proxy that does not answer, a proxy role without a budget or with a drifted cap,
+                        # a budget on a provider that cannot enforce it, and the unknown names)
+tau init                # tau.toml from the shipped template (provider: proxy > anthropic > bedrock > fake,
+                        # by the credentials present in the environment or <home>/.env), persona/persona.md,
                         # user.example.md, user.md (from the example unless it exists) and .env.example;
                         # asks the UI language unless --language or --yes
 tau init --home ~/.tau --provider anthropic --language tr --profile home --yes   # non-interactive
 ```
+
+`tau init` picks `proxy` when `TAU_PROXY_KEY_BRAIN` is present and then writes the template as
+shipped. For any other provider it rewrites `brain` and `fast` to it with the ids of
+`templates/models.toml`, points `local` at `ollama` (`qwen3.5:9b`) directly and drops the
+`budget` tables, since nothing but the proxy would enforce them.
 
 `tau init` never overwrites an existing `tau.toml` or `persona.md` without `--force` and never
 overwrites `user.md` or `.env.example` (the latter is the list of names `tau doctor` checks

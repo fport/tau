@@ -101,24 +101,25 @@ Terminal: an ANSI clear, the ready banner again, then `Screen cleared; the sessi
 ```text
 Profile: home
 Session: 20260929-173826-f949 · Merhaba tau · 2 messages stored · role brain
-Model: brain → anthropic (fallback; bedrock has no credentials) · claude-sonnet-5
+Model: brain → proxy · brain
 Context: sliding, window 60 · 2 messages in memory
 Tools: 2 registered · 1 need approval (tier 2)
 UI language: en
 Versions: tau-core 0.3.1 · tau-tui 0.3.1
 Hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
+Budget: brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00); fast $0.03 of $1.00 per 1d (resets 01.10.2026 03:00); local $0.00 of $0.50 per 1d (resets 01.10.2026 03:00)
 ```
 
-The model line names the provider and model id and says when the fallback is in use; it never prints a key. The hub line is the `tau doctor` probe (one second, information only). In the TUI `/status` is an info card.
+The model line names the provider and model id (for the proxy, the model group) and says when a direct role's `fallback` is in use; it never prints a key. The budget line appears when a role goes through the LiteLLM proxy: what each role's key spent in its period, read from the proxy ([Model proxy and budgets](../guides/model-proxy.md)). The hub line is the `tau doctor` probe (one second, information only). In the TUI `/status` is an info card.
 
 ### `/model [role]`
 
 ```text
-Model role: brain (anthropic)
+Model role: brain (proxy)
 Roles in tau.toml:
-  brain  bedrock (fallback anthropic) · current
-  fast   bedrock (fallback anthropic)
-  local  ollama
+  brain  proxy · current
+  fast   proxy
+  local  proxy
 ```
 
 `/model fast` rebuilds the agent on the **same** session with that role: the new agent is built first, so a failed build (unknown role, missing credentials, unavailable provider) changes nothing and prints why. The role is written to the session's metadata, so `/resume` and `--resume` come back on it. `tau chat --role` pins a role for the run and wins over the stored one.
@@ -134,9 +135,9 @@ Without an argument, the bootstrap config as the files hold it:
 ```text
 Settings · ~/.tau
 Model roles:
-  brain  bedrock · global.anthropic.claude-sonnet-5 · fallback anthropic · missing AWS_REGION, AWS_PROFILE · fallback anthropic in use
-  fast   bedrock · global.anthropic.claude-haiku-4-5 · fallback anthropic · missing AWS_REGION, AWS_PROFILE · fallback anthropic in use
-  local  ollama · qwen3:8b · provider not available: Provider 'ollama' is not supported yet (issue 012).
+  brain  proxy · brain · credentials ok
+  fast   proxy · fast · credentials ok
+  local  proxy · local · credentials ok
 UI language: en · profile: home
 Context: sliding, window 60 · max_turns 12 · max_total_tokens none
 Files:
@@ -156,7 +157,7 @@ In the terminal the setters write the files through `tau_core.settings` (comment
 |---|---|
 | `/settings language en\|tr` | `[ui] language` in `tau.toml`; the chrome switches at once (`Settings saved.` then, already in the new language, `Arayüz dili: tr.`) |
 | `/settings profile NAME` | `TAU_PROFILE` in `.env`; the agent is rebuilt on the same session (`Settings saved; model reloaded.`) |
-| `/settings model ROLE PROVIDER MODEL_ID` | provider and model id of a role (its `max_tokens` and `fallback` are kept); rebuilds. A planned provider (`ollama` until issue 012) is refused unless the role already names it: `Not saved: tau.toml: [models.roles.brain] provider 'ollama' is not supported yet (issue 012); available: anthropic, bedrock, fake.` |
+| `/settings model ROLE PROVIDER MODEL_ID` | provider and model id of a role (its `max_tokens` and `fallback` are kept); rebuilds. A planned provider (one a later issue builds; none right now) is refused unless the role already names it: `Not saved: tau.toml: [models.roles.brain] provider '…' is not supported yet (issue …); available: anthropic, bedrock, fake, ollama, proxy.` |
 | `/settings set NAME` | asks `Value for NAME (not echoed): ` with a hidden prompt, writes `NAME` to `.env` (surrounding whitespace stripped), exports it to the running process and rebuilds (`NAME set in .env.`); an empty or blank value changes nothing |
 | `/settings clear NAME` | removes `NAME` from `.env` and the process (`NAME removed from .env.` / `NAME is not in .env.`) |
 

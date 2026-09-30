@@ -1,6 +1,6 @@
 # CLI
 
-Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init` and `version`; `tau-tui` adds `tui`; any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
+Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init`, `proxy` and `version`; `tau-tui` adds `tui` and `tau-net` adds `net` (see [Join the tau network](../guides/tau-network.md)); any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
 
 Inside a repository checkout, prefix each command with `uv run`.
 
@@ -29,6 +29,8 @@ Commands:
   doctor      Check the installation.
   hub         Run and manage tau as a long-lived service in the hub role.
   init        Create tau.toml and the persona files.
+  net         Talk to other taus (identity, contacts, messages).
+  proxy       Manage the model proxy's keys and budgets.
   tui         Open tau in the Textual interface.
   version     Show the versions of the installed tau packages.
 ```
@@ -42,7 +44,7 @@ Usage: tau init [OPTIONS]
 
   Set up a configuration root: tau.toml from the shipped template (provider
   picked from the credentials present in the environment or <home>/.env:
-  bedrock, then anthropic, else fake), persona/persona.md,
+  proxy, then anthropic, then bedrock, else fake), persona/persona.md,
   persona/user.example.md, persona/user.md (from the example, unless it
   exists) and .env.example (the variable names). Existing files are kept
   unless --force is given; user.md and .env.example are never overwritten.
@@ -60,7 +62,12 @@ Options:
   --force          Overwrite an existing tau.toml and persona.md.
 ```
 
-`--provider` accepts `bedrock`, `anthropic` or `fake`; the model ids it writes come from a table shipped with the package, so tau-core's Python never names a model. The `local` role keeps the template's value. Exit 0 on success, including when it kept every existing file.
+`--provider` accepts `proxy`, `anthropic`, `bedrock` or `fake`; the model ids it writes come from a table shipped with the package, so tau-core's Python never names a model. Without `--provider`, `proxy` is picked when `TAU_PROXY_KEY_BRAIN` is set, `anthropic` when `ANTHROPIC_API_KEY` is, `bedrock` when AWS credentials are, else `fake`.
+
+- `proxy` writes the template as shipped: every role on the LiteLLM proxy, with its budget table.
+- Any other provider rewrites `brain` and `fast` to it, points `local` at `ollama` (`qwen3.5:9b`, Ollama called directly) and drops the `budget` tables, since only the proxy enforces them.
+
+Exit 0 on success, including when it kept every existing file.
 
 ## `tau doctor`
 
@@ -78,6 +85,8 @@ Options:
 ```
 
 Each check line is `ok`, `warn`, `info` or `fail` followed by the check name and a detail. Exit 1 only on `fail`. `--json` prints `{"ok": bool, "checks": [{"name", "status", "detail"}, …]}`. The root is the global `--home` option: `tau --home DIR doctor`. See [First run](../getting-started/first-run.md) for the meaning of every line.
+
+When a role uses the `proxy` provider, doctor also checks the proxy: `warn proxy` when it does not answer on `/health/liveliness`, then one `proxy <role>` line per proxy role (`ok` with `$0.40 of $15.00 per 1mo, within budget`; `warn` when the key's cap differs from `tau.toml` or the role has no budget; `fail` when the proxy does not accept the key). A `budget` on a role whose provider is not `proxy` is a `warn`, since nothing enforces it.
 
 ## `tau components`
 
@@ -229,6 +238,91 @@ Options:
 
 Prints the unit to stdout with this machine's absolute paths; redirect it into `~/.config/systemd/user/tau-hub.service`.
 
+## `tau proxy`
+
+```text
+Usage: tau proxy [OPTIONS] COMMAND [ARGS]...
+
+  Virtual keys, budgets and spend of the roles served through the LiteLLM
+  proxy (provider = "proxy" in tau.toml; the proxy itself is infra/litellm).
+
+Options:
+  -h, --help  Show this message and exit.
+
+Commands:
+  keys    Create the missing role keys (written to .env) and align every...
+  rotate  Replace ROLE's key with a new one; the spend of the current...
+  spend   Print what every proxy role's key spent in its period.
+```
+
+Every subcommand works on the roles whose `provider` is `"proxy"` and stops with `no role in tau.toml uses provider = "proxy"` when there is none. The proxy's URL is the first proxy role's `params.base_url`, else `TAU_PROXY_URL`, else `http://127.0.0.1:4000`. Starting and stopping the proxy itself is `infra/litellm/proxy.sh`; see [Model proxy and budgets](../guides/model-proxy.md). Output is plain English, like `tau doctor`.
+
+### `tau proxy keys`
+
+```text
+Usage: tau proxy keys [OPTIONS] [ROLES]...
+
+  Create the missing role keys (written to .env) and align every key's model
+  group and budget with tau.toml. Needs LITELLM_MASTER_KEY. Safe to run again.
+
+Options:
+  --replace   Replace a key the proxy holds under a role's alias that .env
+              does not have.
+  -h, --help  Show this message and exit.
+```
+
+Without `ROLES` it handles every proxy role. For each one:
+
+- **created**: `.env` has no key the proxy knows, so a new key is made with the alias `tau-<role>`, the role's model group only, and the role's `budget` as `max_budget` + `budget_duration`. It is written to `<TAU_HOME>/.env` as `TAU_PROXY_KEY_<GROUP>` (mode `0600`) and exported to the process.
+- **updated**: the key exists but its alias, model group or cap differs from `tau.toml`; the proxy is told the new values.
+- **unchanged**: nothing to do.
+
+```text
+  brain    created   TAU_PROXY_KEY_BRAIN  $15.00 per 1mo, then fast
+  fast     updated   TAU_PROXY_KEY_FAST  max_budget → $2.00 per 1d
+  local    unchanged TAU_PROXY_KEY_LOCAL  $0.50 per 1d
+```
+
+If the proxy already holds a key under the alias `tau-<role>` that `.env` does not have, `keys` stops: that key may belong to another tau home sharing the proxy. `--replace` deletes it and creates a new one; its spend in the current period carries over, so the budget does not reset. Exit 1 with the reason when `LITELLM_MASTER_KEY` is not set, a named role is not a proxy role, or the proxy refuses or does not answer.
+
+### `tau proxy rotate`
+
+```text
+Usage: tau proxy rotate [OPTIONS] ROLE
+
+  Replace ROLE's key with a new one; the spend of the current period moves
+  with it. Restart the hub afterwards so it reads the new key.
+
+Options:
+  -h, --help  Show this message and exit.
+```
+
+```text
+  brain    rotated   TAU_PROXY_KEY_BRAIN  $0.42 spent this period kept
+```
+
+The old key is renamed, the new one is created with the old one's spend and written to `.env`, then the old one is deleted; if creating the new key fails, the old one gets its alias back. Needs `LITELLM_MASTER_KEY`. A role whose key the proxy does not know is refused with a pointer to `tau proxy keys`.
+
+### `tau proxy spend`
+
+```text
+Usage: tau proxy spend [OPTIONS]
+
+  Print what every proxy role's key spent in its period.
+
+Options:
+  --json      Print the spend as JSON.
+  -h, --help  Show this message and exit.
+```
+
+```text
+  brain    brain    $0.42 of $15.00 per 1mo, resets 2026-10-01 00:00 UTC
+  fast     fast     $1.00 of $1.00 per 1d, resets 2026-10-01 00:00 UTC · SPENT
+  local    local    unknown (TAU_PROXY_KEY_LOCAL is not set)
+```
+
+Columns: role, model group, spend of the current period, cap, period and the next reset (UTC). `· SPENT` marks a key at its cap (`, fast answers instead` when the role has `degrade_to`); `· differs from tau.toml, run tau proxy keys` marks a key whose cap drifted. It reads each key's own record from the proxy, so it needs no master key. `--json` prints `{role: {"group", "spend_usd", "max_budget_usd", "period", "reset_at", "exhausted", "configured": {"usd", "period", "degrade_to"}, "error"}}`, the same objects as the hub's `GET /spend`.
+
 ## `tau version`
 
 ```text
@@ -252,10 +346,10 @@ One line per installed `tau-*` distribution. It never imports a provider SDK, so
 | Code | Meaning |
 |---|---|
 | 0 | success; for `tau doctor`, no `fail` |
-| 1 | `tau doctor` found a failing check; `tau hub run` found a running hub; a hub command could not do its job |
+| 1 | `tau doctor` found a failing check; `tau hub run` found a running hub; a hub or `tau proxy` command could not do its job |
 | 2 | `tau chat` / `tau tui`: missing credentials, invalid config or unknown session, before anything opened; also Click's own usage errors |
 | 130 | `tau chat` left on Ctrl-C while an approval prompt was still blocking on stdin |
 
 ## Environment
 
-Every command honours `TAU_HOME`, `TAU_DATA_DIR`, `TAU_PROFILE`, `TAU_ROLE`, `TAU_HUB_PORT` and `TAU_LANG`, and reads `<TAU_HOME>/.env` without overriding variables already set. See [Environment variables](environment.md).
+Every command honours `TAU_HOME`, `TAU_DATA_DIR`, `TAU_PROFILE`, `TAU_ROLE`, `TAU_HUB_PORT` and `TAU_LANG`, and reads `<TAU_HOME>/.env` without overriding variables already set. `tau proxy`, `tau doctor` and every channel on a `proxy` role also read `TAU_PROXY_URL` and the `TAU_PROXY_KEY_*` keys; `tau proxy keys` and `rotate` need `LITELLM_MASTER_KEY`. See [Environment variables](environment.md).

@@ -80,12 +80,13 @@ A line that starts with `/` is a command. The channel handles it; the model neve
 you> /status
 Profile: home
 Session: 20260929-173826-f949 · Merhaba tau · 2 messages stored · role brain
-Model: brain → anthropic (fallback; bedrock has no credentials) · claude-sonnet-5
+Model: brain → proxy · brain
 Context: sliding, window 60 · 2 messages in memory
 Tools: 2 registered · 1 need approval (tier 2)
 UI language: en
 Versions: tau-core 0.3.1 · tau-tui 0.3.1
 Hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
+Budget: brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00); fast $0.03 of $1.00 per 1d (resets 01.10.2026 03:00); local $0.00 of $0.50 per 1d (resets 01.10.2026 03:00)
 ```
 
 `/status` names the model per role and whether the fallback is in use, never a key. The [slash command reference](../reference/slash-commands.md) has the aliases and the exact wording of every notice.

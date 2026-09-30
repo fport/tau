@@ -59,7 +59,7 @@ Or restore from the encrypted bundle as the [backup guide](backups.md) shows. Th
 tau doctor
 ```
 
-Fix what it flags: usually the provider's credentials in `.env`, and the `local` role, which stays planned (issue 012).
+Fix what it flags: usually the proxy keys and `ANTHROPIC_API_KEY` in `.env`, and a stopped proxy: start it on the Pi with `infra/litellm/proxy.sh up` (the images are multi-arch). Point `TAU_OLLAMA_URL` at the Mac's tailnet address so the `local` role still reaches Ollama there ([Model proxy and budgets](model-proxy.md)).
 
 ### 4. Start the service
 
@@ -98,7 +98,7 @@ Two hubs at once is a configuration error the mesh will refuse once it exists; t
 |---|---|
 | Sleep | none; the keep-awake agent and TauBar's sleep modes are Mac-only concerns |
 | Service manager | systemd user unit with linger, not launchd |
-| Models | the `brain` and `fast` roles call a provider over the network as before; the `local` role (Ollama) is planned and a Pi 5 runs only small models |
+| Models | the LiteLLM proxy runs on the Pi next to the hub; `brain` and `fast` call Anthropic through it as before; the `local` role reaches Ollama on the Mac over the tailnet (`TAU_OLLAMA_URL`) and falls back to `fast` while the Mac is away; a Pi 5 runs only small models itself |
 | Voice | MLX Whisper is Apple-only; the Pi gets a CPU Whisper build (`tau-voice`, planned) |
 | Mesh | `zenohd` runs on the hub, so on the Pi; the Mac joins as a node |
 | Backups | the same `age` + R2 flow; the key moves with the password manager, not with the disk |

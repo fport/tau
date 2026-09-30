@@ -1,4 +1,4 @@
-# LiteLLM proxy configuration for tau (roadmap 010-012, ADR 0007).
+# LiteLLM proxy configuration for tau (roadmap 010-012, ADR 0009).
 #
 # Each model group is one of tau's roles. tau.toml points a role at its group with
 # `provider = "proxy"` and `model_id = "<group>"`, and every role calls with its own virtual
@@ -34,7 +34,7 @@ model_list:
       stream_timeout: 20
 
 router_settings:
-  # brain has no second provider since Bedrock was dropped (ADR 0007): when Anthropic refuses
+  # brain has no second provider since Bedrock was dropped (ADR 0009): when Anthropic refuses
   # the Sonnet call (overloaded, 5xx), Haiku answers instead. local falls back to fast when
   # Ollama is unreachable (012). A spent budget is not a fallback case: the proxy refuses the
   # key before routing, and tau decides what happens (tau.toml `degrade_to`, 011).

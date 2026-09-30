@@ -15,25 +15,50 @@ One table per role. The shipped file defines `brain`, `fast` and `local`; any na
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `provider` | string | required | `bedrock`, `anthropic`, `fake`, or the name of a `tau.providers` component. `ollama` is accepted and fails at use until issue 012. |
-| `model_id` | string | required | The provider's model id. Data, never code. Bedrock ids use the Converse form with the `global.` prefix. |
+| `provider` | string | required | `proxy` (the LiteLLM proxy, the shipped default), `anthropic`, `bedrock`, `ollama`, `fake`, or the name of a `tau.providers` component. |
+| `model_id` | string | required | Data, never code. For `proxy` it is the proxy's model group (`brain`, `fast`, `local`), which `infra/litellm/config.yaml` maps to a real model; for `ollama` the Ollama model name (`qwen3.5:9b`); otherwise the provider's model id. Bedrock ids use the Converse form with the `global.` prefix. |
 | `region` | string | none | Bedrock region. When set, `AWS_REGION` is no longer required for this role. |
-| `max_tokens` | integer ≥ 1 | provider default (4096 for Anthropic) | Output token limit per call. |
+| `max_tokens` | integer ≥ 1 | provider default (4096 for `anthropic`, `proxy` and `ollama`) | Output token limit per call. |
 | `params` | table | `{}` | Passed to the provider's model as extra parameters, except the tau-specific keys below. |
-| `fallback` | table | none | A second role table with the same keys (no nested fallback). Used only when the primary provider's credentials are missing. |
+| `fallback` | table | none | A second role table with the same keys (no nested fallback, no `budget`). Used only when the primary provider's credentials are missing. The shipped file defines none: on a `proxy` role it would call its provider directly, without the budget, whenever the role's key is missing. |
 | `cache` | table | none | Prompt-cache settings, see below. |
+| `budget` | table | none | The role's hard spend cap, see below. Only the `proxy` provider enforces it. |
 
 `params` keys tau reads itself (not forwarded):
 
 | Key | Providers | Meaning |
 |---|---|---|
-| `api_key_env` | anthropic | The variable that holds the key, instead of `ANTHROPIC_API_KEY`. |
-| `base_url` | anthropic | An alternative API base URL (a proxy). |
+| `api_key_env` | anthropic, proxy | The variable that holds the key, instead of `ANTHROPIC_API_KEY` (anthropic) or `TAU_PROXY_KEY_<GROUP>` (proxy). |
+| `base_url` | anthropic, proxy, ollama | anthropic: an alternative API base URL. proxy: the proxy's URL, else `TAU_PROXY_URL`, else `http://127.0.0.1:4000`. ollama: the Ollama server, else `TAU_OLLAMA_URL`, else `http://127.0.0.1:11434`. For proxy and ollama give it without `/v1`; tau appends it. |
 | `workspace_id` | anthropic | The workspace id sent as `anthropic-workspace-id`; `ANTHROPIC_WORKSPACE_ID` in the environment does the same. |
+
+For `proxy`, the key variable is `TAU_PROXY_KEY_` plus the model group upper-cased with every character that is not a letter or digit turned into `_`: group `brain` → `TAU_PROXY_KEY_BRAIN`. `tau proxy keys` writes these. `ollama` needs no credentials and has no budget or fallback of its own; those need the proxy.
+
+### `[models.roles.<role>.budget]`
+
+The hard spend cap of a `proxy` role. The proxy enforces it on the role's virtual key; [`tau proxy keys`](cli.md#tau-proxy-keys) writes `usd` and `period` to the key, so a change takes effect when you run it. A table or an inline table (`budget = { usd = 1, period = "1d" }`) both work.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `usd` | number > 0 | required | Dollars per period. |
+| `period` | string | required | LiteLLM's `budget_duration`: a number followed by `s`, `m`, `h`, `d` or `mo`, e.g. `"1d"`, `"7d"`, `"1mo"`. Periods reset in UTC. |
+| `degrade_to` | string | none | Another role defined in this file that answers once this budget is spent, until the reset. It must not be the role itself, and following `degrade_to` from role to role must not loop. Omit it to stop the turn and tell the user when the budget resets. |
+
+```toml
+[models.roles.brain.budget]
+usd = 15
+period = "1mo"
+degrade_to = "fast"
+```
+
+- `budget` is not allowed inside a `fallback` table; set it on the role.
+- On any provider other than `proxy` nothing enforces it; `tau doctor` warns (`role brain: has a budget, but provider 'anthropic' cannot enforce it (only the proxy does; ADR 0009)`).
+- A `proxy` role without a budget works, but its key has no cap; `tau doctor` warns about that too.
+- When the budget is spent, the channel shows `The brain budget is spent until 01.10.2026 03:00; fast answered instead.` (with `degrade_to`) or `The brain budget is spent ($15.00 of $15.00) and resets at 01.10.2026 03:00. To raise the cap, change it in tau.toml and run tau proxy keys.` (without), in the UI language. See [Model proxy and budgets](../guides/model-proxy.md).
 
 ### `[models.roles.<role>.cache]`
 
-Maps to Strands' `CacheConfig`. Bedrock and Anthropic honour it; `fake` ignores it.
+Maps to Strands' `CacheConfig`. Anthropic and Bedrock honour it; `proxy`, `ollama` and `fake` ignore it (prompt caching does not pass through the proxy yet).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
@@ -119,47 +144,87 @@ nodes = ["mac", "arm"]
 
 ## The shipped file
 
+This is the template `tau init` writes, verbatim; it equals the repository's own `tau.toml`, and a test keeps the two identical.
+
 ```toml
+# tau.toml — static configuration read by tau_core.config.Config.
+# Role → provider + model id. Model ids are data; code never hardcodes them.
+# Secrets never go here: credentials come from .env (see .env.example).
+#
+# provider = "proxy": the role goes through the LiteLLM proxy (infra/litellm, ADR 0009).
+# model_id is the proxy's model group, infra/litellm/config.yaml maps it to a real model, and the
+# role's own virtual key (TAU_PROXY_KEY_<GROUP>, written by `tau proxy keys`) carries the
+# budget. `tau init` without a proxy key writes direct providers (anthropic, ollama) and drops
+# the budget tables, which only the proxy can enforce.
+
 [models.roles.brain]
-provider = "bedrock"                      # bedrock | anthropic | fake (ollama: issue 012)
-model_id = "global.anthropic.claude-sonnet-5"
+provider = "proxy"                        # proxy | anthropic | bedrock | ollama | fake
+model_id = "brain"
 max_tokens = 4096
 
-[models.roles.brain.fallback]             # used only when the primary has no credentials
-provider = "anthropic"
-model_id = "claude-sonnet-5"
+[models.roles.brain.budget]               # hard cap of the role's proxy key; `tau proxy keys` applies changes
+usd = 15                                  # dollars per period
+period = "1mo"                            # LiteLLM budget_duration: 1d, 7d, 1mo, ... (resets in UTC)
+degrade_to = "fast"                       # once spent, this role answers until the reset; omit to stop and say so
 
 [models.roles.fast]
-provider = "bedrock"
-model_id = "global.anthropic.claude-haiku-4-5"
+provider = "proxy"
+model_id = "fast"
 max_tokens = 1024
 
-[models.roles.fast.fallback]
-provider = "anthropic"
-model_id = "claude-haiku-4-5-20251001"
+[models.roles.fast.budget]
+usd = 1
+period = "1d"
 
 [models.roles.local]
-provider = "ollama"                       # arrives in issue 012; resolving it now raises a clear error
-model_id = "qwen3:8b"
+provider = "proxy"                        # Ollama on the Mac; the proxy answers with fast when Ollama is away
+model_id = "local"
+max_tokens = 1024
+
+[models.roles.local.budget]               # Ollama is free; the cap bounds what the fast fallback may spend
+usd = 0.5
+period = "1d"
+
+# Optional per-role prompt caching for the direct Anthropic and Bedrock providers (the proxy and
+# the fake provider ignore it):
+# [models.roles.brain.cache]
+# strategy = "auto"                       # auto | anthropic; Strands CacheConfig(strategy=...)
+# ttl = "1h"                              # optional cache TTL ("5m", "1h"); system_prompt_ttl / tools_ttl take a bool or a TTL
 
 [agent]
-max_turns = 12
-context = "sliding"
-window_size = 60
-# max_total_tokens = 200000
+max_turns = 12                            # per-turn loop guard, Strands Limits(turns=...)
+context = "sliding"                       # sliding | summarize: what the model sees of a long session (the store keeps everything)
+                                          # A session remembers this value; to resume it after a change, set it back or start a new session.
+window_size = 60                          # sliding: messages kept; summarize: recent messages never summarized
+# max_total_tokens = 200000               # optional per-turn token budget, Strands Limits(total_tokens=...)
 
 [sessions]
-backend = "file"
+backend = "file"                          # memory | file (under TAU_DATA_DIR/sessions); the store stays on the hub (ADR 0006)
 
 [hub]
 control_port = 7877
 heartbeat_seconds = 5
 
 [ui]
-language = "en"
+language = "en"                           # en | tr: chrome of the terminal and the TUI (commands, notices, approval prompt).
+                                          # TAU_LANG or `tau --lang` override it; /lang switches it for one run.
+
+# Components (see `tau components`): switch discovered parts on or off without uninstalling.
+# Unknown keys in these tables are an error (a typo must not leave a tool switched on);
+# a name nothing installed provides is a `tau doctor` warning.
+# [components]
+# context = []                            # enabled tau.context sources; empty = every discovered one
+# [components.tools]
+# disabled = ["demo_physical_action", "dist:tau-example-tool"]   # tool names or dist:<distribution>
+# [components.hub]
+# services = []                           # enabled tau.hub_services; empty = every discovered one
+#
+# Free tables for a component's own settings, read with Config.component("name"):
+# [component.telegram]
+# poll_timeout_seconds = 50
 ```
 
-`tau init --provider fake` writes the same file with `provider = "fake"` and the ids `fake-brain` / `fake-fast` for the two roles.
+`tau init` writes it unchanged when it picks the `proxy` provider (`TAU_PROXY_KEY_BRAIN` is present). For any other provider it rewrites `brain` and `fast` to that provider with the model ids of its shipped `models.toml` table, points `local` at `ollama` with `model_id = "qwen3.5:9b"`, and drops the `budget` tables, which only the proxy enforces. `tau init --provider fake`, for example, gives `brain` and `fast` `provider = "fake"` with the ids `fake-brain` / `fake-fast`, and `tau init --provider anthropic` gives them `claude-sonnet-5` / `claude-haiku-4-5`.
 
 ## Errors you may see
 
@@ -171,6 +236,15 @@ All `ConfigError` messages are plain English, since they are raised before any c
 | `tau.toml: [models.roles.brain] needs a 'provider'.` | a required key is missing |
 | `tau.toml: [models.roles.brain] has unknown keys: model.` | a typo inside a role table |
 | `tau.toml: unknown provider for role 'brain': 'x'. Valid values: …` | a provider no distribution declares |
+| `tau.toml: [models.roles.brain] 'budget' must be a table.` | `budget = 15` instead of a table |
+| `tau.toml: [models.roles.brain] 'budget' has unknown keys: cap.` | a typo inside the budget |
+| `tau.toml: [models.roles.brain] 'budget' needs 'usd', a positive number of dollars.` | `usd` missing, zero, negative or not a number |
+| `tau.toml: [models.roles.brain] 'budget' needs 'period' like "1d", "7d" or "1mo" (a number followed by s, m, h, d or mo).` | `period` missing or in another form, e.g. `"month"` |
+| `tau.toml: [models.roles.brain] 'budget' 'degrade_to' must be the name of a role.` | `degrade_to` empty or not a string |
+| `tau.toml: [models.roles.brain] 'budget.degrade_to' cannot name the role itself.` | `degrade_to = "brain"` on `brain` |
+| `tau.toml: [models.roles.brain] 'budget.degrade_to' names 'cheap', which is not a defined role.` | `degrade_to` names a role the file does not define |
+| `tau.toml: [models.roles.brain] 'budget.degrade_to' loops: brain → fast → brain.` | two roles that degrade to each other |
+| `tau.toml: [models.roles.brain.fallback] cannot have a 'budget'; set it on the role.` | a budget inside a `fallback` table |
 | `tau.toml: [agent] 'context' must be one of sliding, summarize, not 'auto'.` | an SDK preset or a typo |
 | `tau.toml: [components.tools] has unknown keys: disable.` | a misspelled switch |
 | `TAU_LANG must be one of en, tr, not 'de'.` | an unsupported language |

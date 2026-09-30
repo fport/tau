@@ -19,6 +19,13 @@ Public API (other tau packages import only these names and ``tau_core.testing``)
     CompactionError, CompactionCancelled, summarize, seed_messages, compaction_title,
     record_compaction, SessionContextMismatch
     ModelInfo, describe_model, status_lines, status_report, role_lines, stored_role
+    Guard, GuardState, GuardStatus, GuardVerdict, GuardProgress, GuardTurn, Admission,
+    GuardLocked, LockedGuard, HubGuard, resolve_guard, VERDICT_REASONS, ADMISSION_REASONS,
+    LOCK_TRIGGERS, PROGRESS_STEPS, ALLOWED_WHILE_LOCKED
+
+The owner guard's helpers (``admit_turn``, ``guard_status_line``, ``guard_doctor_check``,
+``DISCOVER``, ``ENROLLED_MARKER``) are in ``tau_core.guard``; ``HubClient``, ``HubUnavailable``
+and ``HubError`` in ``tau_core.hub``.
 
 The bootstrap-config editor behind ``/settings`` is ``tau_core.settings`` (imported by name).
 """
@@ -62,6 +69,24 @@ from tau_core.compaction import (
 )
 from tau_core.config import Config, ConfigError, ConfigNotFound, UiConfig
 from tau_core.events import AgentEvent, EventBus
+from tau_core.guard import (
+    ADMISSION_REASONS,
+    ALLOWED_WHILE_LOCKED,
+    LOCK_TRIGGERS,
+    PROGRESS_STEPS,
+    VERDICT_REASONS,
+    Admission,
+    Guard,
+    GuardLocked,
+    GuardProgress,
+    GuardState,
+    GuardStatus,
+    GuardTurn,
+    GuardVerdict,
+    HubGuard,
+    LockedGuard,
+    resolve_guard,
+)
 from tau_core.hub.daemon import HubService
 from tau_core.i18n import LANGUAGES, Language, t
 from tau_core.logs import configure_logging, reset_logging
@@ -86,11 +111,17 @@ from tau_core.status import (
 from tau_core.tiers import Tier, ToolCatalog, UntieredToolError, effect_of, tau_tool, tier_of
 
 __all__ = [
+    "ADMISSION_REASONS",
+    "ALLOWED_WHILE_LOCKED",
     "LANGUAGES",
+    "LOCK_TRIGGERS",
+    "PROGRESS_STEPS",
     "PROVIDERS",
     "SESSION_BACKENDS",
     "SLASH_COMMANDS",
     "STOP_REASONS",
+    "VERDICT_REASONS",
+    "Admission",
     "AgentEvent",
     "ApprovalRequest",
     "Approver",
@@ -103,8 +134,17 @@ __all__ = [
     "Decision",
     "EventBus",
     "Exemption",
+    "Guard",
+    "GuardLocked",
+    "GuardProgress",
+    "GuardState",
+    "GuardStatus",
+    "GuardTurn",
+    "GuardVerdict",
+    "HubGuard",
     "HubService",
     "Language",
+    "LockedGuard",
     "MemorySessionStore",
     "MissingCredentials",
     "ModelInfo",
@@ -144,6 +184,7 @@ __all__ = [
     "register_session_backend",
     "reset_logging",
     "resolve_command",
+    "resolve_guard",
     "role_lines",
     "seed_messages",
     "status_lines",

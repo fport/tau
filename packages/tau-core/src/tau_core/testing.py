@@ -488,3 +488,134 @@ class FakeBotApi:
     ) -> dict[str, Any]:
         self.edits.append({"chat_id": chat_id, "message_id": message_id, "text": text, **params})
         return {"message_id": message_id, "chat": {"id": chat_id}, "text": text}
+
+
+# Owner guard stand-in (issue 110). Appended here so the sections above stay untouched.
+
+from datetime import UTC, datetime  # noqa: E402
+
+from tau_core.guard import (  # noqa: E402
+    Admission,
+    GuardProgress,
+    GuardStatus,
+    GuardTurn,
+    GuardVerdict,
+)
+
+__all__ += ["FakeGuard"]
+
+
+class FakeGuard:
+    """A scripted owner guard. It never opens a camera and it never approves anything.
+
+    - ``admit`` follows ``state`` (only ``unlocked`` admits), or pops the next scripted
+      ``admissions`` entry first (an :class:`Admission`, a bool, or a refusal reason string).
+    - ``unlock`` replays ``progress`` through ``on_progress``, then pops the next verdict
+      (default ``GuardVerdict(False, "no_match")``); an ``ok`` verdict unlocks.
+    - ``step_up`` pops the next scripted value and returns it as is (an exception instance is
+      raised instead); exhausted, it returns ``False``. Whatever it returns, the tier gate
+      approves only after the approver said ``APPROVED`` and only for a literal ``True``.
+    - ``set_state`` flips the state and bumps ``seq`` for ``watch``.
+
+    Every call is recorded in ``calls`` as ``(method, detail)``.
+    """
+
+    name = "fake"
+
+    def __init__(
+        self,
+        state: str = "locked",
+        *,
+        verdicts: Iterable[GuardVerdict] = (),
+        step_ups: Iterable[Any] = (),
+        progress: Iterable[GuardProgress] = (),
+        admissions: Iterable[Admission | bool | str] | None = None,
+    ) -> None:
+        self.state = state
+        self.seq = 0
+        self.lock_trigger: str | None = None
+        self.verdicts: list[GuardVerdict] = list(verdicts)
+        self.step_ups: list[Any] = list(step_ups)
+        self.progress: list[GuardProgress] = list(progress)
+        self.admissions: list[Admission | bool | str] | None = (
+            list(admissions) if admissions is not None else None
+        )
+        self.calls: list[tuple[str, Any]] = []
+
+    def set_state(self, state: str, *, trigger: str | None = None) -> None:
+        self.state = state
+        self.lock_trigger = trigger if state == "locked" else None
+        self.seq += 1
+
+    def _status(self) -> GuardStatus:
+        return GuardStatus(
+            state=self.state,  # type: ignore[arg-type]
+            enrolled=True,
+            seq=self.seq,
+            lock_trigger=self.lock_trigger,
+            since=datetime.now(UTC) if self.state == "unlocked" else None,
+        )
+
+    async def status(self) -> GuardStatus:
+        self.calls.append(("status", None))
+        return self._status()
+
+    async def watch(self, since: int, *, wait: float = 25.0) -> GuardStatus:
+        self.calls.append(("watch", since))
+        deadline = asyncio.get_running_loop().time() + max(0.0, wait)
+        while self.seq <= since and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        return self._status()
+
+    async def admit(self, turn: GuardTurn) -> Admission:
+        self.calls.append(("admit", turn))
+        if self.admissions:
+            scripted = self.admissions.pop(0)
+            if isinstance(scripted, Admission):
+                return scripted
+            if scripted is True:
+                return Admission(True)
+            return Admission(False, scripted if isinstance(scripted, str) else "locked")
+        if self.state == "unlocked":
+            return Admission(True)
+        return Admission(False, "unavailable" if self.state in ("off", "unavailable") else "locked")
+
+    async def unlock(
+        self,
+        *,
+        channel: str,
+        client_id: str,
+        kind: str = "unlock",
+        on_progress: Callable[[GuardProgress], None] | None = None,
+    ) -> GuardVerdict:
+        self.calls.append(("unlock", kind))
+        for step in self.progress:
+            if on_progress is not None:
+                on_progress(step)
+        verdict = self.verdicts.pop(0) if self.verdicts else GuardVerdict(False, "no_match")
+        if verdict.ok:
+            self.set_state("unlocked")
+        return verdict
+
+    async def cancel(self, *, client_id: str) -> None:
+        self.calls.append(("cancel", client_id))
+
+    async def lock(self, *, channel: str, client_id: str, trigger: str = "command") -> None:
+        self.calls.append(("lock", trigger))
+        self.set_state("locked", trigger=trigger)
+
+    async def step_up(
+        self,
+        request: ApprovalRequest,
+        *,
+        client_id: str,
+        on_progress: Callable[[GuardProgress], None] | None = None,
+    ) -> Any:
+        self.calls.append(("step_up", request.request_id))
+        for step in self.progress:
+            if on_progress is not None:
+                on_progress(step)
+        answer = self.step_ups.pop(0) if self.step_ups else False
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer

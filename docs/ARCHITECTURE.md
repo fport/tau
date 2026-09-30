@@ -11,7 +11,8 @@ tau is a personal "smart body" that automates life: an agent platform you talk t
 3. **Settings are data, not code.** A settings file on the hub, hot-reloaded; no deploy, no cloud copy.
 4. **Everything that touches the physical world or tau's own code needs approval** (tier 2).
 5. **No hardware, no code.** A device that is not on hand only gets a reserved place in the mesh.
-6. **Private first.** Life data stays on the hub; the only public surface is one hostname behind identity; no intermediary can approve an action; every inbound text is untrusted ([ADR 0006](adr/0006-private-first-topology.md)).
+6. **Private first.** In local mode (the default) life data stays on the hub; the only public surface is one hostname behind identity; no intermediary can approve an action; every inbound text is untrusted ([ADR 0006](adr/0006-private-first-topology.md)). Cloud mode is the owner's explicit choice to run the same hub in their own Cloudflare account ([ADR 0007](adr/0007-cloud-mode-and-tau-network.md)).
+7. **Taus talk as peers.** Every tau that joins the network has its own spine Worker and address; envelopes are signed and sealed end to end, only accepted contacts reach the model, and nothing a peer sends can approve an action.
 
 ## Decisions
 
@@ -20,7 +21,9 @@ tau is a personal "smart body" that automates life: an agent platform you talk t
 | Core | **Strands Agents** from scratch (Python 3.12+, `uv` workspace) | DevDuck is reference only |
 | Packaging | **This repo is the centre.** Every package under `packages/*` is an independent PyPI distribution: `tau-<name>`, import `tau_<name>` (flat, no namespace). Extension through entry points (`tau.tools`, later `tau.nodes`, `tau.channels`) | `tau`, `tau-hub` and `tau-agent` are taken on PyPI. A package that needs its own release cadence moves to its own repo and tau consumes it from PyPI |
 | Topology | **MacBook = hub** for now; when the RPi5 arrives the hub moves there | While the hub is offline tau does not think; Telegram keeps updates for about a day |
-| State | **On the hub** (`TAU_DATA_DIR`: files + SQLite): sessions, settings, memory, knowledge base, routines. Cloudflare **R2** holds only client-side encrypted backups (`age`) | D1, Vectorize and AI Search hold no personal data; the `tau-cloud` Worker is optional ([ADR 0006](adr/0006-private-first-topology.md)) |
+| State | Local mode: **on the hub** (`TAU_DATA_DIR`: files + SQLite): sessions, settings, memory, knowledge base, routines. Cloudflare **R2** holds only client-side encrypted backups (`age`) | In local mode D1, Vectorize and AI Search hold no personal data and the spine only holds sealed envelopes in transit ([ADR 0006](adr/0006-private-first-topology.md)); cloud mode keeps the same data in the owner's own D1/KV ([ADR 0007](adr/0007-cloud-mode-and-tau-network.md)) |
+| Deployment modes | **Local** (default): the hub on the owner's machine · **Cloud** (opt-in): the same Python hub as a **Cloudflare Container** behind the owner's spine Worker; sessions and state in D1 (`[sessions] backend = "spine"`), persona and `tau.toml` in KV (`tau cloud push`) | Same code in both. Cloud mode needs Workers Paid and Docker for the image; the spine's cron keeps the container awake for the Telegram poller ([ADR 0007](adr/0007-cloud-mode-and-tau-network.md)) |
+| tau network | **Federated**: address = the host of a tau's spine; card at `/.well-known/tau.json` (Ed25519 signing key, X25519 box key); envelopes signed and sealed end to end, posted hub → the peer's spine → the peer's hub by long poll. `tau-net` package, `cloud/spine` Worker | Contacts need the owner's acceptance and are key-pinned; network turns run with `persona.md` + the public note `persona/net.md`, no tools, no approvals, bounded auto-replies; `net_send` is tier 2. Protocol: `docs/reference/tau-network.md` |
 | Public surface | One hostname `tau.<domain>` → **Cloudflare Tunnel** (outbound from the hub) → the hub's web UI/API, behind a **Cloudflare Access** policy (owner identity, optional device rule). **Tailscale Serve** when there is no domain | No inbound port on the hub, ever. Unauthenticated traffic never reaches the tunnel |
 | Telegram | The hub polls `getUpdates` directly (outbound); no webhook, no Worker | `chat_id` allowlist on the hub; approvals through inline buttons are accepted because nothing sits between Telegram and the hub |
 | Mesh | **Control = MCP** (streamable HTTP over Tailscale) · **Data = Zenoh** (events, telemetry, discovery through liveliness) | No multicast on Tailscale → nodes `connect` explicitly to `zenohd` |
@@ -68,6 +71,7 @@ Each layer sits on the previous one and the next starts once the current one is 
 | **6** | **Robot** | SO-101 (sim → real → a wave when you sit down at the desk), necklace (XIAO → Nicla) |
 | **7** | **Lab** | AgentCore, autonomous task queue |
 | **8** | **Distribution** | PyPI release path (trusted publishing on tags, `uv tool install tau-core --with tau-tui` verified from the wheels), docs site (MkDocs Material, strict build in CI, Cloudflare Pages at `docs.tau.<domain>`) |
+| **9** | **Cloud mode and the tau network** | The spine Worker (local dev + deploy), `tau-net` (signed, sealed envelopes between taus; contacts; network turns), `tau-cloud` (the hub in a Cloudflare Container with a D1/KV store); follow-ups: Telegram webhook in cloud mode, Vectorize memory, e-mail routing, voice through a Durable Object ([ADR 0007](adr/0007-cloud-mode-and-tau-network.md)) |
 | — | **When the RPi5 arrives** | Hub migration through self-replication (independent of the layers) |
 | — | **Later** | Drone |
 
@@ -83,6 +87,8 @@ tau/
 ├── packages/                 # each an independent PyPI distribution: tau-<name> / import tau_<name>
 │   ├── tau-core/             # build_agent, persona, tiers, roles, session store, `tau` CLI, `tau hub`
 │   ├── tau-tui/              # Textual
+│   ├── tau-net/              # tau network: identity, envelopes, contacts, `net` hub service, `tau net`
+│   ├── tau-cloud/            # cloud mode: `spine` session backend, `tau cloud push|pull|status|run`
 │   ├── tau-web/              # the TUI in the browser (textual-serve) behind Tunnel + Access; later a web app
 │   ├── tau-voice/            # hub service + channel: microphone, local STT/TTS
 │   ├── tau-mesh/             # Zenoh + MCP discovery
@@ -90,7 +96,7 @@ tau/
 │   └── tau-vision/           # workout coach (pose)
 ├── nodes/mac/                # macOS node (TauBar sidecar)
 ├── apps/taubar/              # Tauri v2 + React/TS
-├── cloud/tau-cloud/          # optional, small Worker (TS): offline notice only
+├── cloud/spine/              # tau-spine Worker (TS): card, mailbox, hub long poll; cloud mode: brain container + D1/KV store
 ├── persona/                  # persona.md, user.example.md (user.md gitignored)
 ├── tools/                    # hot-reloaded tools
 │   └── _pending/             # tools tau wrote, waiting for approval
@@ -119,6 +125,8 @@ Each one is tracked as a `ready-for-human` issue.
 ## Changes
 
 Decisions that were replaced, with the date, so the history stays readable.
+
+- **2026-09-30 — Cloud mode and the tau network ([ADR 0007](adr/0007-cloud-mode-and-tau-network.md)).** Before: life data only on the hub, and the `tau-cloud` Worker reduced to an optional offline notice. Now: two deployment modes with the same code. Local (default) keeps ADR 0006; cloud runs the hub as a Cloudflare Container in the owner's own account with D1/KV storage. Every tau can also have a spine Worker (`cloud/spine`) that gives it an address on a federated network of taus: signed, end-to-end sealed envelopes; contacts accepted by the owner; narrow network turns. Reason: others should be able to run tau without a machine at home, and taus should be able to talk to each other.
 
 - **2026-09-30 — Who runs the hub on macOS (issue 084).** Before: a launchd user agent (`com.tau.hub`, `RunAtLoad` + `KeepAlive = {SuccessfulExit: false}`), installed by `tau hub install`. Now: TauBar's "Run the hub" switch starts and supervises `tau hub run` with the same contract (restart after a crash, not after `tau hub stop`), and TauBar itself starts at login as an `SMAppService` login item; the launchd agent stays as the alternative. Reason: on the hub Mac (macOS 26.3.1) launchd pended every automatic start of user agents, so the agent neither started at login nor came back after a kill (057, 052).
 

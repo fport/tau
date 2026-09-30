@@ -15,6 +15,8 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Web UI** — the hub's browser interface (first: the TUI served through `textual-serve`), reached only through the **Tunnel** or the tailnet.
 - **Tunnel** — the outbound Cloudflare Tunnel from the hub that makes `tau.<domain>` reachable without an inbound port; **Access** is the Cloudflare identity policy in front of it. *Avoid: reverse proxy, port forward.*
 - **Backup** — the client-side encrypted copy of `TAU_DATA_DIR` in a private R2 bucket; the key never leaves the hub and the owner's password manager.
+- **Deployment mode** — where the hub runs and where its life data lives ([ADR 0007](docs/adr/0007-cloud-mode-and-tau-network.md)). **Local** (default): the hub runs on the owner's machine and life data stays under `TAU_DATA_DIR` (ADR 0006). **Cloud** (opt-in): the same hub runs as a Cloudflare Container managed by the owner's spine, and life data lives in the owner's own Cloudflare account (D1, KV). *Avoid: hosted, SaaS.*
+- **Spine** — a tau's own Cloudflare Worker (`cloud/spine`, `tau-spine`): its address, card and mailbox; in cloud mode also the host of the brain container and its store. In local mode it only stores and forwards sealed envelopes. *Avoid: relay (retired), server, backend.*
 - **Component** — a pluggable part of tau registered through a `tau.*` entry-point group (`tau.tools`, `tau.commands`, `tau.providers`, `tau.sessions`, `tau.context`, `tau.hub_services`) or a registry, enabled or disabled through `[components]` in `tau.toml`, and listed by `tau components`. *Avoid: plugin (use it only for a third-party distribution that provides components).*
 
 ## Talking to tau
@@ -28,6 +30,16 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Status report** — the message the hub sends to Telegram when it starts or restarts.
 - **TauBar** — the macOS tray app (Tauri): runs and supervises the hub ("Run the hub"), sleep modes, launch at login; later status, approvals, voice.
 
+## tau network
+
+- **tau network** — the federation of taus that talk to each other: envelopes go from one tau's hub straight to the other tau's spine, with no central server. Protocol in `docs/reference/tau-network.md`. *Avoid: social network, chat server.*
+- **Address** — a tau's name on the network: the host of its spine (`tau.example.com`). *Avoid: handle, username.*
+- **Card** — a tau's public JSON at `https://<address>/.well-known/tau.json`: display name, Ed25519 signing key, X25519 box key.
+- **Envelope** — one message between taus: signed by the sender, sealed end to end to the recipient's box key. Kinds: `contact_request`, `contact_accept`, `message`.
+- **Contact** — another tau the owner accepted; only contacts reach the model. States: `pending_in`, `pending_out`, `accepted`, `blocked`. Keys are pinned on acceptance.
+- **Mailbox** — the spine's store-and-forward queue of envelopes waiting for the hub; an envelope is deleted once the hub acknowledges it.
+- **Network turn** — a turn the hub runs for a message from a contact: its own session per contact, `persona.md` plus the owner's **public note** (`persona/net.md`) instead of `user.md`, no tools, no approvals, the text framed as untrusted, auto-replies bounded by `hops` and an hourly cap.
+
 ## Models and cost
 
 - **Role** — `brain` (conversation, planning), `fast` (triage, summaries), `local` (Ollama on the Mac). Code asks for a role, never for a concrete model id.
@@ -36,8 +48,8 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 
 ## Safety
 
-- **Tier** — a tool's permission level. **Tier 0**: read, runs freely. **Tier 1**: digital write, runs and is logged. **Tier 2**: physical action or activating self-written code, needs approval.
-- **Approval** — an explicit user decision on a tier-2 call, through whichever channel the call came from (terminal prompt, Telegram buttons, TauBar).
+- **Tier** — a tool's permission level. **Tier 0**: read, runs freely. **Tier 1**: digital write, runs and is logged. **Tier 2**: physical action, activating self-written code, or speaking for the owner to another tau (`net_send`), needs approval.
+- **Approval** — an explicit user decision on a tier-2 call, through whichever channel the call came from (terminal prompt, Telegram buttons, TauBar). Never from the tau network: a network turn refuses every approval, and sending to another tau (`net_send`) is itself tier 2.
 - **Pending tool** — a tool tau wrote itself, waiting in `tools/_pending/` for approval.
 - **Sim mode / real mode** — robot execution targets. Sim is the default; real mode needs explicit config and approval.
 

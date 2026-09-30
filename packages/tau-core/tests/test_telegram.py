@@ -764,15 +764,16 @@ def test_guard_without_a_guard_service_says_off_or_no_service(tmp_path: Path) ->
         run.api.push_message(ME, "/guard")
         run.api.push_message(ME, "/guard lock")
         run.api.push_message(ME, "/koruma unlock")
-        await run.until(replies_to(run, 3))
+        run.api.push_message(ME, "/guard nope")
+        await run.until(replies_to(run, 4))
         marker = config.data_dir / ENROLLED_MARKER
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text('{"v": 1, "enrollment": "E1"}', encoding="utf-8")
         run.api.push_message(ME, "/guard")
-        await run.until(replies_to(run, 4))
+        await run.until(replies_to(run, 5))
 
     run = serve(config, body)
-    assert run.api.texts() == [t("guard.cmd.off", "en")] * 3 + [t("guard.cmd.no_service", "en")]
+    assert run.api.texts() == [t("guard.cmd.off", "en")] * 4 + [t("guard.cmd.no_service", "en")]
 
 
 def test_guard_shows_the_state_of_the_in_hub_guard(tmp_path: Path) -> None:

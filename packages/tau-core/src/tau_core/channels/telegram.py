@@ -1310,12 +1310,12 @@ async def cmd_guard(service: TelegramService, chat: ChatState, arg: str) -> None
     """``/guard``: the guard's state; ``/guard lock``: lock it (trigger ``telegram``) and check
     that the lock took; ``/guard unlock``: unlocking happens only at the Mac."""
     word = arg.strip().casefold()
+    guard = service.guard()
+    if guard is None:  # before the argument, like the terminal and the TUI
+        chat.say("guard.cmd.no_service" if guard_active(service.config) else "guard.cmd.off")
+        return
     if word not in ("", "lock", "unlock"):
         chat.say("guard.cmd.usage")
-        return
-    guard = service.guard()
-    if guard is None:
-        chat.say("guard.cmd.no_service" if guard_active(service.config) else "guard.cmd.off")
         return
     if word == "unlock":
         chat.say("guard.cmd.unlock_at_mac")

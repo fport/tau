@@ -1,0 +1,16 @@
+/*
+ * tau-host's own theme tokens, used until the shared theme (cloud/shared/theme.css) exists;
+ * scripts/build.mjs copies whichever is there to /app/assets/theme.css. The names are the
+ * shared theme's, so it drops in without a change to host.css.
+ */
+:root {
+  --bg: #07080a;
+  --bg-2: #0d0f13;
+  --line: #1f232b;
+  --text: #e8ecf1;
+  --muted: #8a93a3;
+  --accent: #ff2e3e;
+  --accent-glow: rgba(255, 46, 62, 0.45);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}

@@ -34,4 +34,30 @@
 | 126 | [Guard window in TauBar: live camera preview and head-turn prompts](126-guard-window-with-camera-preview.md) | AFK | 112, 115 |
 | 127 | [Tune the head-turn challenge on real captures](127-tune-the-head-turn-challenge.md) | AFK | 112 |
 
+## Status and next steps (2026-09-30)
+
+**On main:** 110 (tau-core seams), 111 (guard service), 112 (face verification), 113 (guarded channels), 114 (Touch ID), 115 (TauBar plumbing), 116 (tau Desktop), with ADR 0008, the guide and the reference. The guard stays off until the owner runs `tau guard setup`.
+
+**What the owner's first live try showed:** the face match is solid (scores around 0.8 against a 0.50 threshold), but the head-turn challenge refused real head turns: the old yaw measure barely moved, and the terminal's frame lines buried the prompts. Until 127 lands, `unlock_liveness = "none"` (face match only, a doctor warning) is the way to use the guard.
+
+**Owner steps** (the `(user)` criteria):
+
+- 112: a live enrollment, an unlock and a step-up on the hub Mac.
+- 114: Touch ID authorises a re-enrollment and `forget`, unlocks `tau tui` with the camera covered, and passes a step-up with `step_up = "face_or_touch_id"`.
+- 115: a stable signing identity for TauBar (see its README), a rebuilt and reinstalled TauBar, and the camera permission granted to it.
+- 116: one live session in tau Desktop.
+- 127: five natural unlocks in a row, with and without glasses.
+- Release: a PyPI trusted publisher for `tau-guard` and the GitHub environment `pypi-guard`; the release that first ships `tau_core.guard` bumps tau-core, tau-tui and tau-guard together and raises tau-guard's `tau-core>=` floor (0.3.1 on PyPI has no `tau_core.guard`).
+
+**Agent work, in this order:**
+
+1. **127** Tune the head-turn challenge (head pose in degrees from `solvePnP`, return swings allowed, prompts that stand out in `--explain`). In progress on `guard/tune`.
+2. **126** Guard window in TauBar. Starts with a spike that opens the camera from two processes at once, so it needs the owner at the Mac for a few seconds.
+3. **117** Remote unlock through Telegram: brings back `tau tui` over mosh and `tau ask` while the owner is away.
+4. **123** Owner notifications (failed attempts, cooldown, guard disabled).
+5. **124** In-process fallback when no hub runs.
+6. Later, when their blockers are done: 118 and 119 (voice, after 075), 120 (after 054), 121 (after 032 and 037), 122 (the RPi5).
+
+**Open decision:** 125 needs the owner's call. macOS has no public API that locks the session, so the choice is between a private framework call and dropping the feature.
+
 Live status: `python3 roadmap/board.py --layer L10`

@@ -1,0 +1,11 @@
+# Docker build context = the repository root (cloud/spine/container/Dockerfile, ADR 0007).
+# Send only the Python packages the brain image installs; never .env, .venv, .git or data.
+*
+!packages/tau-core
+!packages/tau-net
+!packages/tau-cloud
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/*.pyc
+**/tests

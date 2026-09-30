@@ -1,6 +1,7 @@
 //! Read-only looks at a hub: its lock, its control API, `tau hub status --json` and launchd.
 //!
-//! Nothing here starts, stops or changes a hub.
+//! Nothing here starts, stops or changes a hub. [`http_post`] is the one exception to
+//! "read-only": the transport for the signed requests in [`super::control`] ("Lock now").
 
 use super::launch::{Launch, LaunchdAgent, LAUNCHD_LABEL};
 use serde::Serialize;
@@ -82,6 +83,108 @@ pub fn parse_http_response(raw: &[u8]) -> Result<(u16, String), String> {
         .and_then(|code| code.parse().ok())
         .ok_or("no HTTP status line")?;
     Ok((status, body.to_string()))
+}
+
+/// An HTTP answer with its headers and the body exactly as it came (a response proof covers
+/// the raw bytes).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HttpResponse {
+    pub status: u16,
+    /// `(name, value)` in the order received; names as sent.
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+impl HttpResponse {
+    /// The first header called `name` (case-insensitive).
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+}
+
+/// Parse a whole HTTP/1.x answer (read until the server closed). A `Content-Length` cuts the
+/// body to its length and a shorter body is an error; a chunked answer is refused (the hub's
+/// control API never sends one).
+pub fn parse_http_response_full(raw: &[u8]) -> Result<HttpResponse, String> {
+    let end = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .ok_or("incomplete HTTP response")?;
+    let head = std::str::from_utf8(&raw[..end]).map_err(|_| "HTTP head is not UTF-8")?;
+    let mut lines = head.split("\r\n");
+    let status = lines
+        .next()
+        .filter(|line| line.starts_with("HTTP/"))
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|code| code.parse().ok())
+        .ok_or("no HTTP status line")?;
+    let mut headers = Vec::new();
+    for line in lines {
+        let (name, value) = line.split_once(':').ok_or("malformed HTTP header")?;
+        headers.push((name.trim().to_string(), value.trim().to_string()));
+    }
+    let mut response = HttpResponse {
+        status,
+        headers,
+        body: raw[end + 4..].to_vec(),
+    };
+    if response.header("Transfer-Encoding").is_some() {
+        return Err("unexpected Transfer-Encoding in the answer".into());
+    }
+    if let Some(length) = response.header("Content-Length") {
+        let length: usize = length.parse().map_err(|_| "bad Content-Length")?;
+        if response.body.len() < length {
+            return Err("the answer ended before its Content-Length".into());
+        }
+        response.body.truncate(length);
+    }
+    Ok(response)
+}
+
+/// `POST http://127.0.0.1:<port><path>` with a JSON `body` and extra `headers` → the whole
+/// answer. HTTP/1.1 with `Connection: close`; `Content-Type: application/json`, no `Origin`.
+/// A redirect comes back as an answer like any other: nothing here follows it.
+pub fn http_post(
+    port: u16,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+    timeout: Duration,
+) -> Result<HttpResponse, String> {
+    let unsafe_text = |text: &str| text.contains(['\r', '\n']);
+    if unsafe_text(path)
+        || headers
+            .iter()
+            .any(|(name, value)| unsafe_text(name) || unsafe_text(value))
+    {
+        return Err("a request line or header contains a line break".into());
+    }
+    let mut request = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: application/json\r\n\
+         Content-Type: application/json\r\nContent-Length: {}\r\n",
+        body.len()
+    );
+    for (name, value) in headers {
+        request.push_str(&format!("{name}: {value}\r\n"));
+    }
+    request.push_str("Connection: close\r\n\r\n");
+    let mut bytes = request.into_bytes();
+    bytes.extend_from_slice(body);
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let mut stream = TcpStream::connect_timeout(&addr, timeout).map_err(|e| e.to_string())?;
+    stream.set_read_timeout(Some(timeout)).ok();
+    stream.set_write_timeout(Some(timeout)).ok();
+    stream.write_all(&bytes).map_err(|e| e.to_string())?;
+    let mut raw = Vec::new();
+    stream
+        .take(1024 * 1024)
+        .read_to_end(&mut raw)
+        .map_err(|e| e.to_string())?;
+    parse_http_response_full(&raw)
 }
 
 /// A JSON object from the control API, or `None` when the hub does not answer with 200.
@@ -281,6 +384,43 @@ mod tests {
             (200, "{\"ok\": true}".into())
         );
         assert!(parse_http_response(b"garbage").is_err());
+    }
+
+    #[test]
+    fn parses_whole_http_responses_with_headers_and_raw_bodies() {
+        let raw = b"HTTP/1.0 201 Created\r\nContent-Type: application/json\r\n\
+            X-Tau-Proof: abc\r\nContent-Length: 4\r\n\r\n{\"\xff}trailing";
+        let response = parse_http_response_full(raw).unwrap();
+        assert_eq!(response.status, 201);
+        assert_eq!(response.header("x-tau-proof"), Some("abc"));
+        assert_eq!(response.header("Content-Type"), Some("application/json"));
+        assert_eq!(response.header("Origin"), None);
+        assert_eq!(response.body, b"{\"\xff}");
+        let no_length = parse_http_response_full(b"HTTP/1.1 200 OK\r\n\r\nbody").unwrap();
+        assert_eq!(no_length.body, b"body");
+        assert!(
+            parse_http_response_full(b"HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nshort").is_err()
+        );
+        assert!(parse_http_response_full(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nbody\r\n0\r\n\r\n"
+        )
+        .is_err());
+        assert!(parse_http_response_full(b"SSH-2.0-OpenSSH\r\n\r\n").is_err());
+        assert!(parse_http_response_full(b"HTTP/1.1 200 OK\r\nno colon\r\n\r\n").is_err());
+        assert!(parse_http_response_full(b"HTTP/1.1 200 OK\r\n").is_err());
+    }
+
+    #[test]
+    fn http_post_refuses_line_breaks_in_headers() {
+        let err = http_post(
+            1,
+            "/guard/lock",
+            &[("X-Tau-Nonce", "n\r\nOrigin: evil")],
+            b"{}",
+            Duration::from_millis(100),
+        )
+        .unwrap_err();
+        assert!(err.contains("line break"), "{err}");
     }
 
     #[test]

@@ -25,6 +25,11 @@ libc = "0.2"
 plist = "1"
 signal-hook = "0.3"
 tauri-plugin-single-instance = "2"
+# Signed control requests (ADR 0008): HMAC-SHA256 over the nonce, method and path.
+getrandom = "0.3"
+hex = "0.4"
+hmac = "0.12"
+sha2 = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keepawake = "0.6"

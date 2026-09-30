@@ -1,6 +1,6 @@
 # 161 · The site opens on the universe: hard theme, characters, person and sub-tau pages
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L9 · Cloud mode and the tau network
 Packages: cloud/universe (public, client), cloud/shared, docs
@@ -18,7 +18,7 @@ Blocked by: –
 
 ## Acceptance criteria
 
-- [ ] Screenshots (desktop + phone, en + tr) of `/`, `/universe`, `/@handle`, `/<slug>`, `/claim` from `pnpm dev` with dev fixtures, checked by the orchestrator
+- [x] Screenshots (desktop + phone, en + tr) of `/`, `/universe`, `/@handle`, `/<slug>`, `/claim` from `pnpm dev` with dev fixtures, checked by the orchestrator
 - [x] Characters deterministic (vitest), distinct across a sample of seeds, accessible (`role="img"`, `aria-label`)
 - [x] `how-it-works` pages restyled; mkdocs strict build passes with the new palette
 
@@ -36,3 +36,4 @@ None (APIs per ADR 0013; merge after or alongside 160).
   - **Pages.** `person.html`, `sub.html`, `claim.html` and their `tr/` twins, with `client/person.ts`, `sub.ts` (visitor chat on 163's relay: `POST /api/chat/<target>` → `{thread, id, n}`, then `GET …/<thread>?after=<n>&wait=25` until `pending` is false; `state` `resting`, `full` and `unavailable` explained, send off while pending, `busy`/`thread_full`/`rate_limited`/`not_web`/`unavailable` explained, an expired thread restarted, late answers of an offline hub looked for every 30 s; thread per target in sessionStorage, replies as text, enter/shift+enter, 2 000 characters, "offline — messages wait" for hub-run sub-taus) and `claim.ts` (decodes the fragment, keeps it in sessionStorage over the GitHub round trip, `POST /api/claim`, 160's error codes). They read 160's as-built shapes (person: the tau's fields at the top level, `links`; subs: `path`/`url`, `hosted`, `owner`). Header on every page: coin + `tau / breadcrumb`, nav, "Sign in" (GitHub mark) → `/auth/login`, the language switch (on these pages the script points it at the same URL in the other language).
   - **Fixtures.** On localhost only, `?fixture=1` switches the pages to `client/fixtures.ts` (loaded on demand) for the tab's session; `?fixture=0` ends it. `node scripts/dev-site.mjs` (127.0.0.1:8795) serves `public/` with the Worker's page routes for looking at the site without the Worker; the real Worker answers `/@handle` and `/<slug>` only for names its directory knows, so fixture person and sub-tau pages need this server. Fixture sub-taus show a live answer (`/coach`), an offline hub (`/@erin/scout`) and a resting one (`/@grace/poet`).
   - **Docs.** `docs/stylesheets/brand.css` uses the same tokens; the brand page documents the site theme and the red coin (`sync-brand.mjs` derives `tau-coin-red.svg`).
+- 2026-09-30: done. The orchestrator checked the screenshots (landing, person, sub-tau with chat, the character gallery, the Turkish phone landing): the universe opens the page, the theme is hard, and the characters are distinct and readable.

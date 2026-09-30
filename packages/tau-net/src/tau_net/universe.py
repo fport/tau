@@ -94,7 +94,8 @@ ERROR_TEXT = {
     "too_large": "the request is larger than the universe accepts",
     "bad_request": "the universe refused the request as malformed",
     "wrong_universe": "the universe does not answer to this host (check [component.net] universe)",
-    "stale": "the universe refused the request time (check this machine's clock)",
+    "stale": "the universe already took a request from this tau with the same or a later time; "
+    "wait a few seconds and try again (if it keeps failing, check this machine's clock)",
     "card_unavailable": "the universe could not fetch this tau's card "
     "(is it published? `tau net publish`)",
     "bad_signature": "the signature does not match the published card (run `tau net publish`)",
@@ -372,8 +373,10 @@ class UniverseClient:
     Signed requests carry a ``ts`` that never repeats within this client: two requests in the
     same second get ``ts`` and ``ts + 1``, because a universe accepts only a ``ts`` greater than
     the last one it accepted from an address. Another process (the hub, ``tau net universe``)
-    may have used these seconds already, so a ``stale`` answer is retried with the next ``ts``,
-    up to :data:`STALE_RETRIES` times; a clock that is off by minutes still fails.
+    may have used these seconds already, so a ``stale`` answer is retried up to
+    :data:`STALE_RETRIES` times, each time further ahead (``+2``, ``+4``, ``+8`` s), which covers
+    a burst of requests from several processes in one second; a clock that is off by minutes
+    still fails.
     """
 
     def __init__(
@@ -457,6 +460,7 @@ class UniverseClient:
             stale = isinstance(data, dict) and data.get("error") == "stale"
             if not stale or attempt == STALE_RETRIES:
                 self._raise(status, data, answer)
+            self._last_ts += 2**attempt  # jump past what another process may have used
         raise AssertionError("unreachable")  # pragma: no cover
 
     # -- the protocol --------------------------------------------------------------------------

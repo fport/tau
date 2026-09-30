@@ -214,7 +214,7 @@ def test_universe_error_codes(tmp_path: Path, network: FakeNetwork, universe: Fa
         client.snapshot()
 
 
-def test_a_stale_answer_is_retried_once_with_a_newer_ts(
+def test_a_stale_answer_is_retried_further_ahead(
     tmp_path: Path, network: FakeNetwork, universe: FakeUniverse
 ) -> None:
     tau = universe_tau(tmp_path, network, ALICE)
@@ -223,7 +223,22 @@ def test_a_stale_answer_is_retried_once_with_a_newer_ts(
     client = UniverseClient(UNIVERSE, transport=network, clock=lambda: now)
     universe.fail("POST", "/api/join", (400, {"error": "stale"}))
     assert client.join(tau.identity, ALICE)["ok"] is True
-    assert [p["ts"] for p in universe.payloads("join")] == [now, now + 1]
+    assert [p["ts"] for p in universe.payloads("join")] == [now, now + 2]
+
+
+def test_a_burst_from_other_processes_is_jumped_over(
+    tmp_path: Path, network: FakeNetwork, universe: FakeUniverse
+) -> None:
+    # Seen while writing the tutorial: several universe commands in one second from separate
+    # processes used up the next few seconds, and +1 retries ran out.
+    tau = universe_tau(tmp_path, network, ALICE)
+    published(tau)
+    now = int(time.time())
+    client = UniverseClient(UNIVERSE, transport=network, clock=lambda: now)
+    stale = (400, {"error": "stale"})
+    universe.fail("POST", "/api/join", stale, stale, stale)
+    assert client.join(tau.identity, ALICE)["ok"] is True
+    assert [p["ts"] for p in universe.payloads("join")][-1] == now + 10
 
 
 def test_scheme_rule(network: FakeNetwork) -> None:

@@ -35,19 +35,22 @@ NET_MESSAGES: dict[str, dict[str, str]] = {
     },
     "net.init.next": {"en": "Next steps:", "tr": "Sonraki adımlar:"},
     "net.init.step_env": {
-        "en": "1. Put TAU_SPINE_URL and TAU_SPINE_TOKEN in .env (the names are in .env.example).",
-        "tr": "1. TAU_SPINE_URL ve TAU_SPINE_TOKEN değerlerini .env dosyasına yaz "
-        "(adlar .env.example içinde).",
+        "en": "- Give your tau an address: `tau net spine init DIR` and `tau net spine deploy DIR` "
+        "(they write TAU_SPINE_URL and TAU_SPINE_TOKEN into .env).",
+        "tr": "- Tau'na bir adres ver: `tau net spine init DIR` ve `tau net spine deploy DIR` "
+        "(TAU_SPINE_URL ve TAU_SPINE_TOKEN değerlerini .env dosyasına yazarlar).",
     },
     "net.init.step_note": {
-        "en": "2. Write what other taus may know about you in persona/{note} "
-        "(start from persona/net.example.md).",
-        "tr": "2. Diğer tau'ların senin hakkında bilebileceklerini persona/{note} dosyasına yaz "
-        "(persona/net.example.md ile başla).",
+        "en": "- Write what other taus may know about you in persona/{note}.",
+        "tr": "- Diğer tau'ların senin hakkında bilebileceklerini persona/{note} dosyasına yaz.",
+    },
+    "net.init.note_written": {
+        "en": "Created {path}: your public note for other taus, empty until you fill it in.",
+        "tr": "{path} oluşturuldu: diğer tau'lar için herkese açık notun, doldurana kadar boş.",
     },
     "net.init.step_publish": {
-        "en": "3. Run `tau net publish`, or start the hub: it publishes the card itself.",
-        "tr": "3. `tau net publish` çalıştır ya da hub'ı başlat: kartı kendisi yayımlar.",
+        "en": "- Run `tau net publish`, or start the hub: it publishes the card itself.",
+        "tr": "- `tau net publish` çalıştır ya da hub'ı başlat: kartı kendisi yayımlar.",
     },
     # -- keys and status -----------------------------------------------------------------------
     "net.keys.sign": {"en": "sign_key  {key}", "tr": "sign_key  {key}"},

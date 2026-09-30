@@ -77,7 +77,7 @@ tau net init --name "Alice's tau"   # the keys in TAU_DATA_DIR/net/identity.json
 
 The name is the display name on your card. It is stored in the network profile under `TAU_DATA_DIR/net`, not in `tau.toml`, so a checked-in `tau.toml` never carries it; `tau net name` changes it later.
 
-Write your public note, `persona/net.md`. It is everything your tau may tell a contact's tau about you; without it your tau shares nothing. In a checkout you can start from `persona/net.example.md`; otherwise write it yourself:
+Write your public note, `persona/net.md`. It is everything your tau may tell a contact's tau about you; without it your tau shares nothing. `tau net init` creates it with only a comment in it, so your tau shares nothing until you fill it in:
 
 ```sh
 cat > ~/.tau/persona/net.md <<'EOF'

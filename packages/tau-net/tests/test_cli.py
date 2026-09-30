@@ -57,6 +57,26 @@ def test_init_creates_keeps_and_names(tmp_path: Path, network, invoke) -> None:
     assert json.loads(card.output.split("\n", 1)[1])["name"] == "Alice's own tau"
 
 
+def test_init_writes_an_empty_public_note_once(tmp_path: Path, network, invoke) -> None:
+    # Found while writing the tutorial: the hint pointed at persona/net.example.md, which only
+    # exists in the repository, not in an installation.
+    tau = make_tau(tmp_path, network, ALICE, with_identity=False)
+    note = tau.config.persona_dir / "net.md"
+    note.unlink(missing_ok=True)
+    result = invoke(tau, "init")
+    assert result.exit_code == 0, result.output
+    assert note.exists() and f"Created {note}" in result.output
+    text = note.read_text()
+    assert text.startswith("<!--") and text.rstrip().endswith("-->")  # a comment, no facts
+    assert "net.example.md" not in result.output
+    assert "tau net spine init" not in result.output  # the spine is configured already
+    note.write_text("- Name: Alice\n")
+    again = invoke(tau, "init")
+    assert again.exit_code == 0 and note.read_text() == "- Name: Alice\n"
+    unconfigured = invoke(tau, "init", env={})
+    assert "tau net spine init" in unconfigured.output
+
+
 def test_init_with_an_identity_from_the_environment(tmp_path: Path, network, invoke) -> None:
     tau = make_tau(tmp_path, network, ALICE, with_identity=False)
     identity = Identity.generate()

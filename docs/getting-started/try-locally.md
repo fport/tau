@@ -262,7 +262,7 @@ alice hub stop
 bob hub stop
 ```
 
-The two scripted taus now answer each other until the thread reaches `max_hops` (6 replies), and Bob's `tau.log` says `net: not answering 127.0.0.1:8821: hop limit 7 reached`. A real model ends an exchange earlier by answering `[no reply]`; the hop limit and the hourly cap per contact are the backstop. While a hub runs, `curl -s 127.0.0.1:7922/status` has a `net` key with `"state": "polling"`.
+The two scripted taus now answer each other until the thread reaches `max_hops` (6 replies), and Bob's `tau.log` says `net: not answering 127.0.0.1:8821: a reply would be hop 7, over max_hops 6`. A real model ends an exchange earlier by answering `[no reply]`; the hop limit and the hourly cap per contact are the backstop. While a hub runs, `curl -s 127.0.0.1:7922/status` has a `net` key with `"state": "polling"`.
 
 ## 9. A local universe (optional)
 

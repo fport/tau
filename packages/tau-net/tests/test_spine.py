@@ -299,3 +299,16 @@ def test_deliver_reports_errors() -> None:
     assert (caught.value.status, caught.value.code) == (429, "rate_limited")
     with pytest.raises(DeliveryError, match="unreachable"):
         peers.deliver("nobody.example", envelope)
+
+
+def test_a_local_peer_without_insecure_gets_a_hint() -> None:
+    from tau_net.peers import CardError
+
+    def refuse(method, url, headers, body, timeout):
+        raise ConnectionRefusedError("refused")
+
+    with pytest.raises(CardError, match="TAU_NET_ALLOW_INSECURE=1"):
+        PeerClient(refuse).fetch_card("127.0.0.1:8822")
+    with pytest.raises(CardError) as info:
+        PeerClient(refuse, allow_insecure=True).fetch_card("127.0.0.1:8822")
+    assert "TAU_NET_ALLOW_INSECURE" not in str(info.value)

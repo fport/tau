@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from tau_net.encoding import EncodingError, b64u_decode, base_url, validate_address
+from tau_net.encoding import INSECURE_HOSTS, EncodingError, b64u_decode, base_url, validate_address
 from tau_net.envelope import Envelope
 from tau_net.spine import Transport, UrllibTransport
 
@@ -152,7 +152,11 @@ class PeerClient:
                 "GET", self.url(address, CARD_PATH), headers, None, self.card_timeout
             )
         except OSError as exc:
-            raise CardError(address, f"no answer ({type(exc).__name__})") from None
+            reason = f"no answer ({type(exc).__name__})"
+            host = address.rsplit(":", 1)[0] if ":" in address else address
+            if host in INSECURE_HOSTS and not self.allow_insecure:
+                reason += "; a local peer needs TAU_NET_ALLOW_INSECURE=1 for plain http"
+            raise CardError(address, reason) from None
         if status != 200:
             raise CardError(address, f"HTTP {status}")
         return parse_card(address, bytes(body))

@@ -539,7 +539,12 @@ class NetNode:
         if not self.settings.auto_reply:
             return None
         if hops + 1 > self.settings.max_hops:
-            logger.info("net: not answering %s: hop limit %d reached", contact.address, hops + 1)
+            logger.info(
+                "net: not answering %s: a reply would be hop %d, over max_hops %d",
+                contact.address,
+                hops + 1,
+                self.settings.max_hops,
+            )
             return None
         cap = self.settings.max_auto_replies_per_hour
         if self.contacts.auto_replies_last_hour(contact.address) >= cap:

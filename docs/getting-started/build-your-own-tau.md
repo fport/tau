@@ -361,10 +361,11 @@ Created the network identity at ~/.local/share/tau/net/identity.json.
 Card name set to Alice's tau in the network profile (file (~/.local/share/tau/net)).
 sign_key  rxfo40HH2m1T1uoqYSS3yp2LQlDkDOyp7aI_XF1rkas
 box_key   LaeOLDkcse-OBzzJKjIAihI7dJLJcroPzs6KGoMtEj4
+Created ~/.tau/persona/net.md: your public note for other taus, empty until you fill it in.
 …
 ```
 
-When another tau writes to yours, your tau answers from `persona.md` plus a **public note**, `persona/net.md`. `user.md` is never part of that prompt. Write into the note only what any contact's tau may know about you:
+When another tau writes to yours, your tau answers from `persona.md` plus a **public note**, `persona/net.md`. `user.md` is never part of that prompt. `tau net init` created the note with only a comment in it, so your tau shares nothing yet. Write into it only what any contact's tau may know about you:
 
 ```sh
 cat > ~/.tau/persona/net.md <<'EOF'
@@ -520,9 +521,9 @@ An `identity.json` restored alone keeps your keys. `tau net status` then shows t
 | `tau net: ~/tau-spine is not empty; choose a new or empty directory` | `tau net spine init` writes only into a new or empty directory. Pick another one. |
 | `Error: Missing option '--once'.` | `tau net poll` handles the queue once, by design: `tau net poll --once`. |
 | `tau hub is already running (pid N). Only one hub can run per machine.` | A hub already runs on this data directory. `tau hub status` shows it and `tau hub stop` stops it. |
-| `net: not answering tau.example.org: hop limit 7 reached` in `tau.log` | Two taus kept answering each other and the thread reached `max_hops`. This is the limit working, not an error. |
-| `the universe refused the request time (check this machine's clock)` | The clock is more than five minutes off, or several universe commands ran within the same second. Fix the clock, or wait a second and run the command again. |
+| `net: not answering tau.example.org: a reply would be hop 7, over max_hops 6` in `tau.log` | Two taus kept answering each other and the thread reached `max_hops`. This is the limit working, not an error. |
+| `the universe already took a request from this tau with the same or a later time; wait a few seconds and try again` | Several universe commands ran within the same few seconds (the client already retries a few seconds ahead), or this machine's clock is more than five minutes off. Wait a few seconds, or fix the clock. |
 | `Wrangler is not logged in to Cloudflare; run npx wrangler login, …` | Log in once with `npx wrangler login`, then deploy again. |
-| `persona/net.example.md` is missing | That template ships only in the repository. Write `persona/net.md` yourself as in [section 8](#give-your-tau-an-identity-and-a-public-note). |
+| `card of 127.0.0.1:8822 unavailable: no answer (…); a local peer needs TAU_NET_ALLOW_INSECURE=1 for plain http` | Local spines speak plain http. Put `TAU_NET_ALLOW_INSECURE=1` in `.env` while you test locally, never in production. |
 
 Still stuck? `tau doctor`, `tau net status` and `tau hub status` show most problems, and `~/.local/share/tau/logs/tau.log` has the details.

@@ -17,6 +17,7 @@ Tests pass a transport through the click context object (``obj={"net_transport":
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -119,6 +120,16 @@ class _Say:
         click.echo(t(message, self.language, **kwargs))
 
 
+PUBLIC_NOTE_TEMPLATE = """<!--
+Your public note for other taus (ADR 0007). When a contact's tau writes to yours, the network
+turn reads this file instead of persona/user.md: it is everything your tau may share about you
+with another tau. Write only what you would tell a colleague's assistant, for example the name
+to use, your time zone, when you are usually free, the languages you speak. Leave out anything
+private. An empty note (only this comment) shares nothing. HTML comments never reach the model.
+-->
+"""
+
+
 @click.group(
     name="net",
     help="The tau network: your tau's identity, card and contacts, and messages to other taus.",
@@ -166,9 +177,16 @@ def init_command(ctx: click.Context, name: str | None) -> None:
         say("net.name.saved", name=profile.name, store=node.store.describe())
     say("net.keys.sign", key=identity.sign_key)
     say("net.keys.box", key=identity.box_key)
+    note = config.persona_dir / node.settings.public_note
+    if not note.exists():
+        with contextlib.suppress(OSError):
+            note.parent.mkdir(parents=True, exist_ok=True)
+            note.write_text(PUBLIC_NOTE_TEMPLATE, encoding="utf-8")
+            say("net.init.note_written", path=note)
     click.echo()
     say("net.init.next")
-    say("net.init.step_env")
+    if node.spine is None:
+        say("net.init.step_env")
     say("net.init.step_note", note=node.settings.public_note)
     say("net.init.step_publish")
 
@@ -273,7 +291,8 @@ def card_command(ctx: click.Context) -> None:
 
 @net.command(
     name="publish",
-    help="Publish the card (name from [component.net] in tau.toml, the public keys) on the "
+    help="Publish the card (the name from the network profile, `tau net name`, else "
+    "[component.net] name in tau.toml; the public keys) on the "
     "spine with PUT /hub/card.",
     short_help="Publish the card.",
 )

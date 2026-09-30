@@ -217,3 +217,21 @@ def test_state_round_trip_ignores_unknown_keys(tmp_path: Path) -> None:
     assert HubState.from_dict(data) == _stale_state()
     report = CrashReport(1, "a", "b", "c", "d")
     assert CrashReport.from_dict(report.to_dict() | {"x": 1}) == report
+
+
+def test_a_hub_start_makes_its_logs_private(config: Config) -> None:
+    """launchd creates hub/logs/*.log with the default umask; the hub chmods them (ADR 0008)."""
+    logs = HubFiles(config.hub_dir).logs
+    logs.mkdir(parents=True, mode=0o755)
+    os.chmod(logs, 0o755)
+    for name in ("hub.out.log", "hub.err.log"):
+        (logs / name).write_text("")
+        os.chmod(logs / name, 0o644)
+    assert _run(config)[1] == 0
+    assert logs.stat().st_mode & 0o777 == 0o700
+    for name in ("hub.out.log", "hub.err.log"):
+        assert (logs / name).stat().st_mode & 0o777 == 0o600
+
+
+def test_secure_logs_without_a_logs_directory(tmp_path: Path) -> None:
+    HubFiles(tmp_path / "hub").secure_logs()  # nothing to do, nothing raised

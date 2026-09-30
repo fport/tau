@@ -188,6 +188,7 @@ class Hub:
         return 0
 
     async def _serve(self) -> None:
+        self.files.secure_logs()
         self.crash_report = self.files.check_previous_run(now=self._clock())
         if self.crash_report is not None:
             # INFO: the log file keeps it; the terminal gets the banner line from the CLI.

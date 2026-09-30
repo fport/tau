@@ -177,6 +177,23 @@ class HubFiles:
         marker = {"pid": pid, "reason": reason, "at": at, "traceback": traceback}
         write_text_atomic(self.crash, _dump(marker))
 
+    def secure_logs(self) -> None:
+        """Keep ``logs/`` private: the directory 0700 and every file in it 0600.
+
+        launchd creates the log files with the default umask (0644) before the hub starts, and
+        ``mkdir(mode=)`` does not change an existing directory, so the hub chmods them at every
+        start. Missing paths and chmod errors are ignored."""
+        logs = self.logs
+        if not logs.is_dir() or logs.is_symlink():
+            return
+        with suppress(OSError):
+            os.chmod(logs, 0o700)
+        with suppress(OSError):
+            for path in logs.iterdir():
+                if path.is_file() and not path.is_symlink():
+                    with suppress(OSError):
+                        os.chmod(path, 0o600)
+
     def read_last_crash(self) -> dict[str, Any] | None:
         data = self._read_json(self.last_crash)
         return data if isinstance(data, dict) else None

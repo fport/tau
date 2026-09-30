@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Signing material from scripts/make-signing-identity.sh: the code-signing p12, the updater's
+# private key and their passwords. Never tracked; the CI copies live in GitHub secrets.
+.signing/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

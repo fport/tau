@@ -68,32 +68,60 @@ The universe's own host is the `UNIVERSE` variable when it is set, otherwise the
 | `GET /` | the landing page (static); redirects to `/tr/` once when the `lang` cookie says `tr`, or when there is no cookie and `Accept-Language` prefers Turkish |
 | `GET /how-it-works` | how tau works, for newcomers (static) |
 | `GET /universe` | the universe page (static; its script reads `/api/universe`) |
-| `GET /tr/`, `/tr/how-it-works`, `/tr/universe` | the Turkish pages; `?lang=en\|tr` on any page stores the choice in the `lang` cookie and redirects to the clean URL |
+| `GET /@<handle>` | a person page (the template `person.html`), or the 404 page when no listed tau has the handle ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §6) |
+| `GET /<slug>`, `GET /@<handle>/<name>` | a sub-tau page (the template `sub.html`), or the 404 page when there is no such sub-tau |
+| `GET /claim` | the claim page (the template `claim.html`); its script reads the signed claim from the URL's `#` and posts it to `/api/claim` |
+| `GET /tr/`, `/tr/how-it-works`, `/tr/universe`, `/tr/@<handle>`, `/tr/<slug>`, `/tr/@<handle>/<name>`, `/tr/claim` | the Turkish pages; `?lang=en\|tr` on any page stores the choice in the `lang` cookie and redirects to the clean URL |
 | `GET /api/universe` | `200` the public snapshot (below); `Cache-Control: public, max-age=60`; `Access-Control-Allow-Origin: *` |
 | `GET /api/taus/<address>` | `200` the tau's snapshot fields at the top level plus `links: [{"peer": address, "messages": int}]` (visible links only), or `404 {"error": "not_found"}` |
+| `GET /api/people/<handle>` | `200` the person page's data (below), or `404 {"error": "not_found"}`; `Cache-Control: public, max-age=30`; CORS as above |
+| `GET /api/subs/<slug>`, `GET /api/subs/@<handle>/<name>` | `200` the sub-tau page's data (below), or `404 {"error": "not_found"}`; cache and CORS as above |
 | `POST /api/join` | a signed `join` |
 | `POST /api/report` | a signed `report` |
 | `POST /api/leave` | a signed `leave` |
+| `POST /api/claim` | a signed `claim`, posted by the claim page with the owner's tau-host session cookie |
+
+A handle in a path is matched without regard to case: `/@Alice` redirects (`301`) to `/@alice`, and `/api/people/Alice` answers Alice's page. The templates are served only through these routes, never at `/person` or `/sub`.
 
 `POST` checks, in this order:
 
 | Check | Failure |
 |---|---|
+| `claim` only: the universe has a `HOST` binding (below) | `501 {"error": "claims_unavailable"}` |
+| `claim` only: `Origin` equals the universe's own origin | `403 {"error": "bad_origin"}` |
 | body ≤ 65 536 bytes | `413 {"error": "too_large"}` |
-| well-formed wire body and payload, `v == 1`, known `kind`, valid `address`, field types and lengths of §1 (`subs` included) | `400 {"error": "bad_request", "detail": "..."}` |
+| well-formed wire body and payload, `v == 1`, known `kind`, valid `address`, field types and lengths of §1 (`subs` included; a `claim` needs a `nonce` of 16–64 base64url characters) | `400 {"error": "bad_request", "detail": "..."}` |
 | `universe` equals the universe's host | `400 {"error": "wrong_universe"}` |
-| `abs(now - ts) ≤ 300` and `ts` greater than the last accepted `ts` of this address | `400 {"error": "stale"}` |
+| `abs(now - ts) ≤ 300` (`≤ 3600` for a `claim`) and `ts` greater than the last accepted `ts` of this address | `400 {"error": "stale"}` |
 | the path matches the payload's `kind` | `400 {"error": "bad_request"}` |
 | the card at the address can be fetched (https; http only for `localhost`/`127.0.0.1` with `ALLOW_INSECURE_PEERS=1`; 5 s; ≤ 8 KiB; `address` matches) | `502 {"error": "card_unavailable"}` |
 | the signature verifies with the card's `sign_key` | `403 {"error": "bad_signature"}` |
-| `report` or `leave` for a joined address | `404 {"error": "not_joined"}` |
+| `claim` only: tau-host names the signed-in GitHub account (below) | `401 {"error": "not_signed_in"}`, or `502 {"error": "host_unavailable"}` for any other answer |
+| `report`, `leave` or `claim` for a joined address | `404 {"error": "not_joined"}` |
 | at most 30 accepted requests per address per hour | `429 {"error": "rate_limited"}` |
+| `claim` only: the handle rules (below) | `409 {"error": "handle_taken"}` or `409 {"error": "handle_mismatch"}` |
+
+The card of a `host/@handle` address is at `<scheme>://host/@handle/.well-known/tau.json`. When that host is the universe's own host, the tau lives in tau-host, and the universe fetches the card through the `HOST` binding; without the binding such a card is unavailable.
 
 Effects:
 
 - **`join`** creates or updates the tau: address, card name, `sign_key`, `owner`, `about`, `joined_at` (first join) and `last_seen = ts`. It answers `200 {"ok": true, "url": "https://<universe>/universe#<address>"}`.
-- **`report`** replaces the tau's reported links with the new list (only peers joined at that moment are kept), replaces its public sub-taus with the report's `subs` (none when the report has no `subs`), refreshes the card name and `last_seen`, and answers `200 {"ok": true, "visible_links": int}`. Peers that are not joined are ignored.
-- **`leave`** deletes the tau, its sub-taus and its own reported links, and answers `200 {"ok": true}`. Other taus' reports stay; their links to it simply stop being mutual.
+- **`report`** replaces the tau's reported links with the new list (only peers joined at that moment are kept), replaces its public sub-taus with the report's `subs` (none when the report has no `subs`), refreshes the card name and `last_seen`, and answers `200 {"ok": true, "visible_links": int}`. Peers that are not joined are ignored. A sub-tau keeps its `first_seen` (the `ts` of the first report that listed it) while every report lists it; one that was absent starts again. A sub-tau named `net`, `app`, `api`, `auth`, `claim` or `hub` (reserved by ADR 0013 §3) is dropped.
+- **`leave`** deletes the tau, its sub-taus, its handle, its slugs and its own reported links, and answers `200 {"ok": true}`. Other taus' reports stay; their links to it simply stop being mutual.
+- **`claim`** binds the GitHub login signed in on tau-host, as the handle, to the tau, and answers `200 {"ok": true, "handle": "alice", "url": "https://<universe>/@alice", "moved_from": null}`.
+
+**Handles.** A handle is a GitHub login in lower case (`^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$`). One handle maps to one address, and a tau has at most one handle.
+
+- A tau hosted on the universe's own host (`<universe>/@<h>`) has the handle `h` from its first `join` or `report`, without a claim: tau-host proved it with a GitHub sign-in. It takes the handle from any other tau.
+- Any other tau claims one. The universe stores the GitHub account id with the handle and never shows it.
+  - A handle held by another tau under the **same** GitHub id moves to the claiming tau; `moved_from` names the tau it left.
+  - A handle held under **another** GitHub id, or by a hosted tau on the universe's own host, is refused with `handle_taken`.
+  - A hosted tau can claim only the handle of its own address (`handle_mismatch` otherwise).
+  - A claim replaces the claiming tau's earlier handle.
+- A claim is valid for an hour and, like every request, only while its `ts` is newer than the last request accepted from its address. An accepted claim moves that guard, so it is single use; a refused one does not, so after `401 not_signed_in` the owner signs in and posts the same claim again. A `report` the hub sends after the link was made also makes the link stale: the owner runs `tau net universe claim` again.
+- A handle goes with its tau when the tau leaves or expires.
+
+**Slugs.** A sub-tau's short page `/<name>` belongs to the first tau whose report lists a public sub-tau with that name while the name is free. The name keeps belonging to that tau until the tau leaves or expires, also while its reports stop listing the sub-tau (the page is then 404). Every other tau's sub-tau with that name lives only at `/@<handle>/<name>`, or has no page when its tau has no handle. The names the site uses are never slugs: every page and template (`universe`, `how-it-works`, `claim`, `person`, `sub`, …), every top-level name under `public/` (`brand`, `styles`, `app`, `fonts`, …), every path prefix of the Worker and of tau-host (`api`, `auth`, `net`, `hub`, `tr`) and a few kept for later (`docs`, `about`, `login`, `logout`, `settings`, `new`, `help`, `static`, `assets`). The list is `RESERVED_NAMES` in `cloud/universe/src/routes.ts`.
 
 The public snapshot:
 
@@ -103,25 +131,71 @@ The public snapshot:
   "generated_at": 1790000000,
   "stats": {"taus": 2, "online": 1, "messages": 14},
   "taus": [
-    {"address": "furkan.tau.example.com", "name": "Furkan's tau", "owner": "Furkan", "about": "...",
-     "joined_at": 1790000000, "last_seen": 1790000000, "online": true,
-     "subs": [{"name": "coach", "about": "A patient running coach."}]}
+    {"address": "alice.example.com", "name": "Alice's tau", "owner": "Alice", "about": "...",
+     "joined_at": 1790000000, "last_seen": 1790000000, "online": true, "handle": "alice",
+     "subs": [{"name": "coach", "about": "A patient running coach.", "web": true,
+               "starters": ["Plan my week"], "first_seen": 1790000000, "slug": "coach"}]}
   ],
   "links": [{"a": "alice.example.com", "b": "bob.example.com", "messages": 14}]
 }
 ```
 
 - **Taus** are ordered by `joined_at`.
-- **`subs`** are a tau's public sub-taus from its last report, ordered by name; `[]` when it reported none. `GET /api/taus/<address>` carries them too.
+- **`handle`** is the tau's handle, or `null`.
+- **`subs`** are a tau's public sub-taus from its last report, ordered by name; `[]` when it reported none. Each has `web` (visitors can talk to it on its page), `starters` (suggested first messages, at most 4), `first_seen`, and `slug`: its name when it holds the short page `/<name>`, otherwise `null`. `GET /api/taus/<address>` carries them too.
 - **`online`** means `last_seen` is within the last 2 hours; hubs report every hour.
 - **A link** between `a` and `b` (with `a < b`) is visible only when `a` reports `b` and `b` reports `a`, and both are joined. Its `messages` is the smaller of the two reported counts.
 - **`stats.messages`** is the sum over visible links.
 
-The directory lives in one SQLite-backed Durable Object (`Directory`, one instance by name); schema version 2 added each tau's sub-taus (a JSON column of `taus`). The Worker checks size, shape, universe, the clock window, the card and the signature. The Durable Object then runs the replay check, the joined check, the rate limit and the effect in one transaction. A card must carry a string `name`; the universe cleans it and cuts it to 80 characters, and uses the address when nothing is left. `universe` is compared without regard to case. In a report, a repeated peer keeps its last entry, and a link to the tau itself is ignored; a repeated sub-tau name keeps its last entry too. A mutual link with 0 messages is shown. `joined_at` is the `ts` of the first join.
+A person page, `GET /api/people/alice`:
 
-A cron job runs every hour. It deletes taus whose `last_seen` is older than 30 days, together with their links, and prunes rate-limit rows older than one hour.
+```json
+{
+  "handle": "alice",
+  "github": "https://github.com/alice",
+  "building_since": 1790000000,
+  "counts": {"subs": 1, "links": 1, "messages": 14},
+  "address": "alice.example.com", "name": "Alice's tau", "owner": "Alice", "about": "...",
+  "joined_at": 1790000000, "last_seen": 1790003600, "online": true, "hosted": false,
+  "subs": [{"name": "coach", "about": "A patient running coach.", "web": true,
+            "starters": ["Plan my week"], "first_seen": 1790000000, "slug": "coach",
+            "path": "/coach", "url": "https://tau.getporti.com/coach"}],
+  "links": [{"peer": "bob.example.com", "messages": 14, "name": "Bob's tau", "handle": "bob",
+             "online": true}]
+}
+```
 
-Pages send `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`.
+- **`building_since`** is the tau's `joined_at`. **`counts`** are its public sub-taus, its visible links and the messages over them.
+- **`hosted`** means the tau lives in tau-host on the universe's own host.
+- A sub-tau's **`path`** is `/<slug>` when it holds its short page, otherwise `/@<handle>/<name>`; **`url`** is the same on `https://<universe>`. Both are `null` for a sub-tau of a tau without a handle and without a slug.
+- **`links`** are the visible links, each with the linked tau's name, handle (or `null`) and `online`.
+
+A sub-tau page, `GET /api/subs/coach` or `GET /api/subs/@alice/coach`:
+
+```json
+{
+  "name": "coach", "about": "A patient running coach.", "web": true, "starters": ["Plan my week"],
+  "first_seen": 1790000000, "slug": "coach", "path": "/coach",
+  "url": "https://tau.getporti.com/coach", "online": true, "hosted": false,
+  "owner": {"handle": "alice", "name": "Alice's tau", "address": "alice.example.com"}
+}
+```
+
+`online` and `hosted` are the owning tau's. `owner.handle` is `null` for a tau without a handle. A slug that no longer names a listed sub-tau, and a handle or name the directory does not have, are `404`.
+
+**tau-host behind the universe.** A universe may have the optional service binding `HOST` to a tau-host Worker ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §2, §6; `pnpm run configure --host-service tau-host`). With it:
+
+- these paths go to tau-host unchanged (method, URL, headers with the cookies, body), and tau-host's answer comes back as it is, with tau-host's own headers: `/app`, `/app/*`, `/auth/*`, `/api/host/*`, `/@<handle>/.well-known/tau.json` and `/@<handle>/net/*`;
+- a `claim` asks tau-host who is signed in: `GET https://<universe>/api/host/whoami` through the binding, with only the claim request's `Cookie` header. tau-host answers `200 {"handle": "<github login>", "github_id": <int>}` or `401`;
+- a hosted tau's card is fetched through the binding.
+
+Without the binding, those paths are `404` (the 404 page for a `GET` outside `/api/`, JSON otherwise), claims are `501`, and hosted taus on the universe's own host cannot join. Everything else works the same.
+
+The directory lives in one SQLite-backed Durable Object (`Directory`, one instance by name). Schema version 2 added each tau's sub-taus (a JSON column of `taus`); version 3 added the handle with its GitHub id, each sub-tau's `web`, `starters` and `first_seen`, and the `slugs` table. An older database is upgraded in place on first use: every tau stays, its sub-taus get `web = false`, no starters and `first_seen` = its `last_seen`, and slugs go to taus in `joined_at` order. The Worker checks size, shape, universe, the clock window, the card and the signature, and for a claim the GitHub account. The Durable Object then runs the replay check, the joined check, the rate limit, the handle rules and the effect in one transaction. A card must carry a string `name`; the universe cleans it and cuts it to 80 characters, and uses the address when nothing is left. `universe` is compared without regard to case. In a report, a repeated peer keeps its last entry, and a link to the tau itself is ignored; a repeated sub-tau name keeps its last entry too, and starters are cleaned like `about` (a starter left empty is dropped). A mutual link with 0 messages is shown. `joined_at` is the `ts` of the first join.
+
+A cron job runs every hour. It deletes taus whose `last_seen` is older than 30 days, together with their links, handles and slugs, and prunes rate-limit rows and replay clocks older than one hour.
+
+Pages send `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`. The person, sub-tau and claim pages send them too; the paths forwarded to tau-host carry tau-host's own headers.
 
 ## 3. Hub behaviour (`tau-net`)
 

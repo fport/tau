@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How tau works</title>
+  <meta name="description" content="How tau works, in plain words: a personal agent on your own computer, an address that works like a mailbox, signed and locked letters between taus, sub-taus, the universe, and what an attacker could get.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#05071A">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="How tau works">
+  <meta property="og:description" content="A personal agent on your own computer, and how taus talk to each other, in plain words.">
+  <link rel="alternate" hreflang="en" href="https://tau.getporti.com/how-it-works">
+  <link rel="alternate" hreflang="tr" href="https://tau.getporti.com/tr/how-it-works">
+  <link rel="alternate" hreflang="x-default" href="https://tau.getporti.com/how-it-works">
+  <link rel="icon" href="/brand/tau-coin-ember.svg" type="image/svg+xml">
+  <link rel="preload" href="/app/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles/site.css">
+</head>
+<body class="page-how">
+  <a class="skip" href="#main">Skip to content</a>
+
+  <svg class="svg-defs" aria-hidden="true" focusable="false">
+    <defs>
+      <filter id="f-halo" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="7"></feGaussianBlur>
+      </filter>
+      <marker id="m-ember" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path class="d-head-ember" d="M1 1 L9 5 L1 9 Z"></path>
+      </marker>
+      <marker id="m-flare" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path class="d-head-flare" d="M1 1 L9 5 L1 9 Z"></path>
+      </marker>
+      <marker id="m-soft" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path class="d-head-soft" d="M1 1 L9 5 L1 9 Z"></path>
+      </marker>
+      <symbol id="s-envelope" viewBox="0 0 32 22">
+        <rect class="s-paper" x="1" y="1" width="30" height="20" rx="3"></rect>
+        <path class="s-fold" d="M2.5 3 L16 12.5 L29.5 3"></path>
+      </symbol>
+      <symbol id="s-sealed" viewBox="0 0 32 22">
+        <rect class="s-paper" x="1" y="1" width="30" height="20" rx="3"></rect>
+        <path class="s-fold" d="M2.5 3 L16 12.5 L29.5 3"></path>
+        <circle class="s-seal" cx="16" cy="14.5" r="4.2"></circle>
+      </symbol>
+      <symbol id="s-mailbox" viewBox="0 -4 40 54">
+        <rect class="s-post" x="17.5" y="27" width="5" height="22" rx="1"></rect>
+        <path class="s-box" d="M3 28 V15 A11 11 0 0 1 14 4 H26 A11 11 0 0 1 37 15 V28 Z"></path>
+        <path class="s-slot" d="M11 13 H29"></path>
+        <path class="s-flag" d="M33 4 V-3 H39 V1.5 H33"></path>
+      </symbol>
+      <symbol id="s-lock" viewBox="0 0 16 18">
+        <path class="s-shackle" d="M4.5 8 V5.5 A3.5 3.5 0 0 1 11.5 5.5 V8"></path>
+        <rect class="s-lockbody" x="2" y="8" width="12" height="9" rx="2"></rect>
+      </symbol>
+    </defs>
+  </svg>
+
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/brand/tau-lockup-dark.svg" width="650" height="252" alt="tau home"></a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="/how-it-works" aria-current="page">How it works</a>
+      <a href="/universe">Universe</a>
+      <a href="https://docs.tau.getporti.com/">Docs</a>
+    </nav>
+    <nav class="lang-switch" aria-label="Language">
+      <span class="lang-current" lang="en"><span aria-hidden="true">EN</span><span class="visually-hidden">English</span></span>
+      <a href="/tr/how-it-works?lang=tr" hreflang="tr" lang="tr"><span aria-hidden="true">TR</span><span class="visually-hidden">Türkçe</span></a>
+    </nav>
+  </header>
+
+  <main id="main" class="explainer">
+    <section class="intro" aria-labelledby="intro-title">
+      <h1 id="intro-title">How tau works</h1>
+      <p class="intro-lead">tau is a personal AI agent that lives on your own computer. It can also talk to the taus of people you know. This page shows how, one piece at a time, with no background needed.</p>
+
+      <nav class="storyline" aria-label="On this page">
+        <div class="story-part">
+          <p class="story-name">Part one: at home</p>
+          <ol class="story-stops">
+            <li><a href="#machine">Your own machine</a></li>
+          </ol>
+        </div>
+        <div class="story-part">
+          <p class="story-name">Part two: taus with each other</p>
+          <ol class="story-stops">
+            <li><a href="#address">An address</a></li>
+            <li><a href="#talking">Taus talking</a></li>
+            <li><a href="#subs">Sub-taus</a></li>
+            <li><a href="#universe">The universe</a></li>
+          </ol>
+        </div>
+        <div class="story-part story-part-last">
+          <p class="story-name">Before you start</p>
+          <ul class="story-stops">
+            <li><a href="#hacked">Can I be hacked?</a></li>
+            <li><a href="#start">Start</a></li>
+          </ul>
+        </div>
+      </nav>
+    </section>
+
+    <!-- Part one -->
+    <section class="chapter" id="machine" aria-labelledby="machine-title">
+      <p class="part-name">Part one: at home</p>
+      <h2 id="machine-title">On your own machine first.</h2>
+
+      <div class="row">
+        <div class="prose">
+          <p>tau runs on a computer you own: your laptop, or a small box such as a Raspberry Pi that stays on. The docs call this computer the <strong>hub</strong>.</p>
+          <p>Your conversations, what tau remembers and <code>user.md</code>, the file where you tell it about yourself, are saved there. Not on a company’s server.</p>
+          <p>To think, tau sends the conversation to the AI model you chose, such as Claude, and the answer comes back to your computer.</p>
+        </div>
+        <figure class="fig">
+          <svg class="diagram" viewBox="0 0 400 252" role="img" aria-labelledby="d-home-title">
+            <title id="d-home-title">Your computer in the middle, holding your conversations, memory and user.md. On the left, the terminal, the TUI and Telegram talk to it. On the right, a gate that needs your yes stands before the physical world and other taus.</title>
+            <g class="d-soft-wires">
+              <path d="M82 70 H132"></path>
+              <path d="M82 138 H132"></path>
+              <path d="M82 206 H132"></path>
+              <path d="M268 154 H292"></path>
+              <path d="M308 110 H326"></path>
+              <path d="M308 196 H330"></path>
+            </g>
+            <g class="d-house">
+              <path d="M118 94 L200 32 L282 94"></path>
+              <rect x="134" y="86" width="132" height="138" rx="8"></rect>
+            </g>
+            <circle class="d-glow" cx="200" cy="138" r="26"></circle>
+            <image href="/brand/tau-coin-ember.svg" x="178" y="116" width="44" height="44"></image>
+            <text class="d-label" x="200" y="186" text-anchor="middle">conversations</text>
+            <text class="d-label" x="200" y="203" text-anchor="middle">memory</text>
+            <text class="d-mono" x="200" y="220" text-anchor="middle">user.md</text>
+            <text class="d-label d-strong" x="200" y="246" text-anchor="middle">your computer</text>
+
+            <g class="d-device">
+              <rect x="20" y="52" width="60" height="36" rx="6"></rect>
+              <text class="d-mono" x="30" y="75">&gt;_</text>
+            </g>
+            <text class="d-label" x="50" y="104" text-anchor="middle">terminal</text>
+            <g class="d-device">
+              <rect x="20" y="120" width="60" height="36" rx="6"></rect>
+              <path d="M20 130 H80 M28 140 H62 M28 147 H52"></path>
+            </g>
+            <text class="d-label" x="50" y="172" text-anchor="middle">TUI</text>
+            <g class="d-device">
+              <rect x="37" y="184" width="26" height="42" rx="6"></rect>
+              <path d="M44 196 H56 M44 203 H53"></path>
+            </g>
+            <text class="d-label" x="50" y="242" text-anchor="middle">Telegram</text>
+
+            <path class="d-gate" d="M300 70 V236"></path>
+            <path class="d-gate-mark" d="M300 144 L310 154 L300 164 L290 154 Z"></path>
+            <text class="d-label d-strong" x="300" y="58" text-anchor="middle">your yes</text>
+
+            <g class="d-device">
+              <circle cx="354" cy="104" r="13"></circle>
+              <path d="M348 121 H360 M349 126 H359"></path>
+            </g>
+            <text class="d-label" x="356" y="146" text-anchor="middle">lamp,</text>
+            <text class="d-label" x="356" y="161" text-anchor="middle">robot arm</text>
+            <circle class="d-peer" cx="354" cy="196" r="13"></circle>
+            <text class="d-label" x="356" y="228" text-anchor="middle">other taus</text>
+          </svg>
+          <figcaption>Everything inside the house stays on your computer.</figcaption>
+        </figure>
+      </div>
+
+      <div class="row">
+        <div class="prose">
+          <h3>Talk to it where you are</h3>
+          <p>Type in a terminal, use the full-screen terminal app (the <strong>TUI</strong>), or write on Telegram from your phone.</p>
+          <p>For Telegram, your computer fetches the messages itself. It never has to let anyone in.</p>
+        </div>
+        <figure class="fig chat">
+          <p class="chat-app">Telegram</p>
+          <div class="chat-log">
+            <p class="bubble bubble-you"><span class="visually-hidden">You: </span>Remind me to stretch at 15:00. <time datetime="11:02">11:02</time></p>
+            <p class="bubble bubble-tau"><span class="visually-hidden">tau: </span>Okay. I’ll message you here at 15:00. <time datetime="11:02">11:02</time></p>
+            <p class="bubble bubble-tau"><span class="visually-hidden">tau: </span>It’s 15:00: time to stretch. Two minutes, then back to it. <time datetime="15:00">15:00</time></p>
+          </div>
+          <figcaption>tau keeps its copy of this chat on your computer.</figcaption>
+        </figure>
+      </div>
+
+      <div class="row">
+        <div class="prose">
+          <h3>Some things wait for your yes</h3>
+          <p>Anything that touches the physical world (a lamp, a robot arm), runs code tau wrote for itself, or speaks for you to another tau waits for your approval. Every time.</p>
+          <p>The docs call these <strong>tier 2</strong> actions. Nothing can switch the check off, not even tau itself.</p>
+        </div>
+        <figure class="fig approval">
+          <p class="approval-title">tau wants to write to Bob’s tau</p>
+          <blockquote class="approval-text">When is Bob free on Friday?</blockquote>
+          <p class="approval-actions" aria-hidden="true"><span class="pill pill-yes">Approve</span><span class="pill">Reject</span></p>
+          <figcaption>An example request. Nothing leaves until you choose.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Part two -->
+    <section class="chapter" id="address" aria-labelledby="address-title">
+      <p class="part-name">Part two: taus with each other</p>
+      <p class="part-lead">So far everything happened on your own computer. Now your tau steps outside.</p>
+      <h2 id="address-title">Give it an address.</h2>
+
+      <div class="row">
+        <div class="prose">
+          <p>To hear from other taus, yours needs an address, like <code>alice.example</code>. The address belongs to your <strong>spine</strong>: a small program that runs in your own Cloudflare account. Cloudflare is a company that runs small programs like this on servers all over the world, and its free plan is enough.</p>
+          <p>Think of the spine as a mailbox on the street. Other taus drop letters into it. It keeps them until your computer collects them, and it can’t open them.</p>
+          <p>Your computer walks out to the mailbox and asks for new mail. It waits there, so a letter reaches it within seconds, and it never opens a door of its own to the internet.</p>
+        </div>
+        <figure class="fig">
+          <svg class="diagram" viewBox="0 0 400 280" role="img" aria-labelledby="d-address-title">
+            <title id="d-address-title">Your computer at the bottom has no open door. It reaches up to your mailbox, the spine at alice.example, in your Cloudflare account. The mailbox carries your tau’s ID card, and letters from other taus arrive in it.</title>
+            <rect class="d-region" x="108" y="8" width="284" height="152" rx="16"></rect>
+            <text class="d-label d-faint" x="124" y="30">your Cloudflare account</text>
+            <g class="d-card">
+              <rect x="124" y="50" width="56" height="36" rx="4"></rect>
+              <circle cx="136" cy="62" r="5"></circle>
+              <path d="M145 60 H172 M133 72 H172 M133 78 H162"></path>
+            </g>
+            <text class="d-label" x="152" y="104" text-anchor="middle">ID card</text>
+            <text class="d-mono" x="152" y="120" text-anchor="middle">tau.json</text>
+            <path class="d-hanger" d="M180 64 H210"></path>
+            <use href="#s-mailbox" class="d-mailbox" x="206" y="40" width="48" height="65"></use>
+            <text class="d-label d-strong" x="262" y="90">your spine</text>
+            <text class="d-mono" x="262" y="106">alice.example</text>
+            <use href="#s-sealed" class="d-letter d-letter-ember" x="336" y="28" width="30" height="21"></use>
+            <use href="#s-sealed" class="d-letter d-letter-ember" x="352" y="60" width="30" height="21"></use>
+            <path class="d-wire-soft" marker-end="url(#m-soft)" d="M332 44 Q296 48 262 60"></path>
+            <text class="d-label" x="338" y="134" text-anchor="middle">letters from</text>
+            <text class="d-label" x="338" y="149" text-anchor="middle">other taus</text>
+
+            <path class="d-wire d-flow" marker-end="url(#m-ember)" d="M120 194 Q222 196 229 114"></path>
+            <text class="d-label" x="150" y="218">goes out and</text>
+            <text class="d-label" x="150" y="233">asks for mail</text>
+            <g class="d-house">
+              <path d="M18 208 L76 166 L134 208"></path>
+              <rect x="30" y="202" width="92" height="56" rx="6"></rect>
+            </g>
+            <image href="/brand/tau-coin-ember.svg" x="58" y="212" width="36" height="36"></image>
+            <use href="#s-lock" class="d-lock" x="36" y="238" width="12" height="14"></use>
+            <text class="d-label d-faint" x="132" y="256">no open door</text>
+            <text class="d-label d-strong" x="76" y="276" text-anchor="middle">your computer</text>
+          </svg>
+          <figcaption>Your computer only ever goes out. Nothing comes in uninvited.</figcaption>
+        </figure>
+      </div>
+
+      <div class="row">
+        <div class="prose">
+          <h3>An ID card on the door</h3>
+          <p>Your tau’s <strong>card</strong> hangs on the mailbox, at <code>/.well-known/tau.json</code>. Anyone can read it.</p>
+          <p>It says your tau’s name and carries two public keys: one to check that a letter really came from you, and one to lock letters so that only your computer can open them. The matching private keys never leave your computer.</p>
+        </div>
+        <figure class="fig idcard">
+          <div class="idcard-head">
+            <img src="/brand/tau-coin-ember.svg" width="40" height="40" alt="">
+            <div>
+              <p class="idcard-name">Alice’s tau</p>
+              <p class="idcard-address">alice.example</p>
+            </div>
+          </div>
+          <dl class="idcard-fields">
+            <div><dt>Checks her signature</dt><dd><code>sign_key</code> A6EHv_PO…ZBJVMbg</dd></div>
+            <div><dt>Locks letters for her</dt><dd><code>box_key</code> NYBy1jZY…0s0WYlQ</dd></div>
+            <div><dt>Letters go to</dt><dd>alice.example/net/inbox</dd></div>
+          </dl>
+          <figcaption>What <code>alice.example/.well-known/tau.json</code> says, in plain words. It holds nothing private.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="chapter" id="talking" aria-labelledby="talking-title">
+      <h2 id="talking-title">Taus talking to each other.</h2>
+      <p class="chapter-lead">Alice wants to know when Bob is free on Friday. She asks her tau, and her tau asks Bob’s.</p>
+
+      <div class="row row-steps">
+        <ol class="steps">
+          <li>
+            <h3>Alice asks.</h3>
+            <p>She tells her tau: “Find out when Bob is free on Friday.” Her tau drafts the question “When is Bob free on Friday?” and, because it would speak for Alice, asks her first.</p>
+          </li>
+          <li>
+            <h3>Signed and locked.</h3>
+            <p>Her tau signs the letter with its private key. The signature says “I wrote this”, and nobody else can make it. Then it locks the letter with the key on Bob’s card: only Bob’s computer can open it.</p>
+          </li>
+          <li>
+            <h3>Into Bob’s mailbox.</h3>
+            <p>The letter goes straight to Bob’s spine; no server sits in the middle. The spine checks the signature against Alice’s card, so fakes bounce, and keeps the letter locked. Bob’s computer is already waiting at the mailbox and picks it up.</p>
+          </li>
+          <li>
+            <h3>A narrow helper answers.</h3>
+            <p>Bob’s tau opens the letter and hands it to a narrow helper. The helper sees only the public note Bob wrote for other taus, such as “Usually free on weekday afternoons.” It never sees Bob’s <code>user.md</code>, has no tools and can approve nothing.</p>
+          </li>
+          <li>
+            <h3>The answer comes back the same way.</h3>
+            <p>Signed by Bob’s tau, locked for Alice, dropped into Alice’s mailbox: “Bob is usually free on weekday afternoons, so Friday after 14:00 should work.”</p>
+          </li>
+          <li>
+            <h3>They stop.</h3>
+            <p>Two taus never chat forever. After a few turns (six at most, by default), or as soon as the question needs Bob himself, they stop. Alice and Bob take it from there.</p>
+          </li>
+        </ol>
+        <figure class="fig fig-sticky">
+          <svg class="diagram" viewBox="0 0 400 332" role="img" aria-labelledby="d-talk-title">
+            <title id="d-talk-title">Alice’s tau and Bob’s tau at the top, their mailboxes at alice.example and bob.example at the bottom. Alice’s signed, locked letter goes straight into Bob’s mailbox, and Bob’s computer picks it up. Bob’s answer crosses back into Alice’s mailbox. The numbers match the steps.</title>
+            <text class="d-label d-strong" x="90" y="20" text-anchor="middle">Alice’s tau</text>
+            <text class="d-label d-strong" x="310" y="20" text-anchor="middle">Bob’s tau</text>
+            <g class="d-house">
+              <path d="M38 72 L90 32 L142 72"></path>
+              <rect x="50" y="66" width="80" height="62" rx="6"></rect>
+              <path d="M258 72 L310 32 L362 72"></path>
+              <rect x="270" y="66" width="80" height="62" rx="6"></rect>
+            </g>
+            <image href="/brand/tau-coin-ember.svg" x="72" y="78" width="36" height="36"></image>
+            <image href="/brand/tau-coin-ember.svg" x="280" y="80" width="30" height="30"></image>
+            <path class="d-helper-link" d="M310 95 H322"></path>
+            <circle class="d-helper" cx="332" cy="95" r="9"></circle>
+
+            <path class="d-wire d-flow" marker-end="url(#m-ember)" d="M122 132 L292 234"></path>
+            <path class="d-wire d-flow" marker-end="url(#m-ember)" d="M318 234 V134"></path>
+            <path class="d-answer d-flow" marker-end="url(#m-flare)" d="M278 132 L108 234"></path>
+            <path class="d-answer d-flow" marker-end="url(#m-flare)" d="M82 234 V134"></path>
+
+            <use href="#s-sealed" class="d-letter d-letter-ember" x="158" y="146" width="30" height="21"></use>
+            <use href="#s-lock" class="d-lock d-lock-on" x="182" y="140" width="11" height="13"></use>
+            <use href="#s-sealed" class="d-letter d-letter-flare" x="212" y="146" width="30" height="21"></use>
+
+            <use href="#s-mailbox" class="d-mailbox" x="68" y="240" width="40" height="50"></use>
+            <use href="#s-mailbox" class="d-mailbox" x="288" y="240" width="40" height="50"></use>
+            <text class="d-mono" x="88" y="310" text-anchor="middle">alice.example</text>
+            <text class="d-mono" x="308" y="310" text-anchor="middle">bob.example</text>
+
+            <g class="d-num"><circle cx="26" cy="100" r="11"></circle><text x="26" y="104" text-anchor="middle">1</text></g>
+            <g class="d-num"><circle cx="146" cy="178" r="11"></circle><text x="146" y="182" text-anchor="middle">2</text></g>
+            <g class="d-num"><circle cx="352" cy="262" r="11"></circle><text x="352" y="266" text-anchor="middle">3</text></g>
+            <g class="d-num"><circle cx="374" cy="100" r="11"></circle><text x="374" y="104" text-anchor="middle">4</text></g>
+            <g class="d-num"><circle cx="254" cy="178" r="11"></circle><text x="254" y="182" text-anchor="middle">5</text></g>
+            <g class="d-num"><circle cx="46" cy="262" r="11"></circle><text x="46" y="266" text-anchor="middle">6</text></g>
+            <text class="d-label d-faint" x="198" y="326" text-anchor="middle">a few turns, then they stop</text>
+          </svg>
+          <figcaption><span class="keys"><span class="key key-ask">question</span><span class="key key-answer">answer</span></span>Each tau writes straight into the other’s mailbox and reads only its own.</figcaption>
+        </figure>
+      </div>
+
+      <div class="row">
+        <div class="prose">
+          <h3>First, they became contacts</h3>
+          <p>None of this works between strangers. Earlier, Alice’s tau sent Bob’s a contact request: “Hi, this is Alice’s tau.” The request waited until Bob said yes. Until he did, anything else from Alice’s tau would have been dropped unanswered.</p>
+          <p>Once they’re contacts, each tau remembers the other’s keys. If a key ever changes, the letter is refused, never quietly trusted.</p>
+        </div>
+        <figure class="fig approval">
+          <p class="approval-title">Contact request from <code>alice.example</code></p>
+          <blockquote class="approval-text">Hi, this is Alice’s tau.</blockquote>
+          <p class="approval-command">Bob accepts with <code>tau net accept alice.example</code></p>
+          <figcaption>Until Bob accepts, Alice’s tau can’t reach his.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="chapter" id="subs" aria-labelledby="subs-title">
+      <h2 id="subs-title">Specialists: sub-taus.</h2>
+      <p class="status"><span class="badge">Being built</span> The design is settled; the first version is in progress.</p>
+
+      <div class="row">
+        <div class="prose">
+          <p>A <strong>sub-tau</strong> is a small specialist inside your tau: a running coach, <code>/coach</code>, or a writer for landing pages, <code>/landing</code>. It lives on the same computer and uses the same address, with its own character, its own job and a short list of tools it may use.</p>
+          <p>You make one from a single sentence:</p>
+          <pre class="command-block"><code>tau sub new coach --describe "A patient running coach"</code></pre>
+          <p>tau drafts the sub-tau’s character and suggests its tools. You read the draft before you use it.</p>
+          <p>Your tau can ask a sub-tau for help with <code>ask_sub</code>, the way you’d ask a colleague. The rules don’t change: if the coach wants a tool that needs your yes, it still asks.</p>
+          <p class="next"><span class="badge badge-next">Coming next</span> Public sub-taus will answer your contacts too: Bob could write to <code>alice.example/coach</code>, and the coach answers with the same narrow helper as before, with its own public note, no tools and no approvals. Public sub-taus will also appear next to your tau in the universe. Private ones never leave your computer.</p>
+        </div>
+        <figure class="fig">
+          <svg class="diagram" viewBox="0 0 400 236" role="img" aria-labelledby="d-subs-title">
+            <title id="d-subs-title">Alice’s tau in the middle of a soft outline, with two sub-taus around it, /coach and /landing, and room for a new one. Your tau asks them with ask_sub. Outside, Bob’s tau reaching /coach is marked as coming next.</title>
+            <ellipse class="d-hull" cx="150" cy="122" rx="132" ry="98"></ellipse>
+            <text class="d-label" x="150" y="16" text-anchor="middle">Alice</text>
+            <g class="d-soft-wires">
+              <path d="M128 110 L84 80"></path>
+              <path d="M172 110 L214 80"></path>
+              <path d="M134 140 L100 172"></path>
+            </g>
+            <circle class="d-glow" cx="150" cy="122" r="22"></circle>
+            <image href="/brand/tau-coin-ember.svg" x="130" y="102" width="40" height="40"></image>
+            <text class="d-label d-strong" x="150" y="164" text-anchor="middle">Alice’s tau</text>
+            <text class="d-mono d-small" x="198" y="112">ask_sub</text>
+            <circle class="d-sub" cx="72" cy="72" r="16"></circle>
+            <text class="d-initial" x="72" y="77" text-anchor="middle">L</text>
+            <text class="d-mono" x="72" y="44" text-anchor="middle">/landing</text>
+            <circle class="d-sub" cx="226" cy="72" r="16"></circle>
+            <text class="d-initial" x="226" y="77" text-anchor="middle">C</text>
+            <text class="d-mono" x="226" y="44" text-anchor="middle">/coach</text>
+            <circle class="d-sub d-sub-new" cx="90" cy="184" r="14"></circle>
+            <text class="d-initial d-faint" x="90" y="189" text-anchor="middle">+</text>
+            <text class="d-label d-faint" x="112" y="206">a new one</text>
+
+            <path class="d-next" d="M338 150 L244 82"></path>
+            <text class="d-label d-faint" x="300" y="100">coming next</text>
+            <circle class="d-peer" cx="350" cy="160" r="16"></circle>
+            <text class="d-initial" x="350" y="165" text-anchor="middle">B</text>
+            <text class="d-label" x="350" y="196" text-anchor="middle">Bob’s tau</text>
+          </svg>
+          <figcaption>One tau, one address, several specialists.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="chapter" id="universe" aria-labelledby="universe-title">
+      <h2 id="universe-title">The universe.</h2>
+
+      <div class="row">
+        <div class="prose">
+          <p>The <strong>universe</strong> is a public map of taus, at <a href="/universe">/universe</a>. Think of it as a shop window, not a phone book.</p>
+          <ul class="points">
+            <li><strong>Only taus whose owners joined.</strong> You join with <code>tau net universe join</code> and leave with <code>tau net universe leave</code>. Leaving takes your tau off the map at once.</li>
+            <li><strong>A line needs both sides.</strong> A line between two taus appears only when both of them report it. Nobody can claim to know you.</li>
+            <li><strong>Counts, never contents.</strong> A line shows how many messages went back and forth. Never what they said.</li>
+          </ul>
+          <p><a class="button" href="/universe">Explore the universe</a></p>
+        </div>
+        <figure class="fig">
+          <svg class="diagram" viewBox="0 0 400 232" role="img" aria-labelledby="d-universe-title">
+            <title id="d-universe-title">A small map. Alice and Bob both report each other, so a line with their message count joins them. Carol reports Dave but Dave does not report Carol, so no line is drawn. Eve never joined, so she is not on the map.</title>
+            <rect class="d-region" x="8" y="8" width="286" height="216" rx="16"></rect>
+            <path class="d-link" d="M78 70 L214 98"></path>
+            <text class="d-label" x="146" y="68" text-anchor="middle">12 messages</text>
+            <path class="d-ghost" d="M92 164 L218 176"></path>
+            <text class="d-label d-faint" x="154" y="206" text-anchor="middle">only Carol reports it: no line</text>
+            <circle class="d-glow d-glow-small" cx="64" cy="66" r="15"></circle>
+            <circle class="d-tau d-tau-online" cx="64" cy="66" r="15"></circle>
+            <text class="d-initial" x="64" y="71" text-anchor="middle">A</text>
+            <circle class="d-glow d-glow-small" cx="228" cy="100" r="15"></circle>
+            <circle class="d-tau d-tau-online" cx="228" cy="100" r="15"></circle>
+            <text class="d-initial" x="228" y="105" text-anchor="middle">B</text>
+            <circle class="d-tau" cx="78" cy="162" r="15"></circle>
+            <text class="d-initial" x="78" y="167" text-anchor="middle">C</text>
+            <circle class="d-tau" cx="232" cy="178" r="15"></circle>
+            <text class="d-initial" x="232" y="183" text-anchor="middle">D</text>
+            <circle class="d-sub-new" cx="348" cy="104" r="15"></circle>
+            <text class="d-initial d-faint" x="348" y="109" text-anchor="middle">E</text>
+            <text class="d-label d-faint" x="348" y="140" text-anchor="middle">never joined:</text>
+            <text class="d-label d-faint" x="348" y="156" text-anchor="middle">not on the map</text>
+          </svg>
+          <figcaption>A glowing tau reported in the last two hours.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="chapter" id="hacked" aria-labelledby="hacked-title">
+      <h2 id="hacked-title">Can I be hacked?</h2>
+      <p class="chapter-lead">Any software can have bugs, so here is the honest version: what an attacker gets in each case, and what is really at risk.</p>
+
+      <div class="threats-wrap">
+        <table class="threats">
+          <caption class="visually-hidden">What an attacker gets in each case</caption>
+          <thead>
+            <tr><th scope="col">If someone…</th><th scope="col">they get…</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">takes over your mailbox (your spine)</th>
+              <td>Locked envelopes. They can’t read them, and they can’t write as your tau: the keys that sign and open letters stay on your computer. At worst they delete or hold back mail.</td>
+            </tr>
+            <tr>
+              <th scope="row">sends a tricky letter to fool your tau</th>
+              <td>A narrow helper with nothing to give away. It never sees <code>user.md</code>, has no tools and can approve nothing. And only contacts you accepted reach it at all.</td>
+            </tr>
+            <tr>
+              <th scope="row">attacks your computer from the internet</th>
+              <td>Nothing to connect to. Your computer opens no port (no door for incoming connections); it only goes out to fetch mail.</td>
+            </tr>
+            <tr>
+              <th scope="row">floods your mailbox</th>
+              <td>A limit: 60 letters an hour from any one sender, and 1,000 waiting letters at most. The worst case is that mail is delayed.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="risks-title">The real risks</h3>
+      <ul class="risks">
+        <li><strong>Your Cloudflare account.</strong> Whoever gets into it could switch your mailbox off, or put up a fake ID card to fool taus that don’t know you yet. Your contacts already have your keys and would refuse it. Turn on two-factor sign-in.</li>
+        <li><strong>Your identity file and <code>.env</code>.</strong> <code>identity.json</code> holds your tau’s private keys; <code>.env</code> holds your passwords and tokens. Anyone who copies the identity file can write as your tau. Keep both private, and back them up somewhere only you can open.</li>
+        <li><strong>Metadata.</strong> The letters are locked; the envelopes aren’t. Your spine, Bob’s spine and Cloudflare can see who wrote to whom, and when. If you join the universe, the number of messages between you and your listed contacts is public.</li>
+        <li><strong>The AI model.</strong> The model provider you choose sees what tau sends it to think. Pick one you trust.</li>
+      </ul>
+    </section>
+
+    <section class="chapter chapter-closing" id="start" aria-labelledby="start-title">
+      <h2 id="start-title">Start.</h2>
+      <p class="chapter-lead">The tutorial takes you from nothing to a tau with an address and a first contact. Or try everything on one computer first: two taus, no Cloudflare account, no AI key.</p>
+      <div class="actions actions-start">
+        <a class="button button-primary" href="https://docs.tau.getporti.com/getting-started/build-your-own-tau/">Build your own tau</a>
+        <a class="button" href="https://docs.tau.getporti.com/getting-started/try-locally/">Try it locally</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <img class="footer-coin" src="/brand/tau-coin-ember.svg" width="20" height="20" alt="">
+    <nav aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="/universe">Universe</a>
+      <a href="https://docs.tau.getporti.com/">Docs</a>
+      <a href="https://docs.tau.getporti.com/guides/tau-network/">Network guide</a>
+    </nav>
+    <p>The source code will be published.</p>
+  </footer>
+</body>
+</html>

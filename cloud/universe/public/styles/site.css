@@ -165,9 +165,9 @@ code {
 
 .site-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.5rem 1rem;
   max-width: var(--page);
   margin: 0 auto;
   padding: 1rem var(--gutter);
@@ -186,7 +186,53 @@ code {
 
 .site-nav {
   display: flex;
-  gap: clamp(1rem, 3vw, 2rem);
+  flex-wrap: wrap;
+  gap: 0.25rem clamp(1rem, 3vw, 2rem);
+  margin-left: auto;
+}
+
+/* The language switcher: the current language as a lit chip, the other one as a link to
+   the same page in that language. Two letters on screen, the language's name for screen
+   readers. */
+
+.lang-switch {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-left: clamp(0.25rem, 1.5vw, 1rem);
+  padding: 0.2rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.lang-switch a,
+.lang-current {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.6rem;
+  min-height: 2.1rem;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+}
+
+.lang-current {
+  background: rgb(255 244 224 / 0.1);
+  color: var(--core);
+}
+
+.lang-switch a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.lang-switch a:hover {
+  color: var(--core);
+  background: rgb(255 178 92 / 0.1);
 }
 
 .site-nav a {
@@ -1133,6 +1179,913 @@ code {
   border-color: var(--flare);
 }
 
+/* ---- how it works ----------------------------------------------------------------- */
+
+/* A story in chapters. Each chapter is a heading and rows of prose beside a figure; the
+   figures reuse the site's vocabulary: the coin as a tau, Ember dashes for a question on
+   its way, Flare for the answer and for anything that is lit. */
+
+.svg-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.intro {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: clamp(2rem, 6vw, 4.5rem) var(--gutter) clamp(3rem, 7vw, 5rem);
+}
+
+.intro h1 {
+  font-size: clamp(2.6rem, 1.2rem + 5.2vw, 5.2rem);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.intro-lead {
+  max-width: 38rem;
+  margin-top: 1.4rem;
+  color: var(--text-muted);
+  font-size: clamp(1.1rem, 1rem + 0.45vw, 1.3rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+/* The storyline: the page's parts as stations on the dashed wire of the landing page. */
+
+.storyline {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 3.4fr) minmax(0, 1.9fr);
+  gap: 1.5rem clamp(1.25rem, 3vw, 2.5rem);
+  margin-top: clamp(2.5rem, 6vw, 3.75rem);
+}
+
+.story-name {
+  color: var(--text-faint);
+  font-size: 0.88rem;
+}
+
+.story-stops {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  margin: 0.8rem 0 0;
+  padding: 1.05rem 0 0;
+  background: linear-gradient(90deg, rgb(255 122 61 / 0.75) 50%, transparent 0) 0 0.45rem /
+    11px 2px repeat-x;
+}
+
+.story-part-last .story-stops {
+  background-image: linear-gradient(90deg, var(--line-strong) 50%, transparent 0);
+}
+
+.story-stops li {
+  position: relative;
+}
+
+.story-stops li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -1.05rem;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  border: 2px solid var(--ember);
+  background: var(--void);
+}
+
+.story-part:first-child .story-stops li::before {
+  border-color: var(--flare);
+  background: rgb(255 178 92 / 0.35);
+  box-shadow: 0 0 14px rgb(255 178 92 / 0.55);
+}
+
+.story-part-last .story-stops li::before {
+  border-color: rgb(255 244 224 / 0.35);
+}
+
+.story-stops a {
+  display: inline-block;
+  padding: 0.55rem 0 0.3rem;
+  color: var(--core);
+  text-decoration: none;
+  font-weight: 450;
+}
+
+.story-stops a:hover {
+  color: var(--flare);
+}
+
+/* Chapters. */
+
+.chapter {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: clamp(3.5rem, 8vw, 6rem) var(--gutter);
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent) top / 100% 1px
+    no-repeat;
+  scroll-margin-top: 0.5rem;
+}
+
+.chapter > h2 {
+  max-width: 22ch;
+  font-size: clamp(2rem, 1.3rem + 2.6vw, 3.1rem);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.028em;
+}
+
+.part-name {
+  margin-bottom: 1rem;
+  color: var(--flare);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.part-lead {
+  max-width: 34rem;
+  margin: -0.4rem 0 1.4rem;
+  color: var(--text-muted);
+}
+
+.chapter-lead {
+  max-width: 40rem;
+  margin-top: 1.1rem;
+  color: var(--text-muted);
+  font-size: 1.15rem;
+  text-wrap: pretty;
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin-top: 1.1rem;
+  color: var(--text-faint);
+  font-size: 0.95rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.7rem;
+  border: 1px solid rgb(255 178 92 / 0.55);
+  border-radius: 999px;
+  color: var(--flare);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.badge-next {
+  border-style: dashed;
+  border-color: rgb(255 244 224 / 0.35);
+  color: var(--text-muted);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 27rem);
+  gap: 2rem clamp(2rem, 5vw, 4.5rem);
+  align-items: start;
+  margin-top: clamp(2.25rem, 5vw, 3.25rem);
+}
+
+.prose {
+  display: grid;
+  gap: 1rem;
+  max-width: 38rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+.prose h3,
+.steps h3,
+.risks-title {
+  color: var(--core);
+  font-size: 1.3rem;
+}
+
+.prose strong,
+.steps strong,
+.risks strong,
+.threats th {
+  color: var(--core);
+  font-weight: 500;
+}
+
+.prose code,
+.steps code,
+.risks code,
+.threats code {
+  white-space: normal;
+}
+
+.next {
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 1rem;
+}
+
+.next .badge {
+  margin-right: 0.35rem;
+}
+
+.points {
+  list-style: none;
+  display: grid;
+  gap: 0.85rem;
+  padding: 0;
+}
+
+.points li {
+  position: relative;
+  padding-left: 1.6rem;
+}
+
+.points li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 1rem;
+  border-top: 2px dashed var(--ember);
+}
+
+.command-block {
+  margin: 0;
+  padding: 0.85rem 1.1rem;
+  overflow-x: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.9rem;
+  background: rgb(10 12 36 / 0.8);
+}
+
+.command-block code {
+  padding: 0;
+  background: none;
+  color: var(--core);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Figures. */
+
+.fig {
+  margin: 0;
+  padding: clamp(0.9rem, 2.5vw, 1.25rem);
+  border: 1px solid var(--line);
+  border-radius: 1.4rem;
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 45%, rgb(255 90 31 / 0.07), transparent 70%),
+    linear-gradient(180deg, var(--panel), #07091f);
+}
+
+.fig figcaption {
+  margin-top: 0.85rem;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.fig-sticky {
+  position: sticky;
+  top: 1.5rem;
+}
+
+.diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: var(--sans);
+}
+
+.d-label {
+  fill: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.d-strong {
+  fill: var(--core);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.d-faint {
+  fill: var(--text-faint);
+}
+
+.d-mono {
+  fill: var(--flare);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.d-small {
+  font-size: 10.5px;
+}
+
+.d-initial {
+  fill: var(--core);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.d-house path,
+.d-house rect {
+  fill: none;
+  stroke: rgb(255 244 224 / 0.38);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.d-house rect {
+  fill: rgb(5 7 26 / 0.7);
+}
+
+.d-device rect,
+.d-device circle,
+.d-card rect {
+  fill: rgb(5 7 26 / 0.8);
+  stroke: rgb(255 244 224 / 0.3);
+  stroke-width: 1.5;
+}
+
+.d-device path,
+.d-card path,
+.d-card circle {
+  fill: none;
+  stroke: rgb(255 244 224 / 0.35);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.d-card circle {
+  stroke: var(--ember);
+}
+
+.d-soft-wires path,
+.d-hanger,
+.d-wire-soft {
+  fill: none;
+  stroke: rgb(255 244 224 / 0.22);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+
+.d-wire,
+.d-answer {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-dasharray: 5 6;
+  stroke-linecap: round;
+}
+
+.d-wire {
+  stroke: var(--ember);
+}
+
+/* The answer is dotted as well as brighter, so the two paths differ by shape too. */
+.d-answer {
+  stroke: var(--flare);
+  stroke-width: 3;
+  stroke-dasharray: 0.5 10.5;
+}
+
+.d-flow {
+  animation: flow 1.4s linear infinite;
+}
+
+@keyframes flow {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+.d-head-ember {
+  fill: var(--ember);
+}
+
+.d-head-flare {
+  fill: var(--flare);
+}
+
+.d-head-soft {
+  fill: rgb(255 244 224 / 0.35);
+}
+
+.d-gate {
+  stroke: var(--flare);
+  stroke-width: 2;
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+}
+
+.d-gate-mark {
+  fill: var(--flare);
+}
+
+.d-glow {
+  fill: var(--flare);
+  opacity: 0.5;
+  filter: url(#f-halo);
+  animation: breathe 5s ease-in-out infinite;
+}
+
+.d-glow-small {
+  opacity: 0.45;
+}
+
+.d-peer,
+.d-tau {
+  fill: #0d0f2b;
+  stroke: rgb(255 244 224 / 0.3);
+  stroke-width: 1.5;
+}
+
+.d-tau-online {
+  fill: #1b1024;
+  stroke: var(--flare);
+  stroke-width: 2;
+}
+
+.d-region {
+  fill: rgb(255 244 224 / 0.02);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+}
+
+/* Symbols drawn through <use>: a page rule cannot reach into the copy by the <use>
+   element's class, so each part reads custom properties, which do inherit into it. */
+
+.s-box,
+.s-post {
+  fill: #1b1024;
+  stroke: var(--ember);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.s-slot {
+  stroke: var(--core);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.s-flag {
+  fill: var(--signal);
+  stroke: var(--signal);
+  stroke-width: 1.5;
+}
+
+.s-paper {
+  fill: var(--paper, var(--core));
+}
+
+.s-fold {
+  fill: none;
+  stroke: #9c8f7a;
+  stroke-width: 1.5;
+}
+
+.s-seal {
+  fill: var(--seal, var(--signal));
+}
+
+.d-letter-ember {
+  --paper: #ffd9c4;
+}
+
+.d-letter-flare {
+  --paper: #ffe6c2;
+  --seal: var(--ember);
+}
+
+.s-shackle {
+  fill: none;
+  stroke: var(--flare);
+  stroke-width: 2;
+}
+
+.s-lockbody {
+  fill: var(--flare);
+}
+
+.d-helper {
+  fill: #1b1024;
+  stroke: var(--flare);
+  stroke-width: 1.5;
+  stroke-dasharray: 2.5 2.5;
+}
+
+.d-helper-link {
+  stroke: rgb(255 178 92 / 0.6);
+  stroke-width: 1.5;
+}
+
+.d-num circle {
+  fill: var(--void);
+  stroke: var(--flare);
+  stroke-width: 1.5;
+}
+
+.d-num text {
+  fill: var(--flare);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.d-hull {
+  fill: rgb(255 122 61 / 0.07);
+  stroke: rgb(255 122 61 / 0.3);
+  stroke-width: 1;
+}
+
+.d-sub {
+  fill: #1b1024;
+  stroke: var(--flare);
+  stroke-width: 1.5;
+}
+
+.d-sub-new {
+  fill: none;
+  stroke: rgb(255 244 224 / 0.3);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+
+.d-next {
+  fill: none;
+  stroke: rgb(255 244 224 / 0.3);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 6;
+  stroke-linecap: round;
+}
+
+.d-link {
+  fill: none;
+  stroke: var(--ember);
+  stroke-opacity: 0.8;
+  stroke-width: 3;
+  stroke-dasharray: 5 6;
+  stroke-linecap: round;
+}
+
+.d-ghost {
+  fill: none;
+  stroke: rgb(255 244 224 / 0.16);
+  stroke-width: 1.5;
+  stroke-dasharray: 1 6;
+  stroke-linecap: round;
+}
+
+/* The key under the conversation diagram. */
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.25rem;
+  margin-bottom: 0.4rem;
+}
+
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+}
+
+.key::before {
+  content: "";
+  width: 1.6rem;
+  border-top: 2px dashed var(--ember);
+}
+
+.key-answer::before {
+  height: 3px;
+  border: 0;
+  background: radial-gradient(circle, var(--flare) 1.5px, transparent 1.8px) 0 50% / 11px 3px
+    repeat-x;
+}
+
+/* The steps of the conversation: numbered like the markers in the diagram. */
+
+.steps {
+  list-style: none;
+  counter-reset: step;
+  display: grid;
+  gap: 1.9rem;
+  max-width: 38rem;
+  padding: 0;
+}
+
+.steps li {
+  position: relative;
+  counter-increment: step;
+  padding-left: 3.25rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -0.2rem;
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 1.5px solid var(--flare);
+  border-radius: 50%;
+  color: var(--flare);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.steps li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(1.05rem - 1px);
+  top: 2.3rem;
+  bottom: -1.7rem;
+  border-left: 2px dashed rgb(255 122 61 / 0.45);
+}
+
+.steps h3 {
+  margin-bottom: 0.4rem;
+}
+
+/* The chat, the approval and the contact request: examples drawn in the site's colours,
+   never imitating an app's own look. */
+
+.chat-app {
+  color: var(--text-faint);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.chat-log {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+
+.bubble {
+  max-width: 85%;
+  padding: 0.6rem 0.9rem 0.5rem;
+  border-radius: 1.1rem;
+  line-height: 1.45;
+}
+
+.bubble time {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bubble-you {
+  justify-self: end;
+  border-bottom-right-radius: 0.35rem;
+  background: var(--ring);
+  color: var(--ink);
+}
+
+.bubble-you time {
+  color: rgb(20 6 13 / 0.7);
+}
+
+.bubble-tau {
+  justify-self: start;
+  border: 1px solid var(--line-strong);
+  border-bottom-left-radius: 0.35rem;
+  background: rgb(5 7 26 / 0.7);
+  color: var(--core);
+}
+
+.bubble-tau time {
+  color: var(--text-faint);
+}
+
+.bubble-tau + .bubble-tau {
+  margin-top: 0.9rem;
+}
+
+.approval-title {
+  color: var(--core);
+  font-weight: 500;
+}
+
+.approval-text {
+  margin: 0.8rem 0 0;
+  padding: 0.7rem 1rem;
+  border-left: 2px solid var(--flare);
+  border-radius: 0 0.6rem 0.6rem 0;
+  background: rgb(255 178 92 / 0.07);
+  color: var(--core);
+  font-size: 1.05rem;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.approval-command {
+  margin-top: 1rem;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.approval-command code {
+  white-space: normal;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.3rem;
+  padding: 0 1.1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.pill-yes {
+  border-color: transparent;
+  background: var(--ring);
+  color: var(--ink);
+}
+
+/* The ID card. */
+
+.idcard {
+  background:
+    radial-gradient(circle at 12% 0%, rgb(255 122 61 / 0.18), transparent 55%),
+    linear-gradient(160deg, #150b22, var(--panel) 60%);
+  border-color: rgb(255 122 61 / 0.35);
+}
+
+.idcard-head {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px dashed var(--line-strong);
+}
+
+.idcard-head img {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+}
+
+.idcard-name {
+  color: var(--core);
+  font-size: 1.2rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.idcard-address {
+  color: var(--flare);
+  font-family: var(--mono);
+  font-size: 0.88rem;
+}
+
+.idcard-fields {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+
+.idcard-fields dt {
+  color: var(--text-faint);
+  font-size: 0.85rem;
+}
+
+.idcard-fields dd {
+  margin: 0.1rem 0 0;
+  color: var(--core);
+  font-family: var(--mono);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.idcard-fields dd code {
+  margin-right: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.idcard figcaption code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Can I be hacked? */
+
+.threats-wrap {
+  margin-top: clamp(2rem, 5vw, 2.75rem);
+}
+
+.threats {
+  width: 100%;
+  max-width: 62rem;
+  border-collapse: collapse;
+  font-size: 1rem;
+}
+
+.threats thead th {
+  padding: 0 1rem 0.8rem 0;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+  font-weight: 450;
+  text-align: left;
+}
+
+.threats tbody th,
+.threats td {
+  padding: 1.1rem 1rem 1.1rem 0;
+  border-top: 1px solid var(--line-strong);
+  text-align: left;
+  vertical-align: top;
+}
+
+.threats tbody th {
+  width: 34%;
+  font-size: 1.1rem;
+  line-height: 1.35;
+}
+
+.threats td {
+  color: var(--text-muted);
+}
+
+.risks-title {
+  margin-top: clamp(2.5rem, 6vw, 3.5rem);
+}
+
+.risks {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem clamp(2rem, 5vw, 4rem);
+  margin-top: 1.25rem;
+  padding: 0;
+}
+
+.risks li {
+  position: relative;
+  padding-left: 1.6rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+.risks li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 2px solid var(--signal);
+  transform: rotate(45deg);
+}
+
+.risks strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.chapter-closing .actions-start {
+  margin-top: 1.75rem;
+}
+
+/* The landing page's pointers to this page. */
+
+.hero-more {
+  margin-top: 1.5rem;
+  color: var(--text-muted);
+}
+
+.band-outro-tight {
+  margin-top: 1rem;
+}
+
 /* ---- 404 -------------------------------------------------------------------------- */
 
 .missing {
@@ -1221,12 +2174,103 @@ code {
     bottom: 0.4rem;
     border-left: 2px dashed rgb(255 122 61 / 0.75);
   }
+
+  .storyline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Figures follow their text and never grow wider than they read well. */
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .row .fig {
+    width: 100%;
+    max-width: 30rem;
+  }
+
+  .fig-sticky {
+    position: static;
+  }
+
+  .row-steps .fig {
+    order: -1;
+  }
 }
 
 @media (max-width: 44rem) {
   .traits,
-  .ledger {
+  .ledger,
+  .risks {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Header: the logo and the language switcher share the first line, the menu gets the
+     second. */
+  .lang-switch {
+    margin-left: auto;
+  }
+
+  .site-nav {
+    order: 3;
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  /* The storyline turns vertical, like the landing page's wire. */
+  .story-stops {
+    flex-direction: column;
+    gap: 0;
+    margin-top: 0.4rem;
+    padding: 0 0 0 1.6rem;
+    background: linear-gradient(180deg, rgb(255 122 61 / 0.75) 50%, transparent 0) 0.4rem 0 /
+      2px 11px repeat-y;
+  }
+
+  .story-part-last .story-stops {
+    background-image: linear-gradient(180deg, var(--line-strong) 50%, transparent 0);
+  }
+
+  .story-stops li::before {
+    left: -1.6rem;
+    top: 0.75rem;
+  }
+
+  .steps li {
+    padding-left: 2.9rem;
+  }
+
+  /* The table becomes a list of cases, each with what the attacker gets under it; the
+     column heads become one line above them ("If someone… they get…"). */
+  .threats thead,
+  .threats tbody {
+    display: block;
+  }
+
+  .threats thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.35rem;
+  }
+
+  .threats thead th {
+    padding: 0 0 0.8rem;
+  }
+
+  .threats tr,
+  .threats tbody th,
+  .threats td {
+    display: block;
+    width: auto;
+  }
+
+  .threats tbody th {
+    padding: 1.1rem 0 0.4rem;
+  }
+
+  .threats td {
+    padding: 0 0 1.1rem;
+    border-top: 0;
   }
 
   .site-footer p {

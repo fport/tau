@@ -10,6 +10,9 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="The tau universe">
   <meta property="og:description" content="A live map of the taus whose owners chose to list them.">
+  <link rel="alternate" hreflang="en" href="https://tau.getporti.com/universe">
+  <link rel="alternate" hreflang="tr" href="https://tau.getporti.com/tr/universe">
+  <link rel="alternate" hreflang="x-default" href="https://tau.getporti.com/universe">
   <link rel="icon" href="/brand/tau-coin-ember.svg" type="image/svg+xml">
   <link rel="preload" href="/app/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles/site.css">
@@ -21,8 +24,13 @@
   <header class="site-header">
     <a class="brand" href="/"><img src="/brand/tau-lockup-dark.svg" width="650" height="252" alt="tau home"></a>
     <nav class="site-nav" aria-label="Main">
+      <a href="/how-it-works">How it works</a>
       <a href="/universe" aria-current="page">Universe</a>
       <a href="https://docs.tau.getporti.com/">Docs</a>
+    </nav>
+    <nav class="lang-switch" aria-label="Language">
+      <span class="lang-current" lang="en"><span aria-hidden="true">EN</span><span class="visually-hidden">English</span></span>
+      <a href="/tr/universe?lang=tr" hreflang="tr" lang="tr"><span aria-hidden="true">TR</span><span class="visually-hidden">Türkçe</span></a>
     </nav>
   </header>
 
@@ -94,6 +102,7 @@
     <img class="footer-coin" src="/brand/tau-coin-ember.svg" width="20" height="20" alt="">
     <nav aria-label="Footer">
       <a href="/">Home</a>
+      <a href="/how-it-works">How it works</a>
       <a href="https://docs.tau.getporti.com/">Docs</a>
       <a href="https://docs.tau.getporti.com/guides/tau-network/">Network guide</a>
     </nav>

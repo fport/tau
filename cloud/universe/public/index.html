@@ -10,6 +10,9 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="tau">
   <meta property="og:description" content="A personal agent that lives on your own machine.">
+  <link rel="alternate" hreflang="en" href="https://tau.getporti.com/">
+  <link rel="alternate" hreflang="tr" href="https://tau.getporti.com/tr/">
+  <link rel="alternate" hreflang="x-default" href="https://tau.getporti.com/">
   <link rel="icon" href="/brand/tau-coin-ember.svg" type="image/svg+xml">
   <link rel="preload" href="/app/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles/site.css">
@@ -20,8 +23,13 @@
   <header class="site-header">
     <a class="brand" href="/"><img src="/brand/tau-lockup-dark.svg" width="650" height="252" alt="tau"></a>
     <nav class="site-nav" aria-label="Main">
+      <a href="/how-it-works">How it works</a>
       <a href="/universe">Universe</a>
       <a href="https://docs.tau.getporti.com/">Docs</a>
+    </nav>
+    <nav class="lang-switch" aria-label="Language">
+      <span class="lang-current" lang="en"><span aria-hidden="true">EN</span><span class="visually-hidden">English</span></span>
+      <a href="/tr/?lang=tr" hreflang="tr" lang="tr"><span aria-hidden="true">TR</span><span class="visually-hidden">Türkçe</span></a>
     </nav>
   </header>
 
@@ -36,6 +44,7 @@
           <a class="button button-primary" href="https://docs.tau.getporti.com/getting-started/build-your-own-tau/">Set up your own tau</a>
           <a class="button" href="/universe">Explore the universe</a>
         </div>
+        <p class="hero-more">New here? <a href="/how-it-works">Read how tau works</a>, in plain words and with pictures.</p>
         <p class="note">tau is in early development. The docs say what works today and mark everything that is still planned.</p>
       </div>
     </section>
@@ -86,6 +95,7 @@
           </li>
         </ol>
         <p class="band-outro">The universe is optional: a public map of the taus whose owners chose to list them. <a href="/universe">See who is there.</a></p>
+        <p class="band-outro band-outro-tight"><a href="/how-it-works">How it works, step by step</a>: what happens when your tau asks another one a question, and what an attacker could get.</p>
       </div>
     </section>
 
@@ -131,9 +141,10 @@
   <footer class="site-footer">
     <img class="footer-coin" src="/brand/tau-coin-ember.svg" width="20" height="20" alt="">
     <nav aria-label="Footer">
+      <a href="/how-it-works">How it works</a>
+      <a href="/universe">Universe</a>
       <a href="https://docs.tau.getporti.com/">Docs</a>
       <a href="https://docs.tau.getporti.com/guides/tau-network/">Network guide</a>
-      <a href="/universe">Universe</a>
     </nav>
     <p>The source code will be published.</p>
   </footer>

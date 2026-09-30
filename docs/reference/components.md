@@ -68,6 +68,7 @@ tau.commands
   hub         tau-core 0.3.1   enabled  tau hub
   init        tau-core 0.3.1   enabled  tau init
   spend       tau-core 0.3.1   enabled  tau spend
+  telegram    tau-core 0.3.1   enabled  tau telegram
   tui         tau-tui 0.3.1    enabled  tau tui
   guard       tau-guard 0.3.1  enabled  tau guard
   net         tau-net 0.1.0    enabled  tau net

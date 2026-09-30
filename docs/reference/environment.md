@@ -45,12 +45,12 @@ A missing credential stops `tau chat` with exit 2 and a message naming the varia
 
 ## Telegram
 
-Read by the `telegram` hub service (see [Telegram](../guides/telegram.md)). Without a token, or without an allowed chat, the service stays idle and the hub runs on.
+Read by the `telegram` hub service (see [Telegram](../guides/telegram.md)). Without a token, or without an allowed chat and no pairing code waiting, the service stays idle and the hub runs on. `tau telegram pair` writes both to `<TAU_HOME>/.env` and asks a running hub to reload them; on that reload the service reads the two names from `.env` first, since the hub loaded the file into its environment when it started.
 
 | Variable | Meaning |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | The bot token from @BotFather, `123456789:AA…`. A password: it never appears in logs, `/status` or `tau doctor`. |
-| `TELEGRAM_ALLOWED_CHAT_IDS` | The chat ids the bot answers, comma-separated. Messages from any other chat are dropped unanswered. |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | The chat ids the bot answers, comma-separated. Messages from any other chat are dropped unanswered. `tau telegram pair` sets it to the chat that sent its one-time code. |
 
 ## tau network and cloud mode
 

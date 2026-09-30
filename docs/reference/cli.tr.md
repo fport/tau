@@ -2,7 +2,7 @@
 
 # CLI
 
-Her `tau` alt komutu bir bileşendir: `tau-core`; `chat`, `components`, `doctor`, `hub`, `init`, `spend` ve `version` komutlarıyla gelir; `tau-tui` `tui` komutunu, `tau-guard` `guard` komutunu ([Sahip koruması](../guides/guard.md)), `tau-net` `net` komutunu, `tau-cloud` `cloud` komutunu (bkz. [tau ağına katıl](../guides/tau-network.md)), `tau-sub` da `sub` komutunu ekler. Kurulu herhangi bir dağıtım, `tau.commands` entry point grubu (Python paketlerinin eklenti kayıt noktası) üzerinden başka komutlar da ekleyebilir. Bu sayfa her birinin `--help` çıktısını aynen verir.
+Her `tau` alt komutu bir bileşendir: `tau-core`; `chat`, `components`, `doctor`, `hub`, `init`, `spend`, `telegram` ve `version` komutlarıyla gelir; `tau-tui` `tui` komutunu, `tau-guard` `guard` komutunu ([Sahip koruması](../guides/guard.md)), `tau-net` `net` komutunu, `tau-cloud` `cloud` komutunu (bkz. [tau ağına katıl](../guides/tau-network.md)), `tau-sub` da `sub` komutunu ekler. Kurulu herhangi bir dağıtım, `tau.commands` entry point grubu (Python paketlerinin eklenti kayıt noktası) üzerinden başka komutlar da ekleyebilir. Bu sayfa her birinin `--help` çıktısını aynen verir.
 
 Bir depo checkout'unun (deponun yerel kopyası) içindeysen her komutun başına `uv run` ekle.
 
@@ -37,6 +37,7 @@ Commands:
   net         Talk to other taus (identity, contacts, messages).
   spend       Show the spend per model role.
   sub         Specialists of your tau (/coach, /landing, ...).
+  telegram    Pair your Telegram chat and show the channel's state.
   tui         Open tau in the Textual interface.
   version     Show the versions of the installed tau packages.
 ```
@@ -349,6 +350,94 @@ Sütunlar: rol, sağlayıcı, rolün mevcut dönemde harcadığı, üst sınır�
 
 Bkz. [Modeller ve bütçeler](../guides/models-and-budgets.md).
 
+## `tau telegram`
+
+```text
+Usage: tau telegram [OPTIONS] COMMAND [ARGS]...
+
+  The Telegram channel: pair your chat with the bot and show the channel's
+  state. The hub polls the Bot API itself; no server sits in between (ADR
+  0006).
+
+Options:
+  -h, --help  Show this help and exit.
+
+Commands:
+  pair    Pair your Telegram chat with the bot.
+  status  Show the Telegram channel's state.
+```
+
+Kurulum [Telegram](../guides/telegram.md) sayfasında.
+
+### `tau telegram pair`
+
+```text
+Usage: tau telegram pair [OPTIONS]
+
+  Pair your Telegram chat with the bot, without looking up a chat id. Asks for
+  the bot token from @BotFather with hidden input (Enter keeps the one in
+  <home>/.env), checks it with one getMe and writes it to <home>/.env (mode
+  0600). Then it shows a one-time code, valid 10 minutes: send /start <code>
+  to the bot, or open the link it prints. The running hub takes the code;
+  without a hub this command polls Telegram itself. The chat that sends the
+  code becomes TELEGRAM_ALLOWED_CHAT_IDS; wrong or expired codes get no
+  answer. With the owner guard on, tau must be unlocked. Exit 0 once paired, 1
+  otherwise.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Read {"token": "..."} as one JSON line on stdin instead of
+              prompting (null or "" keeps the current token) and print one
+              JSON event per line (for the app's wizard).
+```
+
+- **Token**, bir şey yazılmadan önce tek bir `getMe` ile doğrulanır, sonra `<home>/.env` içinde `TELEGRAM_BOT_TOKEN` olarak ayarlanır: o satır değiştirilir ya da eklenir, diğer satırlar korunur, dosya `0600` kalır. Argv'de, çıktıda ya da bir logda asla görünmez.
+- **Kod**, birbirine benzeyen karakterler olmadan 8 karakterdir; 10 dakika geçerlidir, bir kez kullanılır ve komut beklerken yalnızca tuzlanmış bir PBKDF2 özeti olarak `TAU_DATA_DIR/telegram/pairing.json` içinde saklanır. Özel bir sohbetten gelen `/start <code>` eşleştirir (`https://t.me/<bot>?start=<code>` bağlantısı bunu tek dokunuşla gönderir); o sohbet `TELEGRAM_ALLOWED_CHAT_IDS`'in tek girdisi olur. Bir grup, yanlış ya da süresi dolmuş bir kod yanıt almaz; 10 yanlış kod kodu geçersiz kılar; Ctrl-C kodu geri çeker.
+- **Tek bir yoklayıcı.** Hub çalışıyorsa komut hub'ın imzalı `POST /telegram/reload` rotasını çağırır: Telegram servisi token'ı, izin listesini (önce `.env`) ve kodu yeniden okur ve kodu kendi poll döngüsünde kabul eder; bir kod beklerken izin listesi boş olsa da yoklar. Hub yoksa komut `getUpdates`'i hub'ın kaydettiği offset'ten kendisi yoklar, offset'i geri yazar ve eşleştiren güncellemenin hemen ardından durur; izinli kalan sohbetlerin mesajları, hub'ın bir sonraki başlangıcında çalıştırdığı `inflight.json` dosyasına gider. Telegram'dan gelen bir 409 (başka bir yoklayıcı), komutun arada başlamış bir hub'ı aramasına yol açar.
+- **Sahip koruması** etkinse önce korumadan giriş izni ister (kanal etiketi `telegram-pair`) ve tau kilitliyse hiçbir şey sormadan durur: eşleşmiş bir sohbet korumayı atlayan, tanınan bir kanaldır.
+
+`--json`, uygulama sihirbazının protokolüdür. Girdi, stdin'de tek satır:
+
+```json
+{"token": "123456789:AA..."}
+```
+
+`null`, `""` ya da `token` alanının olmaması `.env`'deki token'ı korur. Çıktı, satır başına bir nesne, bu sırayla:
+
+```json
+{"event": "note", "message": "Note: TELEGRAM_BOT_TOKEN is also set in this shell's environment. ..."}
+{"event": "bot", "bot": "deniz_tau_bot", "token": "written"}
+{"event": "code", "code": "K7QM-X2PA", "link": "https://t.me/deniz_tau_bot?start=K7QM-X2PA", "bot": "deniz_tau_bot", "expires_at": "2026-10-01T11:32:00+00:00"}
+{"event": "waiting", "via": "hub"}
+{"event": "paired", "name": "Deniz @deniz", "dropped": 0, "hub": true}
+```
+
+- `note` satırları isteğe bağlıdır ve herhangi bir noktada gelebilir (kabuğun dışa aktardığı ve `.env`'i gölgeleyen bir değişken; botu yoklayan başka bir süreç).
+- `token`, `written` ya da `kept` olur; `via`, `hub` (çalışan hub yoklar) ya da `cli` (komut yoklar) olur; `dropped` erişimini kaybeden sohbetleri sayar; `hub` kodu çalışan bir hub'ın alıp almadığını söyler.
+- Bir hata akışı `{"event": "error", "reason": "...", "message": "..."}` ile ve çıkış kodu 1 ile bitirir (`config` için 2, Ctrl-C'den sonra 130). `message` arayüz dilindedir; `reason` şunlardan biridir: `config`, `locked`, `bad_json`, `no_token`, `token_invalid`, `token_refused`, `unreachable`, `env_write`, `hub_conflict`, `hub_mismatch`, `hub_error`, `expired`, `void`, `cancelled`.
+
+### `tau telegram status`
+
+```text
+Usage: tau telegram status [OPTIONS]
+
+  Show whether a bot token is set (and the bot's name, from one getMe),
+  whether an owner chat is paired, whether a pairing code waits and what the
+  running hub's Telegram channel does. Never prints the token or a chat id.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print the state as JSON.
+```
+
+```text
+Bot token'ı: tanımlı (@deniz_tau_bot)
+Sahip sohbeti: eşleşmiş (1 izinli)
+Hub: çalışıyor; @deniz_tau_bot olarak yokluyor
+```
+
+`--json`, `{"token", "bot", "bot_error", "token_refused", "paired", "allowed_chats", "pairing": {"expires_at"} | null, "hub": {"running", "telegram"}}` yazdırır; `hub.telegram`, hub'ın `/status` çıktısındaki `telegram` anahtarıdır. Her iki durumda da çıkış kodu 0'dır.
+
 ## `tau net`
 
 ```text
@@ -449,9 +538,9 @@ Kurulu her `tau-*` dağıtımı için bir satır. Hiçbir sağlayıcı SDK'sın�
 | Kod | Anlamı |
 |---|---|
 | 0 | başarı; `tau doctor` için hiç `fail` yok |
-| 1 | `tau doctor` ya da `tau guard doctor` başarısız bir kontrol buldu; `tau hub run` çalışan bir hub buldu; bir hub komutu işini yapamadı; bir `tau guard` kontrolü, kaydı ya da silmesi başarılı olmadı |
-| 2 | `tau chat` / `tau tui`: hiçbir şey açılmadan önce eksik kimlik bilgileri, geçersiz yapılandırma ya da bilinmeyen oturum; macOS dışındaki bir platformda ya da SSH üzerinden `tau guard` yüz komutları; ayrıca Click'in kendi kullanım hataları |
-| 130 | `tau chat`, bir onay istemi hâlâ stdin'i beklerken Ctrl-C ile bırakıldı |
+| 1 | `tau doctor` ya da `tau guard doctor` başarısız bir kontrol buldu; `tau hub run` çalışan bir hub buldu; bir hub komutu işini yapamadı; bir `tau guard` kontrolü, kaydı ya da silmesi başarılı olmadı; `tau telegram pair` bir sohbet eşleştiremedi |
+| 2 | `tau chat` / `tau tui`: hiçbir şey açılmadan önce eksik kimlik bilgileri, geçersiz yapılandırma ya da bilinmeyen oturum; macOS dışındaki bir platformda ya da SSH üzerinden `tau guard` yüz komutları; yüklenebilir bir yapılandırma olmadan `tau telegram`; ayrıca Click'in kendi kullanım hataları |
+| 130 | `tau chat`, bir onay istemi hâlâ stdin'i beklerken Ctrl-C ile bırakıldı; `tau telegram pair` Ctrl-C ile iptal edildi |
 
 ## Ortam { #environment }
 

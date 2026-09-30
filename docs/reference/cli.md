@@ -1,6 +1,6 @@
 # CLI
 
-Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init`, `spend` and `version`; `tau-tui` adds `tui`, `tau-guard` adds `guard` ([Owner guard](../guides/guard.md)), `tau-net` adds `net`, `tau-cloud` adds `cloud` (see [Join the tau network](../guides/tau-network.md)) and `tau-sub` adds `sub`; any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
+Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init`, `spend`, `telegram` and `version`; `tau-tui` adds `tui`, `tau-guard` adds `guard` ([Owner guard](../guides/guard.md)), `tau-net` adds `net`, `tau-cloud` adds `cloud` (see [Join the tau network](../guides/tau-network.md)) and `tau-sub` adds `sub`; any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
 
 Inside a repository checkout, prefix each command with `uv run`.
 
@@ -35,6 +35,7 @@ Commands:
   net         Talk to other taus (identity, contacts, messages).
   spend       Show the spend per model role.
   sub         Specialists of your tau (/coach, /landing, ...).
+  telegram    Pair your Telegram chat and show the channel's state.
   tui         Open tau in the Textual interface.
   version     Show the versions of the installed tau packages.
 ```
@@ -347,6 +348,94 @@ Columns: role, provider, what the role spent in its current period, its cap, the
 
 See [Models and budgets](../guides/models-and-budgets.md).
 
+## `tau telegram`
+
+```text
+Usage: tau telegram [OPTIONS] COMMAND [ARGS]...
+
+  The Telegram channel: pair your chat with the bot and show the channel's
+  state. The hub polls the Bot API itself; no server sits in between (ADR
+  0006).
+
+Options:
+  -h, --help  Show this help and exit.
+
+Commands:
+  pair    Pair your Telegram chat with the bot.
+  status  Show the Telegram channel's state.
+```
+
+The setup is in [Telegram](../guides/telegram.md).
+
+### `tau telegram pair`
+
+```text
+Usage: tau telegram pair [OPTIONS]
+
+  Pair your Telegram chat with the bot, without looking up a chat id. Asks for
+  the bot token from @BotFather with hidden input (Enter keeps the one in
+  <home>/.env), checks it with one getMe and writes it to <home>/.env (mode
+  0600). Then it shows a one-time code, valid 10 minutes: send /start <code>
+  to the bot, or open the link it prints. The running hub takes the code;
+  without a hub this command polls Telegram itself. The chat that sends the
+  code becomes TELEGRAM_ALLOWED_CHAT_IDS; wrong or expired codes get no
+  answer. With the owner guard on, tau must be unlocked. Exit 0 once paired, 1
+  otherwise.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Read {"token": "..."} as one JSON line on stdin instead of
+              prompting (null or "" keeps the current token) and print one
+              JSON event per line (for the app's wizard).
+```
+
+- **The token** is checked with one `getMe` before anything is written, then set as `TELEGRAM_BOT_TOKEN` in `<home>/.env`: that line replaced or appended, every other line kept, the file at `0600`. It never appears in argv, the output or a log.
+- **The code** is 8 characters without look-alikes, valid 10 minutes, usable once, and stored only as a salted PBKDF2 hash in `TAU_DATA_DIR/telegram/pairing.json` while the command waits. `/start <code>` from a private chat pairs it (the deep link `https://t.me/<bot>?start=<code>` sends that in one tap); the chat becomes the only entry of `TELEGRAM_ALLOWED_CHAT_IDS`. A group, a wrong code or an expired one gets no answer; 10 wrong codes void it; Ctrl-C withdraws it.
+- **One poller.** With a hub running, the command calls the hub's signed `POST /telegram/reload`: the Telegram service reads the token, the allowlist (`.env` first) and the code again and accepts the code in its own poll loop, polling even with an empty allowlist while a code waits. Without a hub, the command polls `getUpdates` itself from the hub's saved offset, writes the offset back and stops right after the pairing update; messages of chats that stay allowed go to `inflight.json`, which the hub runs at its next start. A 409 from Telegram (another poller) makes it look for a hub that started meanwhile.
+- **With the owner guard** active it asks the guard for admission first (channel label `telegram-pair`) and stops, asking nothing, when tau is locked: a paired chat is an identified channel that skips the guard.
+
+`--json` is the app wizard's protocol. Input, one line on stdin:
+
+```json
+{"token": "123456789:AA..."}
+```
+
+`null`, `""` or no `token` keeps the token `.env` has. Output, one object per line, in this order:
+
+```json
+{"event": "note", "message": "Note: TELEGRAM_BOT_TOKEN is also set in this shell's environment. ..."}
+{"event": "bot", "bot": "deniz_tau_bot", "token": "written"}
+{"event": "code", "code": "K7QM-X2PA", "link": "https://t.me/deniz_tau_bot?start=K7QM-X2PA", "bot": "deniz_tau_bot", "expires_at": "2026-10-01T11:32:00+00:00"}
+{"event": "waiting", "via": "hub"}
+{"event": "paired", "name": "Deniz @deniz", "dropped": 0, "hub": true}
+```
+
+- `note` lines are optional and may come at any point (a variable the shell exports that shadows `.env`; another process polling the bot).
+- `token` is `written` or `kept`; `via` is `hub` (the running hub polls) or `cli` (the command polls); `dropped` counts the chats that lost access; `hub` says whether a running hub took the code.
+- A failure ends the stream with `{"event": "error", "reason": "...", "message": "..."}` and exit 1 (2 for `config`, 130 after Ctrl-C). `message` is in the UI language; `reason` is one of `config`, `locked`, `bad_json`, `no_token`, `token_invalid`, `token_refused`, `unreachable`, `env_write`, `hub_conflict`, `hub_mismatch`, `hub_error`, `expired`, `void`, `cancelled`.
+
+### `tau telegram status`
+
+```text
+Usage: tau telegram status [OPTIONS]
+
+  Show whether a bot token is set (and the bot's name, from one getMe),
+  whether an owner chat is paired, whether a pairing code waits and what the
+  running hub's Telegram channel does. Never prints the token or a chat id.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print the state as JSON.
+```
+
+```text
+Bot token: set (@deniz_tau_bot)
+Owner chat: paired (1 allowed)
+Hub: running; polling as @deniz_tau_bot
+```
+
+`--json` prints `{"token", "bot", "bot_error", "token_refused", "paired", "allowed_chats", "pairing": {"expires_at"} | null, "hub": {"running", "telegram"}}`, where `hub.telegram` is the `telegram` key of the hub's `/status`. Exit 0 either way.
+
 ## `tau net`
 
 ```text
@@ -447,9 +536,9 @@ One line per installed `tau-*` distribution. It never imports a provider SDK, so
 | Code | Meaning |
 |---|---|
 | 0 | success; for `tau doctor`, no `fail` |
-| 1 | `tau doctor` or `tau guard doctor` found a failing check; `tau hub run` found a running hub; a hub command could not do its job; a `tau guard` check, enrollment or forget did not succeed |
-| 2 | `tau chat` / `tau tui`: missing credentials, invalid config or unknown session, before anything opened; `tau guard` face commands on a platform other than macOS or over SSH; also Click's own usage errors |
-| 130 | `tau chat` left on Ctrl-C while an approval prompt was still blocking on stdin |
+| 1 | `tau doctor` or `tau guard doctor` found a failing check; `tau hub run` found a running hub; a hub command could not do its job; a `tau guard` check, enrollment or forget did not succeed; `tau telegram pair` did not pair a chat |
+| 2 | `tau chat` / `tau tui`: missing credentials, invalid config or unknown session, before anything opened; `tau guard` face commands on a platform other than macOS or over SSH; `tau telegram` without a loadable config; also Click's own usage errors |
+| 130 | `tau chat` left on Ctrl-C while an approval prompt was still blocking on stdin; `tau telegram pair` cancelled with Ctrl-C |
 
 ## Environment
 

@@ -91,6 +91,8 @@ The public snapshot:
 - **A link** between `a` and `b` (with `a < b`) is visible only when `a` reports `b` and `b` reports `a`, and both are joined. Its `messages` is the smaller of the two reported counts.
 - **`stats.messages`** is the sum over visible links.
 
+The directory lives in one SQLite-backed Durable Object (`Directory`, one instance by name). The Worker checks size, shape, universe, the clock window, the card and the signature. The Durable Object then runs the replay check, the joined check, the rate limit and the effect in one transaction. A card must carry a string `name`; the universe cleans it and cuts it to 80 characters, and uses the address when nothing is left. `universe` is compared without regard to case. In a report, a repeated peer keeps its last entry, and a link to the tau itself is ignored. A mutual link with 0 messages is shown. `joined_at` is the `ts` of the first join.
+
 A cron job runs every hour. It deletes taus whose `last_seen` is older than 30 days, together with their links, and prunes rate-limit rows older than one hour.
 
 Pages send `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`.

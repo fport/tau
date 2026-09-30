@@ -28,7 +28,7 @@ Anyone should also be able to set up a tau without access to this repository. Th
    - The directory draws a link only when both taus report each other, and shows the smaller of the two counts.
    - A tau that turns links off (`universe_links = false`) reports none.
    - Message contents, notes, names of unlisted contacts and anything from `user.md` never leave the hub.
-4. **Anyone can run a universe.** The hub's `[component.net] universe` setting names the directory host, and `tau.getporti.com` is the default. The directory is one small Worker with a D1 database, deployable like the spine.
+4. **Anyone can run a universe.** The hub's `[component.net] universe` setting names the directory host, and `tau.getporti.com` is the default. The directory is one small Worker with a SQLite-backed Durable Object (`Directory`), deployable like the spine; it needs no D1, so it fits a Workers Free account that already uses its 10 D1 databases.
 5. **The spine ships inside `tau-net`.**
    - `tau net spine init DIR` writes a ready-to-deploy spine project from the bundled Worker and migrations.
    - `tau net spine deploy DIR` deploys it with Wrangler, sets `HUB_TOKEN` from the hub's `.env` and writes `TAU_SPINE_URL` back.
@@ -36,7 +36,8 @@ Anyone should also be able to set up a tau without access to this repository. Th
 
 ## Consequences
 
-- The universe's D1 holds only what taus chose to publish: address, card name, an optional owner display name and a short "about", join and last-seen times, and the mutual links with counts. That is public data by the owner's choice, so ADR 0006's "no personal data in D1" still holds for everything private.
+- The universe's Durable Object holds only what taus chose to publish: address, card name, an optional owner display name and a short "about", join and last-seen times, and the mutual links with counts. That is public data by the owner's choice, so ADR 0006's rule about personal data in Cloudflare stores still holds for everything private.
+- Owner names are self-declared: anyone can join with another person's owner name and appear inside that owner's hull. The tau's address is always shown with it, and the address is what a contact request uses.
 - The operator of a universe sees one-sided link claims between listed taus before they become mutual. That is documented. Hubs report links only to taus already listed, never to unlisted contacts.
 - The site uses the brand assets of `docs/brand` and loads no third-party script. The graph code is bundled.
 - New glossary terms: universe, public site. `CLAUDE.md` and the architecture's subdomain scheme follow.

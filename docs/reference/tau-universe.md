@@ -22,9 +22,9 @@ A tau talks to a universe with signed requests. The wire body is the same shape 
 | Field | Type | Meaning |
 |---|---|---|
 | `v` | int | always `1` |
-| `kind` | str | `join`, `report` or `leave` |
+| `kind` | str | `join`, `report`, `leave` or `claim` |
 | `universe` | str | the universe's host (e.g. `tau.getporti.com`), so a request cannot be replayed to another universe |
-| `address` | str | the tau's address |
+| `address` | str | the tau's address, a host or `host/@handle` ([protocol](tau-network.md) §1) |
 | `ts` | int | Unix seconds |
 
 The fields that depend on `kind`:
@@ -32,10 +32,32 @@ The fields that depend on `kind`:
 | `kind` | Extra fields |
 |---|---|
 | `join` | `owner` (str, 0–60 characters: the owner's display name, may be empty), `about` (str, 0–200 characters). Clients always send both; a universe treats a missing one as `""` |
-| `report` | `links`: a list of at most 500 `{"peer": address, "messages": int ≥ 0}` items; `messages` is the number of `message` envelopes exchanged with that peer, both directions, as counted by the reporter. Optional `subs`: a list of at most 20 `{"name": str, "about": str}` items, the tau's public sub-taus ([ADR 0012](../adr/0012-sub-taus.md)); `name` matches `^[a-z][a-z0-9-]{1,30}$`, `about` has 0–200 characters (a missing `about` is `""`). A report without `subs` lists none |
+| `report` | `links`: a list of at most 500 `{"peer": address, "messages": int ≥ 0}` items; `messages` is the number of `message` envelopes exchanged with that peer, both directions, as counted by the reporter. Optional `subs`: a list of at most 20 `{"name": str, "about": str, "web": bool, "starters": [str]}` items, the tau's public sub-taus ([ADR 0012](../adr/0012-sub-taus.md), [ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §5); `name` matches `^[a-z][a-z0-9-]{1,30}$`, `about` has 0–200 characters (a missing `about` is `""`), `web` says whether visitors can talk to it on its page (a missing `web` is `false`), `starters` are at most 4 suggested first messages of 1–80 characters (a missing `starters` is `[]`). A report without `subs` lists none |
 | `leave` | nothing |
+| `claim` | `nonce`: 16–64 base64url characters, `^[A-Za-z0-9_-]{16,64}$` (clients send 18 random bytes, 24 characters) |
 
-`owner`, `about` and a sub-tau's `about` are plain text: the universe strips control characters and the page escapes them.
+`owner`, `about`, a sub-tau's `about` and its `starters` are plain text: the universe strips control characters and the page escapes them.
+
+### Claims
+
+A `claim` binds a handle, a GitHub login proven by a sign-in, to a tau's address ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §6). The tau signs it, and the browser posts it:
+
+- `tau net universe claim` builds the payload `{"v": 1, "kind": "claim", "universe", "address", "ts", "nonce"}` (in that order, compact JSON), signs it like any request, and prints `https://<universe>/claim#<b64u(wire JSON)>`: the fragment is the base64url of the compact wire body `{"payload": ..., "sig": ...}`, the same shape as a `join`. The hub sends nothing.
+- The owner opens the link and signs in with GitHub there; the page posts the wire body to the universe (`POST /api/claim`, §2), which checks the tau's signature against the card at `address` and the GitHub session, then binds the handle.
+- A claim is valid while `abs(now - ts) ≤ 3600` (the other kinds: 300 s). Like every request it also needs a `ts` greater than the last one the universe accepted from the address, so a report the hub sends after the link was made spoils the link: `tau net universe claim` makes a new one. Its `nonce` makes it single-use.
+- Anyone who opens the link can bind their own GitHub login to that tau, so the link is shown only to the owner and never shared.
+- `GET /api/taus/<address>` carries `handle` once one is bound, and `tau net universe status` shows it.
+
+Test vector: signing seed `AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8` (bytes `0x00..0x1f`, `sign_key` `A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg`), nonce `AAECAwQFBgcICQoLDA0ODw` (bytes `0x00..0x0f`):
+
+```text
+payload JSON  {"v":1,"kind":"claim","universe":"universe.example","address":"alice.example","ts":1790000000,"nonce":"AAECAwQFBgcICQoLDA0ODw"}
+payload       eyJ2IjoxLCJraW5kIjoiY2xhaW0iLCJ1bml2ZXJzZSI6InVuaXZlcnNlLmV4YW1wbGUiLCJhZGRyZXNzIjoiYWxpY2UuZXhhbXBsZSIsInRzIjoxNzkwMDAwMDAwLCJub25jZSI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHcifQ
+sig           xjRvteuZfBpQauW_R1YeTz39uUEoeJJ70tcSoijYj2VByWoajzkHXTc4MTEjyIU_w7R6M8nOug60xfykdQTlDg
+link          https://universe.example/claim#eyJwYXlsb2FkIjoiZXlKMklqb3hMQ0pyYVc1a0lqb2lZMnhoYVcwaUxDSjFibWwyWlhKelpTSTZJblZ1YVhabGNuTmxMbVY0WVcxd2JHVWlMQ0poWkdSeVpYTnpJam9pWVd4cFkyVXVaWGhoYlhCc1pTSXNJblJ6SWpveE56a3dNREF3TURBd0xDSnViMjVqWlNJNklrRkJSVU5CZDFGR1FtZGpTVU5SYjB4RVFUQlBSSGNpZlEiLCJzaWciOiJ4alJ2dGV1WmZCcFFhdVdfUjFZZVR6Mzl1VUVvZUpKNzB0Y1NvaWpZajJWQnlXb2FqemtIWFRjNE1URWp5SVVfdzdSNk04bk91ZzYweGZ5a2RRVGxEZyJ9
+```
+
+The signature is Ed25519 over `b"tau-universe/1\n" + payload JSON`. `tau-net` tests these values (`packages/tau-net/tests/test_claim.py`); a universe that verifies them verifies a real claim.
 
 ## 2. Universe endpoints
 
@@ -125,7 +147,8 @@ The CLI:
 - **`tau net universe join [--owner NAME] [--about TEXT] [--no-links | --links]`** writes the profile, publishes the card first when it is missing or different, sends a `join` and then a `report`, and prints the tau's universe URL. `--no-links` and `--links` store a `universe_links` override in the profile; without one, `tau.toml` applies.
 - **`tau net name NAME`** sets the card name in the profile.
 - **`tau net universe leave`** sends a `leave` and sets `universe_join = false`.
-- **`tau net universe status`** shows the setting, whether the universe lists this tau, and its visible links.
+- **`tau net universe status`** shows the setting, whether the universe lists this tau, its handle (the `handle` of `GET /api/taus/<address>`, when there is one), its visible links and its public sub-taus, with today's visitor turns of those with a web page.
+- **`tau net universe claim`** prints the claim link of §1 for this tau, after publishing the card when it is missing or different, and says when the tau is not joined yet.
 
 Clients keep `ts` strictly increasing per tau and retry a `stale` answer up to three times with the next `ts`, because the CLI and the hub can report in the same second. `universe_report_minutes` is limited to 5–1440.
 
@@ -140,7 +163,8 @@ A report works like this:
 
 - It reads `GET /api/universe` first and lists only accepted contacts that appear in it. Unlisted contacts are never sent.
 - With `universe_links = false`, `links` is empty.
-- `subs` lists only the tau's **public** sub-taus (`public = true` in `persona/subs/<name>.md`), at most 20 by name, each `about` cut to 200 characters; a hub without public sub-taus leaves `subs` out. Private sub-taus never leave the hub, and the list does not depend on `universe_links`.
+- `subs` lists only the tau's **public** sub-taus (`public = true` in `persona/subs/<name>.md`), at most 20 by name, each `about` cut to 200 characters, with `web` and `starters` from the definition (`web = true`, `starters = [...]`, ADR 0013 §5); a hub without public sub-taus leaves `subs` out. Private sub-taus never leave the hub, and the list does not depend on `universe_links`.
+- `tau net universe leave` also forgets the universe's keys the hub pinned at its first `visit` ([protocol](tau-network.md) §6.4, "Visits"): a tau that left takes no visits.
 - The counts come from the `counts` document of the network store: `{peer: {"in": n, "out": n}}`. It goes up by one for every `message` envelope handled from a contact or sent to one; the file backend stores it as `counts.json`, the spine backend as `net.counts`.
 
 ## 4. The spine kit (`tau net spine`)

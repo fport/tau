@@ -341,16 +341,17 @@ Commands:
 | `tau net status` | Kimlik, spine sağlığı, yayımlanan kartın eşleşip eşleşmediği, duruma göre kişiler (contact) ve ağ durumunun nerede saklandığı |
 | `tau net card` / `tau net publish` | Sunulan kartı yazdırır / onu `PUT /hub/card` ile yayımlar (hub servisi de başlarken yayımlar) |
 | `tau net contacts` | Kişiler ve bekleyen istekler |
-| `tau net add ADDRESS [--note TEXT]` | Kartı alır, adresi bekleyen olarak hatırlar ve bir kişi isteği gönderir; karşı taraf zaten istemişse hemen kabul eder |
+| `tau net add ADDRESS [--note TEXT]` | Kartı alır, adresi bekleyen olarak hatırlar ve bir kişi isteği gönderir; karşı taraf zaten istemişse hemen kabul eder. `ADDRESS` bir host (`tau.example.com`) ya da barındırılan bir tau'dur (`tau.example.com/@alice`) |
 | `tau net accept ADDRESS` | Bekleyen bir isteği kabul eder: anahtarları sabitler ve bir `contact_accept` gönderir |
 | `tau net block ADDRESS` / `tau net remove ADDRESS` | O adresten gelen hiçbir şey artık okunmaz ya da yanıtlanmaz / kişiyi unutur (logu ve oturumu kalır) |
-| `tau net send ADDRESS[/NAME] TEXT...` | Kabul edilmiş bir kişiye senin adınla bir mesaj gönderir (en fazla 8 000 karakter). `ADDRESS/NAME`, o tau'nun açık sub-tau'su `/NAME`'e yazar; yanıt `/NAME`'den gelir. Senin kendi komutun olduğu için onay gerekmez; ajanın `net_send` aracı ise tier 2'dir (her zaman onay isteyen izin seviyesi) |
+| `tau net send ADDRESS[/NAME] TEXT...` | Kabul edilmiş bir kişiye senin adınla bir mesaj gönderir (en fazla 8 000 karakter). `ADDRESS/NAME`, o tau'nun açık sub-tau'su `/NAME`'e yazar (`tau.example.com/coach`, `tau.example.com/@alice/coach`); yanıt `/NAME`'den gelir. Senin kendi komutun olduğu için onay gerekmez; ajanın `net_send` aracı ise tier 2'dir (her zaman onay isteyen izin seviyesi) |
 | `tau net log [--address ADDRESS] [-n N]` | Ağ logu, en eskiden başlayarak (varsayılan 20 kayıt) |
 | `tau net poll --once` | Spine'ın o anda tuttuğu her şeyi, ağ turları dahil, çalışan bir hub olmadan işler. Hub poll yaparken bunu çalıştırma |
 | `tau net spine init DIR [--address HOST]` | `tau-net` içindeki kit'ten deploy edilmeye hazır bir spine projesini yeni ya da boş bir `DIR` dizinine yazar. `--address`, `ADDRESS` değerini ve özel alan adı (custom domain) rotasını ayarlar; o olmadan adres `tau-spine.<subdomain>.workers.dev` olur |
 | `tau net spine deploy DIR [--address HOST]` | Oturumu kontrol ettikten sonra projeyi Wrangler ile deploy eder (yayına alır), Worker'ın `HUB_TOKEN` secret'ını hub'ın `.env` dosyasındaki `TAU_SPINE_TOKEN` değerine ayarlar (eksikse üretilir, stdin üzerinden geçirilir, asla yazdırılmaz) ve `TAU_SPINE_URL` değerini oraya yazar |
 | `tau net universe join [--owner NAME] [--about TEXT] [--links \| --no-links]` | Bu tau'yu `[component.net] universe` evreninde (universe; varsayılan `tau.getporti.com`) listeler: profili yazar, gerekirse kartı yayımlar, imzalı bir katılma isteği ve bir rapor gönderir, tau'nun sayfasını yazdırır |
-| `tau net universe status` / `tau net universe leave` | Profilin katılmış görünüp görünmediği ve evrenin bu tau'yu görünür bağlantılarıyla listeleyip listelemediği / imzalı bir ayrılma isteği gönderir ve hub'ın raporlarını durdurur |
+| `tau net universe status` / `tau net universe leave` | Profilin katılmış görünüp görünmediği ve evrenin bu tau'yu tanıtıcısı (handle), görünür bağlantıları ve açık sub-tau'larıyla (web sayfası olanlar bugünkü ziyaretçi turlarıyla) listeleyip listelemediği / imzalı bir ayrılma isteği gönderir, hub'ın raporlarını durdurur ve evrenin sabitlenmiş anahtarlarını unutur; böylece ziyaret gelmez |
+| `tau net universe claim` | Bu tau'nun imzaladığı, bir saat geçerli bir talep olan `https://<universe>/claim#…` bağlantısını yazdırır. Bağlantıyı aç ve orada GitHub ile giriş yap: evren GitHub kullanıcı adını bu tau'nun tanıtıcısı (`/@login`) olarak bağlar. Gerekirse önce kartı yayımlar; hiçbir şey göndermez. Bağlantıyı paylaşma |
 
 ## `tau cloud`
 

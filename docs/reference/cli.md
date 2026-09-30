@@ -339,16 +339,17 @@ Added by `tau-net`. The spine comes from `TAU_SPINE_URL` and `TAU_SPINE_TOKEN`; 
 | `tau net status` | Identity, spine health, whether the published card matches, contacts by state, where the network state is stored |
 | `tau net card` / `tau net publish` | Prints the served card / publishes it with `PUT /hub/card` (the hub service also publishes on start) |
 | `tau net contacts` | Contacts and pending requests |
-| `tau net add ADDRESS [--note TEXT]` | Fetches the card, remembers the address as pending and sends a contact request; accepts at once if they had asked already |
+| `tau net add ADDRESS [--note TEXT]` | Fetches the card, remembers the address as pending and sends a contact request; accepts at once if they had asked already. `ADDRESS` is a host (`tau.example.com`) or a hosted tau (`tau.example.com/@alice`) |
 | `tau net accept ADDRESS` | Accepts a pending request: pins the keys and sends a `contact_accept` |
 | `tau net block ADDRESS` / `tau net remove ADDRESS` | Nothing from the address is read or answered any more / forgets the contact (its log and session stay) |
-| `tau net send ADDRESS[/NAME] TEXT...` | Sends a message in your name to an accepted contact (at most 8 000 characters). `ADDRESS/NAME` writes to that tau's public sub-tau `/NAME`, whose answer comes back from `/NAME`. Your own command, so no approval; the agent's `net_send` tool is tier 2 |
+| `tau net send ADDRESS[/NAME] TEXT...` | Sends a message in your name to an accepted contact (at most 8 000 characters). `ADDRESS/NAME` writes to that tau's public sub-tau `/NAME` (`tau.example.com/coach`, `tau.example.com/@alice/coach`), whose answer comes back from `/NAME`. Your own command, so no approval; the agent's `net_send` tool is tier 2 |
 | `tau net log [--address ADDRESS] [-n N]` | The network log, oldest first (default 20 entries) |
 | `tau net poll --once` | Handles what the spine holds right now, network turns included, without a running hub. Do not run it while the hub polls |
 | `tau net spine init DIR [--address HOST]` | Writes a ready-to-deploy spine project from the kit inside `tau-net` into a new or empty `DIR`. `--address` sets `ADDRESS` and a custom-domain route; without it the address is `tau-spine.<subdomain>.workers.dev` |
 | `tau net spine deploy DIR [--address HOST]` | Deploys it with Wrangler after checking the login, sets the Worker's `HUB_TOKEN` secret to `TAU_SPINE_TOKEN` from the hub's `.env` (generated when missing, passed on stdin, never printed) and writes `TAU_SPINE_URL` there |
 | `tau net universe join [--owner NAME] [--about TEXT] [--links \| --no-links]` | Lists this tau in the universe of `[component.net] universe` (default `tau.getporti.com`): writes the profile, publishes the card when needed, sends a signed join and a report, prints the tau's page |
-| `tau net universe status` / `tau net universe leave` | Whether the profile says joined and whether the universe lists this tau, with its visible links / sends a signed leave and stops the hub's reports |
+| `tau net universe status` / `tau net universe leave` | Whether the profile says joined and whether the universe lists this tau, with its handle, visible links and public sub-taus (those with a web page with today's visitor turns) / sends a signed leave, stops the hub's reports and forgets the universe's pinned keys, so no visits come in |
+| `tau net universe claim` | Prints `https://<universe>/claim#…`, a claim signed by this tau and valid for an hour. Open it and sign in with GitHub there: the universe binds your GitHub login as this tau's handle (`/@login`). Publishes the card first when needed; sends nothing. Do not share the link |
 
 ## `tau cloud`
 

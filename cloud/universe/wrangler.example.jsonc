@@ -1,4 +1,5 @@
-// tau universe: the public site (landing page + /universe) and the opt-in directory of taus.
+// tau universe: the public site (landing page, /how-it-works, /universe, and the same pages in
+// Turkish under /tr/) and the opt-in directory of taus.
 //
 // Contract: docs/reference/tau-universe.md. Decision: docs/adr/0010.
 //
@@ -24,11 +25,21 @@
   "assets": {
     "directory": "public",
     "binding": "ASSETS",
-    // The Worker answers the API and the two pages (to add the security headers); every
-    // other file (styles, scripts, brand SVGs, fonts) is served straight from the asset
-    // store with the headers in public/_headers. Paths that match no file reach the
-    // Worker, which answers the 404 page.
-    "run_worker_first": ["/api/*", "/", "/universe"]
+    // The Worker answers the API and every page, in English and in Turkish (to add the
+    // security headers and handle the language choice; src/pages.ts lists the pages, and a
+    // test keeps this list in step). Every other file (styles, scripts, brand SVGs, fonts)
+    // is served straight from the asset store with the headers in public/_headers. Paths
+    // that match no file reach the Worker, which answers the 404 page of their language.
+    "run_worker_first": [
+      "/api/*",
+      "/",
+      "/how-it-works",
+      "/universe",
+      "/tr",
+      "/tr/",
+      "/tr/how-it-works",
+      "/tr/universe"
+    ]
   },
   "vars": {
     // The universe's own host, which signed requests must name. Empty means "the host of

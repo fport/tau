@@ -4,7 +4,10 @@
  * Contract: docs/reference/tau-universe.md (§1–§2). Decision: docs/adr/0010.
  *
  *   GET  /                        the landing page (static, public/index.html)
+ *   GET  /how-it-works            how tau works, for newcomers (static)
  *   GET  /universe                the universe page (static; its script reads /api/universe)
+ *   GET  /tr/, /tr/how-it-works, /tr/universe
+ *                                 the same pages in Turkish (public/tr/)
  *   *    /api/*                   the directory API
  *
  * Everything else under public/ is served by the asset store before the Worker runs. The
@@ -17,7 +20,7 @@
 import { handleApi } from "./api";
 import { directoryOf, type UniverseEnv } from "./env";
 import { error, methodNotAllowed, nowSeconds } from "./http";
-import { notFoundPage, servePage, withSecurityHeaders } from "./pages";
+import { isPage, notFoundPage, servePage, withSecurityHeaders } from "./pages";
 
 export { Directory } from "./directory";
 
@@ -26,7 +29,7 @@ async function route(request: Request, env: UniverseEnv): Promise<Response> {
   const path = url.pathname;
   if (path === "/api" || path.startsWith("/api/")) return handleApi(request, env, url);
   if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed(["GET"]);
-  if (path === "/" || path === "/universe") return servePage(request, env);
+  if (isPage(path) || path === "/tr") return servePage(request, env, url);
   return notFoundPage(request, env);
 }
 

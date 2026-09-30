@@ -55,5 +55,7 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 163 | [Visitors talk to web sub-taus through the universe](163-visitor-chat-relay.md) | AFK | 156, 158, 159, 160 |
 | 164 | [Docs, README and site: three ways to start](164-docs-three-ways.md) | AFK | 154, 159, 161 |
 | 165 | [Go live: hosted taus on `tau.getporti.com`](165-hosted-go-live.md) | HITL | 159–163 |
+| 167 | [One GitHub account with a hosted tau and a hub-run tau: who holds the handle](167-one-handle-two-taus.md) | AFK | 165 |
+| 168 | [A claim button in tau-host's app for taus on an own host](168-claim-from-the-host-app.md) | AFK | 162 |
 
 Live status: `python3 roadmap/board.py --layer L9`

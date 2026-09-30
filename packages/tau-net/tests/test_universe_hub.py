@@ -146,9 +146,13 @@ def test_two_taus_join_talk_report_and_show_one_mutual_link(
 # -- the hub service ---------------------------------------------------------------------------
 
 
-FIXED = int(time.time()) + 100
-"""The service's clock: ahead of every real-clock request a test makes, within the 300 s a
-universe allows, so the service's ts always wins."""
+AHEAD = 100
+"""The service's clock stands still this many seconds ahead of the real clock at the moment
+:func:`serve` starts it: ahead of every real-clock request the test makes (``node.universe_join``
+signs with the real clock), within the 300 s a universe allows, so the service's ts always wins.
+It is taken per test, never at import: under the full suite a test runs minutes after this
+module was collected, and a clock fixed at import falls behind the real one, so the universe
+answers the service ``stale``."""
 
 
 class Interval:
@@ -181,6 +185,7 @@ def serve(
     async def fast(delay: float) -> None:
         await asyncio.sleep(0.001)
 
+    fixed = int(time.time()) + AHEAD
     service = NetService(
         tau.config,
         env=tau.env,
@@ -188,7 +193,7 @@ def serve(
         model_factory=lambda: tau.model,
         sleep=fast,
         universe_sleep=interval.sleep,
-        clock=lambda: FIXED,
+        clock=lambda: fixed,
     )
 
     async def main() -> None:
@@ -224,7 +229,9 @@ def test_the_service_reports_at_start_and_every_interval(
     assert service.status()["universe"] == {
         "universe": UNIVERSE,
         "joined": True,
-        "last_report_at": datetime.fromtimestamp(FIXED, UTC).isoformat(timespec="seconds"),
+        "last_report_at": datetime.fromtimestamp(service.clock(), UTC).isoformat(
+            timespec="seconds"
+        ),
         "last_error": None,
         "visible_links": 0,
     }

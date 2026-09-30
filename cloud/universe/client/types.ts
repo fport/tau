@@ -75,16 +75,19 @@ export interface ChatMessage {
   ts: number;
 }
 
-/** `POST /api/chat/<target>`. */
+/** `POST /api/chat/<target>`: the thread, the visit's id and the message's number. */
 export interface ChatSent {
   thread: string;
-  id: number;
+  id: string;
+  n: number;
 }
 
-/** `GET /api/chat/<target>/<thread>?after=<n>`. */
+/** `GET /api/chat/<target>/<thread>?after=<n>&wait=<s>`. */
 export interface ChatPoll {
   messages: ChatMessage[];
-  done?: boolean;
+  /** The last message still awaits its answer. */
+  pending: boolean;
+  state: "open" | "resting" | "full" | "unavailable";
 }
 
 /** `POST /api/claim`: `{ok, handle, url, moved_from}`, or `{error}`. */

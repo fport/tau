@@ -7,7 +7,7 @@ wrangler.jsonc.bak
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
-# Build output: the bundled page scripts, the theme and the web fonts (`pnpm run build`).
+# Build output: the bundled page scripts, the theme and the web fonts (`bun run build`).
 public/static/
 # Local state of `wrangler dev` (the Durable Object's SQLite) and dependencies.
 .wrangler/

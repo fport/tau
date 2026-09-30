@@ -82,11 +82,13 @@ export interface Messages {
   you: string;
   waiting: string;
   waitingOffline: string;
-  stillWaiting: string;
   rateLimited: string;
+  /** The sub-tau reached its daily visitor cap, or its owner's budget. */
+  resting: string;
+  threadFull: string;
+  busy: string;
+  unavailableNow: string;
   tooLong: (max: string) => string;
-  dailyCap: string;
-  overBudget: string;
   chatClosed: string;
   chatFailed: string;
   aboutSub: (name: string) => string;
@@ -173,11 +175,12 @@ const en: Messages = {
   you: "You",
   waiting: "Thinking…",
   waitingOffline: "Its tau is offline. Your message waits until it is back.",
-  stillWaiting: "Still no answer. Keep the page open, or come back later.",
   rateLimited: "Too many messages. Wait a minute and try again.",
+  resting: "Resting until tomorrow: it has reached its limit for visitors.",
+  threadFull: "This conversation is full. Start a new one to keep talking.",
+  busy: "Wait for the answer to your last message first.",
+  unavailableNow: "It could not answer right now. Try again in a moment.",
   tooLong: (max) => `Keep it under ${max} characters.`,
-  dailyCap: "It has talked to all the visitors it can today. Try again tomorrow.",
-  overBudget: "Its owner’s budget for this month is used up.",
   chatClosed: "This sub-tau does not take visitor chats.",
   chatFailed: "The message could not be sent. Try again.",
   aboutSub: (name) => `About ${name}`,
@@ -266,11 +269,12 @@ const tr: Messages = {
   you: "Sen",
   waiting: "Düşünüyor…",
   waitingOffline: "tau’su şu an çevrimdışı. Mesajın o dönene kadar bekler.",
-  stillWaiting: "Hâlâ cevap yok. Sayfayı açık tut ya da sonra tekrar gel.",
   rateLimited: "Çok fazla mesaj. Bir dakika bekleyip tekrar dene.",
+  resting: "Yarına kadar dinleniyor: ziyaretçi sınırına ulaştı.",
+  threadFull: "Bu sohbet doldu. Konuşmaya devam etmek için yeni bir sohbet başlat.",
+  busy: "Önce son mesajının cevabını bekle.",
+  unavailableNow: "Şu an cevap veremedi. Birazdan tekrar dene.",
   tooLong: (max) => `En fazla ${max} karakter yaz.`,
-  dailyCap: "Bugün konuşabileceği tüm ziyaretçilerle konuştu. Yarın tekrar dene.",
-  overBudget: "Sahibinin bu ayki bütçesi doldu.",
   chatClosed: "Bu sub-tau ziyaretçi sohbeti kabul etmiyor.",
   chatFailed: "Mesaj gönderilemedi. Tekrar dene.",
   aboutSub: (name) => `${name} hakkında`,

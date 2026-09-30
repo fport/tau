@@ -7,18 +7,21 @@
 // `?fixture=1` (localhost only; see client/api.ts) and the person, sub-tau, claim and
 // universe pages read built-in example data instead of the API.
 //
-//   pnpm run build && node scripts/dev-site.mjs
+//   bun run build && node scripts/dev-site.mjs
 //   http://127.0.0.1:8795/?fixture=1              the landing page, the universe as its hero
 //   http://127.0.0.1:8795/universe?fixture=1
 //   http://127.0.0.1:8795/@alice?fixture=1        a person page
 //   http://127.0.0.1:8795/coach?fixture=1         a sub-tau page with its visitor chat
 //   http://127.0.0.1:8795/@alice/landing?fixture=1  a sub-tau without a chat
+//   http://127.0.0.1:8795/@erin/scout?fixture=1   a hub-run sub-tau whose hub is offline
+//   http://127.0.0.1:8795/@grace/poet?fixture=1   a sub-tau that answers "resting"
 //   http://127.0.0.1:8795/claim?fixture=1         the claim page with an example claim
 //   … and the same under /tr/.
 //
-// `pnpm dev` (wrangler) serves the same pages through the real Worker; `?fixture=1` works
-// there too. This server listens on 127.0.0.1 only and answers no API: without the
-// fixtures the pages show their "could not load" states.
+// `bun run dev` (wrangler) serves the same pages through the real Worker, and `?fixture=1`
+// works there too for /, /universe and /claim; the Worker answers /@handle and /<slug> only
+// for handles and slugs its directory knows. This server listens on 127.0.0.1 only and
+// answers no API: without the fixtures the pages show their "could not load" states.
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";

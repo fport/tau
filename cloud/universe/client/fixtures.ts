@@ -290,19 +290,27 @@ function subView(target: string): SubView | null {
 interface Thread {
   target: string;
   messages: ChatMessage[];
-  pending: number;
+  /** The last message awaits its answer. */
+  pending: boolean;
+  state: ChatPoll["state"];
 }
 
 const threads = new Map<string, Thread>();
 let nextThread = 1;
 
+/** The fixture that shows a sub-tau resting (its daily cap): Grace's /poet. */
+const RESTING = "poet";
+
 function answer(target: string, text: string): string {
   const name = target.split("/").pop() ?? target;
   if (/<|>/.test(text)) {
-    return `You wrote markup: ${text}\nIt stays text here, like everything a sub-tau says. <b>Not bold.</b>`;
+    return `You wrote markup: ${text}
+It stays text here, like everything a sub-tau says. <b>Not bold.</b>`;
   }
   if (/can you do/i.test(text)) {
-    return `I’m ${name}, a fixture. On a real universe I answer with my owner’s model and within their daily cap.\n\nTry another starter, or type anything.`;
+    return `I’m ${name}, a fixture. On a real universe I answer with my owner’s model and within their daily cap.
+
+Try another starter, or type anything.`;
   }
   if (/who made/i.test(text)) return "Someone with a tau and a keyboard. The universe relays us.";
   return `(${name}, fixture) You said: “${text.slice(0, 140)}”. A real answer would come from the owner’s tau.`;
@@ -312,26 +320,38 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** `POST /api/chat/<target>`, as issue 163 built it (a subset of its checks). */
 function chatPost(target: string, body: unknown): { status: number; data: unknown } {
   const view = subView(target);
   if (view === null) return { status: 404, data: { error: "not_found" } };
   if (!view.web) return { status: 403, data: { error: "not_web" } };
   const input = (body ?? {}) as { text?: unknown; thread?: unknown };
   const text = typeof input.text === "string" ? input.text.trim() : "";
-  if (text === "") return { status: 400, data: { error: "bad_request" } };
-  if (text.length > 2000) return { status: 413, data: { error: "too_long" } };
+  if (text === "" || text.length > 2000) return { status: 400, data: { error: "bad_request" } };
   let id = typeof input.thread === "string" ? input.thread : "";
   let thread = threads.get(id);
-  if (thread === undefined || thread.target !== target) {
-    id = `fx-${nextThread++}`;
-    thread = { target, messages: [], pending: 0 };
+  if (id !== "" && (thread === undefined || thread.target !== target)) {
+    return { status: 404, data: { error: "not_found" } };
+  }
+  if (thread === undefined) {
+    id = `fixture-thread-${String(nextThread++).padStart(4, "0")}`;
+    thread = { target, messages: [], pending: false, state: "open" };
     threads.set(id, thread);
   }
+  if (thread.pending) return { status: 409, data: { error: "busy" } };
+  if (thread.messages.length >= 48) return { status: 409, data: { error: "thread_full" } };
   const n = thread.messages.length + 1;
   thread.messages.push({ n, from: "visitor", text, ts: Math.floor(Date.now() / 1000) });
-  if (view.online || view.hosted) {
-    thread.pending++;
-    const current = thread;
+  thread.pending = true;
+  thread.state = "open";
+  const current = thread;
+  const name = target.split("/").pop() ?? target;
+  if (name === RESTING) {
+    setTimeout(() => {
+      current.pending = false;
+      current.state = "resting";
+    }, 1200);
+  } else if (view.online || view.hosted) {
     setTimeout(() => {
       current.messages.push({
         n: current.messages.length + 1,
@@ -339,23 +359,37 @@ function chatPost(target: string, body: unknown): { status: number; data: unknow
         text: answer(target, text),
         ts: Math.floor(Date.now() / 1000),
       });
-      current.pending--;
+      current.pending = false;
     }, 1400);
+  } else {
+    // An offline hub: the visit waits in its spine; the universe stops counting it pending.
+    setTimeout(() => {
+      current.pending = false;
+    }, 4000);
   }
-  const sent: ChatSent = { thread: id, id: n };
+  const sent: ChatSent = { thread: id, id: `visit-${id}-${n}`, n };
   return { status: 200, data: sent };
 }
 
-async function chatPoll(target: string, id: string, after: number): Promise<{ status: number; data: unknown }> {
+/** `GET /api/chat/<target>/<thread>?after=<n>&wait=<s>`: waits while pending (scaled down). */
+async function chatPoll(
+  target: string,
+  id: string,
+  after: number,
+  wait: number,
+): Promise<{ status: number; data: unknown }> {
   const thread = threads.get(id);
-  if (thread === undefined || thread.target !== target) return { status: 404, data: { error: "not_found" } };
-  for (let waited = 0; waited < 3_000; waited += 200) {
-    if (thread.messages.some((message) => message.n > after)) break;
+  if (thread === undefined || thread.target !== target) {
+    return { status: 404, data: { error: "not_found" } };
+  }
+  const until = Date.now() + Math.min(wait, 3) * 1000;
+  while (thread.pending && Date.now() < until && !thread.messages.some((m) => m.n > after)) {
     await sleep(200);
   }
   const poll: ChatPoll = {
     messages: thread.messages.filter((message) => message.n > after),
-    done: thread.pending === 0,
+    pending: thread.pending,
+    state: thread.state,
   };
   return { status: 200, data: poll };
 }
@@ -390,7 +424,9 @@ export async function fixtureFetch(
     const target = chat[1]!;
     if (method === "POST" && chat[2] === undefined) return chatPost(target, body);
     if (method === "GET" && chat[2] !== undefined) {
-      return chatPoll(target, chat[2], Number(url.searchParams.get("after") ?? "0") || 0);
+      const after = Number(url.searchParams.get("after") ?? "0") || 0;
+      const wait = Number(url.searchParams.get("wait") ?? "25");
+      return chatPoll(target, chat[2], after, Number.isFinite(wait) ? wait : 25);
     }
   }
 

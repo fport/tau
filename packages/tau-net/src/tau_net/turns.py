@@ -6,7 +6,9 @@ A reduced agent runs the turn:
   which rejects every request, so a network turn can never run a tier-2 action;
 - the persona is ``PersonaLoader(persona_dir, user_file=<public note>)`` (``persona/net.md`` by
   default), so ``persona/user.md`` never enters the prompt;
-- no ``tau.context`` sources (``context_sources=[]``): live nodes and budgets stay home;
+- no ``tau.context`` sources: live nodes and budgets stay home, and the one source a network
+  turn has, :func:`private_context`, hides the owner's profile and the host role, so a
+  ``travel`` profile never tells another tau that the owner is away (issue 106);
 - each contact has its own session; the address → session id map is kept in the store.
 
 The prompt is :data:`FRAME`, fixed English, with the untrusted text between markers. Every
@@ -52,7 +54,10 @@ __all__ = [
     "NetworkTurns",
     "build_frame",
     "format_history",
+    "NOT_SHARED",
     "is_no_reply",
+    "private_context",
+    "session_title",
     "strip_no_reply",
     "sanitize",
 ]
@@ -65,6 +70,8 @@ HISTORY_LINES = 10
 HISTORY_LINE_CHARS = 1000
 """One history line is cut at this length (the message itself never is)."""
 NO_HISTORY = "(none)"
+NOT_SHARED = "not shared with other taus"
+TITLE_PREFIX = "tau network · "
 
 FRAME = """\
 [tau network] A message from another tau: {name} at {address}, a contact of your owner.
@@ -79,6 +86,18 @@ with exactly [no reply] and nothing else.
 <<<BEGIN MESSAGE>>>
 {text}
 <<<END MESSAGE>>>"""
+
+
+def private_context() -> dict[str, str]:
+    """The ``## Now`` overrides of a network turn: the time stays, the owner's profile
+    (``home``, ``travel``, ...) and the host role do not reach the other tau."""
+    return {"profile": NOT_SHARED, "role": NOT_SHARED}
+
+
+def session_title(name: str, address: str) -> str:
+    """A readable ``/sessions`` title for a contact's network session."""
+    label = " ".join(str(name).split())[:60] or address
+    return f"{TITLE_PREFIX}{label}"
 
 
 def sanitize(text: str) -> str:
@@ -177,7 +196,7 @@ class NetworkTurns:
             session_id=session_id,
             session_store=self.session_store(),
             persona=self.persona_loader,
-            context_sources=[],
+            context_sources=[private_context],
             channel=CHANNEL,
         )
         self._agents[address] = agent
@@ -199,6 +218,7 @@ class NetworkTurns:
         except (MissingCredentials, ConfigError, OSError, ValueError) as exc:
             logger.error("net: cannot build the network-turn agent for %s: %s", address, exc)
             return None
+        self._name_session(agent, name, address)
         prompt = build_frame(name=name, address=address, text=text, history=history)
         parts: list[str] = []
         stop_reason = "end_turn"
@@ -219,6 +239,19 @@ class NetworkTurns:
             logger.info("net: no reply to %s", address)
             return None
         return reply[:MAX_MESSAGE_CHARS]
+
+    def _name_session(self, agent: TauAgent, name: str, address: str) -> None:
+        """Title the contact's session ``tau network · <name>`` before the first turn writes
+        the frame's first line as the title; older sessions titled by the frame are renamed."""
+        store = agent.store
+        if store is None:
+            return
+        try:
+            title = str(store.read_meta(agent.session_id).get("title") or "")
+            if not title or title.startswith("[tau network]"):
+                store.write_meta(agent.session_id, title=session_title(name, address))
+        except Exception:
+            logger.exception("net: could not title the session of %s", address)
 
     def close(self) -> None:
         for agent in self._agents.values():

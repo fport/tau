@@ -252,6 +252,20 @@ def test_no_reply_detection() -> None:
     assert not is_no_reply("[no reply] but here is more")
 
 
+def test_a_network_turn_hides_the_profile_and_titles_its_session(pair_factory) -> None:
+    # Issue 106: a "travel" profile in ## Now would tell another tau that the owner is away.
+    pair: Pair = pair_factory(replies=["Noted."])
+    pair.a_node.send(BOB, "Where is Bob this week?")
+    poll(pair.b_node)
+    [call] = pair.b.model.calls
+    assert "- Profile: not shared with other taus" in call.system_prompt
+    assert "- Host role: not shared with other taus" in call.system_prompt
+    assert f"- Profile: {pair.b.config.profile}" not in call.system_prompt
+    assert "- Date and time:" in call.system_prompt  # the time stays
+    agent = pair.b_node.turns.agent(ALICE)
+    assert agent.store.read_meta(agent.session_id)["title"] == "tau network · Alice's tau"
+
+
 def test_a_message_gets_a_network_turn_and_a_reply(pair_factory) -> None:
     pair: Pair = pair_factory(replies=["Bob is free on Friday afternoon."])
     a, b = pair.a, pair.b

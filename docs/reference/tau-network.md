@@ -288,7 +288,8 @@ The spine runs every minute (`* * * * *`):
 4. **Network turn.** For a `message` from an accepted contact, with `[component.net] auto_reply = true` (the default), the service builds an agent with `build_agent(channel="net", tools=[], ...)`:
    - The persona is `PersonaLoader(persona_dir, user_file=<public note>)`, where the public note is `persona/net.md`, so `user.md` never enters the prompt.
    - The approver is the default auto-reject.
-   - The agent runs in the contact's own session; the address-to-session-id map is kept in state.
+   - The agent runs in the contact's own session; the address-to-session-id map is kept in state. The session is titled `tau network · <name>`.
+   - The only context source is `private_context`: the `## Now` block keeps the time, but profile and host role read `not shared with other taus`, so a `travel` profile never tells another tau that the owner is away. Live nodes and budgets are left out.
 
    The prompt is the fixed English frame below:
 

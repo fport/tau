@@ -1,6 +1,6 @@
 # 114 · Touch ID: authorises enrollment and forget, unlock fallback, optional step-up
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L10 · Guard
 Packages: tau-guard, tau-tui, tau-core
@@ -53,7 +53,7 @@ It runs in the worker subprocess like the camera, and like the face check it can
 - [x] `LocalAuthFactor` has a macOS implementation and a fake; `pyobjc-framework-LocalAuthentication` is imported lazily; tests on Linux pass without it
 - [x] Re-enrollment and `forget` require the biometrics-only policy when Touch ID exists (fake factor), and the device-owner policy otherwise
 - [x] A changed `domainState` refuses with `touch_id_failed`; a context is invalidated after 30 s and on cancel; clamshell or no sensor gives `touch_id_unavailable`
-- [ ] After two face failures or a `camera_*` verdict, the lock screen and the terminal prompt offer the fallback (scripted `FakeGuard`); a passing fallback unlocks with `method = "touch_id"`, which is recorded in the audit
+- [x] After two face failures or a `camera_*` verdict, the lock screen and the terminal prompt offer the fallback (scripted `FakeGuard`); a passing fallback unlocks with `method = "touch_id"`, which is recorded in the audit
 - [x] `step_up = "face_or_touch_id"` falls back to Touch ID only after a non-counted face failure; `step_up = "touch_id"` never opens the camera; `none` applies only when the client and hub policies both say `none`
 - [x] No Touch ID path turns a `REJECTED` or unanswered approval into `APPROVED` (gate test with the fake factor)
 - [x] The LocalAuthentication reason string and all new chrome are i18n keys in `en` and `tr`
@@ -163,3 +163,34 @@ It runs in the worker subprocess like the camera, and like the face check it can
     merge, the docs site pages from the feat/guard docs pass (`docs/guides/guard.md`,
     `docs/reference/guard.md` and their `.tr.md` twins) still say Touch ID "comes with issue
     114" and need the fallback offer, the step-up modes, the pin and the doctor lines.
+- 2026-09-30: the channels' offer, on `feat/guard` (113's channels and this issue's service
+  work together). Commits: f62ee58 (terminal lock prompt), ccb4b7c (TUI lock screen), plus
+  ADR 0008's refinement ("The channels' offer" replaces "Left for the channels"). Every
+  non-(user) criterion is met, so the issue is done; the owner's live test stays open.
+  - **TUI.** While `GuardStatus.fallback` is set, `GuardScreen` shows `guard.fallback.<mode>`
+    with "press t" and the hint line reads `enter unlock · t Touch ID · esc cancel · ctrl+q
+    quit`. `t` in the empty field (`keys.TOUCH_ID_KEY`) runs `guard.unlock(method="touch_id")`;
+    it is printable, so it survives mosh, and acts only in the empty field while the offer shows
+    (the `?`-in-an-empty-composer convention), else it is typed; `t` + Enter works too. Enter
+    stays the face check. "Confirm in the macOS prompt on the Mac's screen." shows until the
+    hub's `touch_id` step arrives, Esc cancels, a failure keeps the lock with its reason and the
+    offer, a pass unlocks with "Unlocked (Touch ID). …". `/help` on the lock screen names the key
+    while it is offered.
+  - **Terminal.** `locked>` prints the offer ("… type t and press Enter.") when it appears and
+    again after each failed attempt; `t` + Enter (any case) runs the Touch ID unlock with the
+    same progress lines, Ctrl-C cancels it; without an offer `t` is a line that is not sent.
+  - **Telegram** is unchanged (it never unlocks). The audit half is the hub's and was already
+    covered (`verify`/`unlock` records with `method = "touch_id"`, tau-guard tests); the channel
+    tests check `FakeGuard.unlock_methods` and the Unlocked notice.
+  - **Tests.** Both channels with `FakeGuard(fallback=...)`: the offer only with a fallback and
+    only after two face failures or a `camera_*` verdict, `t` before the offer does nothing,
+    `t` runs `method = "touch_id"` and a pass unlocks, a failure keeps the lock and says why,
+    cancel (Esc / Ctrl-C), the Turkish texts; a snapshot `test_lock_fallback_80x24` (lock-screen
+    check plus the offer's texts). New chrome: `guard.prompt.fallback_how`,
+    `tui.guard.hint_fallback`, `tui.guard.fallback_how` in `en` and `tr`. Full suite: 2508
+    passed, 8 skipped, and the two timing-flaky tau-net universe tests, which passed on a rerun;
+    ruff check and format clean; `board.py --check` clean.
+  - **Still left, outside the criteria.** The docs site pages (`docs/guides/guard.md`,
+    `docs/reference/guard.md` and their `.tr.md` twins) still say Touch ID "comes with issue
+    114"; they need the fallback offer and its `t` key, the step-up modes, the pin and the
+    doctor lines.

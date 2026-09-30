@@ -90,16 +90,14 @@ network store (`profile.json`, or `net.profile` in cloud mode).
 
 `tau-net` carries the spine Worker as a kit: the bundled `worker.js`, its Wrangler
 configuration and, when the Worker uses D1, the migrations. Nothing else is needed from the
-tau repository. You need Node.js 22 or newer and a Cloudflare account; the Workers Free plan
-is enough. bun is optional: with `bun` and `bunx` on `PATH` the deploy uses `bun install` and
-`bunx wrangler`, else `npm install` and `npx wrangler`. Wrangler runs on Node.js either way,
-so bun needs `node` on `PATH` too.
+tau repository. You need a Cloudflare account; the Workers Free plan is enough. `tau net
+spine deploy` talks to the Cloudflare API itself (ADR 0014 §4), so you need no Node.js, bun or
+Wrangler.
 
 ```sh
 tau net spine init ~/tau-spine                            # address tau-spine.<subdomain>.workers.dev
 tau net spine init ~/tau-spine --address tau.example.com  # or a domain of yours
-bunx wrangler login                                       # once, in a browser (npx without bun)
-tau net spine deploy ~/tau-spine
+tau net spine deploy ~/tau-spine                          # asks for a Cloudflare API token once
 tau net init --name "Alice's tau"                         # the identity, if you have none yet
 tau net publish                                           # the card on the new spine
 tau net status
@@ -111,24 +109,47 @@ tau net status
   build step, and the storage, Durable Object and cron settings of the spine. With
   `--address HOST` it also sets the `ADDRESS` variable and a custom-domain route for `HOST`,
   whose zone must be on your Cloudflare account. A `*.workers.dev` host needs neither.
-- `worker.js`, `package.json` (Wrangler pinned), `.gitignore`, a `README.md`, and
-  `migrations/` when there is a D1 database.
+- `worker.js`, `package.json` (Wrangler pinned, for `--wrangler`), `.gitignore`, a
+  `README.md`, and `migrations/` when there is a D1 database.
 
 `tau net spine deploy DIR` takes these steps and stops at the first one that fails (exit 1):
 
-1. It picks bun (`bun`, `bunx` and `node` on `PATH`) or npm (`npx` and `npm`), and checks
-   that `wrangler whoami` shows a login. If not, it tells you to run `bunx wrangler login`
-   (`npx wrangler login` with npm). Below, `bunx` is `npx` with npm.
+1. **The API token.** `CLOUDFLARE_API_TOKEN` from the environment or the hub's `.env`
+   (`<TAU_HOME>/.env`: `--home`, `TAU_HOME`, else `~/.tau`). Without one it prints (and on a
+   local terminal opens) Cloudflare's token page with the permissions filled in: Workers
+   Scripts and Workers KV Storage to edit, Account Settings to read, Workers Routes to edit
+   for a custom domain. It reads the token at a hidden prompt, checks it with
+   `GET /user/tokens/verify` and saves it in `.env`.
+2. **The account.** `--account-id`, `account_id` in `wrangler.jsonc`, `CLOUDFLARE_ACCOUNT_ID`,
+   or the only account the token reaches; with several it asks.
+3. **The storage.** The KV namespace the deployed Worker already uses, else the one Wrangler
+   would have made (`tau-spine-tau`), else a new one. The account and namespace ids go into
+   `wrangler.jsonc`, so the next deploy updates the same Worker.
+4. **The upload.** `worker.js` as an ES module, with the metadata `wrangler deploy` would send:
+   vars, KV, the `Mailbox` Durable Object, rate limits, compatibility date and flags, and the
+   Durable Object migrations after the Worker's deployed tag (Wrangler's rule, so both paths
+   can take turns).
+5. **The secret.** `TAU_SPINE_TOKEN` in `.env` (generated when missing) becomes the Worker's
+   `HUB_TOKEN` secret. Neither token is ever on a command line, in a log or printed.
+6. **The address.** The cron trigger, then `workers.dev` on, or the custom domain attached.
+   `TAU_SPINE_URL` goes to `.env`, and `GET /hub/health` with the new token checks that the
+   spine answers (a new address may take a few minutes, which is only a note).
+
+`--json` serves the app's setup wizard: it reads `{"token", "account_id"}` (both optional) from
+stdin and prints one JSON object per line (`progress`, `need_token`, `choose_account`, `error`,
+`done`). `docs/reference/tau-universe.md` §4 lists every request.
+
+`tau net spine deploy DIR --wrangler` deploys with Wrangler instead. It needs Node.js 22 or
+newer; bun is optional (with `bun`, `bunx` and `node` on `PATH` it uses `bun install` and
+`bunx wrangler`, else `npm install` and `npx wrangler`):
+
+1. It checks that `wrangler whoami` shows a login. If not, it tells you to run
+   `bunx wrangler login` (`npx wrangler login` with npm).
 2. It runs `bun install` (`npm install`), `bunx wrangler deploy` and, with a D1 database,
-   `bunx wrangler d1 migrations apply DB --remote`. The first deploy creates the storage the
-   Worker needs in your account.
-3. It creates `TAU_SPINE_TOKEN` in the hub's `.env` (`<TAU_HOME>/.env`: `--home`,
-   `TAU_HOME`, else `~/.tau`) when it is missing, and sets it as the Worker's `HUB_TOKEN`
-   secret. The token goes to Wrangler on stdin: it is never on a command line and never
-   printed. The next deploy reuses it.
-4. It writes `TAU_SPINE_URL` to the same `.env`: `https://HOST` when the address is known
-   (`--address`, or `ADDRESS` in `wrangler.jsonc`), otherwise the `workers.dev` URL the
-   deploy printed.
+   `bunx wrangler d1 migrations apply DB --remote`.
+3. It sets `TAU_SPINE_TOKEN` as the Worker's `HUB_TOKEN` secret on Wrangler's stdin.
+4. It writes `TAU_SPINE_URL`: `https://HOST` when the address is known (`--address`, or
+   `ADDRESS` in `wrangler.jsonc`), otherwise the `workers.dev` URL the deploy printed.
 
 Contacts know your tau by its address, so choose it before you add any. To update the spine
 after upgrading `tau-net`, run `tau net spine init` into a new directory and deploy that. The
@@ -142,7 +163,7 @@ The kit is generated from `cloud/spine` in the repository by `bun run kit`. Its 
 
 ```sh
 tau net spine init DIR [--address HOST]   # write a spine project (see above)
-tau net spine deploy DIR [--address HOST] # deploy it and fill in TAU_SPINE_URL/TOKEN
+tau net spine deploy DIR [--address HOST] # deploy it (Cloudflare API; --wrangler), fill in .env
 tau net status                    # identity, spine health, card, contacts, store
 tau net name "Alice's tau"        # the card's display name (in the profile)
 tau net publish                   # PUT /hub/card (the hub also does it on start)

@@ -62,6 +62,8 @@ Read by the `telegram` hub service (see [Telegram](../guides/telegram.md)). With
 | `TAU_SPINE_TOKEN` | The spine's `HUB_TOKEN` secret. A password: never in logs, reprs or `/status`. |
 | `TAU_NET_IDENTITY` | The network identity as base64url JSON, in place of `TAU_DATA_DIR/net/identity.json`. Cloud mode sets it as a Worker secret. |
 | `TAU_NET_ALLOW_INSECURE` | `1` allows `http` to peers on `localhost` / `127.0.0.1`. Development only. |
+| `CLOUDFLARE_API_TOKEN` | The Cloudflare API token `tau net spine deploy` uses to deploy the spine without Node.js: Workers Scripts and Workers KV Storage to edit, Account Settings to read, Workers Routes to edit for a custom domain. The deploy prints the link that creates it, asks for it at a hidden prompt and saves it here. A password: only ever sent in the `Authorization` header. The hub itself never reads it. |
+| `CLOUDFLARE_ACCOUNT_ID` | Optional: the account `tau net spine deploy` uses when neither `--account-id` nor `account_id` in the spine's `wrangler.jsonc` names one. Wrangler reads it too. Not a secret. |
 
 In cloud mode the brain container gets its credentials from the spine's Worker secrets: every model credential above except `AWS_PROFILE` and `TAU_OLLAMA_URL` (`ANTHROPIC_*`, the static and bearer AWS variables, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`), `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TAU_NET_IDENTITY` and `TAU_LANG`, each only when it is set ([cloud mode](../guides/cloud-mode.md), §5 of the [protocol](tau-network.md)).
 
@@ -92,7 +94,7 @@ The remote-access scripts themselves read `infra/remote/config.env` (defaults) a
 |---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code, when the macOS login keychain looks locked over SSH |
 | `GH_TOKEN` | `gh` |
-| `CLOUDFLARE_API_TOKEN` | `wrangler`, including the [backup upload](../guides/backups.md) |
+| `CLOUDFLARE_API_TOKEN` | `wrangler`, including the [backup upload](../guides/backups.md), and `tau net spine deploy` (which also reads it from `<TAU_HOME>/.env`) |
 
 Keep the file `0600` inside a `0700` directory.
 

@@ -21,24 +21,43 @@ Tasarım [ADR 0007](../adr/0007-cloud-mode-and-tau-network.md) ve [ADR 0010](../
 
 ## 2. Spine'ını deploy et { #2-deploy-your-spine }
 
-Node.js 22 veya daha yenisine ve bir Cloudflare hesabına ihtiyacın var; Workers Free planı yeterli. [bun](https://bun.sh) isteğe bağlı: bun `PATH` üzerindeyse tau `bun install` ve `bunx wrangler` kullanır, değilse `npm install` ve `npx wrangler`. Wrangler her iki durumda da Node.js üzerinde çalışır. Kişiler tau'nu adresiyle tanır, bu yüzden adresi herhangi bir kişi eklemeden önce seç.
+Bir Cloudflare hesabına ihtiyacın var; Workers Free planı yeterli. Başka bir şey gerekmez: tau spine'ı Cloudflare API'si üzerinden deploy eder, yani Node.js gerekmez. Kişiler tau'nu adresiyle tanır, bu yüzden adresi herhangi bir kişi eklemeden önce seç.
 
 === "Spine kit'iyle"
 
     Spine `tau-net` içinde gelir, dolayısıyla bu yol depo olmadan da çalışır:
 
     ```sh
-    bunx wrangler login                                       # once, in a browser (npx without bun)
     tau net spine init ~/tau-spine --address tau.example.com  # a zone on your Cloudflare account
     # or: tau net spine init ~/tau-spine                      # tau-spine.<your-subdomain>.workers.dev
     tau net spine deploy ~/tau-spine
     ```
 
-    - `tau net spine init DIR`, yeni ya da boş bir dizine bir Wrangler projesi yazar: `wrangler.jsonc` (yerel mod), paketlenmiş `worker.js`, Wrangler sürümü sabitlenmiş bir `package.json`, `.gitignore` ve bir `README.md`. `--address`, `ADDRESS` değişkenini ve özel alan adı (custom domain) rotasını ayarlar.
-    - `tau net spine deploy DIR`, Wrangler oturumunu kontrol eder, `bun install` ve `bunx wrangler deploy` çalıştırır (bun yoksa `npm install` ve `npx wrangler deploy`), eksikse `<TAU_HOME>/.env` içinde `TAU_SPINE_TOKEN` oluşturur, onu Worker'ın `HUB_TOKEN` secret'ı olarak ayarlar (stdin üzerinden, asla ekrana yazdırmadan) ve `TAU_SPINE_URL` değerini aynı `.env` dosyasına yazar.
+    - `tau net spine init DIR`, yeni ya da boş bir dizine spine projesini yazar: `wrangler.jsonc` (yerel mod), paketlenmiş `worker.js`, Wrangler yolu için bir `package.json`, `.gitignore` ve bir `README.md`. `--address`, `ADDRESS` değişkenini ve özel alan adı (custom domain) rotasını ayarlar.
+    - İlk `tau net spine deploy DIR` bir Cloudflare **API token**'ına ihtiyaç duyar: Cloudflare API'si için, yalnızca izinlerinin verdiği işleri yapabilen bir anahtar.
+        - Deploy, izinleri doldurulmuş Cloudflare token sayfasının bağlantısını yazdırır; bu bilgisayarın başındaysan sayfayı açar da. İzinler şunlar: düzenleme için *Workers Scripts* ve *Workers KV Storage*, okuma için *Account Settings* ve özel alan adı için düzenleme yetkisiyle *Workers Routes*.
+        - O sayfada **Continue to summary**, sonra **Create Token** seç, token'ı kopyala ve istemdeki yere yapıştır. Ekranda görünmez.
+        - tau token'ı Cloudflare'e doğrulatır ve bir sonraki deploy için `<TAU_HOME>/.env` içine `CLOUDFLARE_API_TOKEN` olarak kaydeder.
+    - Deploy ardından spine'ı Cloudflare hesabına kurar:
+        - Worker'ı yükler, depolamasını oluşturur, hesap ve depolama kimliklerini `wrangler.jsonc` içine kaydeder;
+        - eksikse `.env` içinde `TAU_SPINE_TOKEN` oluşturur ve onu Worker'ın `HUB_TOKEN` secret'ı olarak ayarlar;
+        - adresi açar, `TAU_SPINE_URL` değerini aynı `.env` dosyasına yazar ve spine'ın yanıt verdiğini kontrol eder.
+
+        Token birden çok Cloudflare hesabına erişiyorsa hangisini kullanacağını sorar (`--account-id` bunu baştan belirtir).
     - `tau-net`'i yükselttikten sonra spine'ı güncellemek için `tau net spine init` komutunu yeni bir dizine çalıştır ve onu deploy et. Worker adını ve depolamasını korur.
 
-    `tau-net` README'si ve [evren referansının 4. bölümü](../reference/tau-universe.md#4-the-spine-kit-tau-net-spine) kit'i eksiksiz anlatır.
+    `tau-net` README'si ve [evren referansının 4. bölümü](../reference/tau-universe.md#4-the-spine-kit-tau-net-spine) kit'i ve her API çağrısını eksiksiz anlatır.
+
+=== "Wrangler ile"
+
+    Wrangler'ı (Cloudflare'in komut satırı aracı) zaten kullanıyorsan aynı projeyi onunla deploy et. Node.js 22 veya daha yenisi gerekir. [bun](https://bun.sh) isteğe bağlı: bun `PATH` üzerindeyse tau `bun install` ve `bunx wrangler` kullanır, değilse `npm install` ve `npx wrangler`. Wrangler her iki durumda da Node.js üzerinde çalışır.
+
+    ```sh
+    bunx wrangler login                               # once, in a browser (npx without bun)
+    tau net spine deploy ~/tau-spine --wrangler
+    ```
+
+    `--wrangler`, Wrangler oturumunu kontrol eder, `bun install` ve `bunx wrangler deploy` çalıştırır (bun yoksa `npm install` ve `npx wrangler deploy`), eksikse `<TAU_HOME>/.env` içinde `TAU_SPINE_TOKEN` oluşturur, onu Worker'ın `HUB_TOKEN` secret'ı olarak ayarlar (stdin üzerinden, asla ekrana yazdırmadan) ve `TAU_SPINE_URL` değerini aynı `.env` dosyasına yazar. İki yol da Worker'a aynı Durable Object geçişlerini kaydeder, bu yüzden biri diğerinden sonra deploy edebilir.
 
 === "Kaynaktan"
 

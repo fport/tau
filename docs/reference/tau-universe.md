@@ -266,13 +266,52 @@ A report works like this:
   - `worker.js` (and `migrations/` when there is a D1 binding);
   - a `package.json` with Wrangler pinned as a dev dependency;
   - `.gitignore` and a `README.md`.
-- **`tau net spine deploy DIR`** takes these steps, and never prints the token:
+- **`tau net spine deploy DIR [--address HOST] [--account-id ID] [--json]`** deploys it through the Cloudflare API ([ADR 0014](../adr/0014-one-installer-and-onboarding.md) §4). It needs no Node.js, bun or Wrangler, and it takes the steps below.
+
+  1. **The API token.** It is `CLOUDFLARE_API_TOKEN` from the environment, else from `<TAU_HOME>/.env`, else asked for:
+     - The deploy prints, and on a local terminal opens, Cloudflare's token page with the permissions pre-filled. It then reads the token at a hidden prompt, or from `--json` stdin.
+     - The page is a user-token [template URL](https://developers.cloudflare.com/fundamentals/api/how-to/account-owned-token-template/): `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=<URL-encoded JSON>&accountId=%2A&zoneId=all&name=tau%20spine`.
+     - The JSON is `[{"key": "workers_scripts", "type": "edit"}, {"key": "workers_kv_storage", "type": "edit"}, {"key": "account_settings", "type": "read"}]`, plus `{"key": "workers_routes", "type": "edit"}` for a custom domain.
+     - In the dashboard these are *Account > Workers Scripts > Edit*, which covers the upload, the Durable Object, rate limits, secrets, crons and `workers.dev`, and *Account > Workers KV Storage > Edit*. *Account > Account Settings > Read* lists the accounts, and *Zone > Workers Routes > Edit* attaches a custom domain.
+     - `GET /user/tokens/verify` must answer `status: "active"`. A token that was asked for is then written to `.env` (mode `0600`, only that line).
+  2. **The account.** It is `--account-id`, else `account_id` in `wrangler.jsonc`, else `CLOUDFLARE_ACCOUNT_ID`, else the only one `GET /accounts?page=1&per_page=50` lists. With several accounts it asks for one, or `--json` ends with `choose_account`.
+  3. **The `workers.dev` subdomain**, when there is no custom domain: `GET /accounts/{account}/workers/subdomain`. When there is none yet, the deploy stops before anything is written and points at `https://dash.cloudflare.com/{account}/workers/onboarding`. An `--address` on `workers.dev` must equal `tau-spine.<subdomain>.workers.dev`.
+  4. **The deployed Worker**, if any: `GET /accounts/{account}/workers/scripts`, for its `migration_tag`.
+  5. **The KV namespace** of each binding without an `id`. It is the one the deployed Worker already binds (`GET …/workers/scripts/tau-spine/settings`), else the namespace titled `tau-spine-<binding>`, Wrangler's name for it (`GET /accounts/{account}/storage/kv/namespaces?page=1&per_page=100`), else a new one (`POST` there with `{"title": "tau-spine-tau"}`).
+     - `account_id` and the namespace ids are then written into `wrangler.jsonc`, as Wrangler records what it provisions. The comments stay.
+     - An `--address` the project does not carry yet is written there too: `ADDRESS` and the custom-domain route, as `init --address` writes them.
+  6. **The upload:** `PUT /accounts/{account}/workers/scripts/tau-spine`, `multipart/form-data`.
+     - The `worker.js` part has the file name `worker.js` and the type `application/javascript+module`.
+     - The `metadata` part (`application/json`) is what `wrangler deploy` builds from the same config: `main_module: "worker.js"`, then `bindings`, `compatibility_date`, `compatibility_flags`, `migrations` and `observability`.
+     - The `bindings` are the vars as `plain_text` (`json` for a value that is not a string), `{"type": "kv_namespace", "namespace_id"}`, `{"type": "durable_object_namespace", "class_name": "Mailbox"}` and `{"type": "ratelimit", "namespace_id", "simple": {"limit", "period"}}`.
+     - The migrations follow Wrangler's rule, so the two paths can take turns on one Worker. The tags come from `wrangler.jsonc`. Without a deployed tag the deploy sends `{"new_tag": "v1", "steps": [{"new_sqlite_classes": ["Mailbox"]}]}`. With the last tag deployed it sends none. With an earlier or unknown tag it sends `old_tag` and the steps after it, or all of them.
+  7. **The secret:** `PUT …/workers/scripts/tau-spine/secrets` with `{"name": "HUB_TOKEN", "text": <TAU_SPINE_TOKEN>, "type": "secret_text"}`. The token is generated in `.env` when it is missing.
+  8. **The cron:** `PUT …/schedules` with `[{"cron": "* * * * *"}]`.
+  9. **The address:** `POST …/subdomain` with `{"enabled": true}` for `workers.dev`. For a custom domain it sends `{"enabled": false}`, as Wrangler does, then `PUT /accounts/{account}/workers/domains` with `{"hostname": HOST, "service": "tau-spine"}`.
+  10. **The hub's side:** `TAU_SPINE_URL=https://<address>` in `.env`, then `GET https://<address>/hub/health` with the new token, up to six times, 5 s apart. A spine that does not answer yet is a note, not a failure: a new address can take minutes.
+
+  Errors:
+  - Every error is one line naming what failed. A `401`/`403` or an authentication code (`10000`, `9109`) names the permission the token lacks.
+  - A config the API path cannot deploy is refused with a pointer to `--wrangler`: a D1 database, an R2 bucket, a zone route, a build step.
+  - The API token travels only in the `Authorization` header. The hub token travels only in the secret's body and the health check's header.
+
+  **`--json`** is for the app's wizard. It reads one JSON object from stdin, `{"token"?: string, "account_id"?: string}`, and prints one JSON object per line on stdout:
+
+  | `type` | Fields | Meaning |
+  |---|---|---|
+  | `progress` | `key`, `text`, `fields` | a step, with its message key, its text in the UI language and the message's fields |
+  | `need_token` | `link`, `scopes`, `permissions`, `message` | no token: open `link`, then run again with `{"token": …}`; exit 1 |
+  | `choose_account` | `accounts` (`[{"id", "name"}]`), `message` | several accounts: run again with `{"account_id": …}` (the verified token is in `.env` by now); exit 1 |
+  | `error` | `message` | the deploy stopped; exit 1 |
+  | `done` | `url`, `account_id`, `token_created`, `healthy` | deployed; exit 0 |
+
+- **`tau net spine deploy DIR --wrangler`** deploys with Wrangler instead. It takes these steps, and never prints the token:
   1. picks the package tools: bun when `bun` and `bunx` are on `PATH` (then `node` must be too, since Wrangler runs on Node.js), else npm when `npx` and `npm` are; below, `bunx` is `npx` with npm. It checks that `bunx wrangler@<pinned> whoami --json` (`npx --yes wrangler@<pinned> whoami --json`) shows a login (its output, which holds the account's e-mail, is never printed); otherwise it prints `bunx wrangler login` (`npx wrangler login`) and stops;
   2. runs `bun install` (`npm install --no-audit --no-fund`) and `bunx wrangler deploy`, then `bunx wrangler d1 migrations apply DB --remote` only when the project has a D1 binding;
   3. generates `TAU_SPINE_TOKEN` in the hub's `.env` when it is missing, and feeds it to `bunx wrangler secret put HUB_TOKEN` through stdin. The token never appears in argv, and any echoed line containing it is masked;
   4. writes `TAU_SPINE_URL` into the hub's `.env`: `https://<address>` from `--address`, or the `workers.dev` URL printed by the deploy.
 
-  Afterwards `tau net init` and `tau net publish` finish the setup.
+After either path, `tau net init` and `tau net publish` finish the setup.
 
 ## 5. Visitors: the universe's identity, inbox and chat
 

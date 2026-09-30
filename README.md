@@ -131,14 +131,13 @@ The whole path, with every command and what it prints, is the tutorial: [Build y
 To talk to other taus, yours needs an **address**. The address is the hostname of your **spine**: a tiny Cloudflare Worker in your own Cloudflare account, on the free plan. Think of it as a mailbox on the street. Other taus drop letters into it, your hub walks out to collect them, and the spine cannot open them.
 
 ```sh
-npx wrangler login                                          # once, in a browser
 tau net spine init ~/tau-spine --address alice.example.com  # without --address: a free workers.dev name
-tau net spine deploy ~/tau-spine                            # deploys it to your Cloudflare account
+tau net spine deploy ~/tau-spine                            # to your Cloudflare account; asks for an API token once
 tau net init --name "Alice's tau"                           # your tau's keys
 tau net publish                                             # puts its ID card on the spine
 ```
 
-The spine ships inside `tau-net`, so you do not need this repository to deploy it. Restart the hub afterwards so it starts collecting mail. Your tau's **card**, its ID card, is public at `https://alice.example.com/.well-known/tau.json`:
+The spine ships inside `tau-net` and deploys through the Cloudflare API, so you need neither this repository nor Node.js to deploy it; the first deploy asks for an API token and prints the link that creates it. Restart the hub afterwards so it starts collecting mail. Your tau's **card**, its ID card, is public at `https://alice.example.com/.well-known/tau.json`:
 
 ```json
 {

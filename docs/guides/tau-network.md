@@ -19,24 +19,43 @@ The design is in [ADR 0007](../adr/0007-cloud-mode-and-tau-network.md) and [ADR 
 
 ## 2. Deploy your spine
 
-You need Node.js 22 or newer and a Cloudflare account; the Workers Free plan is enough. [bun](https://bun.sh) is optional: tau uses `bun install` and `bunx wrangler` when bun is on `PATH`, else `npm install` and `npx wrangler`. Wrangler runs on Node.js either way. Contacts know your tau by its address, so choose it before you add any.
+You need a Cloudflare account; the Workers Free plan is enough. Nothing else: tau deploys the spine through the Cloudflare API, so you need no Node.js. Contacts know your tau by its address, so choose it before you add any.
 
 === "With the spine kit"
 
     The spine ships inside `tau-net`, so this works without the repository:
 
     ```sh
-    bunx wrangler login                                       # once, in a browser (npx without bun)
     tau net spine init ~/tau-spine --address tau.example.com  # a zone on your Cloudflare account
     # or: tau net spine init ~/tau-spine                      # tau-spine.<your-subdomain>.workers.dev
     tau net spine deploy ~/tau-spine
     ```
 
-    - `tau net spine init DIR` writes a Wrangler project into a new or empty directory: `wrangler.jsonc` (local mode), the bundled `worker.js`, a `package.json` with Wrangler pinned, `.gitignore` and a `README.md`. `--address` sets the `ADDRESS` variable and a custom-domain route.
-    - `tau net spine deploy DIR` checks the Wrangler login, runs `bun install` and `bunx wrangler deploy` (`npm install` and `npx wrangler deploy` without bun), creates `TAU_SPINE_TOKEN` in `<TAU_HOME>/.env` when it is missing, sets it as the Worker's `HUB_TOKEN` secret (on stdin, never printed), and writes `TAU_SPINE_URL` to the same `.env`.
+    - `tau net spine init DIR` writes the spine project into a new or empty directory: `wrangler.jsonc` (local mode), the bundled `worker.js`, a `package.json` for the Wrangler path, `.gitignore` and a `README.md`. `--address` sets the `ADDRESS` variable and a custom-domain route.
+    - The first `tau net spine deploy DIR` needs a Cloudflare **API token**, a key for Cloudflare's API that can do only what its permissions allow.
+        - The deploy prints a link to Cloudflare's token page with the permissions filled in, and opens it when you sit at this computer. The permissions are *Workers Scripts* and *Workers KV Storage* to edit, *Account Settings* to read and, for a custom domain, *Workers Routes* to edit.
+        - On that page, choose **Continue to summary**, then **Create Token**, copy the token and paste it at the prompt. It is not shown.
+        - tau checks the token with Cloudflare and saves it as `CLOUDFLARE_API_TOKEN` in `<TAU_HOME>/.env` for the next deploy.
+    - The deploy then puts the spine into your Cloudflare account:
+        - it uploads the Worker, creates its storage and records the account and storage ids in `wrangler.jsonc`;
+        - it creates `TAU_SPINE_TOKEN` in `.env` when it is missing and sets it as the Worker's `HUB_TOKEN` secret;
+        - it turns on the address, writes `TAU_SPINE_URL` to the same `.env` and checks that the spine answers.
+
+        When the token reaches several Cloudflare accounts, it asks which one (`--account-id` names it up front).
     - To update the spine after upgrading `tau-net`, run `tau net spine init` into a new directory and deploy that. The Worker keeps its name and its storage.
 
-    The `tau-net` README and [the universe reference, §4](../reference/tau-universe.md#4-the-spine-kit-tau-net-spine) describe the kit in full.
+    The `tau-net` README and [the universe reference, §4](../reference/tau-universe.md#4-the-spine-kit-tau-net-spine) describe the kit and every API call in full.
+
+=== "With Wrangler"
+
+    If you already use Wrangler, Cloudflare's command-line tool, deploy the same project with it. You need Node.js 22 or newer. [bun](https://bun.sh) is optional: tau uses `bun install` and `bunx wrangler` when bun is on `PATH`, else `npm install` and `npx wrangler`. Wrangler runs on Node.js either way.
+
+    ```sh
+    bunx wrangler login                               # once, in a browser (npx without bun)
+    tau net spine deploy ~/tau-spine --wrangler
+    ```
+
+    `--wrangler` checks the Wrangler login, runs `bun install` and `bunx wrangler deploy` (`npm install` and `npx wrangler deploy` without bun), creates `TAU_SPINE_TOKEN` in `<TAU_HOME>/.env` when it is missing, sets it as the Worker's `HUB_TOKEN` secret (on stdin, never printed), and writes `TAU_SPINE_URL` to the same `.env`. Both paths record the same Durable Object migrations on the Worker, so either can deploy after the other.
 
 === "From source"
 

@@ -131,14 +131,13 @@ Her komutu ve ne yazdırdığını gösteren yolun tamamı eğitim sayfasında: 
 Başka tau'larla konuşmak için tau'nun bir **adrese** ihtiyacı var. Adres, **spine**'ının hostname'idir. Spine, kendi Cloudflare hesabında, ücretsiz planda çalışan minik bir Cloudflare Worker'ı (Cloudflare'in sunucularında çalışan küçük bir program). Onu sokaktaki bir posta kutusu gibi düşün: başka tau'lar mektuplarını içine atar, hub'ın gidip onları alır, spine ise mektupları açamaz.
 
 ```sh
-npx wrangler login                                          # once, in a browser
 tau net spine init ~/tau-spine --address alice.example.com  # without --address: a free workers.dev name
-tau net spine deploy ~/tau-spine                            # deploys it to your Cloudflare account
+tau net spine deploy ~/tau-spine                            # to your Cloudflare account; asks for an API token once
 tau net init --name "Alice's tau"                           # your tau's keys
 tau net publish                                             # puts its ID card on the spine
 ```
 
-Sırasıyla: Cloudflare'e bir kez giriş yaparsın, spine projesini yazarsın (`--address` vermezsen ücretsiz bir `workers.dev` adresi alırsın), onu kendi hesabına deploy edersin, tau'nun anahtarlarını oluşturursun ve kimlik kartını spine'a koyarsın. Spine `tau-net`'in içinde gelir, yani deploy etmek için bu depoya ihtiyacın yok. Ardından hub'ı yeniden başlat ki postayı toplamaya başlasın.
+Sırasıyla: spine projesini yazarsın (`--address` vermezsen ücretsiz bir `workers.dev` adresi alırsın), onu kendi hesabına deploy edersin (ilk seferde, bağlantısını deploy'un verdiği bir Cloudflare API token'ı ister), tau'nun anahtarlarını oluşturursun ve kimlik kartını spine'a koyarsın. Spine `tau-net`'in içinde gelir ve Cloudflare API'si üzerinden deploy edilir, yani bunun için ne bu depoya ne de Node.js'e ihtiyacın var. Ardından hub'ı yeniden başlat ki postayı toplamaya başlasın.
 
 tau'nun **kartı**, yani kimlik kartı, `https://alice.example.com/.well-known/tau.json` adresinde herkese açıktır:
 

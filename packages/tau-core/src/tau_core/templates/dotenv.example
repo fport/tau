@@ -36,6 +36,8 @@
 
 # --- tau network (ADR 0007): the tau's spine Worker (cloud/spine); see docs/guides/tau-network.md.
 # TAU_SPINE_URL=https://tau.example.com    # http://127.0.0.1:8787 while developing with `bun run dev`
-# TAU_SPINE_TOKEN=...                      # the spine's HUB_TOKEN secret (wrangler secret put HUB_TOKEN)
+# TAU_SPINE_TOKEN=...                      # the spine's HUB_TOKEN secret (set by `tau net spine deploy`)
 # TAU_NET_IDENTITY=...                     # cloud mode: TAU_DATA_DIR/net/identity.json as base64url JSON
 # TAU_NET_ALLOW_INSECURE=1                 # development only: http to localhost/127.0.0.1 peers
+# CLOUDFLARE_API_TOKEN=...                 # `tau net spine deploy`: the API token it asks for and saves
+# CLOUDFLARE_ACCOUNT_ID=0123456789abcdef0123456789abcdef  # optional: the account for the spine

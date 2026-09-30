@@ -44,7 +44,7 @@ A `claim` binds a handle, a GitHub login proven by a sign-in, to a tau's address
 
 - `tau net universe claim` builds the payload `{"v": 1, "kind": "claim", "universe", "address", "ts", "nonce"}` (in that order, compact JSON), signs it like any request, and prints `https://<universe>/claim#<b64u(wire JSON)>`: the fragment is the base64url of the compact wire body `{"payload": ..., "sig": ...}`, the same shape as a `join`. The hub sends nothing.
 - The owner opens the link and signs in with GitHub there; the page posts the wire body to the universe (`POST /api/claim`, §2), which checks the tau's signature against the card at `address` and the GitHub session, then binds the handle.
-- A claim is valid while `abs(now - ts) ≤ 3600` (the other kinds: 300 s). Like every request it also needs a `ts` greater than the last one the universe accepted from the address, so a report the hub sends after the link was made spoils the link: `tau net universe claim` makes a new one. Its `nonce` makes it single-use.
+- A claim is valid while `abs(now - ts) ≤ 3600` (the other kinds: 300 s). Its `nonce`, not its `ts`, guards against replay (§2): a report the hub sends after the link was made does not spoil the link, and a used nonce is `stale`. After an hour, `tau net universe claim` makes a new link.
 - Anyone who opens the link can bind their own GitHub login to that tau, so the link is shown only to the owner and never shared.
 - `GET /api/taus/<address>` carries `handle` once one is bound, and `tau net universe status` shows it.
 

@@ -19,10 +19,9 @@ talks to it with signed requests whose wire body has the shape of an envelope::
 - **Claims** (ADR 0013 §6, issue 157): a ``claim`` is not posted by the tau. :func:`claim_link`
   signs one and puts its wire body into ``https://<universe>/claim#<b64u(wire JSON)>``; the
   owner opens the link, signs in with GitHub there, and the universe binds the handle to the
-  address. A claim is valid while ``abs(now - ts)`` is at most :data:`CLAIM_VALID_SECONDS`
-  and, like every request, only with a ``ts`` greater than the last one the universe accepted
-  from the address (a report the hub sends after the link was made spoils it: make a new
-  one); its random ``nonce`` makes it single-use.
+  address. A claim is valid while ``abs(now - ts)`` is at most :data:`CLAIM_VALID_SECONDS`;
+  its random ``nonce``, not its ``ts``, guards against replay, so a report the hub sends after
+  the link was made does not spoil it, and a used nonce is refused.
 
 :class:`UniverseClient` builds, signs and posts them, reads the public snapshot and one tau's
 entry, and maps the universe's error codes to :class:`UniverseError`. The scheme is the one of

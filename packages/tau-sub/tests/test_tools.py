@@ -18,7 +18,7 @@ from tau_core import (
     effect_of,
     tier_of,
 )
-from tau_core.testing import FakeModel, ScriptedApprover, ToolCall
+from tau_core.testing import FakeGuard, FakeModel, ScriptedApprover, ToolCall
 from tau_sub import CREATE_EFFECT, TOOLS, SubRegistry, tools
 from tau_sub.tools import ask_sub, create_sub
 
@@ -96,6 +96,29 @@ def test_a_tier2_call_inside_ask_sub_asks_the_turns_approver(
     else:
         assert SideEffects.bells == []
         assert answer.endswith("The owner did not approve: ring_bell.")
+
+
+def test_ask_sub_runs_under_the_delegating_turns_guard(config: Config) -> None:
+    save_coach(config)
+    sub_model = FakeModel(["Rest today."])
+    use(config, sub_model)
+    guard = FakeGuard(state="unlocked")
+    model = FakeModel([[ToolCall("ask_sub", {"name": "coach", "question": "Train?"})], "Done."])
+    agent = build_agent(config=config, model=model, tools=TOOLS, guard=guard)
+    run(agent, "Ask my coach.")
+    admitted = [detail.channel for method, detail in guard.calls if method == "admit"]
+    # the main turn, the ask_sub call (tier 0 is exempt), then the sub-tau's own turn
+    assert admitted[0] == agent.channel and admitted[-1] == "sub:coach"
+    assert tool_result(model) == "/coach answered:\nRest today."
+
+    # locked meanwhile: the delegated turn is refused by the same guard, the model never runs
+    guard.set_state("locked")
+    sub_model.calls.clear()
+    context = SimpleNamespace(agent=agent.agent, cancel_signal=threading.Event())
+    answer = asyncio.run(ask_sub(name="coach", question="Train?", tool_context=context))
+    assert sub_model.calls == []
+    assert guard.calls[-1][0] == "admit" and guard.calls[-1][1].channel == "sub:coach"
+    assert answer.startswith("/coach gave no answer (the turn ended with locked).")
 
 
 def test_without_a_turn_approver_tier2_is_refused(config: Config) -> None:

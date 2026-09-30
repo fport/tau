@@ -3,7 +3,9 @@
 - ``ask_sub`` (tier 0) runs a sub-tau for one turn and returns its answer. The sub-tau's own
   tool calls pass through its own tier gate, whose approver is the approver of the turn that
   called ``ask_sub`` (found through the tool context, see :mod:`tau_sub.approval`): a tier-2
-  call asks the owner on the channel the conversation came from. When no approver can be
+  call asks the owner on the channel the conversation came from. The sub-tau runs under that
+  turn's owner guard too (ADR 0008), so a delegation is admitted and stepped up exactly as the
+  delegating channel is. When no approver can be
   found (the tool was called outside a tau agent), every tier-2 call of the sub-tau is refused
   and the answer says so. Nothing is ever approved on the owner's behalf.
 - ``create_sub`` (tier 2) writes a new definition: it activates a new agent configuration that
@@ -43,6 +45,7 @@ from tau_core import (
     open_session_store,
     tau_tool,
 )
+from tau_core.guard import DISCOVER
 
 from tau_sub.agent import build_sub_agent
 from tau_sub.approval import DelegatedApprover, RefusingApprover, turn_approver, turn_gate
@@ -191,6 +194,7 @@ async def ask_sub(name: str, question: str, tool_context: ToolContext) -> str:
         return f"The turn was cancelled; /{sub.name} was not asked."
 
     caller = getattr(tool_context, "agent", None)
+    gate = turn_gate(caller)
     inner = turn_approver(caller)
     approver: Approver
     if inner is not None:
@@ -207,10 +211,12 @@ async def ask_sub(name: str, question: str, tool_context: ToolContext) -> str:
             session_store=store,
             model=model_factory(sub.role) if model_factory is not None else None,
             tools=catalog_factory() if catalog_factory is not None else None,
+            # The delegating turn's owner guard (ADR 0008); resolved from the configuration
+            # when no tau turn called the tool.
+            guard=gate.guard if gate is not None else DISCOVER,
         )
     except (ConfigError, MissingCredentials, SubTauError, OSError, ValueError) as exc:
         return f"/{sub.name} cannot run: {exc}"
-    gate = turn_gate(caller)
     with contextlib.suppress(Exception):
         store.write_meta(
             agent.session_id,

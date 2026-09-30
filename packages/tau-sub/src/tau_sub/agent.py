@@ -3,7 +3,9 @@
 Every sub-tau agent comes from ``tau_core.build_agent`` with an explicit tool list (the
 allowlist, resolved in the tool catalog), an explicit persona, the model role of the
 definition, the channel ``sub:<name>`` and the approver of whoever runs it. The tier gate is
-tau-core's own: a tier-2 tool asks that approver on every call.
+tau-core's own: a tier-2 tool asks that approver on every call. The owner guard (ADR 0008) is
+resolved from the configuration like any other agent's, unless the caller passes its own: a
+delegation (``ask_sub``) runs under the guard of the turn that delegated.
 
 **The prompt.** ``PersonaLoader`` reads a persona file and ``user.md`` and adds the ``## Now``
 block; it strips HTML comments but knows nothing of front matter. So the persona the model
@@ -39,6 +41,7 @@ from tau_core import (
     build_agent,
     open_session_store,
 )
+from tau_core.guard import DISCOVER, Guard
 
 from tau_sub._files import private_dir, write_private
 from tau_sub.definition import (
@@ -166,12 +169,14 @@ def build_sub_agent(
     model: Model | None = None,
     tools: Iterable[AgentTool] | None = None,
     events: EventBus | None = None,
+    guard: Guard | None | object = DISCOVER,
 ) -> TauAgent:
     """The agent of ``sub``: its role, its allowlist only, its prompt, channel ``sub:<name>``.
 
     ``approver`` decides every tier-2 call; pass the approver of the channel the sub-tau runs
     on (never one that approves on its own). ``tools`` replaces the discovered catalog the
-    allowlist is resolved in.
+    allowlist is resolved in. ``guard`` is ``build_agent``'s: the default resolves the owner
+    guard from the configuration; a delegation passes the guard of the turn that delegated.
     """
     return build_agent(
         config=config,
@@ -184,6 +189,7 @@ def build_sub_agent(
         events=events,
         persona=persona_loader(config, sub),
         channel=sub.channel,
+        guard=guard,
     )
 
 

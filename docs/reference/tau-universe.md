@@ -43,8 +43,10 @@ The universe's own host is the `UNIVERSE` variable when it is set, otherwise the
 
 | Method and path | Response |
 |---|---|
-| `GET /` | the landing page (static) |
+| `GET /` | the landing page (static); redirects to `/tr/` once when the `lang` cookie says `tr`, or when there is no cookie and `Accept-Language` prefers Turkish |
+| `GET /how-it-works` | how tau works, for newcomers (static) |
 | `GET /universe` | the universe page (static; its script reads `/api/universe`) |
+| `GET /tr/`, `/tr/how-it-works`, `/tr/universe` | the Turkish pages; `?lang=en\|tr` on any page stores the choice in the `lang` cookie and redirects to the clean URL |
 | `GET /api/universe` | `200` the public snapshot (below); `Cache-Control: public, max-age=60`; `Access-Control-Allow-Origin: *` |
 | `GET /api/taus/<address>` | `200` the tau's snapshot fields at the top level plus `links: [{"peer": address, "messages": int}]` (visible links only), or `404 {"error": "not_found"}` |
 | `POST /api/join` | a signed `join` |

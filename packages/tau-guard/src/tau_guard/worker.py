@@ -62,8 +62,9 @@ Operations:
 - ``selftest``: the platform and the imports, ``{"type": "verdict", "ok", "reason", "checks"}``
   (``reason`` is ``null`` when every check passed). With ``"deep": true`` (``tau guard
   doctor``) it adds ``details``: OpenCV's version, both model checksums, the Keychain item
-  (``ok``, ``missing``, ``invalid`` or ``unavailable``), whether the template decrypts, the
-  camera device and the camera permission. It never opens a camera or shows a
+  (``ok``, ``missing``, ``invalid`` or ``unavailable``), whether the template decrypts and
+  whether its head-turn calibration was ``measured`` or is the ``default`` of a template from
+  before issue 127, the camera device and the camera permission. It never opens a camera or shows a
   LocalAuthentication prompt; reading the Keychain may bring up macOS's Keychain access prompt
   (after a Python upgrade changed the interpreter), which the doctor explains.
 
@@ -313,7 +314,11 @@ def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
 def _explainer(emit: Emit) -> Callable[[Any, str, Any], None]:
     def explain(obs: Any, phase: str, machine: Any) -> None:
         face = obs.primary
+        pose = face.pose if face is not None else None
         start = machine.start if machine.start is not None else obs.at
+        turn = None
+        if pose is not None and phase != "look":
+            turn = pose.yaw - machine.baseline
         emit(
             {
                 "type": "explain",
@@ -324,7 +329,10 @@ def _explainer(emit: Emit) -> Callable[[Any, str, Any], None]:
                 "iod": _round(face.iod if face else None, 1),
                 "brightness": _round(obs.brightness, 1),
                 "sharpness": _round(obs.sharpness, 1),
-                "yaw": _round(face.yaw if face else None, 3),
+                "yaw": _round(pose.yaw if pose else None, 1),
+                "pitch": _round(pose.pitch if pose else None, 1),
+                "fit": _round(pose.fit if pose else None, 3),
+                "turn": _round(turn, 1),
                 "similarity": _round(obs.similarity, 3),
                 "hint": obs.hint,
             }
@@ -543,11 +551,12 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
         details["template"] = "not_enrolled"
     else:
         try:
-            load_template(data_dir / "guard", deps.keys, SFACE_SHA256)
+            template = load_template(data_dir / "guard", deps.keys, SFACE_SHA256)
         except StoreError as exc:
             details["template"] = exc.reason
         else:
             details["template"] = "ok"
+            details["calibration"] = "measured" if template.calibration.measured else "default"
     camera: dict[str, Any] = {"device": None, "others": 0, "permission": None}
     try:
         listed = deps.devices().devices() if deps.devices is not None else []

@@ -441,7 +441,7 @@ and `event_sink`. `[sessions].backend` in `tau.toml` picks the backend and
 |----------|----------------------------------------|-----------------------------------------|
 | `memory` | the process                            | tests and throwaway runs                |
 | `file`   | `TAU_DATA_DIR/sessions/<session id>/`  | the default in the repo's `tau.toml`    |
-| `cloud`  | D1 through the tau-cloud Worker API    | issue 018; the hub holds no D1 secrets  |
+| `spine`  | D1 through the tau's spine Worker      | from `tau-cloud`, for cloud mode (ADR 0007); the hub holds no D1 secrets |
 
 The `file` layout, one directory per session (ids look like `20260929-153012-3f9a`, UTC):
 

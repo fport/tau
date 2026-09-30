@@ -84,3 +84,9 @@ sessions in D1 behind the tau-cloud Worker.
   crash before the reply was stored) is repaired on the next turn by sending
   `[assistant notice, user prompt]` as the prompt, so both records carry tracking ids and reach
   the store through `MessageAddedEvent` like any other message.
+
+## Amended (2026-09-30, ADR 0007, issue 094)
+
+The remote backend exists now, under another name and in another distribution. `spine` is registered by `tau-cloud` through the `tau.sessions` entry point, not by tau-core. It talks only to the owner's spine Worker (`cloud/spine`), which stores sessions in D1 in cloud mode, and it never holds D1 credentials. The routes are in `docs/reference/tau-network.md` §5.
+
+Local mode keeps the file store as the record (ADR 0006). `cloud` is no longer a planned name: `tau_core.sessions.PLANNED_BACKENDS` is empty.

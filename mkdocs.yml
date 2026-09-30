@@ -71,7 +71,6 @@ plugins:
             Voice: Ses
             Backups (encrypted, R2): Yedekler (şifreli, R2)
             Run tau as a service: tau'yu servis olarak çalıştır
-            Model proxy and budgets: Model proxy'si ve bütçeler
             Models and budgets: Modeller ve bütçeler
             TauBar (macOS menu bar): TauBar (macOS menü çubuğu)
             Move the hub to a Raspberry Pi: Hub'ı Raspberry Pi'ye taşı
@@ -98,6 +97,7 @@ plugins:
             0007 Cloud mode and the tau network: 0007 Bulut modu ve tau ağı
             0009 Anthropic-only models behind the proxy: 0009 Proxy arkasında yalnızca Anthropic modelleri
             0010 The public site and the tau universe: 0010 Herkese açık site ve tau evreni
+            0011 Budgets in tau, no LiteLLM: 0011 Bütçeler tau'da, LiteLLM yok
             Contributing: Katkıda bulunma
             Development setup: Geliştirme ortamı
             Write a plugin: Eklenti yaz

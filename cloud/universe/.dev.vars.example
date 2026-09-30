@@ -1,5 +1,7 @@
 # Local development values for `wrangler dev`. `pnpm run configure` copies this file to
-# `.dev.vars` (gitignored) when it is missing. The universe has no secrets.
+# `.dev.vars` (gitignored) when it is missing. The universe's one secret, UNIVERSE_IDENTITY
+# (its network identity, which relays visitors to hub-run web sub-taus), does not belong in
+# this file: `pnpm run identity --dev` adds a fresh one to `.dev.vars`.
 
 # Development only: accept taus whose spine is at http://localhost or http://127.0.0.1.
 ALLOW_INSECURE_PEERS=1

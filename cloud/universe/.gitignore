@@ -1,6 +1,8 @@
 # Your own configuration, written by `pnpm run configure`.
 wrangler.jsonc
 wrangler.jsonc.bak
+# The universe's network identity, written by `pnpm run identity` (a secret).
+.universe-identity
 # Local values for `wrangler dev`.
 .dev.vars
 .dev.vars.*

@@ -8,6 +8,7 @@
  *   GET  /api/subs/@<handle>/<name>     the same, by its tau's handle
  *   POST /api/join|report|leave         signed requests from taus
  *   POST /api/claim                     a signed claim plus the GitHub account signed in
+ *   *    /api/chat/...                   the visitor chat with web sub-taus (src/chat.ts)
  *
  * A POST is checked in the reference's order. The Worker does everything that needs no
  * stored state (size, shape, universe, clock window, card, signature, the GitHub account);
@@ -17,6 +18,7 @@
 
 import { hostedHandle, isAddress, isHandle, universeHost } from "./address";
 import { fetchCard } from "./card";
+import { handleChat } from "./chat";
 import { b64uDecode, signedMessage, verifyEd25519 } from "./crypto";
 import type { Outcome, Refusal, SubRef } from "./directory";
 import { directoryOf, type UniverseEnv } from "./env";
@@ -235,9 +237,18 @@ function readOf(path: string): Read | null {
 }
 
 /** Every /api/* request that is not forwarded to tau-host. */
-export async function handleApi(request: Request, env: UniverseEnv, url: URL): Promise<Response> {
+export async function handleApi(
+  request: Request,
+  env: UniverseEnv,
+  url: URL,
+  ctx?: ExecutionContext,
+): Promise<Response> {
   const path = url.pathname;
   const method = request.method;
+
+  if (path === "/api/chat" || path.startsWith("/api/chat/")) {
+    return handleChat(request, env, url, ctx);
+  }
 
   for (const kind of KINDS) {
     if (path === `/api/${kind}`) {

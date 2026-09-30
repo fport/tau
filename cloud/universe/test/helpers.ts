@@ -226,7 +226,8 @@ export const GITHUB_BOB: Account = { handle: "bob", github_id: 1002, session: "s
 
 /**
  * A fake tau-host behind the `HOST` binding. It answers `GET /api/host/whoami` from its
- * sessions, serves the cards of the hosted taus it is given, and answers every other path
+ * sessions, serves the cards of the hosted taus it is given, answers the visitor API
+ * (`POST /api/visit/<handle>/<name>`) with `visit` when set, and answers every other path
  * with a marker response. It records every request it gets.
  */
 export class FakeHost {
@@ -235,6 +236,8 @@ export class FakeHost {
   readonly cards = new Map<string, Record<string, unknown>>();
   /** Replaces the whoami answer when set. */
   whoami: (() => Response) | null = null;
+  /** Answers `POST /api/visit/<handle>/<name>` when set, with the parsed JSON body. */
+  visit: ((request: Request, body: unknown) => Response | Promise<Response>) | null = null;
 
   constructor(...accounts: Account[]) {
     for (const account of accounts) this.sessions.set(account.session, account);
@@ -250,6 +253,10 @@ export class FakeHost {
     fetch: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const request = new Request(input, init);
       this.requests.push(request.clone());
+      const path = new URL(request.url).pathname;
+      if (this.visit !== null && path.startsWith("/api/visit/")) {
+        return this.visit(request, await request.json());
+      }
       return this.answer(request);
     },
     connect: () => {

@@ -3,7 +3,8 @@
  * runtime (Miniflare), with the configuration as it ships (wrangler.example.jsonc).
  *
  * Bindings set here win over wrangler.example.jsonc and over a developer's `.dev.vars`:
- * UNIVERSE is empty (the universe is the request host) and insecure peers are off.
+ * UNIVERSE is empty (the universe is the request host), insecure peers are off, and there is
+ * no UNIVERSE_IDENTITY (the tests that need one pass their own).
  */
 
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
@@ -17,6 +18,7 @@ export default defineConfig({
         bindings: {
           UNIVERSE: "",
           ALLOW_INSECURE_PEERS: "0",
+          UNIVERSE_IDENTITY: "",
         },
       },
     }),

@@ -42,6 +42,7 @@ from tau_core.config import (
     ConfigError,
     RoleConfig,
 )
+from tau_core.guard import guard_active, guard_doctor_check
 from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES
 from tau_core.models import (
     PLANNED_PROVIDERS,
@@ -708,6 +709,7 @@ def run_doctor(home: Path | None = None, *, env: Mapping[str, str] | None = None
     checks += _check_components(config)
     checks.append(_check_hub(config))
     checks.append(_check_telegram(config, env))
+    checks.append(guard_doctor_check(config, _hub_status(config) if guard_active(config) else None))
     return checks
 
 

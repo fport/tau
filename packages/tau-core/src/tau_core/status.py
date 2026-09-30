@@ -16,6 +16,7 @@ from tau_core._version import __version__
 from tau_core.agent import AGENT_ID, TauAgent
 from tau_core.builder import Check
 from tau_core.config import Config
+from tau_core.guard import GuardStatus, guard_status_line
 from tau_core.i18n import DEFAULT_LANGUAGE, t
 from tau_core.sessions import SessionStore
 from tau_core.spend import RoleSpend, describe, proxy_roles, tracker_for
@@ -144,10 +145,12 @@ def status_lines(
     language: str = DEFAULT_LANGUAGE,
     hub: Check | None = None,
     spends: dict[str, RoleSpend] | None = None,
+    guard: GuardStatus | None = None,
 ) -> list[str]:
     """The ``/status`` report, one line per fact, in ``language``. ``hub`` is the control-API
     check and ``spends`` the proxy roles' spend when the caller read them (see
-    :func:`status_report`); without ``spends`` the cached values are used."""
+    :func:`status_report`); without ``spends`` the cached values are used. ``guard`` is the
+    owner guard's status, shown only when a guard is active."""
     config = agent.config
     store = agent.store
     session_id = agent.session_id
@@ -216,6 +219,8 @@ def status_lines(
             spends = tracker_for(config).snapshot()
         detail = describe(spends) or t("status.budget_unknown", language)
         lines.append(t("status.budget", language, detail=detail))
+    if guard is not None:
+        lines.append(guard_status_line(guard, language))
     return lines
 
 
@@ -226,7 +231,8 @@ async def status_report(agent: TauAgent, *, language: str = DEFAULT_LANGUAGE) ->
     spends = None
     if proxy_roles(agent.config):
         spends = await asyncio.to_thread(tracker_for(agent.config).refresh)
-    return status_lines(agent, language=language, hub=hub, spends=spends)
+    guard = await agent.guard.status() if agent.guard is not None else None
+    return status_lines(agent, language=language, hub=hub, spends=spends, guard=guard)
 
 
 def role_lines(agent: TauAgent, language: str = DEFAULT_LANGUAGE) -> list[str]:

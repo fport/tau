@@ -67,9 +67,9 @@ Bir istemci her kontrolde kendi `step_up` ve `unlock_liveness` değerlerini gön
 |---|---|---|
 | `tau guard setup [--model-file FILE]` | SFace'i kurar (sha256 ile sabitlenmiş indirme ya da `FILE`), kaydeder, bir kontrol çalıştırır, `[component.guard] enabled = true` yazar | yalnızca Mac'in başında (macOS, `SSH_CONNECTION` yok); korumalı bir hub çalışıyorsa hub üzerinden, yoksa yerel bir worker'da |
 | `tau guard enroll [--add]` | Touch ID ya da Mac parolasının arkasında yeniden kaydeder; `--add` şablona örnekler ekler (başka ışık) | yalnızca Mac'in başında |
-| `tau guard verify [--explain]` | baş çevirme sınamasıyla tek kontrol; `--explain` onu yerel bir worker'da çalıştırır ve her karenin sayılarını yazar (hiçbir kare kaydedilmez); başarısızsa 1 ile çıkar | macOS (başka yerde 2 ile çıkar); korumalı bir hub çalışıyorsa hub üzerinden, böylece geçen kontrol tau'nun kilidini açar, yoksa yerel bir worker'da |
+| `tau guard verify [--explain[=all]]` | baş çevirme sınamasıyla tek kontrol; `--explain` onu yerel bir worker'da çalıştırır, her istemi vurgulu bir satır olarak (`>>> TURN YOUR HEAD LEFT <<<`) ve her üç kareden birinin sayılarını yazar (`=all`: her kare): ekrandaki istem, baş yaw'ı, önden taban çizgisine göre dönüş ve eğim (derece), landmark'ların uyum hatası, göz mesafesi, dedektör puanı, parlaklık, netlik, benzerlik. Hiçbir kare kaydedilmez. Sınamayı geçemeyen yerel bir kontrol, geçilemeyen canlılık kuralını söyler. Başarısızsa 1 ile çıkar | macOS (başka yerde 2 ile çıkar); korumalı bir hub çalışıyorsa hub üzerinden, böylece geçen kontrol tau'nun kilidini açar, yoksa yerel bir worker'da |
 | `tau guard forget` | Touch ID ya da Mac parolasının arkasında şablonu, işareti ve Keychain anahtarını siler ve `enabled = false` yazar; Keychain anahtarı tuttuysa 1 ile çıkar (yeniden çalıştır) | yalnızca Mac'in başında, her zaman yerel bir worker'da |
-| `tau guard doctor` | platformu, worker'ı, OpenCV'yi, YuNet ve SFace dosyalarını, kaydı, şablonu, Keychain'i, modları, canlılığı, kamerayı, terminalin kamera iznini, başarısızlıkları ve hub'ın kamera iznini tutan uygulamayı denetler; `fail` varsa 1 ile çıkar | her yerde |
+| `tau guard doctor` | platformu, worker'ı, OpenCV'yi, YuNet ve SFace dosyalarını, kaydı, şablonu, baş çevirme kalibrasyonunu (derece olarak ölçülmüş mü, yoksa derecelerden önceki bir kaydın varsayılanı mı), Keychain'i, modları, canlılığı, kamerayı, terminalin kamera iznini, başarısızlıkları ve hub'ın kamera iznini tutan uygulamayı denetler; `fail` varsa 1 ile çıkar | her yerde |
 | `tau guard status [--json]` | çalışan hub'ın bildirdiği durum (`GET /guard/status`); etkin koruma yoksa `off` yazar; hub çalışmıyorsa 0, hub hatasında 1 ile çıkar | her yerde |
 | `tau guard lock` | korunan her kanalı kilitler (`POST /guard/lock`, tetikleyici `command`) | her yerde; SSH üzerinden de |
 | `tau guard log [--since WHEN] [--json]` | denetim kaydı; `WHEN` bir süre (`30m`, `2h`, `7d`) ya da ISO tarih veya saattir | her yerde |
@@ -138,7 +138,7 @@ Reddedilen bir tur bir bildirim ve `TurnEnd("locked")` üretir: geçmişe hiçbi
 | `no_match` | kaliteli bir kare şablonla eşleşmedi | evet |
 | `no_face` | hiç yüz görülmedi | hayır |
 | `multiple_faces` | sayılacak kadar büyük ikinci bir yüz | evet |
-| `spoof` | baş çevirme sınaması başarısız (aşırı dönüş, zamanında yapılmayan bir adım, kaybolan bir yüz, duraklamada hareket, istem ekrandayken iptal) | evet |
+| `spoof` | baş çevirme sınaması başarısız; denetim kaydındaki `liveness` kuralı söyler (aşağıya bak) | evet |
 | `timeout` | kontrolün süresi doldu | hayır |
 | `cancelled` | çağıran ya da bir kilit tarafından iptal edildi | hayır |
 | `too_dark`, `face_too_small` | kareler kalite eşiklerini hiç geçmedi (canlı ipuçları olarak da) | hayır |
@@ -150,6 +150,38 @@ Reddedilen bir tur bir bildirim ve `TurnEnd("locked")` üretir: geçmişe hiçbi
 | `locked` | kilitliyken bir step-up | – |
 | `touch_id_unavailable`, `touch_id_failed` | Touch ID yok (kapalı kapak, sensör yok, 114'e kadar) ya da doğrulamadı | hayır |
 | `unsupported_platform`, `unavailable`, `busy`, `error` | macOS değil; hub yok ya da kötü yanıt; başka bir kontrol sürüyor; başka her şey | hayır |
+
+### Baş çevirme sınaması { #head-turn-challenge }
+
+Başın yaw'ı `cv2.solvePnP`'den gelir: YuNet'in beş landmark'ı, odak uzaklığı kare genişliğine eşit bir kameranın gördüğü genel bir 3B başa oturtulur. Her şey denemenin önden karelerinin medyan yaw'ına göre derece cinsindendir; bu yüzden biraz yanda oturmak da çalışır.
+
+| | |
+|---|---|
+| adımlar | kilit açma için 2, step-up için 3; rastgele sol ya da sağ |
+| her istemden önceki duraklama | rastgele 0,3–0,9 sn |
+| adım başına süre | istemden itibaren 4 sn |
+| dönüş | istenen yöne en az `max(12°, 0,5 × kalibre edilmiş dönüş)` |
+| tutma | rastgele 0,3–0,6 sn; tutulurken dönüş 3° sarkabilir |
+| geri dönüş | önden yaw'ın 6° yakınına ya da onun ötesine |
+| sayılan kareler | landmark'lar başa 0,10 göz mesafesi içinde uyar (önden uyum daha büyükse onun 1,5 katı); 3 karelik kayan medyan |
+
+Kayıt, sola dönüşün işaretini ve sahibin her iki yana aralığını kalibre eder. Derecelerden önce (issue 127) yapılmış bir kayıt çalışmaya devam eder: işareti kalır ve her yöne 12°'lik bir dönüş istenir; `tau guard enroll` sahibin kendi aralığını ölçer.
+
+### Canlılık kuralları (`spoof`'un `liveness`'i) { #liveness-rules }
+
+| Kural | Ne zaman |
+|---|---|
+| `overshoot_before_target` | dönüş tutulmadan önce ters yöne 8° ya da daha fazla |
+| `oscillation` | tek adımda 3'ten fazla yön değişimi (her biri 6°) |
+| `moved_between_prompts` | ekranda istem yokken önden yaw'dan 10°'den fazla (bir geri dönüş salınımının öbür yanında 20°) |
+| `no_turn` | dönüş zamanında hedefine ulaşmadı |
+| `too_slow` | dönüş hedefine ulaştı ama zamanında tutulmadı |
+| `no_return` | baş zamanında geri dönmedi |
+| `face_lost` | yüz 0,2 sn'den uzun kayboldu ya da kutusu sıçradı |
+| `step_identity` | bir dönüşün çevresinde merkeze yakın kareler sahiple eşleşmedi |
+| `abandoned` | bir baş çevirme istemi ekrandayken iptal edildi ya da kilitlendi |
+
+Dikey eksen etrafında döndürülen düz bir fotoğraf 50°'ye kadar döndürülürken en fazla yaklaşık 10° okunur (boyutlar, oturuş yerleri ve 15°'lik bir eğim boyunca; kameraya tam karşıdan bakarken birkaç derece) ve daha fazla döndürülünce landmark'ları bir başa uymaz olur. Bir baş açının tamamını okur.
 
 ### İlerleme adımları { #progress-steps }
 
@@ -236,7 +268,7 @@ Bir **deneme** `{id, kind, step, seq, deadline, hint, done, ok, reason, method, 
 | `ok`, `reason` | evet | sonuç ve karar nedeni |
 | `duration_ms` | evet | ne kadar sürdüğü |
 | `score` | hayır | benzerlik puanı, 2 ondalığa yuvarlanmış |
-| `liveness` | hayır | kontrol baş çevirme sınamasını geçtiyse `challenge` |
+| `liveness` | hayır | bir yüz eşleşmesinde `challenge` ya da `passive`; bir `spoof`'ta geçilemeyen canlılık kuralı |
 | `request_id`, `tool` | hayır | bir step-up'ın ait olduğu tier-2 çağrı |
 
 Bir kayıt asla bir embedding, bir kare ya da başka bir insan hakkında bir şey tutmaz. Dizeler 128 karaktere kesilir ve yazdırılamayan karakterler `?` olur; böylece bir çağıranın etiketi kaydı yazdıran terminali yönlendiremez. Hub log'u hiçbir karar ve puan almaz.

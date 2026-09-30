@@ -177,7 +177,7 @@ Messages from alice's Network page (after the approval) arrive at the hub with t
    One way to make a `VAULT_KEY`: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Keep a copy offline: without it the stored provider keys cannot be opened, and owners have to paste them again. Changing it has the same effect.
 4. **Deploy**: `bun run deploy`. It builds the app and deploys the Worker with its two Durable Objects.
 
-`SIGNUP` can be changed at any time in `wrangler.jsonc` (`bun run configure --force --signup ...`, then deploy): an empty value closes sign-ups and keeps existing accounts.
+`SIGNUP` can be changed at any time in `wrangler.jsonc` (`bun run configure --force --signup ...`, then deploy): `--signup closed` writes an empty value, which closes sign-ups and keeps existing accounts.
 
 **The network and the universe.**
 

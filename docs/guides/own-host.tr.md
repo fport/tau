@@ -162,7 +162,7 @@ Model çağrılarını host değil, her sahibin kendi anahtarı öder. Her tau'n
 ## Kim giriş yapabilir
 
 - **Kişi eklemek:** `bun run configure --force --signup alice,bob`, sonra `bun run deploy`.
-- **Yeni hesapları kapatmak:** `wrangler.jsonc` içinde `"SIGNUP": ""` yap ve yayına al. `configure` boş bir değer kabul etmiyor.
+- **Yeni hesapları kapatmak:** `bun run configure --force --signup closed`, sonra `bun run deploy`.
 - Var olan hesaplar her zaman giriş yapabilir; `SIGNUP` yalnızca kimin yeni hesap açabileceğine karar verir. Bir kullanıcı adını listeden çıkarmak o hesabı silmez.
 - Bir kullanıcı adı kendi GitHub hesabına bağlı kalır: adı değişen bir GitHub hesabı kullanıcı adını korur; kullanıcı adı var olan bir adla çakışan başka bir hesap ise reddedilir.
 

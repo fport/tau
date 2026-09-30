@@ -160,7 +160,7 @@ The model calls are paid by each owner's own key, never by the host. Each tau's 
 ## Who may sign in
 
 - **Add people:** `bun run configure --force --signup alice,bob`, then `bun run deploy`.
-- **Close sign-ups:** set `"SIGNUP": ""` in `wrangler.jsonc` and deploy. `configure` does not take an empty value.
+- **Close sign-ups:** `bun run configure --force --signup closed`, then `bun run deploy`.
 - Existing accounts can always sign in; `SIGNUP` only decides who may create a new one. Removing a login from it does not remove that account.
 - A handle stays with its GitHub account: a renamed login keeps its handle, and another account whose login matches an existing handle is refused.
 

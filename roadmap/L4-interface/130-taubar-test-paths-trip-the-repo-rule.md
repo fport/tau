@@ -8,7 +8,7 @@ Blocked by: none
 
 ## What to build
 
-`packages/tau-core/tests/test_repo_rules.py::test_no_personal_paths_in_tracked_files` fails on `main`: `apps/taubar/src-tauri/src/login.rs` (from fbe8371) uses `/Users/someone/...` as example paths in its Rust tests. The rule matches any `/Users/<name>` so that a real home directory never lands in a tracked file. Make the two agree, preferably by changing the Rust tests: build the paths from a placeholder the rule already accepts (for example `/path/to/home`), or from a temporary directory.
+`packages/tau-core/tests/test_repo_rules.py::test_no_personal_paths_in_tracked_files` fails on `main`: `apps/taubar/src-tauri/src/login.rs` (from fbe8371) uses a made-up home directory under `/Users/` as example paths in its Rust tests. The rule matches any `/Users/<name>` so that a real home directory never lands in a tracked file. Make the two agree, preferably by changing the Rust tests: build the paths from a placeholder the rule already accepts (for example `/path/to/home`), or from a temporary directory.
 
 ## Acceptance criteria
 

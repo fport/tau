@@ -39,3 +39,5 @@ Each role key gets a hard spend cap (e.g. `fast` $1/day, `brain` $15/month). Whe
     - With `degrade_to = "fast"`, fast answered and the notice said so. With fast spent too, the combined notice appeared.
     - Changing `usd` in `tau.toml` and running `tau proxy keys` updated the key; `tau doctor` had flagged the drift first.
     - `GET /spend` on a hub on a spare port listed all three roles.
+
+- 2026-09-30 (later): superseded by 132 ([ADR 0011](../../docs/adr/0011-budgets-in-tau-no-litellm.md)). The owner dropped the LiteLLM proxy so users need no Docker; `infra/litellm`, the `proxy` provider and `tau proxy` are gone, and budgets, spend and failover now live in tau-core.

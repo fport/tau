@@ -1,6 +1,6 @@
 # 131 · Prompt caching through the proxy
 
-Status: needs-triage
+Status: wontfix
 Type: AFK
 Layer: L2 · Models
 Packages: tau-core, infra/litellm
@@ -32,3 +32,4 @@ Measure it with the `cache_read_input_tokens` the proxy reports. Caching the who
 ## Comments
 
 - 2026-09-30: filed while closing 010; ADR 0009 lists it as a consequence of going through the proxy.
+- 2026-09-30: wontfix. The proxy is gone ([ADR 0011](../../docs/adr/0011-budgets-in-tau-no-litellm.md)); the direct Anthropic provider keeps the role's `cache` table and its cache point after the persona.

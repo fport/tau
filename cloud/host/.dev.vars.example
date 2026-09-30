@@ -8,6 +8,8 @@ DEV_LOGIN=1
 FAKE_PROVIDER=1
 # Anyone may create an account locally.
 SIGNUP=open
+# Plain http to peers on 127.0.0.1 and localhost: a local hub's spine (`wrangler dev` on :8787).
+ALLOW_INSECURE_PEERS=1
 
 # Secrets. For GitHub sign-in in `wrangler dev`, create an OAuth App with the callback
 # http://127.0.0.1:8791/auth/callback, put its client id into GITHUB_CLIENT_ID in

@@ -29,6 +29,8 @@
  *   GET    /api/host/templates              starting points for a new sub-tau
  *   GET    /api/host/export                 everything as one JSON file
  *   POST   /api/host/account/delete         {confirm: <handle>} deletes the tau and the account
+ *   *      /api/host/net/*                  the tau network: contacts, log, send, universe
+ *                                           (src/net/api.ts)
  *
  * The visitor API is public (no session) and serves public web sub-taus only:
  *
@@ -42,6 +44,7 @@ import { sha256b64u } from "./crypto";
 import { accountsOf, fakeProviderEnabled, type HostEnv, hostOrigin, tauOf } from "./env";
 import { error, json, methodNotAllowed, notFound, readJsonObject, unauthorized } from "./http";
 import { NAME_RE } from "./agent/subs";
+import { handleNetApi } from "./net/api";
 import type { Outcome } from "./tau";
 
 const SMALL_BODY = 16 * 1024;
@@ -74,20 +77,20 @@ export async function handleHostApi(request: Request, env: HostEnv, url: URL): P
   switch (head) {
     case "state":
       if (method !== "GET") return methodNotAllowed(["GET"]);
-      return json(await tau.state());
+      return json(await tau.state(url.host));
 
     case "onboard": {
       if (method !== "POST") return methodNotAllowed(["POST"]);
       const body = await readJsonObject(request, SMALL_BODY);
       if (!body.ok) return body.response;
-      return answer(await tau.onboard(body.value, fake));
+      return answer(await tau.onboard(body.value, fake, url.host));
     }
 
     case "settings": {
       if (method !== "PATCH") return methodNotAllowed(["PATCH"]);
       const body = await readJsonObject(request, LARGE_BODY);
       if (!body.ok) return body.response;
-      return answer(await tau.updateSettings(body.value, fake));
+      return answer(await tau.updateSettings(body.value, fake, url.host));
     }
 
     case "sessions": {
@@ -115,7 +118,7 @@ export async function handleHostApi(request: Request, env: HostEnv, url: URL): P
       if (method !== "POST" || second !== undefined) return method !== "POST" ? methodNotAllowed(["POST"]) : notFound();
       const body = await readJsonObject(request, LARGE_BODY);
       if (!body.ok) return body.response;
-      return tau.chat(body.value);
+      return tau.chat(body.value, url.host);
     }
 
     case "approvals": {
@@ -127,7 +130,7 @@ export async function handleHostApi(request: Request, env: HostEnv, url: URL): P
       if (method !== "POST") return methodNotAllowed(["POST"]);
       const body = await readJsonObject(request, SMALL_BODY);
       if (!body.ok) return body.response;
-      return tau.decide(second, body.value.decision);
+      return tau.decide(second, body.value.decision, url.host);
     }
 
     case "subs": {
@@ -186,13 +189,23 @@ export async function handleHostApi(request: Request, env: HostEnv, url: URL): P
       return deleteAccount(env, who, url);
     }
 
+    case "net":
+      return handleNetApi(request, env, url, who, parts.slice(1).filter((part) => part !== ""));
+
     default:
       return notFound();
   }
 }
 
 async function deleteAccount(env: HostEnv, who: Who, url: URL): Promise<Response> {
-  await tauOf(env, who.handle).destroy();
+  const tau = tauOf(env, who.handle);
+  try {
+    // A listed tau leaves the universe first, so its listing does not wait 30 days to expire.
+    await tau.goodbye();
+  } catch (err) {
+    console.warn(JSON.stringify({ event: "universe_leave_failed", error: err instanceof Error ? err.name : "error" }));
+  }
+  await tau.destroy();
   await accountsOf(env).deleteAccount(who.handle);
   console.log(JSON.stringify({ event: "account_deleted", handle: who.handle }));
   return json({ ok: true }, 200, { "set-cookie": clearedCookie(SESSION_COOKIE, url) });

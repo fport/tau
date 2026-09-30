@@ -6,7 +6,10 @@
  * - after tool results: "Done." and the first line of each result;
  * - a drafting request: a JSON draft built from the description;
  * - a visitor turn (the `[tau web]` frame): an echo of the visitor's message, as the sub-tau;
+ * - a network turn (the `[tau network]` frame): an echo of the other tau's message, as the
+ *   main tau or the sub-tau it is for, or `[no reply]` when the message contains it;
  * - `/create NAME ABOUT` (when `create_sub` is offered): a `create_sub` call (tier 2);
+ * - `/send ADDRESS TEXT` (when `net_send` is offered): a `net_send` call (tier 2);
  * - `/ask NAME QUESTION` (when `ask_sub` is offered): an `ask_sub` call;
  * - anything else: an echo, streamed word by word.
  *
@@ -97,6 +100,18 @@ export class FakeProvider implements Provider {
       const message = between(text, "<<<BEGIN MESSAGE>>>", "<<<END MESSAGE>>>") ?? "";
       const sub = /\/([a-z][a-z0-9-]{1,30})/.exec(text)?.[1] ?? "sub";
       return reply(`(fake /${sub}) You said: ${message}`);
+    }
+
+    if (text.startsWith("[tau network]")) {
+      const message = between(text, "<<<BEGIN MESSAGE>>>", "<<<END MESSAGE>>>") ?? "";
+      if (message.toLowerCase().includes("[no reply]")) return reply("[no reply]");
+      const sub = /^\[tau network\] A message for you, \/([a-z][a-z0-9-]{1,30}),/.exec(text)?.[1];
+      return reply(`(fake${sub ? ` /${sub}` : ""}) You said: ${message}`);
+    }
+
+    const send = /^\/send\s+(\S+)\s+(.+)$/s.exec(text.trim());
+    if (send && offered.has("net_send")) {
+      return call("net_send", { address: send[1], text: send[2]?.trim() ?? "" });
     }
 
     const create = /^\/create\s+([a-z][a-z0-9-]{1,30})\s*(.*)$/s.exec(text.trim());

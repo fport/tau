@@ -37,8 +37,11 @@ Routes (all protected; ``ControlApi`` checks the signature and signs the answer)
 - ``POST /guard/cancel`` → ``{ok}``; ``POST /guard/lock`` → ``{state: "locked"}``
   (idempotent; a caller's ``trigger`` is recorded only when it is ``command`` or
   ``telegram``, anything else is recorded as ``command``: the hub decides the other
-  triggers); ``POST /guard/enroll`` → ``202 {attempt, seq}`` (the worker answers
-  ``not_enrolled`` until issue 112).
+  triggers); ``POST /guard/enroll`` ``{client_id, add?}`` → ``202 {attempt, seq}``: the
+  worker asks for LocalAuthentication on the Mac's screen (the prompt text in the owner's UI
+  language), then runs the guided capture and writes the template and the marker; ``add``
+  adds samples to the existing template. An enrollment worker may run for
+  :data:`ENROLL_TIMEOUT` seconds.
 
 The open ``/status`` gains only ``guard: {state, enrolled, available, reason}``. ``reason``
 says why the guard is unavailable, ``reflex_stalled`` when the reflex loop missed its ticks, or
@@ -79,7 +82,9 @@ from tau_core.guard import (
     status_from_json,
 )
 from tau_core.hub import ControlApi, ControlRequest
+from tau_core.i18n import t
 
+from tau_guard import strings as _strings  # noqa: F401  (registers guard.cli.la.* and the rest)
 from tau_guard.audit import AuditLog, secure_dir
 from tau_guard.config import GuardSettings, SettingsError, parse_settings, stricter_policy
 from tau_guard.failures import FailureFile
@@ -118,6 +123,9 @@ REFLEX_INTERVAL = 2.0
 STOP_WAIT = 3.0
 """How long :meth:`GuardService.stop` waits for workers to die (SIGTERM, 1 s, SIGKILL)."""
 ATTEMPT_LIMIT = 120.0
+ENROLL_TIMEOUT = 100.0
+"""Seconds an enrollment worker may run: the LocalAuthentication prompt (up to 60 s), then the
+guided capture (the camera stays on for at most 20 s)."""
 PRESENCE_WAIT = 0.25
 """How long :meth:`GuardService.face_fresh` (synchronous) waits for a presence reading; a
 Quartz read takes a few milliseconds, and a slower one answers ``False``."""
@@ -400,7 +408,7 @@ class GuardService:
             return
         op = "enroll" if attempt.kind == "enroll" else "verify"
         settings = self.settings
-        request = {
+        request: dict[str, Any] = {
             "v": 1,
             "op": op,
             "kind": attempt.kind,
@@ -410,12 +418,17 @@ class GuardService:
             "settings": settings.worker() if settings is not None else {},
             "challenge_fresh": attempt.challenge_fresh,
         }
+        timeout = self.machine.limits.attempt_timeout
+        if op == "enroll":
+            request["add"] = attempt.add
+            request["reason_text"] = t("guard.cli.la.enroll", self.config.ui.language)
+            timeout = max(timeout, ENROLL_TIMEOUT)
         run = WorkerRun(
             op,
             request,
             command=self.worker_command,
             log_dir=self.guard_dir,
-            timeout=self.machine.limits.attempt_timeout,
+            timeout=timeout,
             on_progress=partial(self._on_progress, attempt.id),
             on_done=partial(self._on_done, attempt.id),
             env=self.worker_env,
@@ -603,6 +616,7 @@ class GuardService:
         request_id: str | None = None,
         tool: str | None = None,
         policy: Mapping[str, str] | None = None,
+        add: bool = False,
     ) -> tuple[Attempt | Refusal, int]:
         if not self._accepting():
             return Refusal("unavailable"), self._seq()
@@ -621,6 +635,7 @@ class GuardService:
                 request_id=request_id,
                 tool=tool,
                 policy=stricter_policy(hub_policy, policy),
+                add=add,
             )
             seq = max(0, result.seq - 1) if isinstance(result, Attempt) else machine.seq
         return result, seq
@@ -721,7 +736,9 @@ class GuardService:
         return _answer(result, seq)
 
     def _route_enroll(self, body: dict[str, Any]) -> tuple[int, Any]:
-        result, seq = self._request_sync("enroll", channel="enroll", client_id=body["client_id"])
+        result, seq = self._request_sync(
+            "enroll", channel="enroll", client_id=body["client_id"], add=body.get("add") is True
+        )
         return _answer(result, seq)
 
     def _route_cancel(self, body: dict[str, Any]) -> tuple[int, Any]:

@@ -36,6 +36,10 @@ Rules the table in the ADR leaves to the implementation:
   hub's second line.
 - **Challenge freshness.** Only an unlock or a step-up that passed the challenge starts the
   ``challenge_fresh`` window, and every lock ends it.
+- An enrollment (``kind="enroll"``) runs behind LocalAuthentication; its failures do not
+  count and its success resets nothing.
+- A verdict with ``camera_ms`` also writes a ``camera_open`` audit record (``reason`` is the
+  attempt kind, ``duration_ms`` how long the camera was on).
 - Cooldown: three counted failures within :data:`FAILURE_WINDOW` start a cooldown of
   :data:`COOLDOWN_START` seconds. From then on every counted failure starts the next cooldown
   at twice the length, up to :data:`COOLDOWN_MAX`, until a match or a quiet window (no failure
@@ -202,6 +206,8 @@ class Outcome:
     method: str | None = None
     score: float | None = None
     liveness: str | None = None
+    camera_ms: int | None = None
+    """How long the worker had the camera on (the audit's ``camera_open``)."""
 
 
 @dataclass(frozen=True)
@@ -242,6 +248,8 @@ class Attempt:
     strict: bool = False
     """A counted failure locks (``step_up_failed``): a recheck, a step-up, a re-unlock started
     while ``unlocked``, or an attempt a recheck joined."""
+    add: bool = False
+    """An enrollment that adds samples to the existing template (``tau guard enroll --add``)."""
 
     def record(self) -> dict[str, Any]:
         """The wire shape tau-core's ``HubGuard`` reads."""
@@ -447,8 +455,10 @@ class GuardMachine:
         request_id: str | None = None,
         tool: str | None = None,
         policy: Mapping[str, str] | None = None,
+        add: bool = False,
     ) -> Attempt | Refusal:
-        """Ask for an attempt: a new one, a joined one, a queued one, or a refusal."""
+        """Ask for an attempt: a new one, a joined one, a queued one, or a refusal. ``add``
+        only applies to an enrollment."""
         if kind not in KINDS:
             raise ValueError(f"unknown attempt kind {kind!r}")
         self._prune()
@@ -486,6 +496,7 @@ class GuardMachine:
             clients={client_id},
             created=self.clock.monotonic(),
             strict=kind in ("recheck", "step_up"),
+            add=add and kind == "enroll",
         )
         if self.running is None:
             self._start(attempt)
@@ -697,7 +708,8 @@ class GuardMachine:
         self.running = None
         wall = self.clock.wall()
         now = self.clock.monotonic()
-        counted = not outcome.ok and outcome.reason in COUNTED_REASONS
+        checks = attempt.kind != "enroll"  # an enrollment neither counts nor resets failures
+        counted = checks and not outcome.ok and outcome.reason in COUNTED_REASONS
         self.last_verdict = outcome.reason
         if outcome.reason in _CAMERA:
             self.camera = _CAMERA[outcome.reason]
@@ -725,7 +737,7 @@ class GuardMachine:
                 self._face_seen(wall)
         if counted and attempt.strict:
             lock_after = "step_up_failed"
-        if outcome.ok:
+        if outcome.ok and checks:
             self._failure_times.clear()
             self._cooldown_level = 0
             self._last_failure = self._last_failure_wall = None
@@ -733,6 +745,15 @@ class GuardMachine:
             if outcome.liveness == "challenge" and attempt.kind in ("unlock", "step_up"):
                 self._challenge_passed = now
         duration = None if attempt.started is None else int((now - attempt.started) * 1000)
+        if outcome.camera_ms is not None:
+            self._audit(
+                "camera_open",
+                channel=attempt.channel,
+                client_id=attempt.client_id,
+                ok=True,
+                reason=attempt.kind,
+                duration_ms=outcome.camera_ms,
+            )
         self._mark_done(attempt, outcome)
         self._audit(
             ATTEMPT_EVENTS[attempt.kind],

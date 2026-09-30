@@ -17,6 +17,7 @@ from guard_helpers import TURN, Running, guard_config, running_hub, until, until
 from tau_core import Guard, GuardVerdict, Tier
 from tau_core.approval import ApprovalRequest
 from tau_core.hub import HubError
+from tau_core.i18n import t
 from tau_guard.routes import POLICY_FIELDS, SCHEMAS
 from tau_guard.testing import FakePresence, match, read_requests
 
@@ -406,8 +407,12 @@ def test_every_route_is_listed_and_no_field_takes_a_verdict(tmp_path: Path) -> N
         for route, schema in SCHEMAS.items():
             for name, spec in schema.items():
                 assert name not in FORBIDDEN, (route, name)
-                assert spec.kind in ("text", "choice", "int", "number", "policy"), (route, name)
+                assert spec.kind in ("text", "bool", "choice", "int", "number", "policy"), (
+                    route,
+                    name,
+                )
                 assert spec.kind != "number" or name == "wait", (route, name)
+                assert spec.kind != "bool" or (route, name) == (("POST", "/guard/enroll"), "add")
         assert set(POLICY_FIELDS) == {"step_up", "unlock_liveness"}
         assert all(spec.kind == "choice" for spec in POLICY_FIELDS.values())
 
@@ -466,22 +471,42 @@ def test_refusals_are_never_403(tmp_path: Path) -> None:
         assert caught.value.status == 409 and caught.value.payload == {"reason": "locked"}
 
 
-def test_enroll_is_a_stub_until_112(tmp_path: Path) -> None:
-    runs = [[{"verdict": {"ok": False, "reason": "not_enrolled"}}]]
+def finished(running: Any, attempt: str) -> dict[str, Any]:
+    until(
+        lambda: (
+            (call(running, "GET", "/guard/status", attempt=attempt)["attempt"] or {}).get("done")
+            is True
+        )
+    )
+    return call(running, "GET", "/guard/status", attempt=attempt)["attempt"]
+
+
+def test_enroll_goes_to_the_worker_with_its_options(tmp_path: Path) -> None:
+    runs = [
+        [{"progress": "touch_id"}, {"verdict": {"ok": False, "reason": "touch_id_failed"}}],
+        [{"progress": "look", "hint": "too_dark"}, match(liveness=None)],
+    ]
     with running_hub(tmp_path, runs=runs) as running:
         started = call(running, "POST", "/guard/enroll", {"client_id": "c1"})
-        until(
-            lambda: (
-                (
-                    call(running, "GET", "/guard/status", attempt=started["attempt"])["attempt"]
-                    or {}
-                ).get("done")
-                is True
-            )
+        record = finished(running, started["attempt"])
+        assert (record["kind"], record["ok"], record["reason"]) == (
+            "enroll",
+            False,
+            "touch_id_failed",
         )
-        record = call(running, "GET", "/guard/status", attempt=started["attempt"])["attempt"]
-        assert (record["kind"], record["ok"], record["reason"]) == ("enroll", False, "not_enrolled")
-        assert read_requests(running.script)[0]["op"] == "enroll"
+        started = call(running, "POST", "/guard/enroll", {"client_id": "c1", "add": True})
+        record = finished(running, started["attempt"])
+        assert (record["ok"], record["reason"], record["method"]) == (True, "match", "face")
+        first, second = read_requests(running.script)
+        assert first["op"] == second["op"] == "enroll"
+        assert first["request"]["add"] is False and second["request"]["add"] is True
+        assert first["request"]["reason_text"] == t("guard.cli.la.enroll")
+        status = call(running, "GET", "/guard/status")
+        assert status["state"] == "locked"  # an enrollment unlocks nothing
+        assert status["failures"] == 0  # and its failures do not count
+        with pytest.raises(HubError) as caught:
+            call(running, "POST", "/guard/enroll", {"client_id": "c1", "add": "yes"})
+        assert caught.value.status == 400
 
 
 def test_status_attempt_records(tmp_path: Path) -> None:

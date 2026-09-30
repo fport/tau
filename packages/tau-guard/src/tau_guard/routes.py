@@ -34,7 +34,7 @@ class BadRequest(ValueError):
 @dataclass(frozen=True)
 class FieldSpec:
     kind: str
-    """``text``, ``choice``, ``int``, ``number`` or ``policy``."""
+    """``text``, ``bool``, ``choice``, ``int``, ``number`` or ``policy``."""
     required: bool = False
     nullable: bool = False
     choices: tuple[str, ...] = ()
@@ -81,6 +81,7 @@ SCHEMAS: dict[tuple[str, str], dict[str, FieldSpec]] = {
     },
     ("POST", "/guard/enroll"): {
         "client_id": TEXT,
+        "add": FieldSpec("bool"),
     },
 }
 
@@ -93,6 +94,10 @@ def _check(name: str, spec: FieldSpec, value: Any) -> Any:
     if spec.kind == "text":
         if not isinstance(value, str) or not value or len(value) > MAX_TEXT:
             raise BadRequest(f"{name} must be a string of 1 to {MAX_TEXT} characters")
+        return value
+    if spec.kind == "bool":
+        if not isinstance(value, bool):
+            raise BadRequest(f"{name} must be true or false")
         return value
     if spec.kind == "choice":
         if value not in spec.choices:

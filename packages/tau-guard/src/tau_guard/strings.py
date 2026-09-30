@@ -1,5 +1,8 @@
 """The ``tau guard`` message keys (``guard.cli.*``), registered into ``tau_core.i18n`` at import.
 
+``guard.cli.la.*`` are the LocalAuthentication prompt texts the hub and the CLI put into a
+worker request (issue 112).
+
 tau-core's own guard keys (``guard.state.*``, ``guard.verdict.*``, ``guard.lock_trigger.*``,
 ``guard.start_hub``) are used as they are. The keys below are new and must not collide with
 tau-core's table, because ``register_messages`` overrides silently; the assertion at import
@@ -86,6 +89,15 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
     "guard.cli.log.event.cooldown": {"en": "cooldown", "tr": "bekleme"},
     "guard.cli.log.event.camera_open": {"en": "camera opened", "tr": "kamera açıldı"},
     "guard.cli.log.event.touch_id": {"en": "Touch ID", "tr": "Touch ID"},
+    # -- LocalAuthentication prompt texts (macOS shows "<app> is trying to <text>.") -------------
+    "guard.cli.la.enroll": {
+        "en": "enroll your face for the tau guard",
+        "tr": "tau koruması için yüzünü kaydetmek",
+    },
+    "guard.cli.la.forget": {
+        "en": "remove your face from the tau guard",
+        "tr": "yüzünü tau korumasından silmek",
+    },
 }
 
 _collisions = set(CLI_MESSAGES) & set(MESSAGES)

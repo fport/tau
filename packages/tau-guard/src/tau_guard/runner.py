@@ -71,6 +71,7 @@ HUB_REASONS = frozenset({"cooldown", "locked", "busy", "cancelled"})
 """Verdict reasons only the hub decides; a worker that sends one is malformed."""
 WORKER_REASONS = frozenset(VERDICT_REASONS) - HUB_REASONS
 LIVENESS = frozenset({"challenge", "passive", "none"})
+MAX_CAMERA_MS = 10 * 60 * 1000
 WORKER_ENV = {"OPENCV_LOG_LEVEL": "ERROR", "OPENCV_AVFOUNDATION_SKIP_AUTH": "1"}
 DROPPED_ENV = ("PYTHONPATH",)
 """Hub variables a worker never inherits."""
@@ -165,7 +166,14 @@ def parse_line(raw: bytes, *, op: str = "verify") -> Progress | Outcome:
     liveness = message.get("liveness")
     if liveness is not None and not _member(liveness, LIVENESS):
         raise Malformed(f"unknown liveness ({_shape(liveness)})")
-    return Outcome(ok, str(reason), str(method) if ok else None, score, liveness)
+    camera_ms = message.get("camera_ms")
+    if camera_ms is not None and (
+        isinstance(camera_ms, bool)
+        or not isinstance(camera_ms, int)
+        or not 0 <= camera_ms <= MAX_CAMERA_MS
+    ):
+        raise Malformed(f"camera_ms must be a whole number of milliseconds ({_shape(camera_ms)})")
+    return Outcome(ok, str(reason), str(method) if ok else None, score, liveness, camera_ms)
 
 
 def worker_env(base: Mapping[str, str] | None = None) -> dict[str, str]:

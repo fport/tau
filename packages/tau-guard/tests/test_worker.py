@@ -40,27 +40,45 @@ def run_worker(op: str, request: dict[str, Any] | str) -> tuple[int, list[dict],
     return done.returncode, lines, done.stderr
 
 
-# -- the real worker (plumbing only in this slice) -----------------------------------------------
+# -- the real worker process (answers that need no camera, Keychain or prompt) ----------------
+#
+# Each request below stops before the worker would read the Keychain, show a prompt or open a
+# camera: no template, no face model, or no data dir. The operations themselves are tested
+# in-process with fakes in test_worker_ops.py.
+
+VERIFY = {"v": 1, "kind": "unlock", "settings": {}, "policy": {}}
 
 
 def test_verify_without_an_enrollment_answers_not_enrolled(tmp_path: Path) -> None:
-    code, lines, _ = run_worker("verify", {"v": 1, "data_dir": str(tmp_path)})
+    code, lines, _ = run_worker("verify", {**VERIFY, "data_dir": str(tmp_path)})
     assert code == 0
-    assert lines == [{"type": "verdict", "ok": False, "reason": "not_enrolled", "method": None}]
+    expected = "not_enrolled" if sys.platform == "darwin" else "unsupported_platform"
+    assert lines == [{"type": "verdict", "ok": False, "reason": expected, "method": None}]
 
 
-def test_verify_with_an_enrollment_but_no_engine_answers_unavailable(tmp_path: Path) -> None:
+@pytest.mark.skipif(sys.platform != "darwin", reason="the face check runs only on macOS")
+def test_verify_with_a_marker_but_no_template_answers_not_enrolled(tmp_path: Path) -> None:
     (tmp_path / "guard").mkdir()
     (tmp_path / "guard" / "enrolled").write_text('{"v": 1, "enrollment": "E1"}')
-    _, lines, _ = run_worker("verify", {"v": 1, "data_dir": str(tmp_path)})
-    assert lines[-1]["reason"] == "unavailable" and lines[-1]["ok"] is False
+    _, lines, _ = run_worker("verify", {**VERIFY, "data_dir": str(tmp_path)})
+    assert lines[-1]["reason"] == "not_enrolled" and lines[-1]["ok"] is False
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="the face check runs only on macOS")
+def test_enroll_without_the_face_model_answers_unavailable(tmp_path: Path) -> None:
+    _, lines, stderr = run_worker("enroll", {"v": 1, "data_dir": str(tmp_path)})
+    assert lines == [{"type": "verdict", "ok": False, "reason": "unavailable", "method": None}]
+    assert "SFace" in stderr
 
 
 @pytest.mark.parametrize(
-    ("op", "reason"), [("enroll", "not_enrolled"), ("touch_id", "touch_id_unavailable")]
+    ("op", "reason"),
+    [("enroll", "error"), ("forget", "error"), ("touch_id", "touch_id_unavailable")],
 )
-def test_other_operations_answer_until_their_issue(op: str, reason: str) -> None:
+def test_operations_without_a_usable_request(op: str, reason: str) -> None:
     _, lines, _ = run_worker(op, {"v": 1})
+    if sys.platform != "darwin" and op != "touch_id":
+        reason = "unsupported_platform"
     assert lines == [{"type": "verdict", "ok": False, "reason": reason, "method": None}]
 
 

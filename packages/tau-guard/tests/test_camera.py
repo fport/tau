@@ -3,6 +3,14 @@ and release on every path (including SIGTERM). No test opens a real camera."""
 
 from __future__ import annotations
 
+import os
+import signal
+import subprocess
+import sys
+import textwrap
+import time
+from pathlib import Path
+
 import pytest
 from tau_guard.camera import (
     BUILTIN_TYPE,
@@ -224,6 +232,49 @@ def test_fake_sources_close_on_every_path() -> None:
     with pytest.raises(OSError), opened(source) as frames:
         next(frames)
     assert source.closed
+
+
+def test_sigterm_releases_the_camera(tmp_path: Path) -> None:
+    """The worker turns SIGTERM into an exception, so ``opened`` releases in ``finally``."""
+    marker = tmp_path / "released"
+    started = tmp_path / "started"
+    script = textwrap.dedent(
+        f"""
+        import signal, time
+        from pathlib import Path
+        from tau_guard import worker
+        from tau_guard.camera import Frame, opened
+        signal.signal(signal.SIGTERM, worker._on_term)
+
+        class Endless:
+            def open(self):
+                Path({str(started)!r}).write_text("on")
+            def read(self):
+                time.sleep(0.01)
+                return Frame(None, time.monotonic())
+            def close(self):
+                Path({str(marker)!r}).write_text("released")
+
+        try:
+            with opened(Endless()) as frames:
+                for _ in frames:
+                    pass
+        except worker.Terminated:
+            raise SystemExit(143)
+        """
+    )
+    process = subprocess.Popen([sys.executable, "-c", script])
+    try:
+        deadline = time.monotonic() + 30
+        while not started.exists():
+            assert time.monotonic() < deadline, "the fake camera never opened"
+            time.sleep(0.02)
+        os.kill(process.pid, signal.SIGTERM)
+        assert process.wait(timeout=30) == 143
+    finally:
+        if process.poll() is None:
+            process.kill()
+    assert marker.read_text() == "released"
 
 
 def test_the_pyobjc_device_list_maps_fields() -> None:

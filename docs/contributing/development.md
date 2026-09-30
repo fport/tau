@@ -16,7 +16,7 @@ cd tau
 uv sync --all-packages --group dev
 ```
 
-`--all-packages` installs every workspace member in editable mode: `tau-core`, `tau-tui` and the three test-fixture distributions under `packages/tau-core/tests/fixtures/` (`tau-example-tool`, `tau-example-provider`, `tau-example-service`). `--group dev` adds pytest, pytest-asyncio, pytest-textual-snapshot and ruff. A separate `docs` group holds MkDocs Material.
+`--all-packages` installs every workspace member in editable mode: `tau-core`, `tau-tui` and the three test-fixture distributions under `packages/tau-core/tests/fixtures/` (`tau-example-tool`, `tau-example-provider`, `tau-example-service`). `--group dev` adds pytest, pytest-asyncio, pytest-textual-snapshot and ruff. A separate `docs` group holds MkDocs Material and mkdocs-static-i18n.
 
 Never `pip install` into the system Python; everything runs through `uv run`.
 
@@ -134,9 +134,21 @@ uv run --group docs mkdocs build --strict # what the deploy runs; no warnings al
 
 Pages are Markdown under `docs/`, the navigation is in `mkdocs.yml`. `--strict` fails on a missing page, a broken relative link or a bad snippet path. Links to files outside `docs/` (the roadmap, the packages) must be absolute GitHub URLs.
 
+### English pages and their Turkish twins
+
+The site is bilingual through [mkdocs-static-i18n](https://ultrabug.github.io/mkdocs-static-i18n/) with the suffix layout. `page.md` is English and the source; `page.tr.md` next to it is its Turkish twin, served under `/tr/`. A page without a twin is served in English under `/tr/` as well (`fallback_to_default`), so ADRs, reference pages and anything not translated yet still work there, and a link from a Turkish page to such a page lands on the English one.
+
+- Twins exist for the home page, `getting-started/` and `guides/`. ADRs, issues and most reference pages stay English only.
+- **Change an English page and its twin together.** If you cannot translate the change, put `<!-- tr: out of date -->` at the top of the twin so the drift is visible until someone updates it.
+- A twin starts with `<!-- tr twin of <page>.md, translated YYYY-MM-DD -->`; update the date when you bring it level with the English page.
+- Commands, code blocks, paths, config keys, environment variables, CLI output and URLs stay exactly as in the English page, and `<!-- verified: ... -->` markers are copied unchanged.
+- A heading that another page links to by anchor keeps its English anchor in the twin, for example `## 2. Spine'ını deploy et { #2-deploy-your-spine }`, so the same link works in both languages.
+- Nav labels are translated in `mkdocs.yml`, under the `i18n` plugin's `nav_translations`. A new nav entry needs its Turkish label there, or it shows in English on the Turkish site.
+- Search indexes both languages (`lang: [en, tr]` on the `search` plugin).
+
 ## Conventions
 
-- **Language.** Code, identifiers, comments, commit messages, issues and docs are English. tau's own persona is Turkish by default and mirrors the user; the UI chrome follows `[ui] language`.
+- **Language.** Code, identifiers, comments, commit messages, issues and docs are English; the docs site adds Turkish twins of its guides (see [above](#english-pages-and-their-turkish-twins)). tau's own persona is Turkish by default and mirrors the user; the UI chrome follows `[ui] language`.
 - **Commits.** [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary`, scopes such as `core`, `tui`, `remote`, `roadmap`, `docs`, `cloud`, `taubar`. Small, logical commits; reference the issue id in the body (`Refs: 004`).
 - **Privacy.** Nothing personal in tracked files: no hostnames, tailnet names, IPs, emails, account ids or key fingerprints. Use `my-mac.tailXXXXXX.ts.net`, `100.x.y.z`, `SHA256:...`. Real values go into the gitignored `.env`, with the name and an example value in `.env.example`.
 - **Models.** Code asks for a role, never a model id; ids and prices are data (`tau.toml`, `templates/models.toml`, `templates/prices.toml`). Providers are called directly and tau enforces the budgets itself ([ADR 0011](../adr/0011-budgets-in-tau-no-litellm.md)); `litellm` is never added in any form.

@@ -36,7 +36,74 @@ extra_css:
   - stylesheets/brand.css
 
 plugins:
-  - search
+  - search:
+      lang:
+        - en
+        - tr
+  # Bilingual site (issue 147): page.md is English, page.tr.md its Turkish twin.
+  # English is the default and the fallback; Turkish pages are served under /tr/.
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: tr
+          name: Türkçe
+          build: true
+          site_description: Gizlilik öncelikli, kişisel bir "akıllı beden" ajanı. Kur, onunla konuş; fiziksel dünyaya yalnızca senin onayınla dokunsun.
+          nav_translations:
+            Home: Ana sayfa
+            Getting started: Başlarken
+            Build your own tau: Kendi tau'nu kur
+            Try everything locally: Her şeyi yerelde dene
+            Install: Kurulum
+            First run: İlk çalıştırma
+            Configure: Yapılandırma
+            Talk to tau: tau ile konuş
+            Guides: Rehberler
+            Reach tau from your phone (Tailscale + Termius): Telefondan tau'ya ulaş (Tailscale + Termius)
+            Private deployment (Cloudflare Tunnel + Access): Özel dağıtım (Cloudflare Tunnel + Access)
+            Voice: Ses
+            Backups (encrypted, R2): Yedekler (şifreli, R2)
+            Run tau as a service: tau'yu servis olarak çalıştır
+            Model proxy and budgets: Model proxy'si ve bütçeler
+            Models and budgets: Modeller ve bütçeler
+            TauBar (macOS menu bar): TauBar (macOS menü çubuğu)
+            Move the hub to a Raspberry Pi: Hub'ı Raspberry Pi'ye taşı
+            Join the tau network: tau ağına katıl
+            Run tau in Cloudflare (cloud mode): tau'yu Cloudflare'de çalıştır (bulut modu)
+            Reference: Referans
+            Slash commands: Slash komutları
+            Environment variables: Ortam değişkenleri
+            Components and plugins: Bileşenler ve eklentiler
+            Tiers and approvals: Tier'lar ve onaylar
+            Sessions and compaction: Oturumlar ve sıkıştırma
+            tau network protocol and spine API: tau ağı protokolü ve spine API'si
+            tau universe protocol and the spine kit: tau evreni protokolü ve spine kiti
+            Architecture: Mimari
+            Decisions: Kararlar
+            Threat model: Tehdit modeli
+            ADRs: ADR'ler
+            0001 Approval through Strands hooks: 0001 Strands hook'larıyla onay
+            0002 tau.commands entry point: 0002 tau.commands giriş noktası
+            0003 Session store: 0003 Oturum deposu
+            0004 Config roots and persona privacy: 0004 Yapılandırma kökleri ve persona gizliliği
+            0005 Components and entry-point groups: 0005 Bileşenler ve giriş noktası grupları
+            0006 Private-first topology: 0006 Gizlilik öncelikli topoloji
+            0007 Cloud mode and the tau network: 0007 Bulut modu ve tau ağı
+            0009 Anthropic-only models behind the proxy: 0009 Proxy arkasında yalnızca Anthropic modelleri
+            0010 The public site and the tau universe: 0010 Herkese açık site ve tau evreni
+            Contributing: Katkıda bulunma
+            Development setup: Geliştirme ortamı
+            Write a plugin: Eklenti yaz
+            Roadmap and issues: Yol haritası ve issue'lar
+            Releasing: Sürüm yayınlama
+            Brand: Marka
 
 markdown_extensions:
   - admonition

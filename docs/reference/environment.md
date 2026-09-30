@@ -65,6 +65,17 @@ Read by the `telegram` hub service (see [Telegram](../guides/telegram.md)). With
 | `TELEGRAM_BOT_TOKEN` | The bot token from @BotFather, `123456789:AA…`. A password: it never appears in logs, `/status` or `tau doctor`. |
 | `TELEGRAM_ALLOWED_CHAT_IDS` | The chat ids the bot answers, comma-separated. Messages from any other chat are dropped unanswered. |
 
+## tau network and cloud mode
+
+[ADR 0007](../adr/0007-cloud-mode-and-tau-network.md); setup in [Join the tau network](../guides/tau-network.md) and [cloud mode](../guides/cloud-mode.md).
+
+| Variable | Meaning |
+|---|---|
+| `TAU_SPINE_URL` | The tau's spine Worker, `https://tau.example.com` (`http://127.0.0.1:8787` while developing). Without it the `net` hub service stays idle. |
+| `TAU_SPINE_TOKEN` | The spine's `HUB_TOKEN` secret. A password: never in logs, reprs or `/status`. |
+| `TAU_NET_IDENTITY` | The network identity as base64url JSON, in place of `TAU_DATA_DIR/net/identity.json`. Cloud mode sets it as a Worker secret. |
+| `TAU_NET_ALLOW_INSECURE` | `1` allows `http` to peers on `localhost` / `127.0.0.1`. Development only. |
+
 ## Remote access reference values (layer 0)
 
 These are **not read by tau**. They are the personal values of your remote-access setup, kept in `.env` so they are in one place and out of the repository. `infra/remote/doctor.sh` prints the live values.

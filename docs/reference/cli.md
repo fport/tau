@@ -323,6 +323,47 @@ Options:
 
 Columns: role, model group, spend of the current period, cap, period and the next reset (UTC). `· SPENT` marks a key at its cap (`, fast answers instead` when the role has `degrade_to`); `· differs from tau.toml, run tau proxy keys` marks a key whose cap drifted. It reads each key's own record from the proxy, so it needs no master key. `--json` prints `{role: {"group", "spend_usd", "max_budget_usd", "period", "reset_at", "exhausted", "configured": {"usd", "period", "degrade_to"}, "error"}}`, the same objects as the hub's `GET /spend`.
 
+## `tau net`
+
+```text
+Usage: tau net [OPTIONS] COMMAND [ARGS]...
+
+  The tau network: your tau's identity, card and contacts, and messages to
+  other taus.
+
+Options:
+  -h, --help  Show this help and exit.
+
+Commands:
+  accept    Accept a contact request.
+  add       Ask another tau to become a contact.
+  block     Block an address.
+  card      Print the card.
+  contacts  List contacts.
+  init      Create the network identity.
+  log       Show the network log.
+  poll      Handle queued envelopes once.
+  publish   Publish the card.
+  remove    Forget a contact.
+  send      Send a message to a contact.
+  status    Show the network status.
+```
+
+Added by `tau-net`. The spine comes from `TAU_SPINE_URL` and `TAU_SPINE_TOKEN`; the identity from `TAU_DATA_DIR/net/identity.json` or `TAU_NET_IDENTITY`; the settings from `[component.net]`. The setup is in [Join the tau network](../guides/tau-network.md) and the protocol in [the tau network reference](tau-network.md).
+
+| Command | What it does |
+|---|---|
+| `tau net init [--name NAME]` | Creates the identity (an Ed25519 signing key and an X25519 box key); never overwrites one. `--name` writes `[component.net] name` into `tau.toml` |
+| `tau net status` | Identity, spine health, whether the published card matches, contacts by state, where the network state is stored |
+| `tau net card` / `tau net publish` | Prints the served card / publishes it with `PUT /hub/card` (the hub service also publishes on start) |
+| `tau net contacts` | Contacts and pending requests |
+| `tau net add ADDRESS [--note TEXT]` | Fetches the card, remembers the address as pending and sends a contact request; accepts at once if they had asked already |
+| `tau net accept ADDRESS` | Accepts a pending request: pins the keys and sends a `contact_accept` |
+| `tau net block ADDRESS` / `tau net remove ADDRESS` | Nothing from the address is read or answered any more / forgets the contact (its log and session stay) |
+| `tau net send ADDRESS TEXT...` | Sends a message in your name to an accepted contact (at most 8 000 characters). Your own command, so no approval; the agent's `net_send` tool is tier 2 |
+| `tau net log [--address ADDRESS] [-n N]` | The network log, oldest first (default 20 entries) |
+| `tau net poll --once` | Handles what the spine holds right now, network turns included, without a running hub. Do not run it while the hub polls |
+
 ## `tau version`
 
 ```text

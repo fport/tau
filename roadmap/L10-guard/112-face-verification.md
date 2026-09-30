@@ -1,6 +1,6 @@
 # 112 · Face verification: built-in camera, YuNet + SFace, head-turn challenge, enrollment, encrypted template, `tau guard` CLI
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L10 · Guard
 Packages: tau-guard

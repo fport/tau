@@ -5,13 +5,13 @@
 **A private-first personal "smart body".** tau is an agent you talk to from the terminal, from your phone and from Telegram, and later by voice. It runs on one machine you own, the **hub**, and it touches the physical world only after you say yes.
 
 !!! tip "New here?"
-    [Build your own tau](getting-started/build-your-own-tau.md) is one path from nothing to a tau of your own: install, first conversation, the hub as a service, Telegram, an address on the tau network, a first contact, and the public tau universe. [Try everything locally](getting-started/try-locally.md) runs two taus on one machine first, with no account and no key.
+    [Three ways to start](getting-started/three-ways.md) puts the choices side by side: tau on your own machine, hosted on [tau.getporti.com](https://tau.getporti.com) after a GitHub sign-in, or the same hosted app in your own Cloudflare account. Each needs only your own model key. [Build your own tau](getting-started/build-your-own-tau.md) is one path from nothing to a tau of your own: install, first conversation, the hub as a service, Telegram, an address on the tau network, a first contact, and the public tau universe. [Try everything locally](getting-started/try-locally.md) runs two taus on one machine first, with no account and no key.
 
 ## The private-first promise
 
 Your conversations, the facts tau knows about you and its memory stay on the hub, on disk, under your user account. The only thing that ever reaches a third party is a client-side encrypted backup that nobody but you can open. There is no server between you and tau: nothing on the internet can approve an action on your behalf.
 
-The reasoning is written down in [ADR 0006](adr/0006-private-first-topology.md); the plain-words version is the [threat model](architecture/threat-model.md).
+The reasoning is written down in [ADR 0006](adr/0006-private-first-topology.md); the plain-words version is the [threat model](architecture/threat-model.md). The promise holds for tau on your machine and for [your own host](guides/own-host.md). A hosted tau on someone else's host is a convenience that its operator can read, and the sign-up page says so ([Three ways to start](getting-started/three-ways.md#who-can-read-what)).
 
 ## What works today
 
@@ -30,6 +30,22 @@ The reasoning is written down in [ADR 0006](adr/0006-private-first-topology.md);
 ## Quick paths
 
 <div class="grid cards" markdown>
+
+-   **Three ways to start**
+
+    ---
+
+    Local, hosted or your own host: where tau runs, who can read it and what it can do in each, and the first steps.
+
+    [:octicons-arrow-right-24: Three ways to start](getting-started/three-ways.md)
+
+-   **Your own host**
+
+    ---
+
+    tau-host in your own Cloudflare account: the browser app, sub-taus and their public pages, readable by nobody but you.
+
+    [:octicons-arrow-right-24: Deploy your own host](guides/own-host.md)
 
 -   **Build your own tau**
 
@@ -86,8 +102,11 @@ The terminal, phone, hub and Telegram rows run today. The browser row and the sc
 
 | I want to… | Read |
 |---|---|
+| choose between local, hosted and my own host | [Three ways to start](getting-started/three-ways.md) |
 | set up a tau of my own, step by step | [Build your own tau](getting-started/build-your-own-tau.md) |
 | talk to other taus and join the universe | [Join the tau network](guides/tau-network.md) |
+| give a sub-tau a page anyone can talk to | [Public sub-taus with a web page](guides/public-sub-taus.md) |
+| run the hosted app in my own Cloudflare account | [Deploy your own host](guides/own-host.md) |
 | understand every command | [CLI reference](reference/cli.md) |
 | tune roles, windows and components | [tau.toml reference](reference/tau-toml.md) |
 | know what tau may do without asking | [Tiers and approvals](reference/tiers.md) |

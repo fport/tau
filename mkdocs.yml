@@ -59,6 +59,7 @@ plugins:
           nav_translations:
             Home: Ana sayfa
             Getting started: Başlarken
+            Three ways to start: Başlamanın üç yolu
             Build your own tau: Kendi tau'nu kur
             Try everything locally: Her şeyi yerelde dene
             Install: Kurulum
@@ -75,6 +76,8 @@ plugins:
             TauBar (macOS menu bar): TauBar (macOS menü çubuğu)
             Move the hub to a Raspberry Pi: Hub'ı Raspberry Pi'ye taşı
             Join the tau network: tau ağına katıl
+            Public sub-taus with a web page: Web sayfalı açık sub-tau'lar
+            Deploy your own host: Kendi kurulumunu yap
             Run tau in Cloudflare (cloud mode): tau'yu Cloudflare'de çalıştır (bulut modu)
             Reference: Referans
             Slash commands: Slash komutları
@@ -136,6 +139,7 @@ exclude_docs: |
 nav:
   - Home: index.md
   - Getting started:
+      - Three ways to start: getting-started/three-ways.md
       - Build your own tau: getting-started/build-your-own-tau.md
       - Try everything locally: getting-started/try-locally.md
       - Install: getting-started/install.md
@@ -153,6 +157,8 @@ nav:
       - TauBar (macOS menu bar): guides/taubar.md
       - Move the hub to a Raspberry Pi: guides/raspberry-pi.md
       - Join the tau network: guides/tau-network.md
+      - Public sub-taus with a web page: guides/public-sub-taus.md
+      - Deploy your own host: guides/own-host.md
       - Run tau in Cloudflare (cloud mode): guides/cloud-mode.md
   - Reference:
       - CLI: reference/cli.md

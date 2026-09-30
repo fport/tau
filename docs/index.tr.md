@@ -7,13 +7,13 @@
 **Gizlilik öncelikli, kişisel bir "akıllı beden".** tau; terminalden, telefonundan, Telegram'dan ve ileride sesle konuştuğun bir ajan. Sana ait tek bir makinede, **hub**'da (tau'nun çalıştığı ev makinen) çalışır ve fiziksel dünyaya ancak sen "evet" dedikten sonra dokunur.
 
 !!! tip "Yeni misin?"
-    [Kendi tau'nu kur](getting-started/build-your-own-tau.md), sıfırdan kendine ait bir tau'ya giden tek bir yol: kurulum, ilk konuşma, servis olarak çalışan hub, Telegram, tau ağında bir adres, ilk kişi (contact) ve herkese açık tau evreni. [Her şeyi yerelde dene](getting-started/try-locally.md) ise önce tek bir makinede iki tau çalıştırır; ne hesap gerekir ne anahtar.
+    [Başlamanın üç yolu](getting-started/three-ways.md) seçenekleri yan yana koyuyor: tau kendi makinende, GitHub ile girişten sonra [tau.getporti.com](https://tau.getporti.com) üzerinde barındırılan hâliyle ya da aynı barındırılan uygulama kendi Cloudflare hesabında. Her biri yalnızca kendi model anahtarını ister. [Kendi tau'nu kur](getting-started/build-your-own-tau.md), sıfırdan kendine ait bir tau'ya giden tek bir yol: kurulum, ilk konuşma, servis olarak çalışan hub, Telegram, tau ağında bir adres, ilk kişi (contact) ve herkese açık tau evreni. [Her şeyi yerelde dene](getting-started/try-locally.md) ise önce tek bir makinede iki tau çalıştırır; ne hesap gerekir ne anahtar.
 
 ## Gizlilik öncelikli söz
 
 Konuşmaların, tau'nun senin hakkında bildiği bilgiler ve hafızası hub'da, diskte, senin kullanıcı hesabının altında kalır. Üçüncü bir tarafa ulaşan tek şey, istemci tarafında şifrelenmiş ve senden başka kimsenin açamayacağı bir yedektir. Seninle tau arasında hiçbir sunucu yoktur: internetteki hiçbir şey senin adına bir eylemi onaylayamaz.
 
-Gerekçe [ADR 0006](adr/0006-private-first-topology.md)'da yazılı; sade anlatımı ise [tehdit modeli](architecture/threat-model.md) sayfasında.
+Gerekçe [ADR 0006](adr/0006-private-first-topology.md)'da yazılı; sade anlatımı ise [tehdit modeli](architecture/threat-model.md) sayfasında. Bu söz, kendi makinendeki tau ve [kendi kurulumun](guides/own-host.md) için geçerlidir. Başka birinin sunucusunda barındırılan bir tau ise işletmecisinin okuyabildiği bir kolaylıktır; kayıt sayfası da bunu açıkça söyler ([Başlamanın üç yolu](getting-started/three-ways.md#kim-neyi-okuyabilir)).
 
 ## Bugün neler çalışıyor
 
@@ -32,6 +32,22 @@ Gerekçe [ADR 0006](adr/0006-private-first-topology.md)'da yazılı; sade anlat�
 ## Hızlı yollar
 
 <div class="grid cards" markdown>
+
+-   **Başlamanın üç yolu**
+
+    ---
+
+    Yerel, barındırılan ya da kendi kurulumun: her birinde tau nerede çalışır, onu kim okuyabilir, neler yapabilir ve ilk adımlar.
+
+    [:octicons-arrow-right-24: Başlamanın üç yolu](getting-started/three-ways.md)
+
+-   **Kendi kurulumun**
+
+    ---
+
+    Kendi Cloudflare hesabında tau-host: tarayıcı uygulaması, sub-tau'lar ve açık sayfaları; senden başka kimsenin okuyamadığı hâliyle.
+
+    [:octicons-arrow-right-24: Kendi kurulumunu yap](guides/own-host.md)
 
 -   **Kendi tau'nu kur**
 
@@ -88,8 +104,11 @@ Terminal, telefon, hub ve Telegram satırları bugün çalışıyor. Tarayıcı 
 
 | Şunu istiyorum… | Oku |
 |---|---|
+| yerel, barındırılan ve kendi kurulumum arasında seçim yapmak | [Başlamanın üç yolu](getting-started/three-ways.md) |
 | adım adım kendime ait bir tau kurmak | [Kendi tau'nu kur](getting-started/build-your-own-tau.md) |
 | başka tau'larla konuşmak ve evrene katılmak | [tau ağına katıl](guides/tau-network.md) |
+| bir sub-tau'ya herkesin konuşabileceği bir sayfa vermek | [Web sayfalı açık sub-tau'lar](guides/public-sub-taus.md) |
+| barındırılan uygulamayı kendi Cloudflare hesabımda çalıştırmak | [Kendi kurulumunu yap](guides/own-host.md) |
 | her komutu anlamak | [CLI referansı](reference/cli.md) |
 | rolleri, pencereleri ve bileşenleri ayarlamak | [tau.toml referansı](reference/tau-toml.md) |
 | tau'nun sormadan neler yapabileceğini bilmek | [Tier'lar ve onaylar](reference/tiers.md) |

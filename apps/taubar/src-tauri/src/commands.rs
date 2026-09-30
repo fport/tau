@@ -32,6 +32,19 @@ pub async fn save_hub_settings(app: AppHandle, hub: HubSettings) -> Result<Snaps
     result.map(|()| app.state::<AppCore>().snapshot())
 }
 
+/// "Lock now" from the window; `Err` says why tau may not be locked.
+#[tauri::command]
+pub async fn lock_guard(app: AppHandle) -> Result<Snapshot, String> {
+    let result = app.state::<AppCore>().guard_lock();
+    refresh(&app);
+    result.map(|()| app.state::<AppCore>().snapshot())
+}
+
+#[tauri::command]
+pub fn open_camera_settings(app: AppHandle) {
+    crate::open_camera_settings(&app);
+}
+
 #[tauri::command]
 pub fn open_hub_log(app: AppHandle) {
     crate::open_hub_log(&app);

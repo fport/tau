@@ -1,7 +1,9 @@
 //! TauBar's state and the actions the tray menu and the settings window share.
 
 use crate::eventlog::EventLog;
+use crate::hub::control::ControlClient;
 use crate::hub::display;
+use crate::hub::guard::{self, GuardMenu};
 use crate::hub::launch::{HubCommands, LaunchdAgent};
 use crate::hub::supervisor::{HubView, Probe, Supervisor};
 use crate::login::{self, LoginItemStatus};
@@ -54,6 +56,8 @@ pub struct HubSnapshot {
     pub view: HubView,
     /// The menu's three hub lines: status, Telegram (or a problem), last crash.
     pub lines: [String; 3],
+    /// The guard line and its actions (all hidden without a guard).
+    pub guard_menu: GuardMenu,
     /// The saved switch (what TauBar does at its next start).
     pub run_at_start: bool,
     pub settings: HubSettings,
@@ -77,6 +81,8 @@ pub struct Core<P: Power, H: Probe> {
     /// No settings file existed: TauBar opens its window once so a first-time user sees it
     /// even when macOS hides the menu bar icon (a notched display with a full menu bar).
     pub first_run: bool,
+    /// This process's guard client id: random, an audit label in `/guard/lock`, never a claim.
+    pub client_id: String,
     settings_file: JsonFile,
     state_file: JsonFile,
     settings: Mutex<Settings>,
@@ -149,6 +155,7 @@ impl<P: Power, H: Probe> Core<P, H> {
             log,
             dirs,
             first_run,
+            client_id: guard::new_client_id(),
             shut_down: AtomicBool::new(false),
         };
         let mode = lock(&core.settings).sleep_mode;
@@ -210,6 +217,7 @@ impl<P: Power, H: Probe> Core<P, H> {
                     display::detail_line(&view),
                     display::crash_line(&view),
                 ],
+                guard_menu: guard::menu(view.guard.as_ref()),
                 view,
                 run_at_start: settings.run_hub,
                 settings: settings.hub,
@@ -286,6 +294,29 @@ impl<P: Power, H: Probe> Core<P, H> {
             Some(err) => Err(err),
             None => Ok(()),
         }
+    }
+
+    /// "Lock now": ask the hub to lock the owner guard with a signed `POST /guard/lock`. The
+    /// token is read from `hub_dir/control.token` and never sent; only a proven
+    /// `{"state": "locked"}` counts. Blocking (up to a few seconds): call it off the main
+    /// thread. The supervisor is not held during the request.
+    pub fn guard_lock(&self) -> Result<(), String> {
+        let resolved = lock(&self.hub)
+            .resolved()
+            .cloned()
+            .ok_or("the hub's configuration is not resolved yet")?;
+        let client = ControlClient::new(
+            resolved.control_port,
+            &resolved.hub_dir,
+            guard::LOCK_TIMEOUT,
+        );
+        let result = guard::lock(&client, &self.client_id);
+        match &result {
+            Ok(()) => self.log.write("guard: locked from TauBar (Lock now)"),
+            Err(err) => self.log.write(format!("guard: Lock now failed: {err}")),
+        }
+        lock(&self.hub).poll_soon();
+        result
     }
 
     /// The hub's own log file, once the configuration is resolved.

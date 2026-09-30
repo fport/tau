@@ -154,6 +154,7 @@ mod tests {
             last_exit: None,
             last_crash: None,
             telegram: None,
+            guard: None,
             control_url: Some("http://127.0.0.1:7877".into()),
             hub_log: None,
             command: None,

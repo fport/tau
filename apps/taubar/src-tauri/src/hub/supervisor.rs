@@ -14,6 +14,7 @@
 //! control API, launchd) goes through [`Probe`], so the tests run real child processes
 //! against a fake environment.
 
+use super::guard::{self, GuardStatus};
 use super::launch::{HubCommands, Launch};
 use super::policy::{classify, ExitKind, RestartPolicy};
 use super::probe::{self, LockProbe, Resolved};
@@ -149,6 +150,8 @@ pub struct HubView {
     pub last_crash: Option<Value>,
     /// `telegram` from `/status`.
     pub telegram: Option<Value>,
+    /// The owner guard's block of `/status` (none without a guard service).
+    pub guard: Option<GuardStatus>,
     pub control_url: Option<String>,
     pub hub_log: Option<String>,
     pub command: Option<String>,
@@ -241,6 +244,12 @@ impl<P: Probe> Supervisor<P> {
 
     pub fn resolved(&self) -> Option<&Resolved> {
         self.resolved.as_ref()
+    }
+
+    /// Poll `/health` and `/status` at the next tick instead of waiting out the interval
+    /// (after "Lock now", so the guard line follows at once).
+    pub fn poll_soon(&mut self) {
+        self.next_poll = None;
     }
 
     /// Turn the switch on or off. Returns a message for the user when the switch cannot do
@@ -386,6 +395,7 @@ impl<P: Probe> Supervisor<P> {
                 .as_ref()
                 .and_then(|s| s.get("telegram"))
                 .cloned(),
+            guard: self.status.as_ref().and_then(guard::parse),
             control_url: self.resolved.as_ref().map(Resolved::control_url),
             hub_log: self
                 .resolved
@@ -888,7 +898,32 @@ mod tests {
         assert_eq!(view.pid, Some(pid));
         assert!(view.by_taubar);
         assert!(view.telegram.is_some());
+        assert_eq!(view.guard, None, "no guard block, no guard");
         assert!(rig.log_text().contains(&format!("pid {pid} is up")));
+    }
+
+    #[test]
+    fn the_guard_block_of_status_reaches_the_view() {
+        let mut rig = Rig::new("guard", LONG);
+        rig.sup.set_desired(true, Instant::now());
+        let pid = rig.sup.own_pid().unwrap();
+        rig.answer_health(pid);
+        rig.probe.answers.lock().unwrap().insert(
+            "/status".into(),
+            serde_json::json!({"pid": pid, "uptime_s": 1.0, "guard": {"state": "unavailable",
+                "enrolled": true, "available": false, "reason": "camera_denied"}}),
+        );
+        rig.run_until(Duration::from_secs(2), |s| {
+            s.view(Instant::now()).guard.is_some()
+        });
+        let guard = rig.sup.view(Instant::now()).guard.expect("guard block");
+        assert_eq!(guard.state, "unavailable");
+        assert_eq!(guard.reason.as_deref(), Some("camera_denied"));
+        // The hub goes away: the guard block goes with its /status.
+        rig.probe.answers.lock().unwrap().clear();
+        rig.sup.poll_soon();
+        rig.sup.tick(Instant::now());
+        assert_eq!(rig.sup.view(Instant::now()).guard, None);
     }
 
     #[test]

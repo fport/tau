@@ -12,6 +12,9 @@ Schema (version 1)::
   ``request_id`` and ``tool`` only when set.
 - A record never holds an embedding, a frame or anything about another person: only the keys
   above, each a string, a bool, a small number or ``null``.
+- Strings are cut to 128 characters and every non-printable character (C0 and C1 controls such
+  as ESC and CR, bidi overrides) becomes ``?``: a caller-supplied label such as ``channel``
+  or ``tool`` can never drive the owner's terminal when ``tau guard log`` prints it.
 
 The file is 0600 in the 0700 ``guard/`` directory (both chmod explicitly), rotated at
 :data:`MAX_BYTES` with :data:`KEEP` files in all (``audit.jsonl``, ``audit.jsonl.1``,
@@ -38,6 +41,7 @@ __all__ = [
     "OPTIONAL_KEYS",
     "REQUIRED_KEYS",
     "AuditLog",
+    "printable",
     "secure_dir",
 ]
 
@@ -82,10 +86,17 @@ def secure_dir(path: Path) -> Path:
     return path
 
 
+def printable(value: str) -> str:
+    """``value`` with every non-printable character replaced by ``?``."""
+    if value.isprintable():
+        return value
+    return "".join(char if char.isprintable() else "?" for char in value)
+
+
 def _text(value: Any) -> str | None:
-    """A string field: only a string is kept (cut to 128 characters); anything else is null,
-    so no list, number array or object can ever reach a record."""
-    return value[:MAX_TEXT] if isinstance(value, str) else None
+    """A string field: only a string is kept (cut to 128 characters, see :func:`printable`);
+    anything else is null, so no list, number array or object can ever reach a record."""
+    return printable(value[:MAX_TEXT]) if isinstance(value, str) else None
 
 
 def _utc(moment: datetime) -> str:

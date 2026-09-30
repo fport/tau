@@ -32,7 +32,7 @@ from tau_core.guard import (
 from tau_core.hub import HubClient, HubError, HubUnavailable
 
 from tau_guard import strings as _strings  # noqa: F401  (registers the message keys)
-from tau_guard.audit import EVENTS, AuditLog
+from tau_guard.audit import EVENTS, AuditLog, printable
 from tau_guard.service import GUARD_DIR
 
 __all__ = ["guard", "parse_since"]
@@ -225,7 +225,13 @@ def lock_command(ctx: click.Context) -> None:
 
 
 def entry_line(entry: dict[str, Any], language: str) -> str:
-    """One audit record as a line: time, event, outcome and details."""
+    """One audit record as a line: time, event, outcome and details. Every value from the file
+    goes through :func:`~tau_guard.audit.printable`, so an edited or older file cannot drive
+    the terminal either."""
+    return printable(_entry_line(entry, language))
+
+
+def _entry_line(entry: dict[str, Any], language: str) -> str:
     event = entry.get("event")
     parts = [_when(entry.get("at"))]
     parts.append(t(f"guard.cli.log.event.{event}", language) if event in EVENTS else str(event))
@@ -268,7 +274,7 @@ def log_command(ctx: click.Context, since: str | None, as_json: bool) -> None:
     entries = AuditLog(config.data_dir / GUARD_DIR).read(since=cutoff)
     if as_json:
         for entry in entries:
-            click.echo(json.dumps(entry, ensure_ascii=False))
+            click.echo(json.dumps(entry))  # ASCII: every control character stays escaped
         return
     if not entries:
         click.echo(t("guard.cli.log.empty", language))

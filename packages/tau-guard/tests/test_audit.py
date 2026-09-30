@@ -149,3 +149,14 @@ def test_the_event_list_matches_the_adr() -> None:
         "camera_open",
         "touch_id",
     )
+
+
+def test_labels_never_carry_control_characters(tmp_path: Path) -> None:
+    log = AuditLog(tmp_path / "guard")
+    forged = "tui\x1b]0;owned\x07\r30.09.2026 12:00:00  unlocked  ok‮"
+    entry = log.record("step_up", channel=forged, client_id="c\x00", tool="lamp\x1b[2K\x9b")
+    for value in (entry["channel"], entry["client_id"], entry["tool"]):
+        assert value.isprintable() and "\x1b" not in value and "\r" not in value
+    assert entry["channel"].startswith("tui?]0;owned?")
+    assert log.read()[-1]["tool"] == "lamp?[2K?"
+    assert log.record("verify", channel="Zoë's café")["channel"] == "Zoë's café"  # letters stay

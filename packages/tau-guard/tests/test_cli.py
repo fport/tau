@@ -174,3 +174,29 @@ def test_entry_line_never_shows_more_than_the_schema() -> None:
         "en",
     )
     assert "step-up" in line and "ok" in line and "lamp" in line and "match" not in line
+
+
+def test_log_lines_never_drive_the_terminal(tmp_path: Path) -> None:
+    """Even a record written by hand (or by an older version) is printed inert."""
+    config = cli_config(tmp_path)
+    guard_dir = config.data_dir / "guard"
+    guard_dir.mkdir(parents=True, exist_ok=True)
+    forged = {
+        "v": 1,
+        "at": "2026-09-30T12:00:00+00:00",
+        "event": "odd\x1b[31m",
+        "channel": "tui\x1b]0;owned\x07\r30.09.2026 12:00:00  unlocked  ok",
+        "client_id": "c1",
+        "trigger": None,
+        "ok": False,
+        "reason": "no_match\x9b2J",
+        "duration_ms": 1,
+        "tool": "lamp\x1b[2K",
+    }
+    (guard_dir / "audit.jsonl").write_text(json.dumps(forged) + "\n", encoding="utf-8")
+    line = entry_line(forged, "en")
+    assert line.isprintable() and "owned" in line
+    output = invoke(config, "log").output
+    assert "\x1b" not in output and "\r" not in output and "\x9b" not in output
+    raw = invoke(config, "log", "--json").output
+    assert "\x1b" not in raw and "\x9b" not in raw and json.loads(raw)["tool"] == "lamp\x1b[2K"

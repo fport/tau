@@ -205,8 +205,9 @@ def test_the_network_walkthrough(tmp_path: Path) -> None:
     host = FakeHost(tmp_path, installed={"tau-net": "0.1.0"})
     host.write_config()
     own_facts(host)
-    # go on; net init (yes) and its name; universe (yes), owner, about (none); claim (no)
-    answers = "\n" + "\n" + "Alice's tau\n" + "y\n" + "Alice\n" + "\n" + "\n"
+    # go on; net init (yes) and its name; spine-init (no), spine-deploy (no); universe (yes),
+    # owner, about (none); claim (no)
+    answers = "\n" + "\n" + "Alice's tau\n" + "n\n" + "n\n" + "y\n" + "Alice\n" + "\n" + "\n"
     result = invoke(host, ["--features", "net"], stdin=answers)
     assert result.exit_code == 0, result.output
     assert host.tau_runs() == [
@@ -215,13 +216,13 @@ def test_the_network_walkthrough(tmp_path: Path) -> None:
         ["doctor"],
     ]
     out = result.output
-    assert "Node.js was not found" in out and "needs node on PATH" in out
+    assert "Node.js" not in out
     assert "a small Worker in your own Cloudflare account" in out
     assert "Claim a handle (a GitHub sign-in link): skipped" in out
 
 
-def test_the_spine_steps_run_with_node(tmp_path: Path) -> None:
-    host = FakeHost(tmp_path, installed={"tau-net": "0.1.0"}, programs=("uv", "node"))
+def test_the_spine_steps_run_without_node(tmp_path: Path) -> None:
+    host = FakeHost(tmp_path, installed={"tau-net": "0.1.0"}, programs=("uv",))
     host.write_config()
     own_facts(host)
     # go on; net init (yes, no name), spine-init (yes, dir kept, address), spine-deploy

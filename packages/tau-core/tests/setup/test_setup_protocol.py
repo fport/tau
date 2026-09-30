@@ -233,10 +233,11 @@ def test_run_net_takes_its_inputs_on_stdin(tmp_path: Path) -> None:
     host.runs.clear()
     host.stdin = json.dumps({"steps": ["universe", "spine-init"], "inputs": {"owner": "Alice"}})
     stream = events(host, ["run", "net", "--json"])
-    assert host.tau_runs() == [["net", "universe", "join", "--owner", "Alice"]]
-    skipped = [e for e in stream if e.get("status") == "skipped"]
-    assert skipped[0]["step"] == "spine-init" and skipped[0]["reason"] == "needs"
-    assert "Node.js was not found" in skipped[0]["detail"]
+    assert host.tau_runs() == [
+        ["net", "spine", "init", str(host.user / "tau-spine")],
+        ["net", "universe", "join", "--owner", "Alice"],
+    ]
+    assert not [e for e in stream if e.get("status") == "skipped"]
 
 
 @pytest.mark.parametrize(

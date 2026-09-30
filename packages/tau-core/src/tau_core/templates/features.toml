@@ -178,8 +178,6 @@ id = "spine-init"
 label = "setup.step.net.spine_init"
 command = ["net", "spine", "init"]
 optional = true
-needs = ["node"]
-needs_text = "setup.needs.node"
 
 [[feature.step.input]]
 name = "spine_dir"
@@ -200,8 +198,6 @@ label = "setup.step.net.spine_deploy"
 command = ["net", "spine", "deploy"]
 optional = true
 interactive = true
-needs = ["node"]
-needs_text = "setup.needs.node"
 
 [[feature.step.input]]
 name = "spine_dir"

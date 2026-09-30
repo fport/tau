@@ -431,13 +431,14 @@ SETUP_MESSAGES: dict[str, dict[str, str]] = {
     "setup.step.net.spine": {"en": "Your spine", "tr": "Spine'ın"},
     "setup.note.net.spine": {
         "en": "Your tau's address is a spine, a small Worker in your own Cloudflare account "
-        "(the free plan is enough). Deploying it today needs Node.js 22 or newer and one "
-        "`npx wrangler login` in a browser; a version without Node is coming. You can skip "
-        "the next two steps and deploy later.",
+        "(the free plan is enough). Deploying it needs no Node: tau opens Cloudflare's token "
+        "page with the right permissions filled in, you create the token and paste it, and tau "
+        "does the rest through the Cloudflare API. You can skip the next two steps and deploy "
+        "later.",
         "tr": "tau'nun adresi bir spine'dır: kendi Cloudflare hesabında küçük bir Worker "
-        "(ücretsiz plan yeter). Bugün kurmak için Node.js 22 ya da daha yenisi ve tarayıcıda "
-        "bir kez `npx wrangler login` gerekir; Node istemeyen bir sürüm geliyor. Sonraki iki "
-        "adımı atlayıp daha sonra kurabilirsin.",
+        "(ücretsiz plan yeter). Kurmak için Node gerekmez: tau, Cloudflare'in token sayfasını "
+        "doğru izinler doldurulmuş olarak açar, sen token'ı oluşturup yapıştırırsın, gerisini "
+        "tau Cloudflare API ile yapar. Sonraki iki adımı atlayıp daha sonra kurabilirsin.",
     },
     "setup.step.net.spine_init": {
         "en": "Write the spine project",
@@ -446,14 +447,6 @@ SETUP_MESSAGES: dict[str, dict[str, str]] = {
     "setup.step.net.spine_deploy": {
         "en": "Deploy the spine to Cloudflare",
         "tr": "Spine'ı Cloudflare'e kur",
-    },
-    "setup.needs.node": {
-        "en": "Node.js was not found. Install Node.js 22 or newer (https://nodejs.org), run "
-        "`npx wrangler login` once, then run tau setup again, or deploy later with "
-        "tau net spine init and tau net spine deploy.",
-        "tr": "Node.js bulunamadı. Node.js 22 ya da daha yenisini kur (https://nodejs.org), "
-        "bir kez `npx wrangler login` çalıştır, sonra tau setup'ı yeniden çalıştır ya da daha "
-        "sonra tau net spine init ve tau net spine deploy ile kur.",
     },
     "setup.step.net.universe": {
         "en": "List your tau in the universe",

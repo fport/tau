@@ -429,8 +429,8 @@ def test_preflight(tmp_path: Path) -> None:
     skip = preflight(telegram.steps[0], telegram, remote)
     assert skip is not None and skip.reason == "missing_command"
     assert skip.text_key == "setup.note.telegram.manual"
-    skip = preflight(net.steps[2], net, remote)
-    assert skip is not None and skip.reason == "needs" and skip.fields == {"programs": "node"}
+    # deploying a spine needs no Node since issue 174: nothing to preflight
+    assert preflight(net.steps[2], net, remote) is None
     linux = FakeHost(tmp_path, platform="linux")
     skip = preflight(guard.steps[0], guard, linux)
     assert skip is not None and skip.reason == "platform"

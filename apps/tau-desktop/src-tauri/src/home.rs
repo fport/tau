@@ -139,6 +139,59 @@ pub fn validate(
     })
 }
 
+/// A checkout that passed the check, and where it came from.
+pub type Found = (Validated, Source);
+
+/// The home to use without asking: `TAU_HOME` (`env_home`), else the choice saved in
+/// `settings_file`, and only if it passes `check`. `Err(None)`: nothing is configured yet;
+/// `Err(Some(problem))`: something is, but it does not work, and the window says why.
+pub fn resolve(
+    env_home: Option<String>,
+    settings_file: &Path,
+    check: impl FnOnce(&Path) -> Result<Validated, String>,
+) -> Result<Found, Option<String>> {
+    let saved = DesktopSettings::load(settings_file).tau_home;
+    let (folder, source) = configured(env_home, saved).ok_or(None)?;
+    match check(&folder) {
+        Ok(validated) => Ok((validated, source)),
+        Err(problem) => Err(Some(match source {
+            Source::Env => format!("TAU_HOME is set to a folder tau Desktop cannot use. {problem}"),
+            _ => format!("The folder chosen earlier no longer works. {problem}"),
+        })),
+    }
+}
+
+/// A folder the person just chose (in the picker, or TauBar's hint with a click): check it, and
+/// save it in `settings_file` so the next run finds it (as [`Source::Saved`]).
+pub fn accept(
+    folder: &Path,
+    source: Source,
+    settings_file: &Path,
+    check: impl FnOnce(&Path) -> Result<Validated, String>,
+) -> Result<Found, String> {
+    let validated = check(folder)?;
+    let settings = DesktopSettings {
+        tau_home: Some(validated.home.clone()),
+    };
+    if let Err(err) = settings.save(settings_file) {
+        eprintln!(
+            "tau-desktop: {} could not be saved: {err}",
+            settings_file.display()
+        );
+    }
+    Ok((validated, source))
+}
+
+/// "Use This Folder": TauBar's hub checkout, if TauBar has one, through [`accept`].
+pub fn accept_hint(
+    hint: Option<PathBuf>,
+    settings_file: &Path,
+    check: impl FnOnce(&Path) -> Result<Validated, String>,
+) -> Result<Found, String> {
+    let folder = hint.ok_or("TauBar has no hub checkout set.")?;
+    accept(&folder, Source::Taubar, settings_file, check)
+}
+
 /// Run `launch` to completion, killing it after `timeout`.
 ///
 /// The check runs in its own process group, so a timeout kills whatever it started as well.
@@ -381,6 +434,105 @@ mod tests {
         .unwrap_err();
         assert!(err.contains("did not finish"), "{err}");
         assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    /// A stand-in for the version check: `good` passes, anything else fails.
+    fn check_only(good: &Path) -> impl Fn(&Path) -> Result<Validated, String> + '_ {
+        move |folder| {
+            if folder == good {
+                Ok(Validated {
+                    home: folder.to_path_buf(),
+                    version: "tau-core 0.3.1".into(),
+                })
+            } else {
+                Err(format!("{} has no .venv/bin/python.", folder.display()))
+            }
+        }
+    }
+
+    #[test]
+    fn a_broken_tau_home_asks_and_says_tau_home() {
+        let dir = tmpdir("resolve-env");
+        let file = dir.join("settings.json");
+        let good = PathBuf::from("/path/to/tau");
+        let err = resolve(Some("/broken/tau".into()), &file, check_only(&good)).unwrap_err();
+        let problem = err.expect("a problem, not an empty first run");
+        assert!(
+            problem.starts_with("TAU_HOME is set to a folder"),
+            "{problem}"
+        );
+        assert!(problem.contains("/broken/tau has no .venv"), "{problem}");
+        // A working TAU_HOME wins over the saved choice.
+        DesktopSettings {
+            tau_home: Some("/saved/tau".into()),
+        }
+        .save(&file)
+        .unwrap();
+        let (found, source) =
+            resolve(Some("/path/to/tau".into()), &file, check_only(&good)).unwrap();
+        assert_eq!((found.home, source), (good, Source::Env));
+    }
+
+    #[test]
+    fn a_saved_choice_that_broke_asks_again() {
+        let dir = tmpdir("resolve-saved");
+        let file = dir.join("settings.json");
+        let good = PathBuf::from("/path/to/tau");
+        // Nothing configured: ask, with no problem, and check nothing.
+        assert_eq!(
+            resolve(None, &file, |_| panic!("nothing to check")),
+            Err(None)
+        );
+        DesktopSettings {
+            tau_home: Some("/moved/tau".into()),
+        }
+        .save(&file)
+        .unwrap();
+        let problem = resolve(None, &file, check_only(&good))
+            .unwrap_err()
+            .unwrap();
+        assert!(
+            problem.starts_with("The folder chosen earlier no longer works."),
+            "{problem}"
+        );
+    }
+
+    #[test]
+    fn an_accepted_folder_comes_back_as_saved() {
+        let dir = tmpdir("accept");
+        let file = dir.join("settings.json");
+        let good = PathBuf::from("/path/to/tau");
+        // A rejected folder is not saved.
+        let err = accept(
+            Path::new("/other"),
+            Source::Picked,
+            &file,
+            check_only(&good),
+        )
+        .unwrap_err();
+        assert!(err.contains("/other has no .venv"), "{err}");
+        assert_eq!(DesktopSettings::load(&file).tau_home, None);
+        let (found, source) = accept(&good, Source::Picked, &file, check_only(&good)).unwrap();
+        assert_eq!(
+            (found.home.as_path(), source),
+            (good.as_path(), Source::Picked)
+        );
+        assert_eq!(DesktopSettings::load(&file).tau_home, Some(good.clone()));
+        let (found, source) = resolve(None, &file, check_only(&good)).unwrap();
+        assert_eq!((found.home, source), (good, Source::Saved));
+    }
+
+    #[test]
+    fn using_the_hint_needs_one() {
+        let dir = tmpdir("accept-hint");
+        let file = dir.join("settings.json");
+        let good = PathBuf::from("/path/to/tau");
+        assert_eq!(
+            accept_hint(None, &file, |_| panic!("nothing to check")).unwrap_err(),
+            "TauBar has no hub checkout set."
+        );
+        let (found, source) = accept_hint(Some(good.clone()), &file, check_only(&good)).unwrap();
+        assert_eq!((found.home, source), (good, Source::Taubar));
     }
 
     #[test]

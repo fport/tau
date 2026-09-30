@@ -186,8 +186,9 @@ mod tests {
         assert_eq!(env["PATH"], DEFAULT_PATH);
         assert_eq!(env["HOME"], "/example/home");
         assert_eq!(env["SHELL"], "/bin/zsh");
-        // Not on the allowlist: never inherited, whatever the parent had.
-        for name in ["TAU_LANG", "OPENAI_API_KEY", "USER", "LC_ALL"] {
+        // Not on the allowlist: never inherited, whatever the parent had. TERM, PATH and LANG
+        // are set above, never taken from the parent.
+        for name in ["TAU_LANG", "OPENAI_API_KEY"] {
             assert!(!env.contains_key(name), "{name} leaked into the TUI");
         }
         let keys: Vec<&str> = env.keys().map(String::as_str).collect();
@@ -203,6 +204,27 @@ mod tests {
                 "TERM"
             ]
         );
+    }
+
+    #[test]
+    fn passes_the_whole_allowlist_through_when_present() {
+        let env = build_env(Path::new("/path/to/tau"), |name| match name {
+            "HOME" => Some("/example/home".into()),
+            "USER" => Some("example".into()),
+            "LOGNAME" => Some("example".into()),
+            "TMPDIR" => Some("/example/tmp/".into()),
+            "SHELL" => Some("/bin/zsh".into()),
+            "__CF_USER_TEXT_ENCODING" => Some("0x1F5:0x0:0x0".into()),
+            "TAU_LANG" => Some("tr".into()),
+            _ => None,
+        });
+        for name in INHERITED {
+            assert!(env.contains_key(*name), "{name} was not passed on");
+        }
+        assert_eq!(env["USER"], "example");
+        assert_eq!(env["TMPDIR"], "/example/tmp/");
+        assert!(!env.contains_key("TAU_LANG"));
+        assert_eq!(env.len(), INHERITED.len() + 1 + 1 + TERMINAL_ENV.len()); // + PATH, TAU_HOME
     }
 
     #[test]

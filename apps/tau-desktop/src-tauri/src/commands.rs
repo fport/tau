@@ -4,7 +4,7 @@
 //! the IPC call itself, never from an argument. No command accepts a program, a Python path or a
 //! folder: `choose_home` opens the native folder picker itself, or re-reads TauBar's hint.
 
-use crate::home::{self, DesktopSettings, Source, Validated};
+use crate::home::{self, Source, Validated};
 use crate::launch::Launch;
 use crate::pty::{pty_size, ExitInfo, Session};
 use crate::{inherited_env, Desktop};
@@ -72,38 +72,17 @@ impl Desktop {
                 version: validated.version,
             };
         }
-        let saved = DesktopSettings::load(&self.settings_file).tau_home;
-        let Some((folder, source)) =
-            home::configured(std::env::var(home::TAU_HOME_VAR).ok(), saved)
-        else {
-            return self.choose(None);
-        };
-        match check(&folder) {
-            Ok(validated) => self.ready(validated, source),
-            Err(problem) => self.choose(Some(match source {
-                Source::Env => {
-                    format!("TAU_HOME is set to a folder tau Desktop cannot use. {problem}")
-                }
-                _ => format!("The folder chosen earlier no longer works. {problem}"),
-            })),
+        let env_home = std::env::var(home::TAU_HOME_VAR).ok();
+        match home::resolve(env_home, &self.settings_file, check) {
+            Ok((validated, source)) => self.ready(validated, source),
+            Err(problem) => self.choose(problem),
         }
     }
 
-    /// Validate a folder the person just chose and remember it.
-    fn accept(&self, folder: PathBuf, source: Source) -> HomeStatus {
-        match check(&folder) {
-            Ok(validated) => {
-                let settings = DesktopSettings {
-                    tau_home: Some(validated.home.clone()),
-                };
-                if let Err(err) = settings.save(&self.settings_file) {
-                    eprintln!(
-                        "tau-desktop: {} could not be saved: {err}",
-                        self.settings_file.display()
-                    );
-                }
-                self.ready(validated, source)
-            }
+    /// What a first-run choice led to: ready, or ask again with the problem.
+    fn after_choice(&self, found: Result<home::Found, String>) -> HomeStatus {
+        match found {
+            Ok((validated, source)) => self.ready(validated, source),
             Err(problem) => self.choose(Some(problem)),
         }
     }
@@ -137,10 +116,8 @@ pub async fn choose_home(
     blocking(move || {
         let desktop = app.state::<Desktop>();
         if use_hint {
-            return match desktop.hint() {
-                Some(folder) => desktop.accept(folder, Source::Taubar),
-                None => desktop.choose(Some("TauBar has no hub checkout set.".into())),
-            };
+            let found = home::accept_hint(desktop.hint(), &desktop.settings_file, check);
+            return desktop.after_choice(found);
         }
         let mut picker = app
             .dialog()
@@ -154,7 +131,12 @@ pub async fn choose_home(
         match picker.blocking_pick_folder() {
             None => desktop.choose(None),
             Some(picked) => match picked.into_path() {
-                Ok(folder) => desktop.accept(folder, Source::Picked),
+                Ok(folder) => desktop.after_choice(home::accept(
+                    &folder,
+                    Source::Picked,
+                    &desktop.settings_file,
+                    check,
+                )),
                 Err(err) => desktop.choose(Some(format!("That folder cannot be used: {err}"))),
             },
         }

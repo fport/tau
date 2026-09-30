@@ -48,6 +48,8 @@ Every value below goes in with `wrangler secret put <NAME>`, which prompts for i
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS` | as in the [Telegram guide](telegram.md) |
 | `TAU_NET_IDENTITY` | your network identity, if the cloud tau should join the tau network: base64url of the JSON in `TAU_DATA_DIR/net/identity.json` ([Join the tau network](tau-network.md)) |
 
+The brain enforces the `budget` tables of your `tau.toml` itself, exactly as a local hub does ([Models and budgets](models-and-budgets.md)), but its spend ledger sits on the container's disk, which is lost whenever the container stops, so after a restart every budget counts from zero again; keep the monthly limit in your provider's console.
+
 ## 3. Upload your configuration and persona
 
 On the machine that has your `tau.toml` and `persona/`, put `TAU_SPINE_URL` (the spine URL) and `TAU_SPINE_TOKEN` (the `HUB_TOKEN`) in `.env`, then:

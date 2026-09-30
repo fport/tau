@@ -38,7 +38,7 @@ This is **local mode**: the brain runs at home. If you have no machine that can 
 | **Node.js 22+** | Wrangler, Cloudflare's CLI, deploys your spine. It runs through `npx`, which comes with Node.js. |
 | A free **Cloudflare account** | Your spine runs there, on the Workers Free plan. |
 | A domain on Cloudflare (optional) | For an address such as `tau.example.com`. Without one your address is `tau-spine.<your-subdomain>.workers.dev`. |
-| A model key | An Anthropic API key from the [Anthropic Console](https://console.anthropic.com). Without one you can still do everything with the scripted `fake` model. |
+| A model key | An API key from Anthropic ([Console](https://console.anthropic.com)), OpenAI or Google Gemini. Without one you can still do everything with the scripted `fake` model. |
 | Telegram (optional) | To talk to your tau from your phone. |
 
 === "macOS"
@@ -103,7 +103,7 @@ This is **local mode**: the brain runs at home. If you have no machine that can 
     tau-tui 0.3.1
     ```
 
-    Activating the virtual environment is easier than `uv run tau …` here, because later steps run in other directories and `uv run` only finds the workspace inside the checkout. `TAU_HOME` matters because the checkout holds its own `tau.toml` (every role on the [model proxy](../guides/model-proxy.md)), and inside the checkout that file would be your configuration. Do both again in every new terminal.
+    Activating the virtual environment is easier than `uv run tau …` here, because later steps run in other directories and `uv run` only finds the workspace inside the checkout. `TAU_HOME` matters because the checkout holds its own `tau.toml` (the repository's, on Anthropic), and inside the checkout that file would be your configuration. Do both again in every new terminal.
 
 !!! tip "Already have a tau on this machine?"
     Give the tutorial roots and a hub port of its own, so it never meets your running hub, its configuration or its network identity:
@@ -125,7 +125,7 @@ tau init
 ```
 
 ```text
-Provider: fake. No model credentials were found in the environment or ~/.tau/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY to ~/.tau/.env (names are in ~/.tau/.env.example) and run `tau init --force`, or edit tau.toml.
+Provider: fake. No model credentials were found in the environment or ~/.tau/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY to ~/.tau/.env (names are in ~/.tau/.env.example) and run `tau init --force`, or edit tau.toml.
 UI language (en, tr) [en]: en
 wrote ~/.tau/tau.toml
 wrote ~/.tau/persona/persona.md
@@ -147,7 +147,7 @@ nano ~/.tau/.env              # or any editor
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Run `tau init --force` once more. It finds the key and switches the `brain` and `fast` roles to Anthropic. `--force` rewrites `tau.toml` and `persona.md`, and never touches `user.md` or `.env`.
+With an OpenAI or Gemini key, write `OPENAI_API_KEY=sk-...` or `GEMINI_API_KEY=...` instead. Run `tau init --force` once more. It finds the key and switches the `brain` and `fast` roles to that provider. `--force` rewrites `tau.toml` and `persona.md`, and never touches `user.md` or `.env`.
 
 ```sh
 tau init --force
@@ -155,12 +155,13 @@ tau doctor
 ```
 
 ```text
-Provider: anthropic. ANTHROPIC_API_KEY was found in the environment or ~/.tau/.env. brain and fast call Anthropic directly and local calls Ollama; for hard budgets run the LiteLLM proxy (infra/litellm) and `tau init --provider proxy --force`.
+Provider: anthropic. ANTHROPIC_API_KEY was found in the environment or ~/.tau/.env. tau.toml caps brain and fast with budgets tau enforces itself (`tau spend` shows them), and local uses Ollama on this machine, falling back to fast when it is not running.
 …
 ok   config: ~/.tau/tau.toml loaded
 ok   role brain: provider 'anthropic', credentials present
 ok   role fast: provider 'anthropic', credentials present
 ok   role local: provider 'ollama', needs no credentials
+ok   budget: brain $0.00 of $15.00 this month (resets 01.10.2026 00:00); fast $0.00 of $1.00 today (resets 01.10.2026 00:00)
 ok   sessions: backend 'file' opens under ~/.local/share/tau/sessions
 ok   persona: ~/.tau/persona/persona.md present and non-empty
 ok   persona: ~/.tau/persona/user.md present
@@ -168,13 +169,13 @@ ok   .env: every name in .env is listed in .env.example
 ok   components: every component loads
 info hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
 info telegram: not configured (TELEGRAM_BOT_TOKEN is not set)
-11 checks: 9 ok, 0 warnings, 0 failed
+12 checks: 10 ok, 0 warnings, 0 failed
 ```
 
 `tau doctor` never calls the model, so a mistyped key shows up only at the first message. Two more things before you talk:
 
 - **Tell tau about yourself** in `~/.tau/persona/user.md`: how to address you, your city, your hours. It is private and never leaves the hub, and it is never shown to another tau.
-- **Hard spend caps** are optional. Direct Anthropic calls have no budget in tau; set a spend limit on the workspace in the Anthropic Console, or put the roles behind the [model proxy](../guides/model-proxy.md) (it needs Docker and the checkout).
+- **Spend caps** are on already: `brain` may spend $15 a month (then `fast` answers), `fast` $1 a day. tau prices every answer and keeps the caps itself; `tau spend` shows the spend and `tau.toml` the caps ([Models and budgets](../guides/models-and-budgets.md)). Set a monthly limit in the provider's console as well.
 
 [First run](first-run.md) explains every `tau doctor` line and the other providers; [Configure](configure.md) walks through `tau.toml`.
 
@@ -194,7 +195,7 @@ you> /quit
 Goodbye.
 ```
 
-That `Okay.` is the scripted `fake` model; with your key the answer comes from Claude. `/status` shows which model answers, `/sessions` lists the conversations, and every session is on disk under `~/.local/share/tau/sessions` from the first message.
+That `Okay.` is the scripted `fake` model; with your key the answer comes from your provider's model (Claude with an Anthropic key). `/status` shows which model answers, `/sessions` lists the conversations, and every session is on disk under `~/.local/share/tau/sessions` from the first message.
 
 The full-screen interface is one command. It streams markdown, shows tool calls as cards and asks for approvals in a dialog:
 

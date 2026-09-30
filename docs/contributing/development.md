@@ -139,6 +139,6 @@ Pages are Markdown under `docs/`, the navigation is in `mkdocs.yml`. `--strict` 
 - **Language.** Code, identifiers, comments, commit messages, issues and docs are English. tau's own persona is Turkish by default and mirrors the user; the UI chrome follows `[ui] language`.
 - **Commits.** [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary`, scopes such as `core`, `tui`, `remote`, `roadmap`, `docs`, `cloud`, `taubar`. Small, logical commits; reference the issue id in the body (`Refs: 004`).
 - **Privacy.** Nothing personal in tracked files: no hostnames, tailnet names, IPs, emails, account ids or key fingerprints. Use `my-mac.tailXXXXXX.ts.net`, `100.x.y.z`, `SHA256:...`. Real values go into the gitignored `.env`, with the name and an example value in `.env.example`.
-- **Models.** Code asks for a role, never a model id. `litellm` is never a Python dependency; the proxy runs as a digest-pinned container.
+- **Models.** Code asks for a role, never a model id; ids and prices are data (`tau.toml`, `templates/models.toml`, `templates/prices.toml`). Providers are called directly and tau enforces the budgets itself ([ADR 0011](../adr/0011-budgets-in-tau-no-litellm.md)); `litellm` is never added in any form.
 - **Vocabulary.** [`CONTEXT.md`](https://github.com/fport/tau/blob/main/CONTEXT.md) is the glossary; use its terms exactly. Decisions are in [ARCHITECTURE.md](../ARCHITECTURE.md) and the ADRs; a new decision gets a new ADR.
 - **Issues.** Work is tracked in `roadmap/`; see [Roadmap and issues](roadmap.md).

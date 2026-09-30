@@ -27,7 +27,7 @@ tau --lang tr chat            # Turkish chrome
 ```
 
 ```text
-tau ready. Profile: home, session: 20260929-173826-f949. Commands: /help, /tools, /sessions, /resume, /new, /session, /compact, /clear, /status, /model, /lang, /quit (Ctrl-D also quits).
+tau ready. Profile: home, session: 20260929-173826-f949. Commands: /help, /tools, /sessions, /resume, /new, /session, /compact, /clear, /status, /model, /lang, /settings, /quit (Ctrl-D also quits).
 you> Merhaba tau
 tau> Merhaba. Nasıl yardımcı olabilirim?
 you> /session
@@ -70,7 +70,7 @@ A line that starts with `/` is a command. The channel handles it; the model neve
 | `/session` | current session id, title, message count and store |
 | `/compact [focus]` | summarize this session with its own model and continue in a new session seeded with the summary; the old one is kept |
 | `/clear` | clear the screen; the session and the agent go on |
-| `/status` | profile, session, model, context, tools, UI language, versions, hub |
+| `/status` | profile, session, model, context, tools, UI language, versions, hub and, with budgets, the spend |
 | `/model [role]` | list the roles of `tau.toml`, or switch this session to one; `/resume` remembers it |
 | `/lang en`, `/lang tr` | switch the UI language for this run |
 | `/settings [key value]` | show the settings (roles, credential status, language, profile, context, files); in the terminal `/settings language tr`, `/settings profile NAME`, `/settings model ROLE PROVIDER MODEL_ID`, `/settings set NAME` (hidden prompt) and `/settings clear NAME` change one; in the TUI it opens the settings screen |
@@ -80,16 +80,16 @@ A line that starts with `/` is a command. The channel handles it; the model neve
 you> /status
 Profile: home
 Session: 20260929-173826-f949 · Merhaba tau · 2 messages stored · role brain
-Model: brain → proxy · brain
+Model: brain → anthropic · claude-sonnet-5
 Context: sliding, window 60 · 2 messages in memory
 Tools: 2 registered · 1 need approval (tier 2)
 UI language: en
 Versions: tau-core 0.3.1 · tau-tui 0.3.1
 Hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
-Budget: brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00); fast $0.03 of $1.00 per 1d (resets 01.10.2026 03:00); local $0.00 of $0.50 per 1d (resets 01.10.2026 03:00)
+Budget: brain $0.42 of $15.00 this month (resets 01.10.2026 00:00); fast $0.03 of $1.00 today (resets 01.10.2026 00:00)
 ```
 
-`/status` names the model per role and whether the fallback is in use, never a key. The [slash command reference](../reference/slash-commands.md) has the aliases and the exact wording of every notice.
+`/status` names the model per role and whether the fallback is in use, never a key; its last line is each budgeted role's spend against its cap ([Models and budgets](../guides/models-and-budgets.md)). The [slash command reference](../reference/slash-commands.md) has the aliases and the exact wording of every notice.
 
 ## `tau tui`
 

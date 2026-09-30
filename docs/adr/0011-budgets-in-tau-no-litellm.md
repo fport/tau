@@ -53,7 +53,7 @@ ADR 0009 rejected counting cost in tau for two reasons: each process would need 
 
 ## Consequences
 
-- Installing tau needs Python and a key (or Ollama), nothing else. The same code runs on the Mac, the RPi5 and in the cloud-mode container, which now gets the same budgets as a local hub.
+- Installing tau needs Python and a key (or Ollama), nothing else. The same code runs on the Mac, the RPi5 and in the cloud-mode container. The container enforces the same budgets, but its ledger lives in the container's data directory. Until that directory survives a restart (roadmap 096), a container's budgets count only since it last started.
 - The budget is only as good as the price table. The table ships with tau-core and is dated. A new model needs a `[models.prices]` entry until a release adds it; `tau doctor` points this out.
 - tau cannot see calls made with the same key outside tau. The provider's console limit (ADR 0009, decision 8) stays the last line of defence.
 - The per-key isolation of the proxy is gone: each role uses the provider's key directly. The key never leaves `.env` on the hub.

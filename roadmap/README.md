@@ -6,7 +6,7 @@ tau is built in layers. Each layer becomes useful on its own before the next one
 |---|---|
 | [L0 · Remote access](L0-remote/README.md) | Phone → Tailscale → mosh → tmux → Claude Code |
 | [L1 · Agent](L1-agent/README.md) | Strands agent, persona, tiers, sessions, hub daemon |
-| [L2 · Models](L2-models/README.md) | Role routing through a LiteLLM proxy with hard budgets |
+| [L2 · Models](L2-models/README.md) | Role routing to the user's provider (Anthropic, OpenAI, Gemini, Ollama) with hard budgets tau enforces itself |
 | [L3 · Access and data](L3-cloud/README.md) | Tunnel + Access in front of the web UI, Telegram by direct polling, local settings/memory/KB, encrypted R2 backups (the directory keeps its old name) |
 | [L4 · Interface](L4-interface/README.md) | TauBar, web UI, tau-voice, Claude Code integration, ambient mode |
 | [L5 · Mesh](L5-mesh/README.md) | Zenoh + MCP nodes, MQTT bridge, reflex routines |

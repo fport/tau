@@ -17,7 +17,7 @@ This is the readable version of [ADR 0006](../adr/0006-private-first-topology.md
 2. **Through text.** A Telegram message, a fetched web page, a tool result: anything that reaches the model can try to talk it into misusing a tool (prompt injection). tau's answer is that the model never approves anything, writes are tier 2 or sandboxed, fetches are allowlisted, and reflexes do not use a model at all.
 3. **Through data at rest elsewhere.** A third party's store can be breached, subpoenaed or misconfigured. tau's answer is to keep life data on the hub and to send only ciphertext away.
 
-**Out of scope:** model inference. Prompts go to the configured provider (Anthropic through the local LiteLLM proxy today, [ADR 0009](../adr/0009-anthropic-only-models-behind-the-proxy.md)); the proxy keeps costs, never prompts. The mitigation is data minimization (the system prompt carries `user.md` and the conversation, nothing else) and the `local` role, which keeps a prompt on the owner's Mac (Ollama).
+**Out of scope:** model inference. Prompts go straight from the hub to the configured provider (Anthropic, OpenAI or Google Gemini, with the owner's key; [ADR 0011](../adr/0011-budgets-in-tau-no-litellm.md)); nothing sits in between. The spend ledger on the hub (`TAU_DATA_DIR/spend.sqlite3`) records tokens and dollars per call, never text. The mitigation is data minimization (the system prompt carries `user.md` and the conversation, nothing else) and the `local` role, which keeps a prompt on the owner's Mac (Ollama).
 
 ## The decisions
 

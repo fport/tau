@@ -9,7 +9,7 @@ Two files configure tau. `tau.toml` is static data: which model serves which rol
 
 You do not have to open the files. In `tau tui`, `/settings` (alias `/ayarlar`) or F10 opens an editor with six sections: **Model roles**, **Credentials**, **Interface**, **Agent**, **Doctor** and **Files**. `↑↓` picks a section, Tab moves through its fields, `ctrl+s` or F2 saves, Esc closes. A save is validated first (a bad value stays in the dialog with the reason in the status line), keeps the comments in `tau.toml`, keeps `.env` at mode `0600`, and rebuilds the agent on the same session when something that affects the model changed. [First run](first-run.md#in-the-interface-tau-tui) shows the screen.
 
-The provider select offers only providers that are built. A planned one (a provider a later roadmap issue builds; there is none today) is listed in a note and cannot be chosen, because a role on it cannot start; a role that already names it is left as it is, and should a stored `tau.toml` ever put `brain` on it, `tau tui` still opens, without an agent, on the Model roles section so you can pick another provider. The editor changes a role's provider and model id but leaves its `budget` table alone; edit budgets in the file and run `tau proxy keys` (see [Model proxy and budgets](../guides/model-proxy.md)). A credential row also says when its value comes from your shell environment: `.env` never overrides a variable that is already set, so a value you save there would not be used at the next start until you unset the shell's.
+The provider select offers only providers that are built. A planned one (a provider a later roadmap issue builds; there is none today) is listed in a note and cannot be chosen, because a role on it cannot start; a role that already names it is left as it is, and should a stored `tau.toml` ever put `brain` on it, `tau tui` still opens, without an agent, on the Model roles section so you can pick another provider. The editor changes a role's provider and model id but leaves its `budget` and `failover` alone; edit those in the file and restart tau (see [Models and budgets](../guides/models-and-budgets.md)). A credential row also says when its value comes from your shell environment: `.env` never overrides a variable that is already set, so a value you save there would not be used at the next start until you unset the shell's.
 
 `tau chat` has the terminal form:
 
@@ -17,9 +17,9 @@ The provider select offers only providers that are built. A planned one (a provi
 you> /settings
 Settings · ~/.tau
 Model roles:
-  brain  proxy · brain · credentials ok
-  fast   proxy · fast · credentials ok
-  local  proxy · local · missing TAU_PROXY_KEY_LOCAL
+  brain  anthropic · claude-sonnet-5 · credentials ok
+  fast   anthropic · claude-haiku-4-5 · credentials ok
+  local  ollama · qwen3.5:9b · no credentials needed
 UI language: en · profile: home
 Context: sliding, window 60 · max_turns 12 · max_total_tokens none
 Files:
@@ -34,68 +34,47 @@ The rest of this page is the files themselves.
 
 ## Roles, not model ids
 
-Code never names a model. It asks for a **role** and `tau.toml` maps the role to a provider and a model id. By default every role goes through the **model proxy**, a LiteLLM proxy tau runs in Docker on the hub (`infra/litellm`), which puts a hard spend cap on each role. The shipped file:
+Code never names a model. It asks for a **role** and `tau.toml` maps the role to a provider and a model id. tau calls the provider directly, with your key from `.env` (Anthropic, OpenAI or Google Gemini) or a local model through Ollama, and enforces a **budget** per role itself. The shipped file:
 
 ```toml
 [models.roles.brain]
-provider = "proxy"                        # proxy | anthropic | bedrock | ollama | fake
-model_id = "brain"
-max_tokens = 4096
-
-[models.roles.brain.budget]               # hard cap of the role's proxy key; `tau proxy keys` applies changes
-usd = 15                                  # dollars per period
-period = "1mo"                            # LiteLLM budget_duration: 1d, 7d, 1mo, ... (resets in UTC)
-degrade_to = "fast"                       # once spent, this role answers until the reset; omit to stop and say so
-
-[models.roles.fast]
-provider = "proxy"
-model_id = "fast"
-max_tokens = 1024
-
-[models.roles.fast.budget]
-usd = 1
-period = "1d"
-
-[models.roles.local]
-provider = "proxy"                        # Ollama on the Mac; the proxy answers with fast when Ollama is away
-model_id = "local"
-max_tokens = 1024
-
-[models.roles.local.budget]               # Ollama is free; the cap bounds what the fast fallback may spend
-usd = 0.5
-period = "1d"
-```
-
-- **`brain`** is the conversation and planning model (Claude Sonnet 5). `tau chat` and `tau tui` use it unless you say otherwise (`--role`, `/model`).
-- **`fast`** is for triage and summaries (Claude Haiku 4.5). Today it is available through `/model fast`; later layers use it for memory extraction.
-- **`local`** is an on-device model through Ollama on the Mac (`qwen3.5:9b` recommended). When Ollama is not reachable, the proxy answers with `fast` instead.
-
-With `provider = "proxy"`, `model_id` is not a model id but the proxy's **model group**; `infra/litellm/config.yaml` maps each group to a real model. Each role calls with its own virtual key (`TAU_PROXY_KEY_BRAIN`, `…_FAST`, `…_LOCAL`), and the key carries the role's **budget**: `usd` per `period`. When a budget is spent, the `degrade_to` role answers until the reset, or, without one, tau tells you when the budget resets. Setting the proxy up is one guide: [Model proxy and budgets](../guides/model-proxy.md).
-
-**Without the proxy.** The direct `anthropic` provider works without Docker. It is what `tau init` writes when it finds `ANTHROPIC_API_KEY` but no proxy key: `brain` and `fast` call Anthropic directly, `local` calls Ollama directly (`provider = "ollama"`, `model_id = "qwen3.5:9b"`), and the `budget` tables are left out, because nothing but the proxy would enforce them:
-
-```toml
-[models.roles.brain]
-provider = "anthropic"
+provider = "anthropic"                    # anthropic | openai | gemini | ollama | bedrock | fake
 model_id = "claude-sonnet-5"
 max_tokens = 4096
+
+[models.roles.brain.budget]               # a hard cap tau enforces itself
+usd = 15                                  # dollars per period
+period = "month"                          # day | week | month; resets at midnight, on Monday, on the 1st
+degrade_to = "fast"                       # once spent, this role answers until the reset; omit to stop and say so
 
 [models.roles.fast]
 provider = "anthropic"
 model_id = "claude-haiku-4-5"
 max_tokens = 1024
 
+[models.roles.fast.budget]
+usd = 1
+period = "day"
+
 [models.roles.local]
-provider = "ollama"
-model_id = "qwen3.5:9b"
+provider = "ollama"                       # Ollama on this machine; TAU_OLLAMA_URL points at another (the Mac over the tailnet)
+model_id = "qwen3.5:9b"                   # answers well in Turkish; `ollama pull qwen3.5:9b`
 max_tokens = 1024
+params = { reasoning_effort = "none" }    # answer at once instead of reasoning first
+failover = "fast"                         # answers while Ollama is not reachable (a sleeping or absent Mac)
 ```
 
-`bedrock` stays available as an optional direct provider for installations that want it; tau's own setup no longer uses it.
+- **`brain`** is the conversation and planning model (Claude Sonnet 5). `tau chat` and `tau tui` use it unless you say otherwise (`--role`, `/model`).
+- **`fast`** is for triage and summaries (Claude Haiku 4.5). Today it is available through `/model fast`; later layers use it for memory extraction.
+- **`local`** is an on-device model through Ollama (`qwen3.5:9b` recommended). When Ollama cannot be reached (not running, or a sleeping Mac), its **failover** `fast` answers instead and the reply says so.
 
-A role may have one **`fallback`** table with the same keys. The fallback is used only when the primary provider's credentials are missing; `tau doctor` and `/status` tell you when that happens. The shipped file defines none: on a `proxy` role a fallback would bypass the budget whenever the key is missing.
+`tau init` writes this file for the provider whose key it finds: Anthropic, OpenAI, Gemini or Bedrock, rewriting the `provider` and `model_id` of `brain` and `fast` (for example `gpt-6.1-sol` / `gpt-6-luna` on OpenAI, `gemini-3.5-flash` / `gemini-3.1-flash-lite` on Gemini). The providers are `anthropic`, `openai` (also any OpenAI-compatible API through `params.base_url`), `gemini`, `ollama`, an optional `bedrock`, and the scripted `fake`.
 
-**Prompt caching** is optional and per role. The direct Anthropic and Bedrock providers honour it; `proxy`, `ollama` and `fake` ignore it:
+A **budget** caps what a role may spend: `usd` per `period` (`day`, `week` or `month`, calendar periods in Europe/Istanbul). tau prices every answer, keeps the spend in a ledger under `TAU_DATA_DIR`, and once a budget is spent the `degrade_to` role answers until the reset, or, without one, tau tells you when the budget resets. `tau spend` shows where each role stands. Everything about providers, budgets, prices and failover is in one guide: [Models and budgets](../guides/models-and-budgets.md).
+
+A role may have one **`fallback`** table with the same keys. The fallback is used only when the primary provider's credentials are missing; `tau doctor` and `/status` tell you when that happens. The shipped file defines none.
+
+**Prompt caching** is optional and per role. The Anthropic and Bedrock providers honour it; `openai`, `gemini`, `ollama` and `fake` ignore it:
 
 ```toml
 [models.roles.brain.cache]
@@ -106,7 +85,7 @@ ttl = "1h"                                # optional: "5m", "1h"
 ```
 
 !!! tip
-    Model ids are data. In proxy mode the real ids live in `infra/litellm/config.yaml` and `tau.toml` names only the groups; in direct mode they are in `tau.toml` (Bedrock ids use the Converse API form with the cross-region `global.` prefix). A wrong id is a model error at the first call, not a config error.
+    Model ids are data. They live in `tau.toml`, never in code (Bedrock ids use the Converse API form with the cross-region `global.` prefix, Ollama ids are the names you pulled). A wrong id is a model error at the first call, not a config error. A model tau-core has no price for needs a `[models.prices."<model_id>"]` table before its budget can count ([tau.toml reference](../reference/tau-toml.md#modelsprices)).
 
 ## `[agent]`: turns, context and budget
 
@@ -142,7 +121,7 @@ control_port = 7877
 heartbeat_seconds = 5
 ```
 
-The hub's control API listens on `127.0.0.1:<control_port>` only and answers `GET /health`, `GET /status` and, from the `spend` service, `GET /spend` (what every proxy role spent in its period). `TAU_HUB_PORT` overrides the port. The heartbeat is how often the running hub refreshes its state file; `tau hub status` reads it. See [Run tau as a service](../guides/hub-service.md).
+The hub's control API listens on `127.0.0.1:<control_port>` only and answers `GET /health`, `GET /status` and, from the `spend` service, `GET /spend` (what every role spent in its budget period, from the local ledger). `TAU_HUB_PORT` overrides the port. The heartbeat is how often the running hub refreshes its state file; `tau hub status` reads it. See [Run tau as a service](../guides/hub-service.md).
 
 ## `[ui]`
 
@@ -215,4 +194,4 @@ tau doctor        # config, roles, credentials, persona, components
 tau components    # what is discovered, enabled and in use
 ```
 
-Neither starts a model. After changing a `budget`, also run `tau proxy keys` so the proxy enforces the new cap. Inside a running session, `/status` shows the resolved model per role, the context mode and window, the tool counts and, with the proxy, each role's spend against its budget; `/settings` shows the files' values and lets you change them, and the TUI's **Doctor** section runs the same checks as `tau doctor`.
+Neither starts a model. A running hub, `tau chat` or `tau tui` read `tau.toml` when they start, so restart them after a change, a new `budget` included. Inside a running session, `/status` shows the resolved model per role, the context mode and window, the tool counts and each budgeted role's spend against its cap; `/settings` shows the files' values and lets you change them, and the TUI's **Doctor** section runs the same checks as `tau doctor`.

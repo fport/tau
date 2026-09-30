@@ -80,7 +80,7 @@ nav:
       - Voice: guides/voice.md
       - Backups (encrypted, R2): guides/backups.md
       - Run tau as a service: guides/hub-service.md
-      - Model proxy and budgets: guides/model-proxy.md
+      - Models and budgets: guides/models-and-budgets.md
       - TauBar (macOS menu bar): guides/taubar.md
       - Move the hub to a Raspberry Pi: guides/raspberry-pi.md
       - Join the tau network: guides/tau-network.md
@@ -108,6 +108,7 @@ nav:
           - 0007 Cloud mode and the tau network: adr/0007-cloud-mode-and-tau-network.md
           - 0009 Anthropic-only models behind the proxy: adr/0009-anthropic-only-models-behind-the-proxy.md
           - 0010 The public site and the tau universe: adr/0010-public-site-and-tau-universe.md
+          - 0011 Budgets in tau, no LiteLLM: adr/0011-budgets-in-tau-no-litellm.md
   - Contributing:
       - Development setup: contributing/development.md
       - Write a plugin: contributing/plugins.md

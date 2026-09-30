@@ -27,7 +27,7 @@ With no `tau.toml` anywhere (`TAU_HOME`, the current directory, `~/.tau`) the se
 ```
 
 - **home directory** is where `tau.toml`, `.env` and `persona/` go; `~/.tau` unless `TAU_HOME` or `tau --home` says otherwise. A directory that already holds a `tau.toml` is used as it is.
-- **provider** is detected from the environment and `<home>/.env` the way `tau init` does it: `proxy` when a model-proxy key (`TAU_PROXY_KEY_BRAIN`) is present, else `anthropic` when `ANTHROPIC_API_KEY` is, else `bedrock` when AWS credentials are, else `fake` (no key needed, scripted replies). Change it if you like.
+- **provider** is detected from the environment and `<home>/.env` the way `tau init` does it: `anthropic` when `ANTHROPIC_API_KEY` is present, else `openai` when `OPENAI_API_KEY` is, else `gemini` when `GEMINI_API_KEY` or `GOOGLE_API_KEY` is, else `bedrock` when AWS credentials are, else `fake` (no key needed, scripted replies). Change it if you like.
 - **UI language** relabels the screen as you switch it.
 
 **Create** runs the same code as `tau init`, then the chat opens on the new home. Esc leaves without writing anything (exit code 2, the same as a missing config).
@@ -57,8 +57,8 @@ When the config exists but the role's provider has no credentials, `tau tui` sti
 
 | Section | What you edit |
 |---|---|
-| Model roles | Per role: provider (every installed provider; a planned one, which a later issue builds, is listed in a note and cannot be chosen), model id (for `proxy`, the model group), max tokens, an optional fallback provider and model id, and the credential status of the role (`credentials ok`, `missing TAU_PROXY_KEY_BRAIN`, `missing … · fallback anthropic in use`, `no credentials needed`). A role's `budget` is edited in `tau.toml` only. |
-| Credentials | Every variable the configured providers need, then every other provider's, then every name in `.env.example` and `.env`. Each row says `set · sk-…abcd` or `not set`, and `(from the environment; .env does not override it)` when your shell sets the variable. Keys, tokens, secrets and passwords take a hidden input; plain settings such as `TAU_PROXY_URL` or `TAU_PROFILE` a visible one. **clear** removes a value. Values are never shown again after you type them. |
+| Model roles | Per role: provider (every installed provider; a planned one, which a later issue builds, is listed in a note and cannot be chosen), model id, max tokens, an optional fallback provider and model id, and the credential status of the role (`credentials ok`, `missing ANTHROPIC_API_KEY`, `missing … · fallback anthropic in use`, `no credentials needed`). A role's `budget` and `failover` are edited in `tau.toml` only. |
+| Credentials | Every variable the configured providers need, then every other provider's, then every name in `.env.example` and `.env`. Each row says `set · sk-…abcd` or `not set`, and `(from the environment; .env does not override it)` when your shell sets the variable. Keys, tokens, secrets and passwords take a hidden input; plain settings such as `TAU_OLLAMA_URL` or `TAU_PROFILE` a visible one. **clear** removes a value. Values are never shown again after you type them. |
 | Interface | UI language (`en`/`tr`, applied on save) and the profile (`TAU_PROFILE` in `.env`). |
 | Agent | `context`, `window_size`, `max_turns`, `max_total_tokens` with the same rules as the file. |
 | Doctor | The `tau doctor` checks with `✓`, `◆`, `✗` and `▸` glyphs. |
@@ -90,7 +90,7 @@ tau init --home ~/.tau --provider anthropic --language en --profile home --yes
 | Option | Effect |
 |---|---|
 | `--home DIR` | The root to create. Default: `TAU_HOME`, else `~/.tau`. |
-| `--provider NAME` | Provider for the `brain` and `fast` roles: `proxy`, `anthropic`, `bedrock` or `fake`. Default: the first one with credentials, in that order. `proxy` writes the shipped file as is (every role on the proxy, with budgets); any other provider also points `local` at Ollama directly and leaves the budgets out. |
+| `--provider NAME` | Provider for the `brain` and `fast` roles: `anthropic`, `openai`, `gemini`, `bedrock` or `fake`. Default: the first one with credentials, in that order. Only the `provider` and `model_id` of `brain` and `fast` change; the budgets and `local` (Ollama, failing over to `fast`) stay as shipped. |
 | `--language LANG` | UI language, `en` or `tr`. Asked when omitted, unless `--yes`. |
 | `--profile NAME` | Appends `TAU_PROFILE=NAME` to `<root>/.env` if it is not set there. |
 | `-y`, `--yes` | Ask nothing; use defaults for whatever is not given. |
@@ -99,7 +99,7 @@ tau init --home ~/.tau --provider anthropic --language en --profile home --yes
 A run with no credentials anywhere ends like this (paths shortened):
 
 ```text
-Provider: fake. No model credentials were found in the environment or <root>/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY to <root>/.env (names are in <root>/.env.example) and run `tau init --force`, or edit tau.toml.
+Provider: fake. No model credentials were found in the environment or <root>/.env, so both roles use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY to <root>/.env (names are in <root>/.env.example) and run `tau init --force`, or edit tau.toml.
 wrote <root>/tau.toml
 wrote <root>/persona/persona.md
 wrote <root>/persona/user.example.md
@@ -124,44 +124,37 @@ Ask tau anything, then try `/tools`, `/status` and `/sessions`. When you want re
 
 tau reads credentials from the environment and from `<root>/.env`. A variable that is already set in your shell wins; the file never overrides it. `.env` is yours and stays out of any repository; `.env.example` next to it only lists the names.
 
-Anthropic is tau's model provider. Every setup starts with its key in `.env`:
+Put the key of your provider in `.env`, then let `tau init --force` rewrite the roles for it (it picks Anthropic, OpenAI, Gemini, Bedrock, in that order, from what `.env` now holds), open the **Model roles** section of `/settings` in the TUI, or edit `tau.toml` by hand:
 
-```sh
-ANTHROPIC_API_KEY=sk-ant-...
-# Only for a key that is not scoped to a workspace (Console → Settings → Workspaces):
-# ANTHROPIC_WORKSPACE_ID=wrksp_...
-```
+=== "Anthropic"
 
-Then pick how tau reaches it:
-
-=== "Directly (no Docker)"
-
-    The key is all you need. Let the wizard rewrite the roles for it, open the **Model roles** section of `/settings` in the TUI, or edit `tau.toml` by hand:
+    The shipped `tau.toml`'s provider: `brain` is Claude Sonnet 5, `fast` Claude Haiku 4.5.
 
     ```sh
-    tau init --force          # picks proxy > anthropic > bedrock > fake from what .env now holds
-    tau doctor
+    ANTHROPIC_API_KEY=sk-ant-...
+    # Only for a key that is not scoped to a workspace (Console → Settings → Workspaces):
+    # ANTHROPIC_WORKSPACE_ID=wrksp_...
     ```
 
-    `brain` and `fast` call Anthropic directly and `local` calls Ollama directly. There are no budgets in this mode; set a spend limit on the Anthropic workspace in the Console instead.
+=== "OpenAI"
 
-=== "Through the model proxy"
-
-    The default of the shipped `tau.toml`: every role goes through a LiteLLM proxy in Docker with a hard budget per role. The proxy's own secrets and the three role keys are generated for you:
+    `brain` becomes `gpt-6.1-sol`, `fast` `gpt-6-luna`. `params.base_url` on a role points it at any OpenAI-compatible API instead.
 
     ```sh
-    infra/litellm/proxy.sh init    # LITELLM_MASTER_KEY, LITELLM_SALT_KEY, TAU_PROXY_DB_PASSWORD into .env
-    infra/litellm/proxy.sh up
-    tau init --provider proxy --force   # not needed in a checkout: its tau.toml already uses the proxy
-    tau proxy keys                 # TAU_PROXY_KEY_BRAIN, _FAST, _LOCAL into .env
-    tau doctor
+    OPENAI_API_KEY=sk-...
     ```
 
-    [Model proxy and budgets](../guides/model-proxy.md) walks through it.
+=== "Google Gemini"
+
+    `brain` becomes `gemini-3.5-flash`, `fast` `gemini-3.1-flash-lite`.
+
+    ```sh
+    GEMINI_API_KEY=...        # GOOGLE_API_KEY works too
+    ```
 
 === "Amazon Bedrock (optional)"
 
-    Bedrock is not part of tau's own setup, but it stays available as a direct provider. `AWS_REGION` plus one of three credential forms:
+    `AWS_REGION` plus one of three credential forms:
 
     ```sh
     AWS_REGION=eu-central-1
@@ -173,17 +166,19 @@ Then pick how tau reaches it:
     # AWS_BEARER_TOKEN_BEDROCK=...
     ```
 
-    Then `tau init --provider bedrock --force`.
+```sh
+tau init --force          # picks anthropic > openai > gemini > bedrock > fake from what .env now holds
+tau doctor
+```
+
+Whatever the provider, `tau.toml` keeps its **budgets**: `brain` may spend $15 a month and then hands over to `fast`, `fast` $1 a day. tau prices every answer and enforces them itself; `tau spend` shows where each role stands. The **`local`** role stays on Ollama on this machine and needs no key: install [Ollama](https://ollama.com) and `ollama pull qwen3.5:9b` to use it; until then `fast` answers for it. Set a monthly spend limit in your provider's console as well, as the last line of defence. [Models and budgets](../guides/models-and-budgets.md) covers all of it.
 
 Inside a session, `/settings set ANTHROPIC_API_KEY` (terminal) asks for the value without echoing it and writes it to `.env`; the TUI's **Credentials** section does the same with a hidden input.
-
-!!! note "Proxy or direct"
-    The shipped `tau.toml` (and the repository's own) puts every role on `provider = "proxy"`. `tau init` writes it that way only when it finds a proxy key; with just `ANTHROPIC_API_KEY` it writes the direct providers instead. `tau doctor` says which provider each role uses and whether it has what it needs.
 
 If a role has no usable credentials, `tau chat` stops before starting, with exit code 2 and a message naming the missing variables; `tau tui` opens on the settings screen instead (see above):
 
 ```text
-Missing model credentials for role 'brain' (proxy). Add these variables to .env: TAU_PROXY_KEY_BRAIN
+Missing model credentials for role 'brain' (anthropic). Add these variables to .env: ANTHROPIC_API_KEY
 Example names are in .env.example.
 ```
 
@@ -202,14 +197,14 @@ Edit it in any editor. The change applies on the next model call; there is nothi
 tau doctor
 ```
 
-A first run in a checkout, with `ANTHROPIC_API_KEY` in `.env` but before the model proxy is set up and before you wrote a `user.md`:
+A first run in a checkout, with `ANTHROPIC_API_KEY` in `.env` but before you wrote a `user.md`:
 
 ```text
 ok   config: <root>/tau.toml loaded
-fail role brain: provider 'proxy' is missing TAU_PROXY_KEY_BRAIN (names are in .env.example)
-fail role fast: provider 'proxy' is missing TAU_PROXY_KEY_FAST (names are in .env.example)
-fail role local: provider 'proxy' is missing TAU_PROXY_KEY_LOCAL (names are in .env.example)
-warn proxy: not answering at http://127.0.0.1:4000; start it with infra/litellm/proxy.sh up (model calls of the proxy roles fail until then)
+ok   role brain: provider 'anthropic', credentials present
+ok   role fast: provider 'anthropic', credentials present
+ok   role local: provider 'ollama', needs no credentials
+ok   budget: brain $0.00 of $15.00 this month (resets 01.10.2026 00:00); fast $0.00 of $1.00 today (resets 01.10.2026 00:00)
 ok   sessions: backend 'file' opens under ~/.local/share/tau/sessions
 ok   persona: <root>/persona/persona.md present and non-empty
 warn persona: <root>/persona/user.md is missing: tau addresses you formally and knows nothing about you (start from persona/user.example.md)
@@ -217,17 +212,24 @@ ok   .env: every name in .env is listed in .env.example
 ok   components: every component loads
 info hub: hub is not running (nothing answers on http://127.0.0.1:7877/health)
 info telegram: not configured (TELEGRAM_BOT_TOKEN is not set)
-12 checks: 5 ok, 2 warnings, 3 failed
+12 checks: 9 ok, 1 warnings, 0 failed
 ```
 
-The checkout's `tau.toml` sends every role through the proxy, so the three roles fail until [Model proxy and budgets](../guides/model-proxy.md) is done; once it is, each role line turns `ok` and one `proxy <role>` line per role reports its spend (`ok   proxy brain: $0.00 of $15.00 per 1mo, within budget`). A root that `tau init` wrote for the direct `anthropic` provider has no proxy lines at all.
+Without the key, the two Anthropic roles fail and the exit code is 1:
+
+```text
+fail role brain: provider 'anthropic' is missing ANTHROPIC_API_KEY (names are in .env.example)
+fail role fast: provider 'anthropic' is missing ANTHROPIC_API_KEY (names are in .env.example)
+ok   role local: provider 'ollama', needs no credentials
+```
+
+`role local` is `ok` even when Ollama is not installed: `tau doctor` never calls a model, and while Ollama cannot be reached `local`'s failover `fast` answers.
 
 | Check | What it verifies | When it fails |
 |---|---|---|
 | `config` | `tau.toml` parses and every provider and backend name is known. Unknown top-level tables are a warning. | A missing or invalid file: `fail`, and no further checks run. |
-| `role <name>` | Each role's provider exists and has credentials, without building a client. A `warn` means the fallback will be used, the provider is planned (a later issue builds it), or the role has a `budget` its provider cannot enforce (only `proxy` can). | No credentials for the primary or the fallback: `fail`, with the missing names. |
-| `proxy` | With at least one `proxy` role: whether the model proxy answers. | Never; `warn` when it does not answer. |
-| `proxy <role>` | Whether the proxy accepts the role's key, and the key's spend against its cap (`$0.40 of $15.00 per 1mo, within budget`). | The proxy refuses the key: `fail`, run `tau proxy keys`. A cap that differs from `tau.toml` or a role without a budget: `warn`. |
+| `role <name>` | Each role's provider exists and has credentials, without building a client. A `warn` means the fallback will be used, the provider is planned (a later issue builds it), or the role has a `budget` but its model has no price, so its calls would count as $0. | No credentials for the primary or the fallback: `fail`, with the missing names. |
+| `budget` | With at least one budget in `tau.toml`: every budgeted role's spend in its period against its cap, from the ledger under `TAU_DATA_DIR` (the same text as `/status` and `tau spend`). | The ledger cannot be read: `fail`. |
 | `sessions` | The `[sessions] backend` opens. For `file` it names the directory. | The backend cannot open its store. |
 | `persona` (twice) | `persona.md` is present and non-empty; `user.md` is present. | A missing or empty `persona.md` is a `fail`; a missing `user.md` is only a `warn`. |
 | `.env` | Every name in `.env` is listed in `.env.example`, so a typo in a variable name is caught. `info` when there is no `.env`. | Never; unknown names are a `warn`. Add your own names to `.env.example` to silence it. |
@@ -238,7 +240,7 @@ The checkout's `tau.toml` sends every role through the proxy, so the three roles
 Exit code 1 means at least one `fail`. `tau doctor --json` prints the same checks as JSON for scripts.
 
 !!! tip
-    `tau doctor` never starts a model, opens a network connection to a provider or writes anything except the session directory it opens. It only asks the local model proxy (and the hub) how they are. Run it as often as you like.
+    `tau doctor` never starts a model, opens a network connection to a provider or writes anything except the session directory it opens. It only asks the hub how it is and reads the spend ledger. Run it as often as you like.
 
 ## Your first conversation
 

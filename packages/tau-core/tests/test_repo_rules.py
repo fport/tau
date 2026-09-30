@@ -173,28 +173,33 @@ def _scope_nodes(scope: ast.AST) -> list[ast.AST]:
 
 
 def _constant_names(scope: ast.AST, inherited: frozenset[str]) -> frozenset[str]:
-    """Names bound in ``scope`` (assignment or parameter default) to what may be a constant."""
-    names = set(inherited)
+    """Names bound in ``scope`` (assignment or parameter default) to what may be a constant,
+    plus the enclosing function scopes' names that ``scope`` does not rebind."""
+    constant: set[str] = set()
+    rebound: set[str] = set()
     if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
         args = scope.args
         positional = args.posonlyargs + args.args
+        rebound.update(a.arg for a in [*positional, *args.kwonlyargs])
+        rebound.update(a.arg for a in (args.vararg, args.kwarg) if a is not None)
         defaulted = positional[len(positional) - len(args.defaults) :]
         for arg, default in zip(defaulted, args.defaults, strict=True):
             if _maybe_constant(default):
-                names.add(arg.arg)
+                constant.add(arg.arg)
         for arg, default in zip(args.kwonlyargs, args.kw_defaults, strict=True):
             if default is not None and _maybe_constant(default):
-                names.add(arg.arg)
+                constant.add(arg.arg)
     for node in _scope_nodes(scope):
-        if isinstance(node, ast.Assign) and _maybe_constant(node.value):
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-        elif (
-            isinstance(node, ast.AnnAssign | ast.NamedExpr)
-            and isinstance(node.target, ast.Name)
-            and _maybe_constant(node.value)
-        ):
-            names.add(node.target.id)
-    return frozenset(names)
+        if isinstance(node, ast.Assign):
+            names = {t.id for t in node.targets if isinstance(t, ast.Name)}
+        elif isinstance(node, ast.AnnAssign | ast.NamedExpr) and isinstance(node.target, ast.Name):
+            names = {node.target.id}
+        else:
+            continue
+        rebound.update(names)
+        if _maybe_constant(node.value):
+            constant.update(names)
+    return frozenset((inherited - rebound) | constant)
 
 
 def _guard_opt_outs(tree: ast.Module) -> list[tuple[int, str]]:
@@ -219,7 +224,8 @@ def _guard_opt_outs(tree: ast.Module) -> list[tuple[int, str]]:
                     ):
                         found.append((node.lineno, f"guard={ast.unparse(value)}"))
             if isinstance(node, _SCOPES):
-                visit(node, constants)
+                # a class body's names are not visible in its methods
+                visit(node, inherited if isinstance(scope, ast.ClassDef) else constants)
 
     visit(tree, frozenset())
     return found
@@ -350,10 +356,20 @@ def test_the_guard_rules_let_ordinary_code_through() -> None:
 from tau_core import TierGate, build_agent
 from tau_core.guard import DISCOVER, resolve_guard
 
+@dataclass
+class ReplState:
+    guard: Guard | None = None
+
+    def rebuild(self, guard):
+        return build_agent(config, guard=guard)
+
 class Screen:
     def __init__(self, config, guard=None):
         self.guard = resolve_guard(config)
         self.status: GuardStatus | None = None
+
+    def with_guard(self, guard):
+        return build_agent(config, guard=guard)
 
     def build(self, guard):
         gate: TierGate = TierGate(c, a, e, session_id=None, channel="tui", guard=self.guard)

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import textwrap
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,7 @@ from tau_core import Guard, GuardStatus, Tier
 from tau_core.approval import ApprovalRequest
 from tau_core.hub import ControlApi
 from tau_core.testing import test_config
-from tau_guard.service import GuardService, make_service
+from tau_guard.service import PRESENCE_WAIT, GuardService, make_service
 from tau_guard.state import Attempt, Refusal
 from tau_guard.testing import (
     FakeClock,
@@ -349,6 +350,16 @@ class GatedPresence(FakePresence):
         return super().read()
 
 
+class SlowPresence(FakePresence):
+    def __init__(self, delay: float) -> None:
+        super().__init__()
+        self.delay = delay
+
+    def read(self):  # type: ignore[no-untyped-def]
+        time.sleep(self.delay)
+        return super().read()
+
+
 def workers(script: Path) -> list[int]:
     return [int(entry["pid"]) for entry in read_requests(script)]
 
@@ -539,5 +550,60 @@ async def test_nothing_starts_while_the_screen_is_locked(tmp_path: Path) -> None
         assert (verdict.ok, verdict.reason) == (False, "locked")
         answer, _ = service._request_sync("enroll", channel="enroll", client_id="c1")
         assert answer == Refusal("locked") and workers(script) == []
+    finally:
+        await service.stop()
+
+
+async def test_in_hub_calls_never_stall_the_event_loop(tmp_path: Path) -> None:
+    service, hub, _, _ = make(tmp_path, runs=[[match()]])
+    await service.start(hub)  # type: ignore[arg-type]
+    try:
+        assert (await service.unlock(channel="tui", client_id="c1")).ok
+        service.presence = SlowPresence(0.4)  # a WindowServer that answers slowly
+        gaps: list[float] = []
+        done = False
+
+        async def ticker() -> None:
+            last = time.monotonic()
+            while not done:
+                await asyncio.sleep(0.01)
+                now = time.monotonic()
+                gaps.append(now - last)
+                last = now
+
+        ticking = asyncio.ensure_future(ticker())
+        assert (await service.admit(TURN)).allowed
+        assert await service.step_up(REQUEST, client_id="c1") is True
+        done = True
+        await ticking
+        assert gaps and max(gaps) < 0.3  # a 0.4 s read never blocked the loop
+        hung = GatedPresence()
+        hung.armed = True
+        service.presence = hung
+        began = time.monotonic()
+        assert service.face_fresh(3600) is False  # no reading, no microphone
+        assert time.monotonic() - began < PRESENCE_WAIT + 0.5
+        hung.release.set()
+    finally:
+        await service.stop()
+
+
+async def test_cancelling_during_the_request_withdraws_from_its_attempt(tmp_path: Path) -> None:
+    presence = GatedPresence("tau-guard-call")
+    service, hub, _, _ = make(tmp_path, presence=presence, runs=[[{"hang": True}]])
+    await service.start(hub)  # type: ignore[arg-type]
+    try:
+        presence.armed = True
+        task = asyncio.ensure_future(service.unlock(channel="tui", client_id="c1"))
+        await until_async(presence.entered.is_set)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        presence.release.set()  # the request goes on and starts its attempt after all
+        machine = service.machine
+        assert machine is not None
+        await until_async(lambda: machine.last_verdict == "cancelled")
+        assert machine.running is None and machine.state == "locked"
+        await until_async(lambda: not any(run.alive for run in service._all_runs), timeout=5)
     finally:
         await service.stop()

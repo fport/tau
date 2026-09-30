@@ -44,8 +44,11 @@ says why the guard is unavailable, ``reflex_stalled`` when the reflex loop misse
 
 In the hub, :class:`GuardService` implements ``tau_core.Guard`` directly (find it with
 ``hub.find_service("guard")`` plus an ``isinstance(Guard)`` check) and offers
-:meth:`GuardService.subscribe` and :meth:`GuardService.face_fresh`. The hub log gets no
-verdicts and no scores; those go to the audit log only.
+:meth:`GuardService.subscribe` and :meth:`GuardService.face_fresh`. Its async methods run
+their presence reads, locking and spawning in a daemon thread, so a slow WindowServer never
+stalls the hub's event loop; ``face_fresh`` (synchronous) waits at most
+:data:`PRESENCE_WAIT` seconds for a reading and answers ``False`` without one. The hub log gets
+no verdicts and no scores; those go to the audit log only.
 """
 
 from __future__ import annotations
@@ -96,7 +99,14 @@ if TYPE_CHECKING:
     from tau_core.approval import ApprovalRequest
     from tau_core.hub.daemon import Hub
 
-__all__ = ["GUARD_DIR", "REFLEX_INTERVAL", "SERVICE_NAME", "GuardService", "make_service"]
+__all__ = [
+    "GUARD_DIR",
+    "PRESENCE_WAIT",
+    "REFLEX_INTERVAL",
+    "SERVICE_NAME",
+    "GuardService",
+    "make_service",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +116,9 @@ REFLEX_INTERVAL = 2.0
 STOP_WAIT = 3.0
 """How long :meth:`GuardService.stop` waits for workers to die (SIGTERM, 1 s, SIGKILL)."""
 ATTEMPT_LIMIT = 120.0
+PRESENCE_WAIT = 0.25
+"""How long :meth:`GuardService.face_fresh` (synchronous) waits for a presence reading; a
+Quartz read takes a few milliseconds, and a slower one answers ``False``."""
 SUCCESS_METHODS = ("face", "touch_id")
 STATUS_FIELDS = (
     "state",
@@ -733,7 +746,7 @@ class GuardService:
 
     async def admit(self, turn: GuardTurn) -> Admission:
         try:
-            allowed, reason, _, _ = self._admit_sync(turn)
+            allowed, reason, _, _ = await _off_loop(self._admit_sync, turn)
         except Exception:
             logger.exception("guard: admission failed; refusing")
             return Admission(False, "error")
@@ -799,12 +812,29 @@ class GuardService:
     def face_fresh(self, seconds: float) -> bool:
         """The guard is unlocked and the last face match is at most ``seconds`` old (the
         reflexes are evaluated first). For voice (issue 118)."""
-        if self.mode != "active" or self.machine is None:
+        if not self._accepting():
             return False
-        reading = self._read_presence()
+        reading = self._read_presence_within(PRESENCE_WAIT)
+        if reading is None:
+            logger.warning(
+                "guard: no presence reading within %.2f s; face_fresh is False", PRESENCE_WAIT
+            )
+            return False
         with self._transaction() as machine:
             machine.observe(reading)
             return machine.face_fresh(seconds)
+
+    def _read_presence_within(self, timeout: float) -> Reading | None:
+        """A presence reading from a daemon thread, ``None`` after ``timeout`` seconds."""
+        box: list[Reading] = []
+        done = threading.Event()
+
+        def read() -> None:
+            box.append(self._read_presence())
+            done.set()
+
+        threading.Thread(target=read, name="tau-guard-presence", daemon=True).start()
+        return box[0] if done.wait(timeout) else None
 
     async def _attempt(
         self,
@@ -816,7 +846,7 @@ class GuardService:
         request_id: str | None = None,
         tool: str | None = None,
     ) -> GuardVerdict:
-        result, _ = self._request_sync(
+        result = await self._request_off_loop(
             kind, channel=channel, client_id=client_id, request_id=request_id, tool=tool
         )
         if isinstance(result, Refusal):
@@ -839,7 +869,7 @@ class GuardService:
                     _report(on_progress, record)
                 if record["done"]:
                     if record["ok"] is True:  # read the success with the reflexes run again
-                        record, state = self._settle_sync(attempt_id)
+                        record, state = await _off_loop(self._settle_sync, attempt_id)
                         if record is None:
                             return GuardVerdict(False, "unavailable")
                     return _verdict(record, state)
@@ -853,6 +883,72 @@ class GuardService:
         except asyncio.CancelledError:
             self._cancel_sync(client_id, attempt_id)
             raise
+
+    async def _request_off_loop(
+        self,
+        kind: str,
+        *,
+        channel: str,
+        client_id: str,
+        request_id: str | None,
+        tool: str | None,
+    ) -> Attempt | Refusal:
+        """:meth:`_request_sync` in a daemon thread. A caller cancelled meanwhile withdraws
+        from the attempt the request started, however late the request returns."""
+        guard = threading.Lock()
+        cancelled = False
+        started: list[Attempt] = []
+
+        def request() -> Attempt | Refusal:
+            result, _ = self._request_sync(
+                kind, channel=channel, client_id=client_id, request_id=request_id, tool=tool
+            )
+            if isinstance(result, Attempt):
+                with guard:
+                    if cancelled:
+                        self._cancel_sync(client_id, result.id)
+                    else:
+                        started.append(result)
+            return result
+
+        try:
+            return await _off_loop(request)
+        except asyncio.CancelledError:
+            with guard:
+                cancelled = True
+                attempts = list(started)
+            for attempt in attempts:
+                self._cancel_sync(client_id, attempt.id)
+            raise
+
+
+async def _off_loop[T](fn: Callable[..., T], *args: Any) -> T:
+    """Run ``fn`` in a fresh daemon thread and await its result (never ``asyncio.to_thread``,
+    whose executor is joined at shutdown). A cancelled caller stops waiting; the thread
+    finishes alone."""
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[T] = loop.create_future()
+
+    def settle(value: Any, error: BaseException | None) -> None:
+        if future.done():
+            return
+        if error is not None:
+            future.set_exception(error)
+        else:
+            future.set_result(value)
+
+    def run() -> None:
+        value: Any = None
+        error: BaseException | None = None
+        try:
+            value = fn(*args)
+        except BaseException as exc:  # handed to the awaiting task
+            error = exc
+        with suppress(RuntimeError):  # the loop is closed: nobody waits any more
+            loop.call_soon_threadsafe(settle, value, error)
+
+    threading.Thread(target=run, name="tau-guard-call", daemon=True).start()
+    return await future
 
 
 def _answer(result: Attempt | Refusal, seq: int) -> tuple[int, Any]:

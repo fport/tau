@@ -154,7 +154,7 @@ def collect_status(
     """Everything ``tau hub status`` shows, read from the hub's files (no network).
 
     ``data_dir``, ``hub_dir``, ``lock`` and ``control_port`` are the values this configuration
-    resolves to (``tau.toml``, ``.env`` and the environment), so a supervisor such as TauBar
+    resolves to (``tau.toml``, ``.env`` and the environment), so a supervisor such as the tau app
     can probe the same lock and control API the hub will use without re-implementing the
     config rules."""
     files = HubFiles(config.hub_dir)

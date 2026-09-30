@@ -196,18 +196,19 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "{path} dosyasına [component.guard] enabled = true yazıldı.",
     },
     "guard.cli.setup.restart": {
-        "en": "Restart the hub and any open tau chat, tau tui or tau Desktop window: one that "
-        "started before now stays unguarded until its next start.",
-        "tr": "Hub'ı ve açık tau chat, tau tui ya da tau Desktop pencerelerini yeniden başlat: "
-        "bundan önce açılan bir pencere bir sonraki açılışına kadar korumasız kalır.",
+        "en": "Restart the hub and any open tau chat, tau tui or chat window of the tau app: "
+        "one that started before now stays unguarded until its next start.",
+        "tr": "Hub'ı ve açık tau chat, tau tui ya da tau uygulamasının sohbet pencerelerini "
+        "yeniden başlat: bundan önce açılan bir pencere bir sonraki açılışına kadar korumasız "
+        "kalır.",
     },
     "guard.cli.setup.hub_camera": {
         "en": "The enrollment used this terminal's camera permission. The app that runs the hub "
-        "(TauBar, or the terminal running `tau hub run`) needs its own: macOS asks for it at the "
-        "first unlock after the restart; allow it.",
-        "tr": "Kayıt bu terminalin kamera iznini kullandı. Hub'ı çalıştıran uygulamanın (TauBar "
-        "ya da `tau hub run` çalıştıran terminal) kendi iznine ihtiyacı var: macOS bunu yeniden "
-        "başlatmadan sonraki ilk kilit açmada sorar; izin ver.",
+        "(the tau app, or the terminal running `tau hub run`) needs its own: macOS asks for it at "
+        "the first unlock after the restart; allow it.",
+        "tr": "Kayıt bu terminalin kamera iznini kullandı. Hub'ı çalıştıran uygulamanın (tau "
+        "uygulaması ya da `tau hub run` çalıştıran terminal) kendi iznine ihtiyacı var: macOS "
+        "bunu yeniden başlatmadan sonraki ilk kilit açmada sorar; izin ver.",
     },
     "guard.cli.setup.remote": {
         "en": "While you are away from the Mac, remote tau tui and tau chat (over SSH or mosh) "
@@ -384,10 +385,10 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "{path} dosyasına [component.guard] enabled = false yazıldı.",
     },
     "guard.cli.forget.restart": {
-        "en": "Restart the hub and any open tau chat, tau tui or tau Desktop window; until then "
-        "they answer that no face is enrolled.",
-        "tr": "Hub'ı ve açık tau chat, tau tui ya da tau Desktop pencerelerini yeniden başlat; o "
-        "zamana kadar kayıtlı yüz olmadığını söylerler.",
+        "en": "Restart the hub and any open tau chat, tau tui or chat window of the tau app; "
+        "until then they answer that no face is enrolled.",
+        "tr": "Hub'ı ve açık tau chat, tau tui ya da tau uygulamasının sohbet pencerelerini "
+        "yeniden başlat; o zamana kadar kayıtlı yüz olmadığını söylerler.",
     },
     "guard.cli.forget.failed": {
         "en": "Nothing was removed: {reason}",
@@ -507,10 +508,10 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "hub {app} altında çalışıyor; son kamera yanıtı: {camera}",
     },
     "guard.cli.doctor.hub_none": {
-        "en": "no hub runs; the app that starts it (TauBar, or the terminal running "
+        "en": "no hub runs; the app that starts it (the tau app, or the terminal running "
         "`tau hub run`) needs the camera permission",
-        "tr": "çalışan hub yok; onu başlatan uygulamanın (TauBar ya da `tau hub run` çalıştıran "
-        "terminal) kamera iznine ihtiyacı var",
+        "tr": "çalışan hub yok; onu başlatan uygulamanın (tau uygulaması ya da `tau hub run` "
+        "çalıştıran terminal) kamera iznine ihtiyacı var",
     },
     "guard.cli.doctor.touch_id_ok": {
         "en": "available; re-enrollment, forget and the Touch ID fallback use it",

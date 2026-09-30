@@ -535,7 +535,7 @@ async def test_a_restart_keeps_the_failures_and_the_cooldown(tmp_path: Path) -> 
     saved = tmp_path / "data" / "guard" / "failures.json"
     assert stat.S_IMODE(saved.stat().st_mode) == 0o600
     assert set(json.loads(saved.read_text())) >= {"failures", "cooldown_until", "level"}
-    clock.advance(3)  # TauBar's switch off and on again
+    clock.advance(3)  # the tau app's switch off and on again
     again, hub2, _, _ = make(tmp_path, config, clock=clock, runs=[[match()]])
     await again.start(hub2)  # type: ignore[arg-type]
     try:

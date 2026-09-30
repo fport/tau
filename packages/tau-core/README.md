@@ -357,7 +357,7 @@ hooks, interventions or plugins rewrite before it):
   arguments, result summary and approval; `tau chat` writes `INFO` and up to
   `<data_dir>/logs/tau.log`), unknown tools at `WARNING`.
 
-A channel (TUI, Telegram, TauBar) implements `Approver` and passes it to `build_agent`:
+A channel (TUI, Telegram, the tau app) implements `Approver` and passes it to `build_agent`:
 
 ```python
 from tau_core import ApprovalRequest, Decision, build_agent

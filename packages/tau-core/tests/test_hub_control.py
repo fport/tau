@@ -298,7 +298,7 @@ def test_request_auth_and_proof_are_separate_hmac_domains() -> None:
     def mac(message: bytes) -> str:
         return hmac.new(b"tok", message, hashlib.sha256).hexdigest()
 
-    # pinned, so other clients (TauBar's Rust side, 115) can implement the same bytes
+    # pinned, so other clients (the tau app's Rust side, 115) can implement the same bytes
     assert request_auth("tok", "n", "get", "/guard/status") == mac(b"req|n|GET|/guard/status")
     assert response_proof("tok", "n", "GET", "/guard/status", 200, b"{}") == mac(
         b"resp|n|GET|/guard/status|200|{}"

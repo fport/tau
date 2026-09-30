@@ -1140,10 +1140,10 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Çok fazla başarısız deneme. tau bir süre kilitli kalacak.",
     },
     "guard.refused.unavailable": {
-        "en": "tau is locked: the guard cannot be reached. Start the hub (TauBar → Run the "
-        "hub, or `tau hub run`).",
-        "tr": "tau kilitli: korumaya ulaşılamıyor. Hub'ı başlat (TauBar → Run the hub ya da "
-        "`tau hub run`).",
+        "en": "tau is locked: the guard cannot be reached. Start the hub (the tau app → Run "
+        "the hub, or `tau hub run`).",
+        "tr": "tau kilitli: korumaya ulaşılamıyor. Hub'ı başlat (tau uygulaması → Run the hub ya "
+        "da `tau hub run`).",
     },
     "guard.refused.unsupported_platform": {
         "en": "tau is locked: the guard works only on macOS.",
@@ -1229,9 +1229,10 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Koruma yalnızca macOS'ta çalışır.",
     },
     "guard.verdict.unavailable": {
-        "en": "The guard cannot be reached. Start the hub (TauBar → Run the hub, or "
+        "en": "The guard cannot be reached. Start the hub (the tau app → Run the hub, or "
         "`tau hub run`).",
-        "tr": "Korumaya ulaşılamıyor. Hub'ı başlat (TauBar → Run the hub ya da `tau hub run`).",
+        "tr": "Korumaya ulaşılamıyor. Hub'ı başlat (tau uygulaması → Run the hub ya da "
+        "`tau hub run`).",
     },
     "guard.verdict.busy": {"en": "Another check is running.", "tr": "Başka bir kontrol sürüyor."},
     "guard.verdict.error": {
@@ -1308,8 +1309,8 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Kilit açıldı ({method}). Son açılıştan beri başarısız deneme: {failures}.",
     },
     "guard.start_hub": {
-        "en": "Start the hub: TauBar → Run the hub, or `tau hub run`.",
-        "tr": "Hub'ı başlat: TauBar → Run the hub ya da `tau hub run`.",
+        "en": "Start the hub: the tau app → Run the hub, or `tau hub run`.",
+        "tr": "Hub'ı başlat: tau uygulaması → Run the hub ya da `tau hub run`.",
     },
     "guard.not_enrolled_hint": {
         "en": "No face is enrolled yet. Run `tau guard setup` at the Mac.",

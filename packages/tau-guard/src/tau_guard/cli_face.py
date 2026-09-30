@@ -712,7 +712,7 @@ def forget_command(ctx: click.Context) -> None:
 
 def responsible_app(pid: int, *, ps: Callable[[int], tuple[int, str] | None] | None = None) -> str:
     """The app a process runs under, for naming whose camera permission applies: the first
-    ancestor whose executable lives in an ``.app`` bundle (``TauBar``, ``Terminal``,
+    ancestor whose executable lives in an ``.app`` bundle (``tau``, ``Terminal``,
     ``iTerm``), else ``launchd`` or ``unknown``."""
     lookup = ps or _ps
     seen: set[int] = set()

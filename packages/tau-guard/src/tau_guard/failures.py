@@ -1,6 +1,6 @@
 """``TAU_DATA_DIR/guard/failures.json``: the failure count and the cooldown across hub restarts.
 
-A hub restart (TauBar's "Run the hub" switch, a crash-restart, ``tau hub stop`` and ``run``)
+A hub restart (the tau app's "Run the hub" switch, a crash-restart, ``tau hub stop`` and ``run``)
 must not reset the rate limit on failed checks (ADR 0008 decision 13), so the service writes
 :meth:`tau_guard.state.GuardMachine.failure_state` here whenever it changes and hands it back
 to :meth:`~tau_guard.state.GuardMachine.restore_failures` at start. The state holds wall times

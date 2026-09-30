@@ -1,8 +1,8 @@
 # tau-guard
 
-The owner guard for tau: tau's guarded surfaces (`tau tui`, `tau chat`, tau Desktop) work only
-while the owner is verified at the Mac. The decision and its threat model are in
-[ADR 0008](../../docs/adr/0008-owner-guard.md).
+The owner guard for tau: tau's guarded surfaces (`tau tui`, `tau chat`, the tau app's chat
+windows) work only while the owner is verified at the Mac. The decision and its threat model
+are in [ADR 0008](../../docs/adr/0008-owner-guard.md).
 
 tau-guard is its own distribution (`tau-guard`, import `tau_guard`). It uses only the public API
 of `tau-core`, whose `tau_core.guard` owns the `Guard` protocol, the reason lists and the
@@ -269,9 +269,9 @@ tau guard log [--since 2h] [--json] # the audit log
 ```
 
 `setup`, `enroll` and `forget` run only at the Mac (macOS, no `SSH_CONNECTION`). After
-`setup`, restart the hub and any open `tau chat`, `tau tui` or tau Desktop window. While you
-are away from the Mac, remote `tau tui` and `tau chat` and `tau ask` stay locked (until issue
-117).
+`setup`, restart the hub and any open `tau chat`, `tau tui` or chat window of the tau app.
+While you are away from the Mac, remote `tau tui` and `tau chat` and `tau ask` stay locked
+(until issue 117).
 
 ## Tests
 

@@ -108,7 +108,7 @@ async def test_scripted_approver_rejects_when_exhausted() -> None:
 
 
 async def test_a_custom_channel_only_implements_decide() -> None:
-    # What Telegram (017) or TauBar (025) will do: any object with name + async decide().
+    # What Telegram (017) or the tau app (025) will do: any object with name + async decide().
     class ButtonApprover:
         name = "buttons"
 

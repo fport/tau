@@ -1,6 +1,6 @@
 """The hub's local control API: JSON over HTTP on 127.0.0.1 only.
 
-TauBar, hooks and other local processes read the hub's health and status here. The server is
+The tau app, hooks and other local processes read the hub's health and status here. The server is
 the standard library's ``ThreadingHTTPServer`` in a background thread; it binds to 127.0.0.1
 (never a public interface) and rejects requests whose ``Host`` header is not a loopback name,
 so a web page cannot reach it through DNS rebinding.
@@ -263,7 +263,7 @@ class ControlApi:
         """Register ``handler`` for ``method path``. Routes are additive only: a ``(method,
         path)`` that exists raises ``ValueError``, so a ``tau.hub_services`` component can
         neither replace ``GET /health`` / ``GET /status`` (which ``tau hub status``, ``tau
-        doctor`` and TauBar trust) nor another component's route. A route is protected
+        doctor`` and the tau app trust) nor another component's route. A route is protected
         (signed requests, no ``Origin``, JSON bodies, response proof) unless ``open`` is set;
         only ``/health`` and ``/status`` are open in tau-core."""
         key = (method.upper(), path)

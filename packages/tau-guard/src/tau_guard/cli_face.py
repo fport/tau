@@ -14,7 +14,9 @@
   ``tau_core.settings``, the restart hint and the remote-use note.
 - **forget**: behind LocalAuthentication in the worker, it removes the template, the marker and
   the Keychain key, and writes ``enabled = false`` when ``enabled = true`` was set, so the guard
-  is off afterwards (ADR 0008 decision 4: forget is the off switch).
+  is off afterwards (ADR 0008 decision 4: forget is the off switch). When only the key could
+  not be removed, the guard is still off (the marker is gone and ``enabled = false`` is
+  written), and the command says so and exits 1.
 - **verify --explain** prints each frame's numbers (detector score, eye distance, brightness,
   sharpness, yaw proxy, similarity); no frame is saved anywhere.
 - **doctor** reports the platform, OpenCV's camera order, both model checksums, the enrollment,
@@ -68,6 +70,7 @@ from tau_guard.engine import (
 )
 from tau_guard.local import LocalWorkerError, run_local
 from tau_guard.state import COUNTED_REASONS
+from tau_guard.store import MARKER_FILE
 
 __all__ = ["register", "responsible_app"]
 
@@ -536,14 +539,21 @@ def forget_command(ctx: click.Context) -> None:
     started = time.monotonic()
     answer = _run_local(ctx, config, "forget", request, timeout=FORGET_WAIT)
     _audit_local(config, "forget", answer, started)
-    if answer.get("ok") is not True:
+    removed = answer.get("removed") or []
+    ok = answer.get("ok") is True
+    if not ok and MARKER_FILE not in removed:
         reason = _reason_text(answer.get("reason"), language)
         click.echo(t("guard.cli.forget.failed", language, reason=reason), err=True)
         ctx.exit(1)
+    # Behind LocalAuthentication the worker removed the marker: the guard is off, even when
+    # the Keychain key could not go, so enabled = true must not keep it locked.
     if config.component("guard").get("enabled") is True:
         path = _set_enabled(config, False)
         click.echo(t("guard.cli.forget.disabled", language, path=path))
-    removed = answer.get("removed") or []
+    if not ok:
+        click.echo(t("guard.cli.forget.key_left", language), err=True)
+        click.echo(t("guard.cli.forget.restart", language))
+        ctx.exit(1)
     click.echo(t("guard.cli.forget.done" if removed else "guard.cli.forget.nothing", language))
     click.echo(t("guard.cli.forget.restart", language))
 

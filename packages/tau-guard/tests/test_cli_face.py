@@ -321,6 +321,33 @@ def test_forget_turns_the_guard_off(tmp_path: Path, model_ok: list) -> None:
     assert again.exit_code == 0 and t("guard.cli.forget.nothing") in again.output
 
 
+def test_forget_with_a_stuck_keychain_still_turns_the_guard_off(
+    tmp_path: Path, model_ok: list
+) -> None:
+    config = fresh(tmp_path)
+    runner = InProcess()
+    assert invoke(config, "setup", runner=runner).exit_code == 0
+
+    class StuckKeys(MemoryKeyStore):
+        def delete(self) -> bool:
+            from tau_guard.store import KeyUnavailable
+
+            raise KeyUnavailable("the Keychain did not answer within 30 s")
+
+    stuck = InProcess()
+    stuck.keys = StuckKeys(runner.keys.key)
+    result = invoke(config, "forget", runner=stuck)
+    assert result.exit_code == 1
+    assert not (config.data_dir / "guard" / MARKER_FILE).exists()
+    assert tomllib.loads((config.home / "tau.toml").read_text())["component"]["guard"] == {
+        "enabled": False
+    }
+    assert t("guard.cli.forget.key_left") in result.output
+    assert t("guard.cli.forget.failed", reason="x").split(":")[0] not in result.output
+    again = invoke(config, "forget", runner=runner)  # the Keychain answers again
+    assert again.exit_code == 0 and runner.keys.key is None
+
+
 # -- doctor ----------------------------------------------------------------------------------------
 
 

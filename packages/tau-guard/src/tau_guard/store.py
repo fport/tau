@@ -99,10 +99,12 @@ STORE_REASONS = ("not_enrolled", "template_invalid", "model_changed", "key_unava
 
 
 class StoreError(Exception):
-    """The template cannot be used; ``reason`` is one of :data:`STORE_REASONS`."""
+    """The template cannot be used; ``reason`` is one of :data:`STORE_REASONS`. ``removed``
+    lists what :func:`forget` removed before it failed."""
 
-    def __init__(self, reason: str, detail: str = "") -> None:
+    def __init__(self, reason: str, detail: str = "", *, removed: list[str] | None = None) -> None:
         self.reason = reason
+        self.removed = list(removed or [])
         super().__init__(f"{reason}: {detail}" if detail else reason)
 
 
@@ -417,7 +419,8 @@ def _parse(data: Any, model_sha: str) -> Template:
 
 def forget(guard_dir: Path, keys: KeyStore) -> list[str]:
     """Remove the template (with its samples), the marker and the key; returns what was
-    removed. The key goes last, so a failing Keychain leaves nothing readable behind."""
+    removed. The key goes last, so a failing Keychain leaves nothing readable behind; the
+    :class:`StoreError` it then raises (``key_unavailable``) carries what was removed."""
     removed: list[str] = []
     for name in (TEMPLATE_FILE, MARKER_FILE):
         path = guard_dir / name
@@ -430,7 +433,7 @@ def forget(guard_dir: Path, keys: KeyStore) -> list[str]:
         if keys.delete():
             removed.append("key")
     except KeyUnavailable as exc:
-        raise StoreError("key_unavailable", str(exc)) from exc
+        raise StoreError("key_unavailable", str(exc), removed=removed) from exc
     return removed
 
 

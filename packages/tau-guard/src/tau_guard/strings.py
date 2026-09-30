@@ -292,6 +292,14 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "en": "Nothing was removed: {reason}",
         "tr": "Hiçbir şey silinmedi: {reason}",
     },
+    "guard.cli.forget.key_left": {
+        "en": "Your face template and the enrollment marker are removed and the face guard is "
+        "off, but the Keychain did not let tau remove the key. Run `tau guard forget` again at "
+        "the Mac (allow Keychain access if macOS asks) to remove it.",
+        "tr": "Yüz şablonun ve kayıt işareti silindi, yüz koruması kapalı; ama Anahtar Zinciri "
+        "anahtarın silinmesine izin vermedi. Silmek için `tau guard forget` komutunu Mac'in "
+        "başında yeniden çalıştır (macOS sorarsa Anahtar Zinciri erişimine izin ver).",
+    },
     # -- tau guard doctor ----------------------------------------------------------------------
     "guard.cli.doctor.platform_ok": {"en": "macOS", "tr": "macOS"},
     "guard.cli.doctor.platform_bad": {

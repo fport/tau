@@ -415,6 +415,16 @@ def test_forget_behind_local_authentication(session: Session) -> None:
     parse_line(json.dumps(answer).encode(), op="selftest")  # the CLI reads it like a selftest
 
 
+def test_forget_reports_what_went_when_the_key_cannot_go(session: Session) -> None:
+    session.enroll()
+    stuck = MemoryKeyStore(session.keys.key, fail=True)
+    answer = session.run("forget", session.request("forget"), keys=stuck)
+    assert answer["ok"] is False and answer["reason"] == "key_unavailable"
+    assert set(answer["removed"]) == {TEMPLATE_FILE, MARKER_FILE}
+    assert not (session.data_dir / "guard" / MARKER_FILE).exists()
+    parse_line(json.dumps(answer).encode(), op="selftest")
+
+
 def test_after_forget_a_running_hub_answers_not_enrolled(tmp_path: Path) -> None:
     import asyncio
 

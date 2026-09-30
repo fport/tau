@@ -192,8 +192,14 @@ def test_forget_removes_template_marker_and_key(tmp_path: Path) -> None:
     assert not (guard / TEMPLATE_FILE).exists() and not (guard / MARKER_FILE).exists()
     assert keys.key is None
     assert forget(guard, keys) == []
-    with pytest.raises(StoreError):
+    with pytest.raises(StoreError) as caught:
         forget(guard, MemoryKeyStore(fail=True))
+    assert caught.value.removed == []
+    guard, keys, _ = enrolled(tmp_path)
+    with pytest.raises(StoreError) as caught:
+        forget(guard, MemoryKeyStore(keys.key, fail=True))  # the files go, the key cannot
+    assert caught.value.reason == "key_unavailable"
+    assert set(caught.value.removed) == {TEMPLATE_FILE, MARKER_FILE}
 
 
 def test_first_enrollment_is_decided_from_the_key_store(tmp_path: Path) -> None:

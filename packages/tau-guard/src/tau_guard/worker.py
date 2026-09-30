@@ -49,7 +49,8 @@ Operations:
   ``first``.
 - ``forget``: refused with ``SSH_CONNECTION`` set; LocalAuthentication; then the template,
   the marker and the key are removed (:func:`tau_guard.store.forget`). ``{"ok", "reason":
-  null}`` on success.
+  null, "removed"}`` on success; when the key cannot be removed the answer is ``ok: false``
+  (``key_unavailable``) and ``removed`` still lists what went.
 - ``touch_id``: ``touch_id_unavailable`` until issue 114.
 - ``selftest``: the platform and the imports, ``{"type": "verdict", "ok", "reason", "checks"}``
   (``reason`` is ``null`` when every check passed). With ``"deep": true`` (``tau guard
@@ -445,7 +446,7 @@ def forget_op(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
         removed = forget(data_dir / "guard", deps.keys)
     except StoreError as exc:
         log(f"forget: {exc.reason}")
-        return verdict(False, exc.reason)
+        return verdict(False, exc.reason, removed=exc.removed)
     return verdict(True, None, removed=removed)
 
 

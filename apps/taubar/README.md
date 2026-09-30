@@ -146,6 +146,10 @@ TauBar while the guard checks.
   so the camera is refused.
 - `tau guard doctor` (roadmap 112) reports the camera state; with TauBar running the hub it
   should say `ok`.
+- **The grant covers whatever TauBar starts as the hub:** the Python and the checkout in
+  TauBar's settings. Whoever can change those settings (the window, or any process running as
+  you) can have TauBar start another program with its camera grant, without a prompt. ADR 0008
+  puts anyone with a shell in your account out of scope; this is one more thing they can do.
 
 ## Install
 

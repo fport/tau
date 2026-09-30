@@ -235,7 +235,7 @@ Out of scope, stated plainly:
 
   The guard's messages register themselves with `register_messages`, so `i18n.py` does not change. Existing installs are unchanged until the owner runs `tau guard setup`.
 - **TauBar changes:**
-  - its "Lock now" item sends the control token;
+  - its "Lock now" item signs its request with the control token (never sends it);
   - any other future client of a protected route (TauBar, the web UI, voice) reads `hub_dir/control.token` and re-reads it after a 403.
 - **Remote use and `tau ask` while the owner is away** are locked until 117. `tau ask` exits with code 2 and the guard notice when it is locked (073).
 - **One cv2 distribution.** `opencv-python-headless` is the only cv2 distribution in the workspace. A package that adds mediapipe or another OpenCV build overrides `opencv-contrib-python` at the workspace level (043).

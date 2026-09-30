@@ -525,7 +525,6 @@ class FakeGuard:
     def __init__(
         self,
         state: str = "locked",
-        *,
         verdicts: Iterable[GuardVerdict] = (),
         step_ups: Iterable[Any] = (),
         progress: Iterable[GuardProgress] = (),

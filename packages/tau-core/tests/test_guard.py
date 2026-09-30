@@ -614,6 +614,34 @@ def test_fake_guard_replays_progress_and_never_approves() -> None:
     assert [s.step for s in steps] == ["look", "done"]
 
 
+def test_fake_guard_takes_the_documented_signature() -> None:
+    verdict = GuardVerdict(True, "match", "face")
+    guard = FakeGuard("locked", [verdict], [True], (), ["recheck"])
+    assert (guard.verdicts, guard.step_ups, guard.admissions) == ([verdict], [True], ["recheck"])
+
+
+def test_every_guard_message_is_a_literal_in_the_table() -> None:
+    """Turkish UI text lives only in the ``tr`` column: no constant or f-string built elsewhere
+    in the module feeds the table (CLAUDE.md)."""
+    import ast
+
+    import tau_core.guard as guard_module
+
+    tree = ast.parse(Path(guard_module.__file__).read_text(encoding="utf-8"))
+    [table] = [
+        node.value
+        for node in tree.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "GUARD_MESSAGES"
+    ]
+    assert isinstance(table, ast.Dict)
+    for row in table.values:
+        assert isinstance(row, ast.Dict)
+        for text in row.values:
+            assert isinstance(text, ast.Constant) and isinstance(text.value, str), ast.unparse(text)
+
+
 # -- LockedGuard -----------------------------------------------------------------------------
 
 

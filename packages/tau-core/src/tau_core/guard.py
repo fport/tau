@@ -979,9 +979,6 @@ def guard_doctor_check(
 
 # -- messages ----------------------------------------------------------------------------------
 
-_START_HUB_EN = "TauBar → Run the hub, or `tau hub run`"
-_START_HUB_TR = "TauBar → Run the hub ya da `tau hub run`"
-
 GUARD_MESSAGES: dict[str, dict[str, str]] = {
     # admission refusals (a Notice, then TurnEnd("locked"))
     "guard.refused.ok": {"en": "tau is unlocked.", "tr": "tau'nun kilidi açık."},
@@ -1002,8 +999,10 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Çok fazla başarısız deneme. tau bir süre kilitli kalacak.",
     },
     "guard.refused.unavailable": {
-        "en": f"tau is locked: the guard cannot be reached. Start the hub ({_START_HUB_EN}).",
-        "tr": f"tau kilitli: korumaya ulaşılamıyor. Hub'ı başlat ({_START_HUB_TR}).",
+        "en": "tau is locked: the guard cannot be reached. Start the hub (TauBar → Run the "
+        "hub, or `tau hub run`).",
+        "tr": "tau kilitli: korumaya ulaşılamıyor. Hub'ı başlat (TauBar → Run the hub ya da "
+        "`tau hub run`).",
     },
     "guard.refused.unsupported_platform": {
         "en": "tau is locked: the guard works only on macOS.",
@@ -1089,8 +1088,9 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Koruma yalnızca macOS'ta çalışır.",
     },
     "guard.verdict.unavailable": {
-        "en": f"The guard cannot be reached. Start the hub ({_START_HUB_EN}).",
-        "tr": f"Korumaya ulaşılamıyor. Hub'ı başlat ({_START_HUB_TR}).",
+        "en": "The guard cannot be reached. Start the hub (TauBar → Run the hub, or "
+        "`tau hub run`).",
+        "tr": "Korumaya ulaşılamıyor. Hub'ı başlat (TauBar → Run the hub ya da `tau hub run`).",
     },
     "guard.verdict.busy": {"en": "Another check is running.", "tr": "Başka bir kontrol sürüyor."},
     "guard.verdict.error": {
@@ -1158,8 +1158,8 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Kilit açıldı ({method}). Son açılıştan beri başarısız deneme: {failures}.",
     },
     "guard.start_hub": {
-        "en": f"Start the hub: {_START_HUB_EN}.",
-        "tr": f"Hub'ı başlat: {_START_HUB_TR}.",
+        "en": "Start the hub: TauBar → Run the hub, or `tau hub run`.",
+        "tr": "Hub'ı başlat: TauBar → Run the hub ya da `tau hub run`.",
     },
     "guard.not_enrolled_hint": {
         "en": "No face is enrolled yet. Run `tau guard setup` at the Mac.",

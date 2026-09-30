@@ -2,8 +2,9 @@
 
 A sub-tau is a named specialization of the owner's tau, not a second hub or identity: a slug
 name shown as ``/name``, a persona, an about line, a model role, a tool allowlist, a
-``public`` flag (network behaviour comes with issue 150) and its own sessions on the channel
-``sub:<name>``. Definitions are the owner's files, ``persona/subs/<name>.md``.
+``public`` flag (a public sub-tau answers the owner's contacts over the tau network and is
+listed in the universe) and its own sessions on the channel ``sub:<name>``. Definitions are the
+owner's files, ``persona/subs/<name>.md``.
 
 Public API (other packages import these names)::
 
@@ -15,6 +16,7 @@ Public API (other packages import these names)::
     Draft, DraftError, draft_sub, parse_draft
     DelegatedApprover, RefusingApprover, turn_approver, turn_gate
     TOOLS, CREATE_EFFECT
+    PublicSub, PublicSubs, public_subs          (the ``tau.subs`` entry point for tau-net)
 """
 
 from __future__ import annotations
@@ -54,6 +56,7 @@ from tau_sub.definition import (
     validate_name,
 )
 from tau_sub.draft import Draft, DraftError, draft_sub, parse_draft
+from tau_sub.network import PublicSub, PublicSubs, public_subs
 from tau_sub.tools import CREATE_EFFECT, TOOLS
 
 __version__ = "0.1.0"
@@ -71,6 +74,8 @@ __all__ = [
     "Draft",
     "DraftError",
     "ForbiddenToolError",
+    "PublicSub",
+    "PublicSubs",
     "RefusingApprover",
     "SubConversation",
     "SubRegistry",
@@ -89,6 +94,7 @@ __all__ = [
     "persona_loader",
     "prompt_path",
     "prompt_persona",
+    "public_subs",
     "remember_session",
     "render",
     "state_dir",

@@ -175,7 +175,10 @@ def sub() -> None:
     "--tools", "tools_csv", metavar="A,B", help="Tool names from the catalog, comma-separated."
 )
 @click.option(
-    "--public", is_flag=True, help="Let contacts reach it over the tau network (issue 150)."
+    "--public",
+    is_flag=True,
+    help="Let your contacts reach it over the tau network as <address>/<name> and list it "
+    "in the universe.",
 )
 @click.option(
     "--describe", metavar="TEXT", help="Let the brain role draft it from this description."

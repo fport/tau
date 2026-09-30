@@ -31,6 +31,10 @@ sub = "tau_sub.cli:sub"
 [project.entry-points."tau.tools"]
 sub = "tau_sub.tools:TOOLS"
 
+# Public sub-taus for tau-net (issue 150): tau-net loads this group and never imports tau-sub.
+[project.entry-points."tau.subs"]
+sub = "tau_sub.network:public_subs"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

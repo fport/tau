@@ -6,7 +6,7 @@ A definition is TOML front matter between two ``+++`` lines, then the persona te
     about = "A strict but kind workout coach who plans three short sessions a week."
     role = "brain"                      # brain | fast | local (default brain)
     tools = ["current_time"]            # names from the tool catalog (default none)
-    public = false                      # reachable by contacts, issue 150 (default false)
+    public = false                      # contacts reach it as <address>/<name> (default false)
     # public_note = "coach.public.md"   # optional, a file next to the definition
     +++
 

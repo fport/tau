@@ -23,6 +23,7 @@ def test_entry_points() -> None:
     assert points == {
         ("tau.commands", "sub"): "tau_sub.cli:sub",
         ("tau.tools", "sub"): "tau_sub.tools:TOOLS",
+        ("tau.subs", "sub"): "tau_sub.network:public_subs",
     }
     assert metadata.version("tau-sub") == tau_sub.__version__
 

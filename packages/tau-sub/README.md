@@ -6,12 +6,13 @@ asked by the main tau. A sub-tau is not a second hub or a second identity; it sh
 tau's hub, spine and address (ADR 0012).
 
 It is its own distribution (`tau-sub`, import `tau_sub`), uses only the public API of
-`tau-core` and plugs in through two entry points:
+`tau-core` and plugs in through three entry points:
 
 | group | name | what |
 |---|---|---|
 | `tau.commands` | `sub` | `tau sub …` |
 | `tau.tools` | `sub` | `ask_sub` (tier 0), `create_sub` (tier 2) |
+| `tau.subs` | `sub` | the public sub-taus, for tau-net (see "Public sub-taus" below) |
 
 ## What a sub-tau is
 
@@ -22,7 +23,8 @@ Each sub-tau has:
 - an **about** line, at most 200 characters;
 - a **model role**: `brain` (default), `fast` or `local`;
 - a **tool allowlist**: names from the tool catalog (`tau components`), empty by default;
-- a **`public`** flag, false by default (it does nothing yet: see issue 150 below);
+- a **`public`** flag, false by default: a public sub-tau answers your contacts over the tau
+  network and is listed in the universe (see "Public sub-taus" below);
 - **its own sessions**, on the channel `sub:<name>`.
 
 ## The definition file
@@ -35,7 +37,7 @@ Each sub-tau has:
 about = "A strict but kind workout coach who plans three short sessions a week."
 role = "brain"                      # brain | fast | local
 tools = ["current_time"]            # names from the tool catalog
-public = false                      # issue 150
+public = false                      # true: contacts reach it as <address>/coach
 # public_note = "coach.public.md"   # optional: a file next to the definition
 +++
 
@@ -126,18 +128,28 @@ tau sub remove coach                # the definition only; sessions are kept
 - A remembered session that belongs to another channel is ignored: a sub-tau never continues
   the main tau's history.
 
-## What comes with issue 150
+## Public sub-taus
 
-The network and the universe half of ADR 0012, in `tau-net` and `cloud/universe`:
+`public = true` lets your contacts on the tau network reach a sub-tau directly, as
+`<address>/<name>` (`tau net send alice.example.com/coach "…"`); the sealed `message` carries
+`"sub": "coach"` (protocol reference, `docs/reference/tau-network.md` §3 and §6.4):
 
-- a contact addresses a **public** sub-tau as `<address>/<name>`: the envelope's `message`
-  gets an optional `sub` field;
-- a public sub-tau answers with the same narrow network turn as the main tau: its persona plus
-  its own public note (never `user.md`), no tools, no approvals, the same limits;
-- a message for a private or unknown sub-tau is dropped and logged;
-- public sub-taus appear as small nodes inside the owner's hull in the universe.
+- A public sub-tau answers with the same narrow network turn as the main tau: its persona (the
+  header and persona text above) and, as the `## User` section, its `public_note`, or your
+  tau's public note (`persona/net.md`) when it names none. Never `persona/user.md`, never the
+  tools of its allowlist, no approvals, and the same `max_hops` and hourly cap per contact.
+- Each contact gets its own session with it, titled `tau network · <name> · /coach`, on the
+  model role of the definition. Its answer carries `/coach`, and a reply to it goes back to
+  `/coach`, so the thread stays with it.
+- A message for a private, unknown or invalid sub-tau is dropped and logged, like one from a
+  stranger, and never answered. Making a sub-tau private takes effect with the next message.
+- While your tau is in the universe, each report lists your public sub-taus (`{name, about}`,
+  at most 20) and the page draws them inside your hull. Private sub-taus never leave the hub.
 
-Until then `public` and `public_note` are validated and stored, and nothing leaves the hub.
+tau-net does not import tau-sub. It finds the sub-taus through the `tau.subs` entry point:
+`tau_sub.network:public_subs(config)` returns a `PublicSubs` directory whose `public(name)`
+and `public_subs()` give plain `PublicSub` records (`name`, `about`, `role`, `persona_file`,
+`public_note_file`). Without tau-sub installed, a hub has no public sub-taus.
 
 ## Development
 

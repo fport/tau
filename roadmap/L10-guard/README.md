@@ -31,5 +31,7 @@
 | 123 | [Owner notifications from the guard: failed attempts, cooldown, guard disabled](123-guard-owner-notifications.md) | AFK | 111 |
 | 124 | [In-process guard fallback when no hub runs (worker subprocess, same state machine)](124-in-process-guard-fallback.md) | AFK | 112, 113 |
 | 125 | [Lock the Mac session on a non-matching face (optional strong mode)](125-lock-the-mac-on-a-stranger.md) | AFK | 112 |
+| 126 | [Guard window in TauBar: live camera preview and head-turn prompts](126-guard-window-with-camera-preview.md) | AFK | 112, 115 |
+| 127 | [Tune the head-turn challenge on real captures](127-tune-the-head-turn-challenge.md) | AFK | 112 |
 
 Live status: `python3 roadmap/board.py --layer L10`

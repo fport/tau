@@ -797,8 +797,14 @@ returns `None`.
   `locked>` recalls nothing the owner typed. Enter on an empty line (or `/guard unlock`)
   unlocks and prints every challenge step, Ctrl-C during an attempt cancels it and the REPL
   goes on, and only `ALLOWED_WHILE_LOCKED` (`/help`, `/lang`, `/guard`, `/quit`) run; `/help`
-  lists only those. The state is read again before every prompt and before a command that is
-  not allowed while locked. After a refused turn the guard's state decides, as in the TUI:
+  lists only those. While the status offers the Touch ID fallback (`GuardStatus.fallback`,
+  issue 114) the prompt prints "The face check is not working? Use Touch ID instead: type t
+  and press Enter." when the offer appears and again after each failed attempt; `t` + Enter
+  (`TOUCH_ID_KEY`, any case) runs `unlock(method="touch_id")`, prints "Confirm in the macOS
+  prompt on the Mac's screen." and the hub's `touch_id` step, and Ctrl-C cancels it. A pass
+  unlocks with "Unlocked (Touch ID). …"; without an offer `t` is a line that is not sent.
+  The state is read again before every prompt and before a command that is not allowed while
+  locked. After a refused turn the guard's state decides, as in the TUI:
   anything but `unlocked` returns to the lock prompt. A `recheck` refusal runs the passive
   check and resends the prompt; a failed or cancelled check keeps `you>` (the guard still
   reports unlocked) and says the prompt was not sent. Step-up steps print from the agent's

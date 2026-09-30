@@ -1449,6 +1449,10 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "en": "Press Enter to try again.",
         "tr": "Yeniden denemek için Enter'a bas.",
     },
+    "guard.prompt.fallback_how": {
+        "en": "type {key} and press Enter",
+        "tr": "{key} yazıp Enter'a bas",
+    },
     "guard.retry_after": {
         "en": "Try again in {seconds} s.",
         "tr": "{seconds} sn sonra yeniden dene.",

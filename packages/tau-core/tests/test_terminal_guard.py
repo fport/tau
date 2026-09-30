@@ -204,6 +204,140 @@ def test_ctrl_c_cancels_an_attempt_and_the_repl_keeps_running(config: Config) ->
     assert out.rstrip().endswith("Goodbye.")
 
 
+# -- the Touch ID fallback (issue 114) ---------------------------------------------------------
+
+TOUCH_ID = GuardVerdict(True, "match", "touch_id")
+TOUCH_STEP = [GuardProgress("touch_id", 1, None)]
+
+
+def offer(mode: str = "touch_id", language: str = "en") -> str:
+    how = t("guard.prompt.fallback_how", language, key="t")
+    return t(f"guard.fallback.{mode}", language, how=how)
+
+
+def test_the_offer_appears_after_two_face_failures_only_with_a_fallback(config: Config) -> None:
+    guard = FakeGuard("locked", fallback="touch_id")
+    state = make_state(config, guard)
+    out = run(state, Feed(["", "", "/quit"]))  # two face checks: no_match, no_match
+    assert offer() == "The face check is not working? Use Touch ID instead: type t and press Enter."
+    first, second = out.split("  ✗ The face did not match.")[1:]
+    assert offer() not in first and offer() in second
+    assert second.index(offer()) < second.index(t("guard.prompt.retry", "en"))
+    assert guard.unlock_methods == ["face", "face"]
+
+    plain = FakeGuard("locked")  # no fallback configured: never offered, t is not sent
+    state = make_state(config, plain)
+    out = run(state, Feed(["", "", "t", "/quit"]))
+    assert "Touch ID" not in out
+    assert out.count(t("guard.prompt.not_sent", "en")) == 1
+    assert plain.unlock_methods == ["face", "face"]
+
+
+def test_t_is_not_a_touch_id_unlock_before_the_offer(config: Config) -> None:
+    guard = FakeGuard("locked", verdicts=[TOUCH_ID], fallback="touch_id")
+    state = make_state(config, guard)
+    out = run(state, Feed(["t", "/quit"]))
+    assert t("guard.prompt.not_sent", "en") in out
+    assert guard.unlock_methods == [] and state.locked
+
+
+def test_t_runs_the_touch_id_unlock_and_a_pass_unlocks_with_touch_id(config: Config) -> None:
+    guard = FakeGuard(
+        "locked", verdicts=[GuardVerdict(False, "camera_busy"), TOUCH_ID], fallback="touch_id"
+    )
+    model = FakeModel(["Okay."])
+    state = make_state(config, guard, model=model)
+
+    def touch_steps() -> None:
+        guard.progress = list(TOUCH_STEP)
+
+    feed = Feed(["", "t", "hello", "/quit"], hooks={2: touch_steps})
+    out = run(state, feed)
+    lines = out.splitlines()
+    # a camera_* verdict offers the fallback at once, before "try again"
+    busy = lines.index("  ✗ Another app is using the camera.")
+    assert lines[busy + 1 : busy + 3] == [offer(), t("guard.prompt.retry", "en")]
+    expected = [
+        f"  ◉ {t('guard.fallback.confirm', 'en')}",
+        "  ◉ Touch the Touch ID sensor.",
+        "Unlocked (Touch ID). Failed attempts since the last unlock: 0.",
+    ]
+    start = lines.index(expected[0])
+    assert lines[start : start + len(expected)] == expected
+    assert lines[start + len(expected)].startswith("tau ready.")
+    assert "tau> Okay." in out
+    assert guard.unlock_methods == ["face", "touch_id"]
+    assert guard.method == "touch_id" and guard.state == "unlocked"
+    assert feed.prompts == ["locked> ", "locked> ", "you> ", "you> "]
+    assert len(model.calls) == 1  # the unlock itself made no model call
+
+
+def test_a_failed_touch_id_keeps_the_lock_and_says_why(config: Config) -> None:
+    guard = FakeGuard(
+        "locked",
+        verdicts=[GuardVerdict(False, "camera_denied"), GuardVerdict(False, "touch_id_failed")],
+        fallback="touch_id_or_password",
+    )
+    model = FakeModel(["Okay."])
+    state = make_state(config, guard, model=model)
+    feed = Feed(["", "T", "hello", "/quit"])
+    out = run(state, feed)
+    after = out.split(t("guard.fallback.confirm", "en"), 1)[1]
+    assert "  ✗ Touch ID did not confirm you." in after
+    assert offer("touch_id_or_password") in after  # still offered, printed again
+    assert out.count(offer("touch_id_or_password")) == 2
+    assert t("guard.prompt.not_sent", "en") in after  # "hello" was not sent
+    assert guard.unlock_methods == ["face", "touch_id"]
+    assert state.locked and guard.state == "locked"
+    assert feed.prompts == ["locked> "] * 4
+    assert model.calls == []
+
+
+def test_the_offer_shows_under_the_banner_and_in_the_ui_language(config: Config) -> None:
+    guard = FakeGuard("locked", fallback="touch_id")
+    guard.camera_trouble = True  # the hub already offers it when the prompt starts
+    state = make_state(config, guard)
+    state.language = "tr"
+    out = run(state, Feed(["/quit"]))
+    banner = out.index(t("guard.prompt.banner", "tr"))
+    assert out.index(offer(language="tr")) > banner
+    assert "t yazıp Enter'a bas" in out
+
+
+class HangingTouchId(FakeGuard):
+    """A Touch ID prompt that never answers; Ctrl-C arrives while the sheet is up."""
+
+    def __init__(self) -> None:
+        super().__init__("locked", fallback="touch_id")
+        self.camera_trouble = True
+        self.cancelled = False
+
+    async def unlock(self, **kwargs: Any) -> GuardVerdict:
+        self.unlock_methods.append(kwargs.get("method", "face"))
+
+        def interrupt() -> None:
+            raise KeyboardInterrupt
+
+        asyncio.get_running_loop().call_soon(interrupt)
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        raise AssertionError("never reached")
+
+
+def test_ctrl_c_cancels_a_touch_id_prompt(config: Config) -> None:
+    guard = HangingTouchId()
+    state = make_state(config, guard)
+    feed = Feed(["t", "/quit"])
+    out = run(state, feed)
+    assert guard.cancelled and ("cancel", process_client_id()) in guard.calls
+    assert guard.unlock_methods == ["touch_id"]
+    assert "  ✗ The check was cancelled." in out
+    assert feed.prompts == ["locked> ", "locked> "] and state.locked
+
+
 def test_only_the_allowed_commands_run_while_locked(config: Config) -> None:
     guard = FakeGuard("locked")
     model = FakeModel(["Okay."])

@@ -15,7 +15,11 @@ its scrollback) and takes the line history of ``input()`` out of readline, so th
 ``locked>`` recalls nothing the owner typed (it comes back at the unlock). Enter on an empty
 line unlocks and prints every challenge step, Ctrl-C during an attempt cancels it and keeps the
 REPL, and only :data:`~tau_core.guard.ALLOWED_WHILE_LOCKED` commands run (``/help`` lists only
-those). The state is read again before every prompt and before a command that is not allowed
+those). While the guard's status offers the Touch ID fallback (``GuardStatus.fallback``, after
+two face failures or a verdict that says the face check cannot work) the prompt prints the
+offer, and ``t`` + Enter (:data:`TOUCH_ID_KEY`) runs ``unlock(method="touch_id")``: the macOS
+sheet appears on the Mac's screen, the ``touch_id`` step is printed, and Ctrl-C cancels it the
+same way. The state is read again before every prompt and before a command that is not allowed
 while locked; a turn the guard refused (``TurnEnd("locked")``) returns to the lock prompt when
 the guard is not unlocked, and a ``recheck`` refusal runs the passive check and resends the
 prompt (a failed or cancelled check keeps the REPL at ``you>``: the guard still reports
@@ -72,6 +76,7 @@ from tau_core.guard import (
     ALLOWED_WHILE_LOCKED,
     COUNTED_FAILURES,
     DISCOVER,
+    FALLBACK_MODES,
     Guard,
     GuardProgress,
     GuardStatus,
@@ -111,6 +116,9 @@ CLEAR_SCREEN = "\x1b[2J\x1b[H"
 """ANSI: erase the whole screen, cursor to the top-left."""
 CLEAR_ALL = "\x1b[2J\x1b[3J\x1b[H"
 """ANSI: erase the screen and the scrollback, cursor to the top-left (the lock prompt)."""
+TOUCH_ID_KEY = "t"
+"""The line (``t`` + Enter, any case) that runs the Touch ID fallback at the lock prompt while
+the guard's status offers it; otherwise it is a line that is not sent."""
 
 
 @dataclass
@@ -143,6 +151,8 @@ class ReplState:
     """``--resume`` waits until the first unlock (a resumed session prints its title)."""
     hidden_history: list[str] | None = None
     """readline's line history, taken out while the lock prompt shows (``None`` otherwise)."""
+    offer_shown: str | None = None
+    """The Touch ID fallback offer last printed at the lock prompt (``None``: none shown)."""
 
     def say(self, key: str, **kwargs: object) -> None:
         self.console.print(t(key, self.language, **kwargs))
@@ -643,6 +653,27 @@ def _enter_lock(state: ReplState, status: GuardStatus | None) -> None:
     if status is not None:
         state.console.print(guard_status_line(status, state.language))
     state.say("guard.prompt.banner")
+    state.offer_shown = None  # the screen was cleared
+    _offer(state, status)
+
+
+def _fallback(status: GuardStatus | None) -> str | None:
+    """The Touch ID fallback ``status`` offers (one of :data:`FALLBACK_MODES`), else ``None``."""
+    offer = status.fallback if status is not None and status.state == "locked" else None
+    return offer if offer in FALLBACK_MODES else None
+
+
+def _offer(state: ReplState, status: GuardStatus | None, *, again: bool = False) -> None:
+    """Print the Touch ID fallback offer when ``status`` carries one that is not on screen yet
+    (``again``: after a failed attempt, even when it is)."""
+    offer = _fallback(status)
+    if offer is None:
+        state.offer_shown = None
+        return
+    if again or offer != state.offer_shown:
+        how = t("guard.prompt.fallback_how", state.language, key=TOUCH_ID_KEY)
+        state.say(f"guard.fallback.{offer}", how=how)
+    state.offer_shown = offer
 
 
 def _failures(state: ReplState) -> int:
@@ -655,6 +686,7 @@ def _leave_lock(state: ReplState, loop: asyncio.AbstractEventLoop, method: str |
     Nothing is sent to the model. An agent built before the guard appeared is rebuilt with it
     now."""
     state.locked = False
+    state.offer_shown = None
     _restore_history(state)
     state.say(
         "guard.unlocked",
@@ -681,15 +713,21 @@ def _check_guard(state: ReplState, loop: asyncio.AbstractEventLoop) -> None:
             _enter_lock(state, status)
         elif status.seq != state.lock_seq:
             state.lock_seq = status.seq  # still locked after a change (a failed attempt)
+            _offer(state, status)  # the fallback may be offered now
     elif state.locked and status.seq != state.lock_seq:
         _leave_lock(state, loop, status.method)  # another channel unlocked
 
 
 def _attempt(
-    state: ReplState, loop: asyncio.AbstractEventLoop, kind: str = "unlock"
+    state: ReplState,
+    loop: asyncio.AbstractEventLoop,
+    kind: str = "unlock",
+    *,
+    method: str = "face",
 ) -> GuardVerdict | None:
-    """One unlock (or passive ``recheck``) attempt, printing every step. Ctrl-C cancels it and
-    returns ``None``; the REPL keeps running."""
+    """One unlock (or passive ``recheck``) attempt, printing every step; ``method="touch_id"``
+    is the Touch ID fallback of an unlock. Ctrl-C cancels it and returns ``None``; the REPL
+    keeps running."""
     guard = state.guard
     assert guard is not None
     language = state.language
@@ -699,9 +737,15 @@ def _attempt(
 
     if kind == "recheck":
         state.console.print(f"  ◉ {t('guard.recheck', language)}")
+    elif method == "touch_id":
+        state.console.print(f"  ◉ {t('guard.fallback.confirm', language)}")
     task = loop.create_task(
         guard.unlock(
-            channel="terminal", client_id=process_client_id(), kind=kind, on_progress=on_progress
+            channel="terminal",
+            client_id=process_client_id(),
+            kind=kind,
+            on_progress=on_progress,
+            method=method,
         )
     )
     try:
@@ -722,23 +766,30 @@ def _attempt(
     return verdict
 
 
-def _unlock(state: ReplState, loop: asyncio.AbstractEventLoop) -> None:
-    """Enter on an empty line (or ``/guard unlock``) at the lock prompt."""
-    verdict = _attempt(state, loop)
+def _unlock(state: ReplState, loop: asyncio.AbstractEventLoop, *, method: str = "face") -> None:
+    """Enter on an empty line (or ``/guard unlock``) at the lock prompt; ``t`` + Enter runs
+    the Touch ID fallback (``method="touch_id"``) while it is offered. After a failed attempt
+    the offer is printed again when the guard's status carries it."""
+    verdict = _attempt(state, loop, method=method)
     if verdict is not None and verdict.ok:
         _leave_lock(state, loop, verdict.method)
         return
     if state.guard is not None:
         state.last_status = loop.run_until_complete(state.guard.status())
         state.lock_seq = state.last_status.seq
+        _offer(state, state.last_status, again=True)
     state.say("guard.prompt.retry")
 
 
 def _locked_line(state: ReplState, loop: asyncio.AbstractEventLoop, text: str) -> None:
-    """A line typed at the lock prompt: Enter unlocks; only the allowed commands run, and
-    ``/help`` lists only those."""
+    """A line typed at the lock prompt: Enter unlocks, ``t`` + Enter runs the Touch ID
+    fallback while it is offered; only the allowed commands run, and ``/help`` lists only
+    those."""
     if not text:
         _unlock(state, loop)
+        return
+    if text.casefold() == TOUCH_ID_KEY and _fallback(state.last_status) is not None:
+        _unlock(state, loop, method="touch_id")
         return
     if not text.startswith("/"):
         state.say("guard.prompt.not_sent")

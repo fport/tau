@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -31,3 +32,8 @@ def clock() -> FakeClock:
 @pytest.fixture
 def presence() -> FakePresence:
     return FakePresence()
+
+
+# A test never opens the guard window: a worker this process (or a hub it starts) spawns inherits
+# this and runs headless. Tests of the window path pass a fake window and clear it themselves.
+os.environ["TAU_GUARD_WINDOW"] = "0"

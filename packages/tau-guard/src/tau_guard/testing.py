@@ -35,6 +35,9 @@ operations run in-process:
   returns), with switches for the ways an attempt must fail; its :meth:`SimulatedUser.now` is
   the clock.
 - :class:`FakeLocalAuth` and :func:`fake_deps` (with ``tau_guard.store.MemoryKeyStore``).
+
+The guard window (issue 126): :class:`RecordingView` is a
+:class:`~tau_guard.window.GuardView` that records every call and never opens a window.
 """
 
 from __future__ import annotations
@@ -43,8 +46,9 @@ import json
 import os
 import signal
 import sys
+import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -62,6 +66,7 @@ __all__ = [
     "FakeFrameSource",
     "FakeLocalAuth",
     "FakePresence",
+    "RecordingView",
     "Scene",
     "SimulatedUser",
     "face_row",
@@ -459,6 +464,76 @@ class FakeLocalAuth:
                 return "changed"
         self.prompts += 1
         return self.outcomes.pop(0) if len(self.outcomes) > 1 else self.outcomes[0]
+
+
+class RecordingView:
+    """A :class:`~tau_guard.window.GuardView` that records every call in :attr:`calls` (the
+    frames also in :attr:`frames`) and never opens a window. :meth:`run` first calls
+    ``during_run(self)`` (a test's Esc through :attr:`on_cancel`, or a signal), then waits at
+    most ``timeout`` seconds for :meth:`close`. ``fail`` names a method that raises. Used as the
+    worker's window through ``open_view``: :meth:`opener`."""
+
+    def __init__(
+        self,
+        *,
+        during_run: Callable[[RecordingView], None] | None = None,
+        timeout: float = 10.0,
+        fail: str | None = None,
+    ) -> None:
+        self.calls: list[tuple[Any, ...]] = []
+        self.frames: list[Any] = []
+        self.intro: Any = None
+        self.on_cancel: Callable[[], None] | None = None
+        self.during_run = during_run
+        self.timeout = timeout
+        self.fail = fail
+        self.closed = threading.Event()
+        self.opened_with: Any = None
+
+    def _record(self, name: str, *args: Any) -> None:
+        if name == self.fail:
+            raise RuntimeError(f"{name} is broken")
+        self.calls.append((name, *args))
+
+    def opener(self, intro: Any, *, on_cancel: Callable[[], None]) -> tuple[Any, None]:
+        self.opened_with = intro
+        self.on_cancel = on_cancel
+        return self, None
+
+    def start(self, intro: Any) -> None:
+        self.intro = intro
+        self._record("start", intro.op, intro.purpose)
+
+    def step(self, step: str, deadline: float | None) -> None:
+        self._record("step", step, deadline)
+
+    def hint(self, hint: str | None) -> None:
+        self._record("hint", hint)
+
+    def frame(self, image: Any) -> None:
+        self._record("frame")
+        self.frames.append(image)
+
+    def samples(self, count: int, needed: int) -> None:
+        self._record("samples", count, needed)
+
+    def result(self, ok: bool, reason: str | None) -> None:
+        self._record("result", ok, reason)
+
+    def close(self, delay: float = 0.0) -> None:
+        self.calls.append(("close", delay))
+        self.closed.set()
+
+    def run(self) -> None:
+        if self.fail == "run":
+            raise RuntimeError("run is broken")
+        if self.during_run is not None:
+            self.during_run(self)
+        if not self.closed.wait(self.timeout):
+            raise AssertionError("the view was never closed")
+
+    def names(self) -> list[str]:
+        return [call[0] for call in self.calls]
 
 
 def fake_deps(

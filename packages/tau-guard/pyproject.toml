@@ -13,6 +13,7 @@ dependencies = [
     "tau-core>=0.3.1",
     "keyring>=25; sys_platform == 'darwin'",
     "pyobjc-framework-AVFoundation>=12; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=12; sys_platform == 'darwin'",
     "pyobjc-framework-LocalAuthentication>=12; sys_platform == 'darwin'",
     "pyobjc-framework-Quartz>=12; sys_platform == 'darwin'",
 ]

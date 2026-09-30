@@ -2,7 +2,10 @@
 
 They cover ``status``, ``lock`` and ``log`` (issue 111), ``setup``, ``enroll``, ``verify``,
 ``forget`` and ``doctor`` (issue 112), and the LocalAuthentication prompt texts
-(``guard.cli.la.*``) that the hub and the CLI put into a worker request.
+(``guard.cli.la.*``) that the hub and the CLI put into a worker request. :data:`WINDOW_MESSAGES`
+holds the guard window's lines (``guard.window.*``, issue 126), which the hub and the CLI also
+put into a worker request (the worker never imports tau-core), and ``tau guard window``'s
+(``guard.cli.window.*``).
 
 tau-core's own guard keys (``guard.state.*``, ``guard.verdict.*``, ``guard.lock_trigger.*``,
 ``guard.start_hub``) are used as they are. The keys below are new and must not collide with
@@ -558,7 +561,109 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
     },
 }
 
-_collisions = set(CLI_MESSAGES) & set(MESSAGES)
+WINDOW_MESSAGES: dict[str, dict[str, str]] = {
+    # -- the guard window (issue 126): uppercase HUD lines, written out in each language
+    # (Python's upper() turns a Turkish "i" into "I", not "İ") ---------------------------------
+    "guard.window.purpose.unlock": {"en": "UNLOCK", "tr": "KİLİT AÇMA"},
+    "guard.window.purpose.recheck": {"en": "PRESENCE CHECK", "tr": "VARLIK KONTROLÜ"},
+    "guard.window.purpose.step_up": {"en": "STEP-UP · {tool}", "tr": "EK DOĞRULAMA · {tool}"},
+    "guard.window.purpose.enroll": {"en": "ENROLLMENT", "tr": "YÜZ KAYDI"},
+    "guard.window.purpose.check": {"en": "FACE CHECK", "tr": "YÜZ KONTROLÜ"},
+    "guard.window.step.starting": {"en": "STARTING CAMERA", "tr": "KAMERA AÇILIYOR"},
+    "guard.window.step.look": {"en": "LOOK AT THE CAMERA", "tr": "KAMERAYA BAK"},
+    "guard.window.step.turn_left": {"en": "TURN LEFT", "tr": "SOLA ÇEVİR"},
+    "guard.window.step.turn_right": {"en": "TURN RIGHT", "tr": "SAĞA ÇEVİR"},
+    "guard.window.step.center": {"en": "BACK TO CENTER", "tr": "ORTAYA DÖN"},
+    "guard.window.step.touch_id": {"en": "TOUCH THE SENSOR", "tr": "SENSÖRE DOKUN"},
+    "guard.window.step.look_up": {"en": "TILT UP", "tr": "YUKARI KALDIR"},
+    "guard.window.step.look_down": {"en": "TILT DOWN", "tr": "AŞAĞI İNDİR"},
+    "guard.window.step.turn_more": {"en": "TURN FURTHER", "tr": "BİRAZ DAHA ÇEVİR"},
+    "guard.window.hint.too_dark": {
+        "en": "TOO DARK · FIND MORE LIGHT",
+        "tr": "ÇOK KARANLIK · IŞIĞI ARTIR",
+    },
+    "guard.window.hint.face_too_small": {"en": "MOVE CLOSER", "tr": "YAKLAŞ"},
+    "guard.window.hint.multiple_faces": {"en": "ONE FACE ONLY", "tr": "YALNIZCA BİR YÜZ"},
+    "guard.window.hint.no_face": {"en": "NO FACE IN VIEW", "tr": "YÜZ GÖRÜNMÜYOR"},
+    "guard.window.samples": {"en": "{count}/{needed} SAMPLES", "tr": "{count}/{needed} ÖRNEK"},
+    "guard.window.touch_id": {
+        "en": "CONFIRM IN THE MACOS PROMPT",
+        "tr": "MACOS PENCERESİNDE ONAYLA",
+    },
+    "guard.window.result.unlock": {"en": "UNLOCKED", "tr": "KİLİT AÇILDI"},
+    "guard.window.result.recheck": {"en": "PRESENCE CONFIRMED", "tr": "VARLIK DOĞRULANDI"},
+    "guard.window.result.step_up": {"en": "CONFIRMED", "tr": "ONAYLANDI"},
+    "guard.window.result.enroll": {"en": "ENROLLED", "tr": "KAYDEDİLDİ"},
+    "guard.window.result.check": {"en": "VERIFIED", "tr": "DOĞRULANDI"},
+    "guard.window.result.failed": {"en": "NOT VERIFIED", "tr": "DOĞRULANAMADI"},
+    "guard.window.result.enroll_failed": {"en": "ENROLLMENT FAILED", "tr": "KAYIT BAŞARISIZ"},
+    "guard.window.cancel": {"en": "ESC · CANCEL", "tr": "ESC · İPTAL"},
+    "guard.window.privacy": {
+        "en": "MIRROR VIEW · NOTHING IS SAVED",
+        "tr": "AYNA GÖRÜNTÜSÜ · HİÇBİR ŞEY KAYDEDİLMEZ",
+    },
+    # -- tau guard window, --no-window -------------------------------------------------------
+    "guard.cli.window.state": {"en": "Guard window: {state}", "tr": "Koruma penceresi: {state}"},
+    "guard.cli.window.on": {"en": "on", "tr": "açık"},
+    "guard.cli.window.off": {
+        "en": "off ([component.guard] window = false)",
+        "tr": "kapalı ([component.guard] window = false)",
+    },
+    "guard.cli.window.headless": {
+        "en": "  Checks started from here run without it: {why}",
+        "tr": "  Buradan başlayan kontroller pencere olmadan çalışır: {why}",
+    },
+    "guard.cli.window.why.ssh": {
+        "en": "this session came in over SSH",
+        "tr": "bu oturum SSH üzerinden açıldı",
+    },
+    "guard.cli.window.why.platform": {
+        "en": "the window works only on macOS",
+        "tr": "pencere yalnızca macOS'ta çalışır",
+    },
+    "guard.cli.window.why.disabled": {
+        "en": "TAU_GUARD_WINDOW=0 is set",
+        "tr": "TAU_GUARD_WINDOW=0 ayarlı",
+    },
+    "guard.cli.window.why.no_gui_session": {
+        "en": "there is no GUI session (no window server)",
+        "tr": "grafik oturum yok (pencere sunucusu yok)",
+    },
+    "guard.cli.window.why.pyobjc_missing": {
+        "en": "pyobjc's AppKit cannot be imported",
+        "tr": "pyobjc'nin AppKit modülü içe aktarılamıyor",
+    },
+    "guard.cli.window.hub": {
+        "en": "  The hub's checks follow the hub's own tau.toml and session.",
+        "tr": "  Hub'ın kontrolleri hub'ın kendi tau.toml'unu ve oturumunu izler.",
+    },
+    "guard.cli.window.demo_hint": {
+        "en": "Run `tau guard window --demo` to see it without the camera.",
+        "tr": "Kamera olmadan görmek için `tau guard window --demo` çalıştır.",
+    },
+    "guard.cli.window.demo_start": {
+        "en": "Playing a scripted check in the guard window (no camera; Esc closes it)…",
+        "tr": "Koruma penceresinde senaryolu bir kontrol oynatılıyor (kamera yok; Esc kapatır)…",
+    },
+    "guard.cli.window.demo_failed": {
+        "en": "The guard window did not open: {why}",
+        "tr": "Koruma penceresi açılmadı: {why}",
+    },
+    "guard.cli.window.demo_saved": {
+        "en": "Snapshots written to {path}",
+        "tr": "Anlık görüntüler {path} içine yazıldı",
+    },
+    "guard.cli.window.through_hub": {
+        "en": "  --no-window applies to checks this command runs itself; this one runs in the hub, "
+        "whose [component.guard] window decides.",
+        "tr": "  --no-window yalnızca bu komutun kendi çalıştırdığı kontrollere uygulanır; bu "
+        "kontrol hub'da çalışıyor ve orada [component.guard] window karar verir.",
+    },
+}
+
+_collisions = (set(CLI_MESSAGES) | set(WINDOW_MESSAGES)) & set(MESSAGES)
 assert not _collisions, f"tau-guard message keys collide with tau-core: {sorted(_collisions)}"
+assert not set(CLI_MESSAGES) & set(WINDOW_MESSAGES)
 
 register_messages(CLI_MESSAGES)
+register_messages(WINDOW_MESSAGES)

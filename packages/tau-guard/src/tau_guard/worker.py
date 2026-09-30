@@ -26,6 +26,20 @@ Protocol:
 - With ``"explain": true`` (only ``tau guard verify --explain``, never the hub) ``verify`` also
   writes one ``{"type": "explain", ...}`` line per frame with its numbers (detector score, eye
   distance, brightness, sharpness, yaw proxy, similarity). No frame is ever saved.
+- **The guard window** (issue 126, :mod:`tau_guard.window`): with a ``"window"`` object in the
+  request (``{"purpose", "language", "texts"}``, built by the hub or the CLI from
+  ``[component.guard] window``; ``"tool"`` names a step-up's tool) ``verify``, ``enroll`` and
+  ``touch_id`` show a full-screen window with the mirrored picture, the step and the hint
+  (:mod:`tau_guard.overlay`). The AppKit loop then runs on the main thread and the operation in
+  a second thread; the verifier still gets every frame, the window a throttled subset. Without
+  the object, or when no window can open (not macOS, ``SSH_CONNECTION``, no GUI session, no
+  pyobjc AppKit, ``TAU_GUARD_WINDOW=0``), the worker runs headless exactly as before and logs
+  why. Esc in the window writes ``{"type": "cancel"}`` (the caller cancels the attempt through
+  its usual path, so a head-turn prompt abandoned this way still counts as ``spoof``) and
+  writes no verdict. After a verdict the window shows the result for
+  :data:`~tau_guard.window.RESULT_SECONDS` and the worker exits. SIGTERM in window mode closes
+  the window, stops the check at its next frame (the camera is released) and exits within
+  :data:`UNWIND_SECONDS`; a LocalAuthentication prompt goes away with the process.
 - Stderr goes to ``TAU_DATA_DIR/guard/worker.log`` (the caller opens it, 0600). It never gets
   an embedding or a frame, only what went wrong: an unexpected exception is logged as its type
   and traceback frames, never its message, which could quote a value.
@@ -98,6 +112,7 @@ import os
 import random
 import signal
 import sys
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -106,6 +121,10 @@ from pathlib import Path
 from typing import Any, TextIO
 
 __all__ = ["MAX_REQUEST", "OPS", "Deps", "Terminated", "main", "run", "system_deps"]
+
+UNWIND_SECONDS = 0.5
+"""In window mode, how long the worker waits for a stopped check to unwind (and release the
+camera) before it exits."""
 
 OPS = ("verify", "enroll", "touch_id", "selftest", "forget")
 MAX_REQUEST = 64 * 1024
@@ -291,11 +310,13 @@ def _score(value: float | None) -> dict[str, Any]:
 
 class _Progress:
     """Turns verify/enroll :class:`~tau_guard.verify.Progress` values into protocol lines
-    (monotonic deadlines become UTC ISO times)."""
+    (monotonic deadlines become UTC ISO times), and shows them on the window when there is one
+    (with the monotonic deadline)."""
 
-    def __init__(self, emit: Emit, deps: Deps) -> None:
+    def __init__(self, emit: Emit, deps: Deps, view: Any = None) -> None:
         self.emit = emit
         self.deps = deps
+        self.view = view
 
     def step(self, step: str, hint: str | None = None, deadline: float | None = None) -> None:
         when = None
@@ -303,15 +324,40 @@ class _Progress:
             moment = self.deps.wall() + timedelta(seconds=deadline - self.deps.clock())
             when = moment.astimezone(UTC).isoformat(timespec="milliseconds")
         self.emit({"type": "progress", "step": step, "hint": hint, "deadline": when})
+        if self.view is not None:
+            self.view.step(step, deadline)
+            self.view.hint(hint)
 
     def __call__(self, progress: Any) -> None:
         self.step(progress.step, progress.hint, progress.deadline)
 
 
+def _watched(
+    source: Any,
+    view: Any,
+    cancel: threading.Event | None,
+    tick: Callable[[], None] | None = None,
+) -> Any:
+    """The camera for the check: unchanged without a window, else a
+    :class:`~tau_guard.window.WatchedSource` that shows a throttled subset of the frames and
+    stops at a cancel."""
+    if view is None:
+        return source
+    from tau_guard.window import WatchedSource
+
+    return WatchedSource(source, view, cancel=cancel, tick=tick)
+
+
 # -- operations ----------------------------------------------------------------------------------
 
 
-def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]:
+def verify_op(
+    request: dict[str, Any],
+    deps: Deps,
+    emit: Emit,
+    view: Any = None,
+    cancel: threading.Event | None = None,
+) -> dict[str, Any]:
     from tau_guard.camera import CameraError
     from tau_guard.engine import SFACE_SHA256, ModelError
     from tau_guard.store import StoreError, load_template, read_pin
@@ -329,7 +375,7 @@ def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
     if not _enrolled(request):
         return verdict(False, "not_enrolled")
     guard_dir = data_dir / "guard"
-    progress = _Progress(emit, deps)
+    progress = _Progress(emit, deps, view)
     try:
         template = load_template(guard_dir, deps.keys, SFACE_SHA256)
     except StoreError as exc:
@@ -349,7 +395,7 @@ def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
             return _step_up_touch_id(request, deps, progress, template.domain_state, None)
         return verdict(False, "unavailable")
     progress.step("starting")
-    source = deps.source(_camera_setting(request))
+    source = _watched(deps.source(_camera_setting(request)), view, cancel)
     explain = _explainer(emit) if request.get("explain") is True else None
     try:
         result = run_check(
@@ -606,13 +652,19 @@ def _camera_ready(request: dict[str, Any], deps: Deps) -> str | None:
     return None
 
 
-def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]:
+def enroll_op(
+    request: dict[str, Any],
+    deps: Deps,
+    emit: Emit,
+    view: Any = None,
+    cancel: threading.Event | None = None,
+) -> dict[str, Any]:
     import hmac
     import secrets
 
     from tau_guard.camera import CameraError
     from tau_guard.engine import SFACE_SHA256, ModelError
-    from tau_guard.enroll import Enrollment, run_enrollment
+    from tau_guard.enroll import MIN_SAMPLES, Enrollment, run_enrollment
     from tau_guard.store import (
         KeyUnavailable,
         StoreError,
@@ -647,7 +699,7 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
     camera_refused = _camera_ready(request, deps)
     if camera_refused is not None:
         return verdict(False, camera_refused)
-    progress = _Progress(emit, deps)
+    progress = _Progress(emit, deps, view)
     progress.step("touch_id")
     refused, auth = _admin_authenticate(request, deps, first=first, stored=stored)
     if refused is not None:
@@ -658,7 +710,8 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
         existing_samples=existing.samples if existing else (),
         existing_calibration=existing.calibration if existing else None,
     )
-    source = deps.source(_camera_setting(request))
+    tick = (lambda: view.samples(len(machine.samples), MIN_SAMPLES)) if view is not None else None
+    source = _watched(deps.source(_camera_setting(request)), view, cancel, tick)
     try:
         result = run_enrollment(engine, source, emit=progress, machine=machine)
     except CameraError as exc:
@@ -738,7 +791,9 @@ def _factor_policy(request: dict[str, Any]) -> str | None:
     return None
 
 
-def touch_id_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]:
+def touch_id_op(
+    request: dict[str, Any], deps: Deps, emit: Emit, view: Any = None
+) -> dict[str, Any]:
     """The Touch ID unlock fallback, recheck or step-up; never opens the camera."""
     from tau_guard.localauth import BIOMETRICS
     from tau_guard.store import StoreError, read_pin
@@ -763,7 +818,7 @@ def touch_id_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, An
     elif pin is None:
         log("touch_id: the enrollment pinned no fingerprint set; enroll again to pin it")
         return verdict(False, "touch_id_failed")
-    _Progress(emit, deps).step("touch_id")
+    _Progress(emit, deps, view).step("touch_id")
     refused, auth = _authenticate(request, deps, policy, pin=pin)
     if refused is not None:
         return verdict(False, refused, **auth)
@@ -888,13 +943,46 @@ def run(
     *,
     deps: Deps | None = None,
     emit: Emit | None = None,
+    view: Any = None,
+    cancel: threading.Event | None = None,
 ) -> dict[str, Any]:
-    """The verdict of one operation; progress (and explain) lines go to ``emit``."""
+    """The verdict of one operation; progress (and explain) lines go to ``emit``. With a
+    ``view`` (a :class:`~tau_guard.window.GuardView`, for ``verify``, ``enroll`` and
+    ``touch_id``) the window gets ``start``, the steps, the hints, a throttled subset of the
+    frames and the ``result``; a view that raises is silenced, never the check. ``cancel``
+    stops the check at its next frame (:class:`~tau_guard.window.Cancelled`)."""
     emit = emit or (lambda message: None)
     if op == "selftest":
         return selftest(request=request, deps=deps)
     if op not in ("verify", "enroll", "forget", "touch_id"):
         return verdict(False, "error")
+    shown = _shown(op, request, view)
+    answer = _dispatch(op, request, deps, emit, shown, cancel)
+    if shown is not None:
+        shown.result(answer.get("ok") is True, answer.get("reason"))
+    return answer
+
+
+def _shown(op: str, request: dict[str, Any], view: Any) -> Any:
+    """``view`` wrapped for the check's thread and started, or ``None``."""
+    if view is None or op == "forget":
+        return None
+    from tau_guard.window import Intro, SafeView, intro_from_request
+
+    intro = intro_from_request(op, request) or Intro(op=op, purpose="unlock", texts={})
+    shown = SafeView(view, log)
+    shown.start(intro)
+    return shown
+
+
+def _dispatch(
+    op: str,
+    request: dict[str, Any],
+    deps: Deps | None,
+    emit: Emit,
+    view: Any,
+    cancel: threading.Event | None,
+) -> dict[str, Any]:
     platform = deps.platform if deps is not None else sys.platform
     if platform != "darwin":
         return verdict(False, "unsupported_platform")
@@ -902,15 +990,139 @@ def run(
         return verdict(False, "not_enrolled" if _data_dir(request) else "error")
     deps = deps or system_deps(op)
     if op == "verify":
-        return verify_op(request, deps, emit)
+        return verify_op(request, deps, emit, view, cancel)
     if op == "touch_id":
-        return touch_id_op(request, deps, emit)
+        return touch_id_op(request, deps, emit, view)
     if op == "enroll":
-        return enroll_op(request, deps, emit)
+        return enroll_op(request, deps, emit, view, cancel)
     return forget_op(request, deps)
 
 
-def main(argv: list[str] | None = None, *, stdin: TextIO | None = None) -> int:
+Opener = Callable[..., tuple[Any, str | None]]
+"""``opener(intro, *, on_cancel) -> (view, None) | (None, reason)``, on the main thread."""
+
+
+def _open_overlay(intro: Any, *, on_cancel: Callable[[], None]) -> tuple[Any, str | None]:
+    try:
+        from tau_guard.overlay import open_view
+    except Exception as exc:  # pyobjc missing or broken
+        return None, f"pyobjc_missing ({type(exc).__name__})"
+    return open_view(intro, on_cancel=on_cancel)
+
+
+class _Windowed:
+    """One operation with the guard window: the AppKit loop on the main thread, the operation
+    in a second thread, one lock around stdout."""
+
+    def __init__(self, op: str, out: TextIO) -> None:
+        self.op = op
+        self.out = out
+        self.lock = threading.Lock()
+        self.cancel = threading.Event()
+        self.view: Any = None
+        self.cancelled = False
+        self.terminated = False
+
+    def emit(self, message: dict[str, Any]) -> None:
+        with self.lock:
+            emit_line(self.out, message)
+
+    def on_cancel(self) -> None:
+        """Esc in the window (the UI thread): the caller cancels the attempt; no verdict."""
+        if self.cancel.is_set():
+            return
+        self.cancelled = True
+        self.cancel.set()
+        log(f"{self.op} cancelled in the window")
+        self.emit({"type": "cancel"})
+
+    def on_term(self, signum: int, frame: Any) -> None:
+        """SIGTERM, on the main thread inside the window's loop: never raises into AppKit."""
+        self.terminated = True
+        self.cancel.set()
+        if self.view is not None:
+            self.view.close(0.0)
+
+    def run(self, request: dict[str, Any], view: Any, deps: Deps | None) -> int:
+        from tau_guard.window import RESULT_SECONDS, Cancelled
+
+        self.view = view
+        done = threading.Event()
+
+        def work() -> None:
+            answer: dict[str, Any] | None
+            try:
+                answer = run(
+                    self.op, request, deps=deps, emit=self.emit, view=view, cancel=self.cancel
+                )
+            except (Terminated, Cancelled):
+                answer = None
+            except Exception as exc:  # where it failed goes to worker.log; never the message
+                import traceback
+
+                frames = "".join(traceback.format_tb(exc.__traceback__))
+                print(frames, file=sys.stderr, end="", flush=True)
+                log(f"{self.op} failed: {type(exc).__name__}")
+                answer = verdict(False, "error")
+            try:
+                if answer is not None and not self.cancel.is_set():
+                    self.emit(answer)
+                    view.close(RESULT_SECONDS)
+                else:
+                    view.close(0.0)
+            finally:
+                done.set()
+
+        previous = signal.signal(signal.SIGTERM, self.on_term)
+        thread = threading.Thread(target=work, name="tau-guard-check", daemon=True)
+        thread.start()
+        try:
+            try:
+                view.run()
+            except Exception as exc:
+                log(f"window: failed ({type(exc).__name__}); the check goes on without it")
+            while not done.wait(0.05):  # a window that closed early: the check still ends
+                if self.cancel.is_set():
+                    done.wait(UNWIND_SECONDS)  # the camera is released as the check unwinds
+                    break
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+        if self.terminated:
+            log(f"{self.op} stopped by SIGTERM")
+            return 143
+        return 130 if self.cancelled else 0
+
+
+def _window_for(
+    op: str, request: dict[str, Any], windowed: _Windowed, opener: Opener | None
+) -> Any:
+    """The window this request asks for, or ``None`` (headless) with the reason logged."""
+    from tau_guard.window import headless_reason, intro_from_request
+
+    intro = intro_from_request(op, request)
+    if intro is None:
+        return None
+    reason = headless_reason()
+    view = None
+    if reason is None:
+        try:
+            view, reason = (opener or _open_overlay)(intro, on_cancel=windowed.on_cancel)
+        except Exception as exc:
+            view, reason = None, f"error ({type(exc).__name__})"
+    if view is None:
+        log(f"window: not shown ({reason}); the check runs headless")
+    return view
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    stdin: TextIO | None = None,
+    deps: Deps | None = None,
+    open_view: Opener | None = None,
+) -> int:
+    """``python -m tau_guard.worker <op>``. Tests pass ``deps`` (fakes) and ``open_view`` (a
+    fake window) to run the process's code in-process."""
     os.environ.update(WORKER_ENV)  # before anything can import cv2
     args = sys.argv[1:] if argv is None else argv
     out = sys.stdout
@@ -929,9 +1141,13 @@ def main(argv: list[str] | None = None, *, stdin: TextIO | None = None) -> int:
         log(f"bad request: {exc}")
         emit_line(out, verdict(False, "error"))
         return 2
+    windowed = _Windowed(op, out)
+    view = _window_for(op, request, windowed, open_view)
+    if view is not None:
+        return windowed.run(request, view, deps)
     previous = signal.signal(signal.SIGTERM, _on_term)
     try:
-        answer = run(op, request, emit=lambda message: emit_line(out, message))
+        answer = run(op, request, deps=deps, emit=lambda message: emit_line(out, message))
     except Terminated:
         log(f"{op} stopped by SIGTERM")
         return 143

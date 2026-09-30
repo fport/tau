@@ -50,6 +50,14 @@ Routes (all protected; ``ControlApi`` checks the signature and signs the answer)
   adds samples to the existing template. An enrollment worker may run for
   :data:`ENROLL_TIMEOUT` seconds.
 
+**The guard window** (issue 126): with ``[component.guard] window = true`` (the default) every
+worker request carries the window's lines in the hub's UI language
+(:func:`tau_guard.window.window_field`) and a step-up's tool, so the worker shows the camera
+picture and the step on the Mac's screen, whichever channel asked. Esc there makes the worker
+write ``{"type": "cancel"}``; the service then withdraws every client from that attempt
+(:meth:`GuardService._on_worker_cancel`), the usual cancel path: it ends ``cancelled``, or
+``spoof`` when a head-turn prompt was up.
+
 The open ``/status`` gains only ``guard: {state, enrolled, available, reason}``. ``reason``
 says why the guard is unavailable, ``reflex_stalled`` when the reflex loop missed its ticks, or
 ``screen_unknown`` while the screen-lock state cannot be read (no GUI session).
@@ -109,6 +117,7 @@ from tau_guard.state import (
     Refusal,
     SystemClock,
 )
+from tau_guard.window import window_field
 
 if TYPE_CHECKING:
     from tau_core.approval import ApprovalRequest
@@ -438,6 +447,11 @@ class GuardService:
         }
         timeout = self.machine.limits.attempt_timeout
         language = self.config.ui.language
+        if settings is not None and settings.window:
+            purpose = "enroll" if op == "enroll" else attempt.kind
+            request["window"] = window_field(language, purpose)
+            if attempt.kind == "step_up" and attempt.tool:
+                request["tool"] = attempt.tool[:MAX_TOOL_TEXT]
         if op == "enroll":
             request["add"] = attempt.add
             request["reason_text"] = t("guard.cli.la.enroll", language)
@@ -460,6 +474,7 @@ class GuardService:
             on_progress=partial(self._on_progress, attempt.id),
             on_done=partial(self._on_done, attempt.id),
             env=self.worker_env,
+            on_cancel=partial(self._on_worker_cancel, attempt.id),
         )
         self._runs[attempt.id] = run
         self._all_runs = [r for r in self._all_runs if r.alive] + [run]
@@ -470,6 +485,19 @@ class GuardService:
             machine.progress(
                 attempt_id, step=progress.step, hint=progress.hint, deadline=progress.deadline
             )
+
+    def _on_worker_cancel(self, attempt_id: str) -> None:
+        """Esc in the guard window: the owner at the Mac ends the attempt for every client
+        waiting on it, through the usual cancel path (``cancelled``, or ``spoof`` when a
+        head-turn prompt was up)."""
+        if self.machine is None:
+            return
+        with self._transaction() as machine:
+            attempt = machine.running
+            if attempt is None or attempt.id != attempt_id or attempt.done:
+                return
+            for client_id in sorted(attempt.clients):
+                machine.cancel(client_id, attempt_id)
 
     def _on_done(self, attempt_id: str, outcome: Outcome) -> None:
         """A worker's verdict (or why its run ended). The reflexes run first on a fresh

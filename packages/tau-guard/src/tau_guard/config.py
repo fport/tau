@@ -19,6 +19,7 @@ the wrong type makes the service ``unavailable`` (reason ``config``, which ``/st
 | ``step_up`` | ``face`` | ``face``, ``face_or_touch_id``, ``touch_id``, ``none`` |
 | ``unlock_fallback`` | ``touch_id`` | ``touch_id``, ``touch_id_or_password``, ``none`` |
 | ``camera`` | ``builtin`` | ``builtin`` or a camera id |
+| ``window`` | ``true`` | ``true``, ``false``: the guard window during a check (issue 126) |
 
 ``verify_timeout_seconds`` bounds the frontal match; the camera stays on for at most 20 s
 whatever it says (:data:`tau_guard.camera.MAX_OPEN_SECONDS`), so above about 19 s the camera's
@@ -65,6 +66,7 @@ DEFAULTS: dict[str, Any] = {
     "step_up": "face",
     "unlock_fallback": "touch_id",
     "camera": "builtin",
+    "window": True,
 }
 RANGES: dict[str, tuple[float, float]] = {
     "max_unlock_hours": (1, 24),
@@ -108,6 +110,9 @@ class GuardSettings:
     step_up: str
     unlock_fallback: str
     camera: str
+    window: bool = True
+    """Whether the hub's workers show the guard window (a display, so it never changes a
+    verdict; the worker still runs headless without a GUI session)."""
 
     @property
     def attempt_timeout(self) -> float:
@@ -175,9 +180,13 @@ def parse_settings(table: Mapping[str, Any]) -> GuardSettings:
     if not isinstance(camera, str) or not camera.strip() or len(camera) > MAX_CAMERA_ID:
         problems.append(f"camera must be 'builtin' or a camera id, not {camera!r}")
         camera = DEFAULTS["camera"]
+    window = merged["window"]
+    if not isinstance(window, bool):
+        problems.append(f"window must be true or false, not {window!r}")
+        window = DEFAULTS["window"]
     if problems:
         raise SettingsError(problems)
-    return GuardSettings(**numbers, **choices, camera=camera)
+    return GuardSettings(**numbers, **choices, camera=camera, window=window)
 
 
 def stricter_policy(hub: Mapping[str, str], client: Mapping[str, str] | None) -> dict[str, str]:

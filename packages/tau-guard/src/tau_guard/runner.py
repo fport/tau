@@ -8,6 +8,9 @@
 - stderr goes to ``worker.log`` (0600), never to the hub's stderr;
 - each valid progress line calls ``on_progress``; the first valid verdict, or the reason the
   run failed, calls ``on_done`` exactly once;
+- a ``{"type": "cancel"}`` line (Esc in the guard window, issue 126) calls ``on_cancel``, which
+  cancels the attempt through the service's usual path (without ``on_cancel`` the run stops
+  as ``cancelled``); the worker writes no verdict after it;
 - :meth:`WorkerRun.stop` (cancel, lock, hub stop) and the watchdog (timeout) send SIGTERM to
   the worker's process group, then SIGKILL after :data:`KILL_GRACE` seconds.
 
@@ -49,6 +52,7 @@ from tau_guard.state import Outcome
 __all__ = [
     "DEFAULT_COMMAND",
     "KILL_GRACE",
+    "CancelRequest",
     "Progress",
     "WorkerRun",
     "open_worker_log",
@@ -63,8 +67,9 @@ DEFAULT_COMMAND: tuple[str, ...] = (sys.executable, "-P", "-m", "tau_guard.worke
 """``-P``: the working directory is not put on ``sys.path``."""
 KILL_GRACE = 1.0
 """Seconds between SIGTERM and SIGKILL."""
-EXIT_GRACE = 1.0
-"""Seconds a worker may take to exit on its own after its verdict."""
+EXIT_GRACE = 2.0
+"""Seconds a worker may take to exit on its own after its verdict (the guard window shows the
+result for 1.2 s first)."""
 MAX_LINE = 8192
 MAX_LINES = 2000
 WORKER_LOG = "worker.log"
@@ -106,6 +111,11 @@ class Progress:
     deadline: datetime | None
 
 
+@dataclass(frozen=True)
+class CancelRequest:
+    """``{"type": "cancel"}``: the owner pressed Esc in the guard window."""
+
+
 def _deadline(value: object) -> datetime | None:
     if value is None:
         return None
@@ -120,9 +130,10 @@ def _deadline(value: object) -> datetime | None:
     return moment
 
 
-def parse_line(raw: bytes, *, op: str = "verify") -> Progress | Outcome:
-    """One stdout line → :class:`Progress` or a final :class:`Outcome`; raises
-    :class:`Malformed`. Unknown keys are ignored and never passed on."""
+def parse_line(raw: bytes, *, op: str = "verify") -> Progress | CancelRequest | Outcome:
+    """One stdout line → :class:`Progress`, a :class:`CancelRequest` or a final
+    :class:`Outcome`; raises :class:`Malformed`. Unknown keys are ignored and never passed
+    on."""
     try:
         message = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError, RecursionError) as exc:
@@ -138,6 +149,8 @@ def parse_line(raw: bytes, *, op: str = "verify") -> Progress | Outcome:
         if hint is not None and not _member(hint, WORKER_REASONS):
             raise Malformed(f"unknown hint ({_shape(hint)})")
         return Progress(str(step), hint, _deadline(message.get("deadline")))
+    if kind == "cancel" and op in ("verify", "enroll", "touch_id"):
+        return CancelRequest()
     if kind != "verdict":
         raise Malformed(f"unknown message type ({_shape(kind)})")
     ok = message.get("ok")
@@ -237,6 +250,7 @@ class WorkerRun:
         on_progress: Callable[[Progress], None],
         on_done: Callable[[Outcome], None],
         env: Mapping[str, str] | None = None,
+        on_cancel: Callable[[], None] | None = None,
     ) -> None:
         self.op = op
         self.request = dict(request)
@@ -245,6 +259,7 @@ class WorkerRun:
         self.timeout = timeout
         self.on_progress = on_progress
         self.on_done = on_done
+        self.on_cancel = on_cancel
         self.env = worker_env(env)
         self.process: subprocess.Popen[bytes] | None = None
         self._finished_lock = threading.Lock()
@@ -419,11 +434,26 @@ class WorkerRun:
                 return Outcome(False, "error")
             if isinstance(message, Outcome):
                 return message
+            if isinstance(message, CancelRequest):
+                self._cancelled()
+                continue
             try:
                 self.on_progress(message)
             except Exception:
                 logger.exception("guard: the worker progress handler failed")
         return None
+
+    def _cancelled(self) -> None:
+        """Esc in the window: the service cancels the attempt (its kill effect stops this run);
+        without a handler the run stops as ``cancelled``."""
+        if self.on_cancel is None:
+            self.stop("cancelled")
+            return
+        try:
+            self.on_cancel()
+        except Exception:
+            logger.exception("guard: the worker cancel handler failed")
+            self.stop("cancelled")
 
     def _malformed(self) -> None:
         self._finish(Outcome(False, "error"))

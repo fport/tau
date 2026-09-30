@@ -7,7 +7,9 @@ environment, stderr to ``guard/worker.log``, its own process group), writes the 
 reads the answer with the hub's strict parser: progress lines go to ``on_progress``, explain
 lines (numbers only) to ``on_explain``, and the verdict comes back as a validated dict. A
 timeout or Ctrl-C stops the worker (SIGTERM, then SIGKILL after 1 s), so its ``finally``
-releases the camera. The camera permission is then the terminal's, not the hub's.
+releases the camera. The camera permission is then the terminal's, not the hub's. Esc in the
+guard window (a ``{"type": "cancel"}`` line, issue 126) stops the worker the same way and
+answers ``{"ok": false, "reason": "cancelled", "cancelled": true}``.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from tau_guard.runner import (
     EXIT_GRACE,
     KILL_GRACE,
     MAX_LINE,
+    CancelRequest,
     Malformed,
     Progress,
     open_worker_log,
@@ -190,6 +193,14 @@ def run_local(
                 parsed = parse_line(raw, op=op)
             except Malformed as exc:
                 raise LocalWorkerError(f"the worker broke the protocol: {exc}") from exc
+            if isinstance(parsed, CancelRequest):  # Esc in the window; _stop ends the worker
+                return {
+                    "type": "verdict",
+                    "ok": False,
+                    "reason": "cancelled",
+                    "method": None,
+                    "cancelled": True,
+                }
             if isinstance(parsed, Progress) and on_progress is not None:
                 on_progress(parsed)
     finally:

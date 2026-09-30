@@ -36,9 +36,9 @@
 
 ## Status and next steps (2026-09-30)
 
-**On main:** 110 (tau-core seams), 111 (guard service), 112 (face verification), 113 (guarded channels), 114 (Touch ID), 115 (TauBar plumbing), 116 (tau Desktop), with ADR 0008, the guide and the reference. The guard stays off until the owner runs `tau guard setup`.
+**On main:** 110 (tau-core seams), 111 (guard service), 112 (face verification), 113 (guarded channels), 114 (Touch ID), 115 (TauBar plumbing), 116 (tau Desktop), 126 (the full-screen guard window) and 127 (the head turn measured in degrees), with ADR 0008, the guide and the reference. The guard stays off until the owner runs `tau guard setup`.
 
-**What the owner's first live try showed:** the face match is solid (scores around 0.8 against a 0.50 threshold), but the head-turn challenge refused real head turns: the old yaw measure barely moved, and the terminal's frame lines buried the prompts. Until 127 lands, `unlock_liveness = "none"` (face match only, a doctor warning) is the way to use the guard.
+**What the owner's first live try showed:** the face match is solid (scores around 0.8 against a 0.50 threshold), but the head-turn challenge refused real head turns: the old yaw measure barely moved, and the terminal's frame lines buried the prompts. 127 now measures the turn in degrees with a `solvePnP` head pose (at least 12° each way, return swings allowed, the failed rule named), and 126 shows every check in a full-screen window drawn by the guard worker: the mirrored picture in the τ ring, a triangle arrow for the step, the countdown and the live hint. `tau guard window --demo` shows the look without the camera.
 
 **Owner steps** (the `(user)` criteria):
 
@@ -47,17 +47,17 @@
 - 115: a stable signing identity for TauBar (see its README), a rebuilt and reinstalled TauBar, and the camera permission granted to it.
 - 116: one live session in tau Desktop.
 - 126: `tau guard window --demo`, then one unlock and one step-up through the guard window.
-- 127: five natural unlocks in a row, with and without glasses.
+- 126: one unlock and one step-up through the window; check that it comes to the front, that Esc cancels, that turning follows the arrow in the mirrored picture and that it feels smooth.
+- 127: five natural unlocks in a row, with and without glasses. Run `tau guard enroll` once first so the guard measures your own turn range (an enrollment made before 127 asks for the 12° default).
 - Release: a PyPI trusted publisher for `tau-guard` and the GitHub environment `pypi-guard`; the release that first ships `tau_core.guard` bumps tau-core, tau-tui and tau-guard together and raises tau-guard's `tau-core>=` floor (0.3.1 on PyPI has no `tau_core.guard`).
 
 **Agent work, in this order:**
 
-1. **127** Tune the head-turn challenge (head pose in degrees from `solvePnP`, return swings allowed, prompts that stand out in `--explain`). In progress on `guard/tune`.
-2. ~~**126** Guard window~~: done on `guard/window` (the worker draws a full-screen window during every check; `tau guard window --demo` shows it without the camera).
-3. **117** Remote unlock through Telegram: brings back `tau tui` over mosh and `tau ask` while the owner is away.
-4. **123** Owner notifications (failed attempts, cooldown, guard disabled).
-5. **124** In-process fallback when no hub runs.
-6. Later, when their blockers are done: 118 and 119 (voice, after 075), 120 (after 054), 121 (after 032 and 037), 122 (the RPi5).
+1. **117** Remote unlock through Telegram: brings back `tau tui` over mosh and `tau ask` while the owner is away.
+2. **123** Owner notifications (failed attempts, cooldown, guard disabled).
+3. **124** In-process fallback when no hub runs.
+4. If the owner's live tries show a natural turn below 12°, lower the turn floor (a flat photo stays under about 10° up to a 50° turn; see 127).
+5. Later, when their blockers are done: 118 and 119 (voice, after 075), 120 (after 054), 121 (after 032 and 037), 122 (the RPi5).
 
 **Open decision:** 125 needs the owner's call. macOS has no public API that locks the session, so the choice is between a private framework call and dropping the feature.
 

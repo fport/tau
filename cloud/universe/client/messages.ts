@@ -285,7 +285,7 @@ const tr: Messages = {
     "Bu bağlantıda bir talep yok. tau net universe claim komutunun yazdığı bağlantının tamamını kopyala.",
   claimOtherUniverse: (universe) => `Bu talep bu evren için değil; hedefi ${universe}.`,
   claimExpired: "Bu talebin süresi doldu. tau net universe claim komutunu yeniden çalıştır.",
-  claimExpires: (when) => `geçerlilik sonu: ${when}`,
+  claimExpires: (when) => `süresi ${when} doluyor`,
   claimBinding: "Bağlanıyor…",
   claimBound: (handle) => `Tamam. tau’n artık @${handle}.`,
   claimMoved: (handle) => `Tamam. @${handle} artık bu tau’yu gösteriyor.`,

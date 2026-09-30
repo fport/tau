@@ -77,7 +77,10 @@
   color: var(--muted);
 }
 
+/* The page itself keeps its name longest; the crumbs before it give way first. */
 .crumb {
+  flex: 0 4 auto;
+  min-width: 1.6em;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--muted);
@@ -89,6 +92,7 @@ a.crumb:hover {
 }
 
 .crumb-here {
+  flex-shrink: 1;
   color: var(--text);
 }
 
@@ -2998,6 +3002,16 @@ a.sub-chip:hover {
     margin-left: auto;
   }
 
+  /* A long breadcrumb gives way (it ends in an ellipsis) rather than pushing the switcher
+     onto a line of its own. */
+  .crumbs {
+    flex: 1 1 0;
+  }
+
+  .crumbs + .site-nav + .signin {
+    margin-left: 0;
+  }
+
   .site-footer p {
     flex-basis: 100%;
     margin-left: 0;
@@ -3129,6 +3143,16 @@ a.sub-chip:hover {
 
   .signin {
     padding: 0.3rem 0.6rem;
+  }
+
+  /* Only the page itself stays in the breadcrumb (the page names its owner anyway). */
+  .crumbs a.crumb,
+  .crumbs a.crumb + .crumb-sep {
+    display: none;
+  }
+
+  .site-header {
+    gap: 0.5rem 0.9rem;
   }
 }
 

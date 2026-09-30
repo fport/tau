@@ -85,7 +85,9 @@ face check it can only narrow: it never produces an approval.
   without Touch ID the default still offers it, the attempt answers `touch_id_unavailable`,
   and the doctor warns about the setting. A pass unlocks with `method = "touch_id"`
   (status and audit), ends a face cooldown and clears the offer; a Touch ID failure never
-  counts. A Touch ID unlock is presence but not a face: rechecks follow it (and are Touch ID
+  counts toward the face cooldown. Touch ID has its own limit: after five prompts that did
+  not pass (a wrong finger, a cancel, a timeout) within 10 minutes, a new Touch ID unlock or
+  recheck is refused with `cooldown` until the oldest is 10 minutes old. A Touch ID unlock is presence but not a face: rechecks follow it (and are Touch ID
   checks in a Touch ID session, so a covered camera does not fail every later turn), while
   `face_fresh` (for voice) still needs a face.
 - **Step-up** (`step_up`, default `face`). `face`: the head-turn challenge (or a passive match

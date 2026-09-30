@@ -61,9 +61,12 @@ Rules the table in the ADR leaves to the implementation:
     ``fallback``); otherwise, or when the request's merged ``unlock_fallback`` (the stricter
     of the hub's and the client's) is ``none``, it is refused with ``touch_id_unavailable``. A
     Touch ID only request never joins one that takes the password. The face cooldown
-    does not hold it back (Touch ID has its own rate limit in macOS), a successful unlock of
-    either method ends a running cooldown and clears the offer, and Touch ID failures never
-    count.
+    does not hold it back, a successful unlock of either method ends a running cooldown and
+    clears the offer, and Touch ID failures never count toward it. Touch ID has its own limit
+    instead: after :data:`TOUCH_ID_TRIES` unlock or recheck prompts that did not pass (a
+    wrong finger, a cancel, a timeout) within :data:`FAILURE_WINDOW`, a new Touch ID prompt
+    is refused with ``cooldown`` (and ``retry_after``) until the oldest leaves the window; a
+    Touch ID pass clears it (:meth:`GuardMachine.touch_id_backoff`).
   - *Presence.* A Touch ID success sets ``checked_at`` (and resets the idle since it) but not
     ``face_seen_at``: rechecks follow ``checked_at``, while ``face_fresh`` (voice) still needs a
     face. A recheck in a session unlocked with Touch ID is a Touch ID check too, so a closed
@@ -134,6 +137,11 @@ CHALLENGE_STEPS = frozenset({"turn_left", "turn_right", "center"})
 challenge (``spoof``)."""
 
 FAILURE_WINDOW = 600.0
+TOUCH_ID_TRIES = 5
+"""Touch ID unlock or recheck prompts that did not pass (a wrong finger, a cancel, a timeout)
+within :data:`FAILURE_WINDOW` after which another one is refused with ``cooldown`` until the
+oldest leaves the window. macOS only locks Touch ID out after wrong fingers, and the sheet
+appears on the Mac's screen whichever client asked, so repeated prompts need a limit here."""
 COOLDOWN_AFTER = 3
 COOLDOWN_START = 30.0
 COOLDOWN_MAX = 900.0
@@ -353,6 +361,8 @@ class GuardMachine:
         """Monotonic times of failed face unlocks within the window (the fallback offer)."""
         self._camera_trouble: float | None = None
         """When a face check last answered a ``camera_*`` verdict."""
+        self._touch_id_misses: list[float] = []
+        """Monotonic times of Touch ID unlock or recheck prompts that did not pass."""
         self._offer: str | None = None
         self.failures = 0
         """Counted failures since the last unlock."""
@@ -415,6 +425,16 @@ class GuardMachine:
         failures = [t for t in self._face_failures if now - t < FAILURE_WINDOW]
         camera = self._camera_trouble is not None and now - self._camera_trouble < FAILURE_WINDOW
         return mode if len(failures) >= FALLBACK_AFTER or camera else None
+
+    def touch_id_backoff(self) -> float | None:
+        """Seconds until another Touch ID unlock or recheck may start (:data:`TOUCH_ID_TRIES`),
+        ``None`` when one may start now."""
+        now = self.clock.monotonic()
+        self._touch_id_misses = [t for t in self._touch_id_misses if now - t < FAILURE_WINDOW]
+        if len(self._touch_id_misses) < TOUCH_ID_TRIES:
+            return None
+        left = self._touch_id_misses[-TOUCH_ID_TRIES] + FAILURE_WINDOW - now
+        return round(left, 1) if left > 0 else None
 
     def admission(self, *, enrolled: bool) -> tuple[bool, str]:
         """``(allowed, reason)`` for a turn; evaluate the reflexes (:meth:`observe`) first."""
@@ -581,6 +601,10 @@ class GuardMachine:
             return candidate
         if self.running is not None and len(self.queue) >= MAX_QUEUE:
             return Refusal("busy")
+        if factor == "touch_id" and kind in ("unlock", "recheck"):
+            left = self.touch_id_backoff()  # a new prompt; joining one above shows none
+            if left is not None:
+                return Refusal("cooldown", left)
         attempt = Attempt(
             id=secrets.token_hex(8),
             kind=kind,
@@ -820,6 +844,11 @@ class GuardMachine:
                 if self.fallback_offer() is None:  # an unlock came first, or the window ended
                     self._finish_unstarted(attempt, Outcome(False, "touch_id_unavailable"))
                     continue
+                left = self.touch_id_backoff()
+                if left is not None:
+                    attempt.retry_after = left
+                    self._finish_unstarted(attempt, Outcome(False, "cooldown"))
+                    continue
                 self._start(attempt)
                 continue
             left = self.cooldown_left() if attempt.kind != "enroll" else None
@@ -906,6 +935,7 @@ class GuardMachine:
                 self.failures = 0
                 self._face_failures.clear()
                 self._camera_trouble = None
+                self._touch_id_misses.clear()
                 self._cooldown_until_mono = self.cooldown_until = None  # the owner is back
             elif self.state == "verifying":
                 self.state = "locked"
@@ -914,6 +944,11 @@ class GuardMachine:
                 self.step_up_active = False
             if outcome.ok:
                 self._checked(wall, outcome.method)
+        if attempt.factor == "touch_id" and attempt.kind in ("unlock", "recheck"):
+            if outcome.ok:
+                self._touch_id_misses.clear()
+            else:
+                self._touch_id_misses.append(now)
         if checks and not outcome.ok and attempt.factor == "face":
             if outcome.reason in FALLBACK_NOW:
                 self._camera_trouble = now

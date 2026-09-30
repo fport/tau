@@ -20,6 +20,7 @@ from tau_guard import worker
 from tau_guard.audit import AuditLog
 from tau_guard.state import (
     FAILURE_WINDOW,
+    TOUCH_ID_TRIES,
     GuardMachine,
     Limits,
     Outcome,
@@ -191,10 +192,50 @@ def test_touch_id_lifts_a_face_cooldown(clock: FakeClock) -> None:
     fail_face(m, NO_MATCH, times=3)  # counted: a cooldown starts
     assert m.cooldown_left() is not None
     assert isinstance(m.request("unlock", channel="tui", client_id="c1"), Refusal)
-    record = touch_unlock(m)  # Touch ID has its own rate limit in macOS
+    record = touch_unlock(m)  # Touch ID has its own limit (TOUCH_ID_TRIES)
     assert record["ok"] is True and m.state == "unlocked"
     assert m.cooldown_left() is None and m.snapshot()["cooldown_until"] is None
     assert not isinstance(m.request("step_up", channel="tui", client_id="c1"), Refusal)
+
+
+def test_repeated_touch_id_prompts_that_do_not_pass_back_off(clock: FakeClock) -> None:
+    m = machine(clock)
+    fail_face(m)
+    answers = ["failed", "cancelled", "timeout", "failed", "cancelled"]
+    for answer in answers[:4]:
+        touch_unlock(m, Outcome(False, "touch_id_failed", local_auth=("biometrics", answer, 9)))
+        clock.advance(10)
+    touch = attempt(m, method="touch_id")  # dropped by the client: a prompt was shown
+    m.cancel("c1", touch.id)
+    assert m.fallback_offer() == "touch_id"  # still offered, but no new prompt for a while
+    refused = m.request("unlock", channel="tui", client_id="c1", method="touch_id")
+    assert isinstance(refused, Refusal) and refused.reason == "cooldown"
+    assert refused.retry_after == pytest.approx(FAILURE_WINDOW - 40, abs=0.2)
+    assert m.cooldown_left() is None and m.failures == 0  # the face cooldown is untouched
+    assert not isinstance(m.request("unlock", channel="tui", client_id="c1"), Refusal)
+    m.cancel("c1")
+    clock.advance(FAILURE_WINDOW - 40 + 1)  # the oldest miss leaves the window
+    m.observe(PRESENT, tick=True)
+    fail_face(m)
+    assert touch_unlock(m)["ok"] is True
+    assert m.touch_id_backoff() is None  # a pass clears the misses
+
+
+def test_the_touch_id_backoff_covers_rechecks_but_not_joins(clock: FakeClock) -> None:
+    m = machine(clock, recheck_after_idle=180.0)
+    fail_face(m)
+    shared = attempt(m, method="touch_id")
+    assert attempt(m, method="touch_id", client_id="c2") is shared
+    assert m.finish(shared.id, TOUCH_ID)
+    for _ in range(TOUCH_ID_TRIES):
+        recheck = attempt(m, "recheck")
+        assert recheck.factor == "touch_id"
+        assert m.finish(
+            recheck.id, Outcome(False, "touch_id_failed", local_auth=("biometrics", "cancelled", 3))
+        )
+    refused = m.request("recheck", channel="tui", client_id="c1")
+    assert isinstance(refused, Refusal) and refused.reason == "cooldown"
+    assert m.state == "unlocked"  # cancelled prompts never lock
 
 
 def test_a_face_success_for_a_touch_id_attempt_is_an_error(clock: FakeClock) -> None:

@@ -248,6 +248,9 @@ def _entry_line(entry: dict[str, Any], language: str) -> str:
     reason = entry.get("reason")
     if isinstance(reason, str) and reason != "match":
         parts.append(reason)
+    for key in ("method", "policy"):  # face or touch_id; biometrics or device_owner
+        if isinstance(entry.get(key), str):
+            parts.append(entry[key])
     trigger = entry.get("trigger")
     if trigger in LOCK_TRIGGERS:
         parts.append(t(f"guard.lock_trigger.{trigger}", language))

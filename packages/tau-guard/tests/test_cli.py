@@ -176,6 +176,25 @@ def test_entry_line_never_shows_more_than_the_schema() -> None:
     assert "step-up" in line and "ok" in line and "lamp" in line and "match" not in line
 
 
+def test_a_log_line_names_the_method_and_the_touch_id_policy() -> None:
+    base = {"v": 1, "at": "2026-09-30T12:00:00+00:00", "channel": "tui", "ok": True}
+    unlock = entry_line({**base, "event": "unlock", "reason": "match", "method": "touch_id"}, "en")
+    assert "touch_id" in unlock.split("  ")
+    prompt = entry_line(
+        {
+            **base,
+            "event": "touch_id",
+            "reason": "ok",
+            "trigger": "unlock",
+            "policy": "device_owner",
+        },
+        "en",
+    )
+    assert "device_owner" in prompt.split("  ")
+    face = entry_line({**base, "event": "verify", "reason": "match", "method": "face"}, "en")
+    assert "face" in face.split("  ")
+
+
 def test_log_lines_never_drive_the_terminal(tmp_path: Path) -> None:
     """Even a record written by hand (or by an older version) is printed inert."""
     config = cli_config(tmp_path)

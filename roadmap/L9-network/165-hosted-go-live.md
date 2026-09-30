@@ -1,6 +1,6 @@
 # 165 · Go live: hosted taus on `tau.getporti.com`
 
-Status: ready-for-human
+Status: in-progress
 Type: HITL
 Layer: L9 · Cloud mode and the tau network
 Packages: cloud/host, cloud/universe
@@ -22,3 +22,10 @@ The owner creates the GitHub OAuth App (callback `https://tau.getporti.com/auth/
 ## Comments
 
 - 2026-09-30: filed with ADR 0013.
+- 2026-09-30: live in part. The owner created the GitHub OAuth App and set `GITHUB_CLIENT_SECRET`. The orchestrator did the rest:
+  - generated `VAULT_KEY` (a gitignored file, uploaded by stdin; the owner keeps an offline copy);
+  - deployed tau-host (no route of its own, `workers_dev` off, `PUBLIC_HOST=tau.getporti.com`, `SIGNUP` limited to the owner, the `UNIVERSE_SERVICE` binding);
+  - bound the universe to it with `HOST` and redeployed it with its identity secret;
+  - redeployed the owner's spine from the 0.2.0 kit.
+
+  The owner signed in on tau.getporti.com, pasted a key and chatted. Still to check: a web sub-tau and its visitor chat, the owner's claim for the local tau, and opening sign-ups.

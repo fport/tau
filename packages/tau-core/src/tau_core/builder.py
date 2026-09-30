@@ -47,8 +47,6 @@ from tau_core.models import (
     PLANNED_PROVIDERS,
     missing_credentials,
     provider_load_failure,
-    proxy_key_env,
-    proxy_url,
     required_env,
 )
 from tau_core.persona import PersonaLoader
@@ -59,12 +57,9 @@ from tau_core.tiers import tier_of
 logger = logging.getLogger(__name__)
 
 TEMPLATES = resources.files("tau_core") / "templates"
-PROVIDER_PREFERENCE = ("proxy", "anthropic", "bedrock", "fake")
+PROVIDER_PREFERENCE = ("anthropic", "openai", "gemini", "bedrock", "fake")
 """``tau init`` picks the first provider whose credentials are present; ``fake`` needs none.
-``proxy`` needs the brain role's proxy key (``TAU_PROXY_KEY_BRAIN``, from ``tau proxy keys``)."""
-DIRECT_LOCAL_PROVIDER = "ollama"
-"""Without the proxy, ``tau init`` points the roles ``models.toml`` lists under ``[ollama]``
-(``local``) at Ollama directly."""
+The ``local`` role stays on Ollama whatever it picks."""
 HEALTH_TIMEOUT = 1.0
 
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # loopback, never a proxy
@@ -447,82 +442,29 @@ def _check_role(name: str, role: RoleConfig, env: Mapping[str, str]) -> Check:
     )
 
 
-def _proxy_alive(url: str) -> bool:
-    try:
-        with urllib.request.urlopen(f"{url}/health/liveliness", timeout=1.0):  # noqa: S310
-            return True
-    except (OSError, ValueError):
-        return False
-
-
-def _check_proxy(config: Config, env: Mapping[str, str]) -> list[Check]:
-    """The LiteLLM proxy behind the ``proxy`` roles: does it answer, does it know every role's
-    key, and does each key's cap match the role's ``budget`` in tau.toml. A budget on a role
-    the proxy does not serve is flagged: nothing would enforce it."""
-    from tau_core.spend import SpendTracker, proxy_roles
+def _check_budgets(config: Config) -> list[Check]:
+    """The budgets tau enforces (ADR 0011): a role with a budget whose model has no price could
+    never reach its cap, so it is flagged; otherwise one line with every role's spend."""
+    from tau_core.prices import price_for
+    from tau_core.spend import describe, spend_report
 
     checks = [
         Check(
             f"role {name}",
             "warn",
-            f"has a budget, but provider '{role.provider}' cannot enforce it (only the proxy "
-            "does; ADR 0009)",
+            f"has a budget, but model '{role.model_id}' has no price, so its calls count as "
+            f'$0; add [models.prices."{role.model_id}"] to tau.toml',
         )
         for name, role in config.roles.items()
-        if role.budget is not None and role.provider != "proxy"
+        if role.budget is not None and price_for(config, role.provider, role.model_id) is None
     ]
-    roles = proxy_roles(config)
-    if not roles:
+    if not any(role.budget for role in config.roles.values()):
         return checks
-    url = proxy_url(next(iter(roles.values())), env)
-    if not _proxy_alive(url):
-        return [
-            *checks,
-            Check(
-                "proxy",
-                "warn",
-                f"not answering at {url}; start it with infra/litellm/proxy.sh up "
-                "(model calls of the proxy roles fail until then)",
-            ),
-        ]
-    for spend in SpendTracker(config, env).refresh().values():
-        cfg = roles[spend.role]
-        if spend.error is not None:
-            if proxy_key_env(cfg) in spend.error:
-                continue  # the role line already says the key is missing
-            checks.append(
-                Check(
-                    f"proxy {spend.role}",
-                    "fail",
-                    f"the proxy does not accept {proxy_key_env(cfg)} ({spend.error}); "
-                    "run tau proxy keys",
-                )
-            )
-        elif cfg.budget is None:
-            checks.append(
-                Check(f"proxy {spend.role}", "warn", "no budget in tau.toml: the key has no cap")
-            )
-        elif spend.drifted:
-            checks.append(
-                Check(
-                    f"proxy {spend.role}",
-                    "warn",
-                    f"the key's cap (${spend.max_budget or 0:.2f} per {spend.period}) differs "
-                    f"from tau.toml (${cfg.budget.usd:.2f} per {cfg.budget.period}); "
-                    "run tau proxy keys",
-                )
-            )
-        else:
-            state = "spent" if spend.exhausted else "within budget"
-            checks.append(
-                Check(
-                    f"proxy {spend.role}",
-                    "ok",
-                    f"${spend.spend or 0:.2f} of ${spend.max_budget or 0:.2f} per "
-                    f"{spend.period}, {state}",
-                )
-            )
-    return checks
+    try:
+        detail = describe(spend_report(config)) or "nothing spent yet"
+    except Exception as exc:  # the ledger could not be opened
+        return [*checks, Check("budget", "fail", f"the spend ledger cannot be read: {exc}")]
+    return [*checks, Check("budget", "ok", detail)]
 
 
 def _check_sessions(config: Config) -> Check:
@@ -701,7 +643,7 @@ def run_doctor(home: Path | None = None, *, env: Mapping[str, str] | None = None
     env = os.environ if env is None else env_with_dotenv(config.home, env)
     for name, role in config.roles.items():
         checks.append(_check_role(name, role, env))
-    checks += _check_proxy(config, env)
+    checks += _check_budgets(config)
     checks.append(_check_sessions(config))
     checks += _check_persona(config)
     checks.append(_check_dotenv(config))
@@ -799,39 +741,23 @@ _LANGUAGE_LINE = re.compile(r'^(language\s*=\s*)"[^"]*"(.*)$')
 
 
 def render_config(template: str, *, provider: str, language: str) -> str:
-    """The template with each role's ``provider``/``model_id`` rewritten from ``models.toml``
-    and ``[ui] language`` set. Comments survive.
-
-    A role ``models.toml`` lists under ``provider`` moves to it; without the proxy, a role
-    listed under ``[ollama]`` (``local``) moves to Ollama directly, and the ``budget`` tables
-    are dropped, since only the proxy enforces them (ADR 0009). ``provider="proxy"`` renders
-    the template as shipped (the repository's own ``tau.toml``)."""
+    """The template with the ``provider``/``model_id`` of every role ``models.toml`` lists for
+    ``provider`` (``brain`` and ``fast``) rewritten, and ``[ui] language`` set. Comments
+    survive; the other roles (``local`` on Ollama) and the budget tables stay as shipped.
+    ``provider="anthropic"`` renders the template as shipped (the repository's ``tau.toml``)."""
     ids = model_ids(provider)
-    direct = {} if provider == "proxy" else model_ids(DIRECT_LOCAL_PROVIDER)
     out: list[str] = []
     table: str | None = None
-    skipping = False
     for line in template.splitlines():
         header = _HEADER.match(line)
         if header:
             table = header.group(1).strip()
-            skipping = provider != "proxy" and table.endswith(".budget")
-        elif skipping and not line.strip():
-            skipping = False  # a budget table ends at its blank line; comments after it stay
-        if skipping:
-            continue
         role = (
             table.removeprefix("models.roles.")
             if table and table.startswith("models.roles.")
             else None
         )
-        target = (
-            (provider, ids[role])
-            if role in ids
-            else (DIRECT_LOCAL_PROVIDER, direct[role])
-            if role in direct
-            else None
-        )
+        target = (provider, ids[role]) if role in ids else None
         if target and (match := _PROVIDER_LINE.match(line)):
             line = f'{match.group(1)}"{target[0]}"{match.group(2)}'
         elif target and (match := _MODEL_ID_LINE.match(line)):
@@ -908,25 +834,27 @@ def init_home(
 
 
 _NEXT_STEPS = {
-    "proxy": "A proxy key (TAU_PROXY_KEY_BRAIN) was found in the environment or <home>/.env: "
-    "every role goes through the LiteLLM proxy with the budgets in tau.toml. Run "
-    "`tau proxy keys` after changing them.",
-    "anthropic": "ANTHROPIC_API_KEY was found in the environment or <home>/.env. brain and fast "
-    "call Anthropic directly and local calls Ollama; for hard budgets run the LiteLLM proxy "
-    "(infra/litellm) and `tau init --provider proxy --force`.",
+    "anthropic": "ANTHROPIC_API_KEY was found in the environment or <home>/.env.",
+    "openai": "OPENAI_API_KEY was found in the environment or <home>/.env.",
+    "gemini": "GEMINI_API_KEY (or GOOGLE_API_KEY) was found in the environment or <home>/.env.",
     "bedrock": "AWS credentials were found in the environment or <home>/.env (AWS_REGION plus "
     "a profile, keys or a bearer token).",
     "fake": "No model credentials were found in the environment or <home>/.env, so both roles "
-    "use the scripted 'fake' provider. Add ANTHROPIC_API_KEY to <home>/.env (names are in "
-    "<home>/.env.example) and run `tau init --force`, or edit tau.toml.",
+    "use the scripted 'fake' provider. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY "
+    "to <home>/.env (names are in <home>/.env.example) and run `tau init --force`, or edit "
+    "tau.toml.",
 }
+_BUDGET_NOTE = (
+    " tau.toml caps brain and fast with budgets tau enforces itself (`tau spend` shows them), "
+    "and local uses Ollama on this machine, falling back to fast when it is not running."
+)
 
 
 @click.command(
     name="init",
     help="Set up a configuration root: tau.toml from the shipped template (provider picked "
-    "from the credentials present in the environment or <home>/.env: proxy, then anthropic, "
-    "then bedrock, else fake), persona/persona.md, persona/user.example.md, persona/user.md "
+    "from the credentials present in the environment or <home>/.env: anthropic, openai, "
+    "gemini, bedrock, else fake), persona/persona.md, persona/user.example.md, persona/user.md "
     "(from the example, unless it exists) and .env.example (the variable names). Existing "
     "files are kept unless --force is given; user.md and .env.example are never overwritten.",
     short_help="Create tau.toml and the persona files.",
@@ -975,7 +903,8 @@ def init(
         ctx.exit(1)
     if provider is None:
         provider = pick_provider(env_with_dotenv(home, os.environ))
-        click.echo(f"Provider: {provider}. {_NEXT_STEPS[provider].replace('<home>', str(home))}")
+        note = _NEXT_STEPS[provider] + ("" if provider == "fake" else _BUDGET_NOTE)
+        click.echo(f"Provider: {provider}. {note.replace('<home>', str(home))}")
     if language is None:
         language = (
             DEFAULT_LANGUAGE

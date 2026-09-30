@@ -16,7 +16,6 @@ from __future__ import annotations
 import copy
 import logging
 import os
-import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -46,12 +45,14 @@ _ROLE_KEYS = {
     "fallback",
     "cache",
     "budget",
+    "failover",
 }
 _CACHE_STRATEGIES = ("auto", "anthropic")
 _CACHE_KEYS = {"strategy", "ttl", "system_prompt_ttl", "tools_ttl"}
 _BUDGET_KEYS = {"usd", "period", "degrade_to"}
-_PERIOD = re.compile(r"^[1-9][0-9]*(s|m|h|d|mo)$")
-"""A LiteLLM ``budget_duration``: ``30s``, ``30m``, ``24h``, ``1d``, ``7d``, ``1mo``."""
+BUDGET_PERIODS = ("day", "week", "month")
+"""Calendar periods in tau's time zone (Europe/Istanbul): a week starts on Monday."""
+_PRICE_KEYS = {"input", "output", "cache_read", "cache_write"}
 CONTEXT_MODES = ("sliding", "summarize")
 """``[agent] context`` values. The SDK's ``auto``/``agentic`` presets are rejected on purpose:
 they register untiered SDK tools that the tier gate would refuse."""
@@ -81,11 +82,11 @@ class ConfigNotFound(ConfigError):
 
 @dataclass(frozen=True)
 class BudgetConfig:
-    """``[models.roles.<role>.budget]``: the hard spend cap of the role's proxy key.
+    """``[models.roles.<role>.budget]``: the role's hard spend cap per calendar ``period``.
 
-    The proxy enforces it (``tau proxy keys`` writes ``usd`` and ``period`` to the role's
-    virtual key); tau only reads it to decide what happens when the cap is hit: answer with
-    ``degrade_to`` (a cheaper role) or tell the user when the budget resets.
+    tau enforces it itself (:mod:`tau_core.budget`, ADR 0011): every answer's token usage is
+    priced and recorded under ``TAU_DATA_DIR``, and a role whose period spend reached ``usd``
+    answers with ``degrade_to`` (a cheaper role) or tells the user when the budget resets.
     """
 
     usd: float
@@ -107,7 +108,24 @@ class RoleConfig:
     """Prompt-cache settings (``strategy``, ``ttl``, ``system_prompt_ttl``, ``tools_ttl``), the
     keyword arguments of Strands' ``CacheConfig``; ``None`` leaves caching to the provider."""
     budget: BudgetConfig | None = None
-    """The role's hard spend cap; only the ``proxy`` provider enforces one."""
+    """The role's hard spend cap, enforced by tau (:mod:`tau_core.budget`)."""
+    failover: str | None = None
+    """The role that answers when this role's model cannot be reached (Ollama on a sleeping
+    Mac, a provider outage) before anything streamed."""
+
+
+@dataclass(frozen=True)
+class Price:
+    """What a model costs, in US dollars per million tokens.
+
+    ``cache_read`` and ``cache_write`` default to ``input`` when a table leaves them out, so an
+    unknown cache price never makes a call look cheaper than it was.
+    """
+
+    input: float
+    output: float
+    cache_read: float | None = None
+    cache_write: float | None = None
 
 
 @dataclass(frozen=True)
@@ -174,6 +192,8 @@ class Config:
     components: ComponentsConfig = field(default_factory=ComponentsConfig)
     component_tables: dict[str, dict[str, Any]] = field(default_factory=dict)
     """The free ``[component.<name>]`` tables, read through :meth:`component`."""
+    prices: dict[str, Price] = field(default_factory=dict)
+    """``[models.prices."<model_id>"]``: prices that extend or override the shipped table."""
 
     def component(self, name: str) -> dict[str, Any]:
         """The ``[component.<name>]`` table as a fresh dict (``{}`` when there is none)."""
@@ -233,7 +253,11 @@ class Config:
             ) from exc
 
         _warn_unknown_tables(config_path, raw)
-        roles = _parse_roles(raw.get("models", {}).get("roles", {}))
+        models = raw.get("models", {})
+        if not isinstance(models, dict):
+            raise ConfigError("tau.toml: [models] must be a table.")
+        roles = _parse_roles(models.get("roles", {}))
+        prices = _parse_prices(models.get("prices", {}))
         agent = _parse_agent(raw.get("agent", {}))
         sessions = _parse_sessions(raw.get("sessions", {}))
         hub = _parse_hub(raw.get("hub", {}), merged)
@@ -260,6 +284,7 @@ class Config:
             ui=ui,
             components=components,
             component_tables=component_tables,
+            prices=prices,
         )
         _validate_names(config)
         return config
@@ -321,10 +346,16 @@ def _parse_role(name: str, raw: Any, *, allow_fallback: bool = True) -> RoleConf
         fallback = _parse_role(f"{name}.fallback", raw["fallback"], allow_fallback=False)
     cache = _parse_cache(where, raw.get("cache"))
     budget = None
+    failover = None
+    for key in ("budget", "failover"):
+        if key in raw and not allow_fallback:
+            raise ConfigError(f"tau.toml: {where} cannot have a '{key}'; set it on the role.")
     if "budget" in raw:
-        if not allow_fallback:
-            raise ConfigError(f"tau.toml: {where} cannot have a 'budget'; set it on the role.")
         budget = _parse_budget(where, raw["budget"])
+    if "failover" in raw:
+        failover = raw["failover"]
+        if not isinstance(failover, str) or not failover:
+            raise ConfigError(f"tau.toml: {where} 'failover' must be the name of a role.")
     return RoleConfig(
         provider=provider,
         model_id=model_id,
@@ -334,11 +365,12 @@ def _parse_role(name: str, raw: Any, *, allow_fallback: bool = True) -> RoleConf
         fallback=fallback,
         cache=cache,
         budget=budget,
+        failover=failover,
     )
 
 
 def _parse_budget(where: str, raw: Any) -> BudgetConfig:
-    """``budget = { usd = 15, period = "1mo", degrade_to = "fast" }`` → :class:`BudgetConfig`."""
+    """``budget = { usd = 15, period = "month", degrade_to = "fast" }`` → :class:`BudgetConfig`."""
     where = f"{where} 'budget'"
     if not isinstance(raw, dict):
         raise ConfigError(f"tau.toml: {where} must be a table.")
@@ -349,36 +381,72 @@ def _parse_budget(where: str, raw: Any) -> BudgetConfig:
     if isinstance(usd, bool) or not isinstance(usd, int | float) or usd <= 0:
         raise ConfigError(f"tau.toml: {where} needs 'usd', a positive number of dollars.")
     period = raw.get("period")
-    if not isinstance(period, str) or not _PERIOD.match(period):
-        raise ConfigError(
-            f'tau.toml: {where} needs \'period\' like "1d", "7d" or "1mo" '
-            "(a number followed by s, m, h, d or mo)."
-        )
+    if period not in BUDGET_PERIODS:
+        raise ConfigError(f"tau.toml: {where} needs 'period', one of {', '.join(BUDGET_PERIODS)}.")
     degrade_to = raw.get("degrade_to")
     if degrade_to is not None and (not isinstance(degrade_to, str) or not degrade_to):
         raise ConfigError(f"tau.toml: {where} 'degrade_to' must be the name of a role.")
     return BudgetConfig(usd=float(usd), period=period, degrade_to=degrade_to)
 
 
+def _stand_ins(role: RoleConfig) -> list[tuple[str, str]]:
+    """``[(key, target)]``: the roles that may answer for ``role`` (``budget.degrade_to`` when
+    it is spent, ``failover`` when it is unreachable)."""
+    found = []
+    if role.budget is not None and role.budget.degrade_to is not None:
+        found.append(("budget.degrade_to", role.budget.degrade_to))
+    if role.failover is not None:
+        found.append(("failover", role.failover))
+    return found
+
+
 def _check_degrade_targets(roles: Mapping[str, RoleConfig]) -> None:
-    """Every ``budget.degrade_to`` names another defined role, and following them never loops
-    (``brain`` → ``fast`` → ``brain`` would ping-pong between two spent keys)."""
+    """Every ``budget.degrade_to`` and ``failover`` names another defined role, and following
+    them never loops: ``brain`` → ``fast`` → ``brain`` would ping-pong between two spent (or
+    unreachable) roles forever."""
     for name, role in roles.items():
-        target = role.budget.degrade_to if role.budget else None
-        if target is None:
-            continue
-        where = f"tau.toml: [models.roles.{name}] 'budget.degrade_to'"
-        if target == name:
-            raise ConfigError(f"{where} cannot name the role itself.")
-        if target not in roles:
-            raise ConfigError(f"{where} names '{target}', which is not a defined role.")
-        seen = [name]
-        while target is not None:
-            if target in seen:
-                raise ConfigError(f"{where} loops: {' → '.join([*seen, target])}.")
-            seen.append(target)
-            budget = roles[target].budget
-            target = budget.degrade_to if budget else None
+        for key, target in _stand_ins(role):
+            where = f"tau.toml: [models.roles.{name}] '{key}'"
+            if target == name:
+                raise ConfigError(f"{where} cannot name the role itself.")
+            if target not in roles:
+                raise ConfigError(f"{where} names '{target}', which is not a defined role.")
+
+    def visit(name: str, path: list[str]) -> None:
+        if name in path:
+            raise ConfigError(
+                f"tau.toml: [models.roles.{path[0]}] stand-ins loop: "
+                f"{' → '.join([*path, name])} (budget.degrade_to and failover together)."
+            )
+        for _, target in _stand_ins(roles[name]):
+            visit(target, [*path, name])
+
+    for name in roles:
+        visit(name, [])
+
+
+def _parse_prices(raw: Any) -> dict[str, Price]:
+    """``[models.prices."<model_id>"]`` tables → ``{model_id: Price}`` (dollars per million
+    tokens); they extend and override the prices tau-core ships (:mod:`tau_core.prices`)."""
+    if not isinstance(raw, dict):
+        raise ConfigError("tau.toml: [models.prices] must hold one table per model id.")
+    prices: dict[str, Price] = {}
+    for model_id, table in raw.items():
+        where = f'tau.toml: [models.prices."{model_id}"]'
+        if not isinstance(table, dict):
+            raise ConfigError(f"{where} must be a table.")
+        unknown = sorted(set(table) - _PRICE_KEYS)
+        if unknown:
+            raise ConfigError(f"{where} has unknown keys: {', '.join(unknown)}.")
+        values: dict[str, float] = {}
+        for key, value in table.items():
+            if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+                raise ConfigError(f"{where} '{key}' must be a number of dollars, 0 or more.")
+            values[key] = float(value)
+        if "input" not in values or "output" not in values:
+            raise ConfigError(f"{where} needs 'input' and 'output' (dollars per million tokens).")
+        prices[str(model_id)] = Price(**values)
+    return prices
 
 
 def _parse_cache(where: str, raw: Any) -> dict[str, Any] | None:

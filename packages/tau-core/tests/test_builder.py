@@ -338,21 +338,21 @@ def test_template_config_loads(tmp_path: Path) -> None:
     home.mkdir()
     (home / "tau.toml").write_text(template_text("tau.toml"), encoding="utf-8")
     config = Config.load(home, env={})
-    for role in ("brain", "fast", "local"):
-        assert config.roles[role].provider == "proxy"
-        assert config.roles[role].model_id == role  # the proxy's model group
-        assert config.roles[role].budget is not None
-        assert config.roles[role].fallback is None  # a missing proxy key must not bypass budgets
+    for role in ("brain", "fast"):
+        assert config.roles[role].provider == "anthropic"
+        assert config.roles[role].budget is not None  # enforced by tau (ADR 0011)
     assert config.roles["brain"].budget.degrade_to == "fast"
+    assert config.roles["local"].provider == "ollama"
+    assert config.roles["local"].failover == "fast"
     assert config.components.tools_disabled == ()  # the example stays commented out
 
 
-def test_render_config_proxy_is_the_template(tmp_path: Path) -> None:
+def test_render_config_anthropic_is_the_template(tmp_path: Path) -> None:
     template = template_text("tau.toml")
-    assert render_config(template, provider="proxy", language="en") == template
+    assert render_config(template, provider="anthropic", language="en") == template
 
 
-@pytest.mark.parametrize("provider", ["anthropic", "bedrock", "fake"])
+@pytest.mark.parametrize("provider", ["openai", "gemini", "bedrock", "fake"])
 def test_render_config_per_provider(tmp_path: Path, provider: str) -> None:
     text = render_config(template_text("tau.toml"), provider=provider, language="tr")
     home = tmp_path / provider
@@ -363,24 +363,32 @@ def test_render_config_per_provider(tmp_path: Path, provider: str) -> None:
     for role in ("brain", "fast"):
         assert config.roles[role].provider == provider
         assert config.roles[role].model_id == ids[role]
-    assert config.roles["local"].provider == "ollama"  # direct, without the proxy
-    assert config.roles["local"].model_id == model_ids("ollama")["local"]
-    assert all(role.budget is None for role in config.roles.values())  # only the proxy enforces
-    assert "budget]" not in text
+        assert config.roles[role].budget is not None  # tau enforces it for every provider
+    assert config.roles["local"].provider == "ollama"  # untouched
     assert config.ui.language == "tr"
-    assert "# proxy | anthropic | bedrock | ollama | fake" in text  # comments survive
-    assert "# [models.roles.brain.cache]" in text  # also the ones after a dropped budget table
+    assert "# anthropic | openai | gemini | ollama | bedrock | fake" in text  # comments survive
+    assert "# [models.roles.brain.cache]" in text
     assert "\n\n\n" not in text
+
+
+def test_every_init_model_has_a_price() -> None:
+    from tau_core.prices import shipped_prices
+
+    prices = shipped_prices()
+    for provider in ("anthropic", "openai", "gemini", "bedrock"):
+        for role, model_id in model_ids(provider).items():
+            assert model_id in prices, f"{provider} {role}: {model_id} has no price"
 
 
 def test_pick_provider_by_credentials() -> None:
     assert pick_provider({}) == "fake"
     assert pick_provider({"ANTHROPIC_API_KEY": "k"}) == "anthropic"
+    assert pick_provider({"OPENAI_API_KEY": "k"}) == "openai"
+    assert pick_provider({"GOOGLE_API_KEY": "k"}) == "gemini"
     aws = {"AWS_REGION": "r", "AWS_PROFILE": "p"}
     assert pick_provider(aws) == "bedrock"
-    assert pick_provider({"ANTHROPIC_API_KEY": "k", **aws}) == "anthropic"
-    assert pick_provider({"ANTHROPIC_API_KEY": "k", "TAU_PROXY_KEY_BRAIN": "sk-x"}) == "proxy"
-    assert pick_provider({"TAU_PROXY_KEY_FAST": "sk-x"}) == "fake"  # brain's key decides
+    assert pick_provider({"ANTHROPIC_API_KEY": "k", "OPENAI_API_KEY": "k", **aws}) == "anthropic"
+    assert pick_provider({"GEMINI_API_KEY": "k", "OPENAI_API_KEY": "k"}) == "openai"
     with pytest.raises(ConfigError):
         model_ids("nope")
 
@@ -457,11 +465,12 @@ def test_init_picks_provider_from_home_dotenv(tmp_path: Path) -> None:
     assert (home / ".env").read_text("utf-8") == "ANTHROPIC_API_KEY=sk-test-not-real\n"
 
     # TAU_HOME (no --home) reaches the same file; a variable set in the process wins over it
-    (home / ".env").write_text("ANTHROPIC_API_KEY=\nTAU_PROXY_KEY_BRAIN=sk-test-not-real\n")
-    result = run(["init", "--yes", "--force"], tmp_path, home=home, env={"ANTHROPIC_API_KEY": "k"})
+    (home / ".env").write_text("ANTHROPIC_API_KEY=\nGEMINI_API_KEY=g-test-not-real\n")
+    result = run(["init", "--yes", "--force"], tmp_path, home=home, env={"OPENAI_API_KEY": "k"})
     assert result.exit_code == 0, result.output
-    assert "Provider: proxy." in result.output  # the file's proxy key counts too
-    assert Config.load(home, env={}).roles["local"].provider == "proxy"
+    assert "Provider: openai." in result.output  # the process wins over the file's gemini key
+    assert "budgets tau enforces itself" in result.output
+    assert Config.load(home, env={}).roles["brain"].model_id == model_ids("openai")["brain"]
     assert (home / ".env.example").read_text("utf-8") == template_text("dotenv.example")
     assert f"kept  {home / '.env.example'}" in result.output  # --force never touches it
 
@@ -512,55 +521,35 @@ def test_builder_logs_nothing_at_warning_on_a_healthy_install(
     assert [r for r in caplog.records if r.name.startswith("tau_core")] == []
 
 
-# -- the proxy in tau doctor ---------------------------------------------------------------------
+# -- budgets in tau doctor ------------------------------------------------------------------------
 
 
-def test_doctor_checks_the_proxy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from tau_core import builder, proxy
+def test_doctor_checks_the_budgets(tmp_path: Path) -> None:
+    from tau_core.spend import Ledger
 
     config = test_config(tmp_path)
     (config.home / "tau.toml").write_text(
-        "[models.roles.brain]\nprovider = 'proxy'\nmodel_id = 'brain'\n"
-        "budget = { usd = 15, period = '1mo' }\n"
-        "[models.roles.fast]\nprovider = 'proxy'\nmodel_id = 'fast'\n"
-        "budget = { usd = 1, period = '1d' }\n"
-        "[models.roles.open]\nprovider = 'proxy'\nmodel_id = 'open'\n"
-        "[models.roles.gone]\nprovider = 'proxy'\nmodel_id = 'gone'\n"
-        "[models.roles.direct]\nprovider = 'fake'\nmodel_id = 'f'\n"
-        "budget = { usd = 1, period = '1d' }\n",
+        "[models.roles.brain]\nprovider = 'anthropic'\nmodel_id = 'claude-sonnet-5'\n"
+        "budget = { usd = 15, period = 'month' }\n"
+        "[models.roles.odd]\nprovider = 'openai'\nmodel_id = 'no-such-model'\n"
+        "budget = { usd = 1, period = 'day' }\n"
+        "[models.roles.priced]\nprovider = 'openai'\nmodel_id = 'mine'\n"
+        "budget = { usd = 1, period = 'day' }\n"
+        "[models.prices.mine]\ninput = 1\noutput = 2\n",
         encoding="utf-8",
     )
-    env = {
-        "TAU_PROXY_URL": "http://proxy.test",
-        "TAU_PROXY_KEY_BRAIN": "sk-b",
-        "TAU_PROXY_KEY_FAST": "sk-f",
-        "TAU_PROXY_KEY_OPEN": "sk-o",
-        "TAU_PROXY_KEY_GONE": "sk-g",
-    }
-    records = {
-        "sk-b": {"spend": 0.4, "max_budget": 15.0, "budget_duration": "1mo"},
-        "sk-f": {"spend": 0.1, "max_budget": 5.0, "budget_duration": "1d"},
-        "sk-o": {"spend": 0.0, "max_budget": None},
-    }
-
-    def fetch(url: str, key: str, **kwargs) -> dict:
-        if key not in records:
-            raise OSError("HTTP Error 401: Unauthorized")
-        return records[key]
-
-    monkeypatch.setattr(proxy, "fetch_key_info", fetch)
-    monkeypatch.setattr(builder, "_proxy_alive", lambda url: True)
+    env = {"TAU_DATA_DIR": str(config.data_dir), "ANTHROPIC_API_KEY": "k", "OPENAI_API_KEY": "k"}
     by = {c.name: c for c in run_doctor(config.home, env=env)}
-    assert by["role brain"].detail == "provider 'proxy', credentials present"
-    assert by["proxy brain"].status == "ok"
-    assert by["proxy brain"].detail == "$0.40 of $15.00 per 1mo, within budget"
-    assert by["proxy fast"].status == "warn" and "run tau proxy keys" in by["proxy fast"].detail
-    assert by["proxy open"].status == "warn" and "no budget" in by["proxy open"].detail
-    assert by["proxy gone"].status == "fail" and "TAU_PROXY_KEY_GONE" in by["proxy gone"].detail
-    assert by["role direct"].status == "warn" and "cannot enforce it" in by["role direct"].detail
-
-    monkeypatch.setattr(builder, "_proxy_alive", lambda url: False)
+    assert by["role brain"].status == "ok" and "credentials present" in by["role brain"].detail
+    assert by["role odd"].status == "warn"
+    assert "model 'no-such-model' has no price" in by["role odd"].detail
+    assert '[models.prices."no-such-model"]' in by["role odd"].detail
+    assert by["role priced"].status == "ok"
+    assert by["budget"].status == "ok"
+    assert by["budget"].detail.startswith("brain $0.00 of $15.00 this month (resets ")
+    assert not (config.data_dir / "spend.sqlite3").exists()  # the doctor only reads
+    Ledger(config.data_dir / "spend.sqlite3").record(
+        role="brain", provider="anthropic", model_id="claude-sonnet-5", usage={}, cost_usd=2.5
+    )
     by = {c.name: c for c in run_doctor(config.home, env=env)}
-    assert by["proxy"].status == "warn"
-    assert by["proxy"].detail.startswith("not answering at http://proxy.test; start it with")
-    assert "proxy brain" not in by
+    assert by["budget"].detail.startswith("brain $2.50 of $15.00 this month")

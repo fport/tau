@@ -439,8 +439,7 @@ def clear_credential(home: Path | str, name: str, *, export: bool = False) -> bo
 def credential_names_for(provider: str) -> list[list[str]]:
     """The credential alternatives of a provider (each inner list must be fully set), read
     from ``models.required_env``; ``[]`` for a provider that needs none, is planned or is
-    unknown (nothing to ask for). For the proxy it is the brain role's key; the other roles'
-    keys come from ``.env.example``."""
+    unknown (nothing to ask for)."""
     try:
         return required_env(provider_probe(provider))
     except ConfigError:

@@ -1,0 +1,81 @@
+# What the models cost, in US dollars per million tokens: data, not code (ADR 0011).
+# tau prices every answer's token usage with this table to enforce the budgets in tau.toml.
+# A model missing here counts as unpriced: `tau doctor` warns when a role with a budget uses
+# one. tau.toml extends or overrides it with [models.prices."<model_id>"] tables.
+# cache_read / cache_write default to input when left out. Sources: the providers' pricing
+# pages on 2026-09-30; long-context surcharges (> 200k tokens) are not modelled.
+
+# -- Anthropic (Bedrock's cross-region ids cost the same) ---------------------------------------
+["claude-sonnet-5"]
+input = 2.0
+output = 10.0
+cache_read = 0.2
+cache_write = 2.5
+
+["claude-sonnet-5-5"]
+input = 2.0
+output = 10.0
+cache_read = 0.2
+cache_write = 2.5
+
+["claude-haiku-4-5"]
+input = 1.0
+output = 5.0
+cache_read = 0.1
+cache_write = 1.25
+
+["claude-haiku-4-5-20251001"]
+input = 1.0
+output = 5.0
+cache_read = 0.1
+cache_write = 1.25
+
+["claude-opus-5-5"]
+input = 4.0
+output = 20.0
+cache_read = 0.2
+cache_write = 5.0
+
+["global.anthropic.claude-sonnet-5"]
+input = 2.0
+output = 10.0
+cache_read = 0.2
+cache_write = 2.5
+
+["global.anthropic.claude-haiku-4-5"]
+input = 1.0
+output = 5.0
+cache_read = 0.1
+cache_write = 1.25
+
+# -- OpenAI ------------------------------------------------------------------------------------
+["gpt-6.1-sol"]
+input = 2.0
+output = 10.0
+cache_read = 0.1
+
+["gpt-6-sol"]
+input = 2.0
+output = 10.0
+cache_read = 0.2
+
+["gpt-6-luna"]
+input = 0.1
+output = 0.5
+cache_read = 0.01
+
+# -- Google Gemini -------------------------------------------------------------------------------
+["gemini-3.5-flash"]
+input = 1.5
+output = 9.0
+cache_read = 0.15
+
+["gemini-3.1-flash-lite"]
+input = 0.25
+output = 1.5
+cache_read = 0.025
+
+["gemini-2.5-pro"]
+input = 1.25
+output = 10.0
+cache_read = 0.125

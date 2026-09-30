@@ -2,42 +2,38 @@
 # Role → provider + model id. Model ids are data; code never hardcodes them.
 # Secrets never go here: credentials come from .env (see .env.example).
 #
-# provider = "proxy": the role goes through the LiteLLM proxy (infra/litellm, ADR 0009).
-# model_id is the proxy's model group, infra/litellm/config.yaml maps it to a real model, and the
-# role's own virtual key (TAU_PROXY_KEY_<GROUP>, written by `tau proxy keys`) carries the
-# budget. `tau init` without a proxy key writes direct providers (anthropic, ollama) and drops
-# the budget tables, which only the proxy can enforce.
+# Providers are called directly (ADR 0011). A budget caps what a role may spend per day, week or
+# month (Europe/Istanbul); tau prices every answer and keeps the spend under TAU_DATA_DIR
+# (`tau spend`). Prices come from tau-core's prices.toml; a model it does not know needs a
+# [models.prices."<model_id>"] table (input, output, cache_read, cache_write in $ per 1M tokens).
 
 [models.roles.brain]
-provider = "proxy"                        # proxy | anthropic | bedrock | ollama | fake
-model_id = "brain"
+provider = "anthropic"                    # anthropic | openai | gemini | ollama | bedrock | fake
+model_id = "claude-sonnet-5"
 max_tokens = 4096
 
-[models.roles.brain.budget]               # hard cap of the role's proxy key; `tau proxy keys` applies changes
+[models.roles.brain.budget]               # a hard cap tau enforces itself
 usd = 15                                  # dollars per period
-period = "1mo"                            # LiteLLM budget_duration: 1d, 7d, 1mo, ... (resets in UTC)
+period = "month"                          # day | week | month; resets at midnight, on Monday, on the 1st
 degrade_to = "fast"                       # once spent, this role answers until the reset; omit to stop and say so
 
 [models.roles.fast]
-provider = "proxy"
-model_id = "fast"
+provider = "anthropic"
+model_id = "claude-haiku-4-5"
 max_tokens = 1024
 
 [models.roles.fast.budget]
 usd = 1
-period = "1d"
+period = "day"
 
 [models.roles.local]
-provider = "proxy"                        # Ollama on the Mac; the proxy answers with fast when Ollama is away
-model_id = "local"
+provider = "ollama"                       # Ollama on this machine; TAU_OLLAMA_URL points at another (the Mac over the tailnet)
+model_id = "qwen3.5:9b"                   # answers well in Turkish; `ollama pull qwen3.5:9b`
 max_tokens = 1024
+params = { reasoning_effort = "none" }    # answer at once instead of reasoning first
+failover = "fast"                         # answers while Ollama is not reachable (a sleeping or absent Mac)
 
-[models.roles.local.budget]               # Ollama is free; the cap bounds what the fast fallback may spend
-usd = 0.5
-period = "1d"
-
-# Optional per-role prompt caching for the direct Anthropic and Bedrock providers (the proxy and
-# the fake provider ignore it):
+# Optional per-role prompt caching (Anthropic and Bedrock; the other providers ignore it):
 # [models.roles.brain.cache]
 # strategy = "auto"                       # auto | anthropic; Strands CacheConfig(strategy=...)
 # ttl = "1h"                              # optional cache TTL ("5m", "1h"); system_prompt_ttl / tools_ttl take a bool or a TTL

@@ -1,17 +1,18 @@
-# Model ids `tau init` writes into tau.toml for each provider it can pick. Data, not code:
-# tau-core never names a model id in Python. For the proxy they are the model groups of
-# infra/litellm/config.yaml (which maps each group to a real model); Anthropic ids are the
-# API's own; Bedrock ids use the Converse API form Strands uses (cross-region "global." prefix).
-# A role missing from a provider's table keeps what the template says, except that without the
-# proxy the roles under [ollama] call Ollama directly.
-[proxy]
-brain = "brain"
-fast = "fast"
-local = "local"
-
+# Model ids `tau init` writes into tau.toml for the brain and fast roles of the provider it picks.
+# Data, not code: tau-core never names a model id in Python. Their prices are in tau-core's
+# prices.toml. The local role stays on Ollama whatever provider is picked. Anthropic, OpenAI and
+# Gemini ids are the APIs' own; Bedrock ids use the Converse form with the "global." prefix.
 [anthropic]
 brain = "claude-sonnet-5"
 fast = "claude-haiku-4-5"
+
+[openai]
+brain = "gpt-6.1-sol"
+fast = "gpt-6-luna"
+
+[gemini]
+brain = "gemini-3.5-flash"
+fast = "gemini-3.1-flash-lite"
 
 [bedrock]
 brain = "global.anthropic.claude-sonnet-5"
@@ -20,6 +21,3 @@ fast = "global.anthropic.claude-haiku-4-5"
 [fake]
 brain = "fake-brain"
 fast = "fake-fast"
-
-[ollama]
-local = "qwen3.5:9b"

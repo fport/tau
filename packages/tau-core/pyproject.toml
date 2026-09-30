@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
-    "strands-agents[anthropic,openai]>=1.57,<1.58",
+    "strands-agents[anthropic,openai,gemini]>=1.57,<1.58",
     "click>=8.1",
     "rich>=13",
     "python-dotenv>=1.0",
@@ -43,7 +43,7 @@ hub = "tau_core.hub.cli:hub"
 components = "tau_core.builder:components"
 doctor = "tau_core.builder:doctor"
 init = "tau_core.builder:init"
-proxy = "tau_core.proxy_cli:proxy"
+spend = "tau_core.spend:spend_command"
 
 [project.entry-points."tau.context"]
 budget = "tau_core.spend:context_source"

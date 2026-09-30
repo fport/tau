@@ -88,9 +88,9 @@ def test_set_role_keeps_comments_and_layout(template_home: Path) -> None:
 
     # Comments survive: the header block, the provider comment, the [agent] comments.
     assert after.startswith("# tau.toml — static configuration read by tau_core.config.Config.")
-    assert "# proxy | anthropic | bedrock | ollama | fake" in after
+    assert "# anthropic | openai | gemini | ollama | bedrock | fake" in after
     assert "# per-turn loop guard, Strands Limits(turns=...)" in after
-    assert "# hard cap of the role's proxy key" in after  # the budget table is untouched
+    assert "# a hard cap tau enforces itself" in after  # the budget table is untouched
     assert "[models.roles.brain.fallback]" not in after
     assert "[models.roles.fast.fallback]" in after  # added
     assert before.count("\n") <= after.count("\n") <= before.count("\n") + 4
@@ -149,7 +149,7 @@ def test_a_save_never_introduces_a_planned_provider(template_home: Path, planned
     text = path.read_text(encoding="utf-8")
     path.write_text(
         text.replace(
-            '[models.roles.local]\nprovider = "proxy"',
+            '[models.roles.local]\nprovider = "ollama"',
             '[models.roles.local]\nprovider = "futurebox"',
         ),
         encoding="utf-8",
@@ -159,7 +159,7 @@ def test_a_save_never_introduces_a_planned_provider(template_home: Path, planned
         set_role(doc, "brain", "futurebox", "f")
     with pytest.raises(ConfigError, match=r"\[models\.roles\.fast\.fallback\] "):
         set_role(doc, "fast", "bedrock", "x", fallback=("futurebox", "f"))
-    assert doc["models"]["roles"]["brain"]["provider"] == "proxy"  # nothing half-written
+    assert doc["models"]["roles"]["brain"]["provider"] == "anthropic"  # nothing half-written
     set_role(doc, "local", "futurebox", "f2")  # the role already sits on it: allowed
     set_ui_language(doc, "tr")
     save_document(template_home, doc)  # local = futurebox was on disk already
@@ -346,8 +346,10 @@ def test_credential_status_cases(tmp_path: Path, planned: str) -> None:
     later = credential_status(home, RoleConfig(planned, "x"), env={})
     assert later.state == "unavailable" and "issue 999" in later.detail
     assert credential_status(home, RoleConfig("ollama", "x"), env={}).state == "none"
-    proxy = credential_status(home, RoleConfig("proxy", "fast"), env={})
-    assert proxy.state == "missing" and proxy.missing == ["TAU_PROXY_KEY_FAST"]
+    gemini = credential_status(home, RoleConfig("gemini", "g"), env={})
+    assert gemini.state == "missing" and gemini.missing == ["GEMINI_API_KEY"]
+    via_google = credential_status(home, RoleConfig("gemini", "g"), env={"GOOGLE_API_KEY": "k"})
+    assert via_google.state == "ok" and via_google.satisfied == ["GOOGLE_API_KEY"]
     assert status_text(missing) == "missing AWS_REGION, AWS_PROFILE"
     assert (
         status_text(fallback, "tr")
@@ -361,11 +363,13 @@ def test_names_and_providers(tmp_path: Path, planned: str) -> None:
     home = config.home
     assert credential_names_for("anthropic") == [["ANTHROPIC_API_KEY"]]
     assert credential_names_for("fake") == [] and credential_names_for("ollama") == []
-    assert credential_names_for("proxy") == [["TAU_PROXY_KEY_BRAIN"]]
+    assert credential_names_for("openai") == [["OPENAI_API_KEY"]]
+    assert credential_names_for("gemini") == [["GEMINI_API_KEY"], ["GOOGLE_API_KEY"]]
     assert credential_names_for("no-such-provider") == []
     providers = dict(known_providers())
     assert providers["fake"] is False and providers["ollama"] is False
-    assert providers["proxy"] is False and providers[planned] is True
+    assert providers["openai"] is False and providers["gemini"] is False
+    assert providers[planned] is True and "proxy" not in providers
     assert configured_providers(home) == ["fake"]
     (home / ".env.example").write_text(
         "# MY_TOKEN=...\nOTHER=1\n# TAU_PROFILE=home\n", encoding="utf-8"

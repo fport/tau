@@ -185,7 +185,7 @@ def model_notice_of(exc: BaseException) -> ModelNotice | None:
 
 def model_error_text(exc: BaseException, language: str = DEFAULT_LANGUAGE) -> str:
     """The notice for a failed model call: a :class:`ModelNotice`'s own sentence (a spent
-    budget, the proxy down), else a short detail with the rest in the log."""
+    budget), else a short detail with the rest in the log."""
     notice = model_notice_of(exc)
     if notice is not None:
         return notice.notice(language)
@@ -542,7 +542,7 @@ class TauAgent:
                 for item in drain():
                     yield item
                 if model_notice_of(exc) is not None:
-                    # A spent budget or a stopped proxy: the notice says it all, no trace.
+                    # A spent budget: the notice says it all, no trace.
                     logger.warning("model call refused in session %s: %s", self.session_id, exc)
                 else:
                     logger.exception("model call failed in session %s", self.session_id)

@@ -6,19 +6,18 @@ distributions add providers through the ``tau.providers`` entry point group and 
 with :func:`tau_core.registry.register_provider` (see :mod:`tau_core.registry`). A provider that
 needs credentials declares them in :data:`_DEFAULT_ENV` (built-in) or through ``required_env``.
 
-The ``proxy`` provider talks to the LiteLLM proxy (``infra/litellm``, ADR 0009) through Strands'
-``OpenAIModel``: ``model_id`` is the proxy's model group, and each group has its own virtual key
-(``TAU_PROXY_KEY_<GROUP>``) that carries the role's hard budget. Never ``LiteLLMModel``: it
-imports the ``litellm`` package, which only ever runs inside the pinned container. When a key's
-budget is spent, :class:`ProxyModel` answers with the role's ``budget.degrade_to`` or raises
-:class:`BudgetExhausted`; channels show a :class:`ModelNotice` as one sentence, never a trace.
+Providers are called directly (ADR 0011): ``anthropic``, ``openai``, ``gemini``, ``ollama`` (a
+local model), the optional ``bedrock`` and the scripted ``fake``. A role with a ``budget`` or a
+``failover`` is wrapped in :class:`tau_core.budget.RoleModel`, which prices every answer,
+enforces the budget (answering with ``budget.degrade_to`` or raising :class:`BudgetExhausted`)
+and hands an unreachable model's call to ``failover``. Channels show a :class:`ModelNotice` as
+one sentence, never a trace. Never ``litellm``: its PyPI releases were compromised in 2026.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -40,14 +39,11 @@ _TAU_PARAM_KEYS = frozenset({"api_key_env", "base_url", "workspace_id"})
 ANTHROPIC_WORKSPACE_HEADER = "anthropic-workspace-id"
 ANTHROPIC_WORKSPACE_ENV = "ANTHROPIC_WORKSPACE_ID"
 
-# The LiteLLM proxy (infra/litellm): where it listens and how a model group's key is named.
-PROXY_URL_ENV = "TAU_PROXY_URL"
-DEFAULT_PROXY_URL = "http://127.0.0.1:4000"
-PROXY_KEY_PREFIX = "TAU_PROXY_KEY_"
-
-# Ollama for the `local` role without the proxy (the proxy reads the same variable).
+# Ollama for the `local` role: on this machine by default, or the Mac over the tailnet.
 OLLAMA_URL_ENV = "TAU_OLLAMA_URL"
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
+OLLAMA_CONNECT_TIMEOUT = 3.0
+"""Seconds to reach Ollama before the call counts as unreachable (a sleeping Mac)."""
 
 # Providers named in tau.toml that a later issue implements. Loading such a config works;
 # resolving the role fails with a clear message.
@@ -61,6 +57,8 @@ _DEFAULT_ENV: dict[str, list[list[str]]] = {
         ["AWS_REGION", "AWS_BEARER_TOKEN_BEDROCK"],
     ],
     "anthropic": [["ANTHROPIC_API_KEY"]],
+    "openai": [["OPENAI_API_KEY"]],
+    "gemini": [["GEMINI_API_KEY"], ["GOOGLE_API_KEY"]],
     "ollama": [],
     "fake": [],
 }
@@ -109,7 +107,7 @@ def _usd(value: float | None) -> str:
 
 
 class BudgetExhausted(ModelNotice):
-    """The proxy refused a role's key because its budget is spent, and nothing may stand in.
+    """A role's budget is spent for its period, and nothing may stand in.
 
     ``also`` is set when the role's ``degrade_to`` was tried and is spent as well.
     """
@@ -153,17 +151,6 @@ class BudgetExhausted(ModelNotice):
         )
 
 
-class ProxyUnavailable(ModelNotice):
-    """The LiteLLM proxy did not answer (not started, Docker stopped)."""
-
-    def __init__(self, url: str) -> None:
-        self.url = url
-        super().__init__(f"the model proxy at {url} is not answering")
-
-    def notice(self, language: str = DEFAULT_LANGUAGE) -> str:
-        return t("notice.proxy_down", language, url=self.url)
-
-
 @dataclass(frozen=True)
 class BudgetDegraded:
     """A model call a spent role handed to its ``degrade_to`` role; the channel shows it."""
@@ -180,6 +167,17 @@ class BudgetDegraded:
             degrade=self.degrade_to,
             reset=_format_reset(self.reset_at, language),
         )
+
+
+@dataclass(frozen=True)
+class FailedOver:
+    """A model call an unreachable role handed to its ``failover`` role; the channel shows it."""
+
+    role: str
+    failover: str
+
+    def notice(self, language: str = DEFAULT_LANGUAGE) -> str:
+        return t("notice.failover", language, role=self.role, failover=self.failover)
 
 
 class MissingCredentials(Exception):
@@ -204,9 +202,7 @@ def required_env(role_cfg: RoleConfig) -> list[list[str]]:
     """
     _check_supported(role_cfg)
     provider = role_cfg.provider
-    if provider == "proxy":
-        return [[proxy_key_env(role_cfg)]]
-    if provider == "anthropic" and role_cfg.params.get("api_key_env"):
+    if provider in ("anthropic", "openai", "gemini") and role_cfg.params.get("api_key_env"):
         return [[str(role_cfg.params["api_key_env"])]]
     if provider in _DEFAULT_ENV:
         alternatives = [list(alt) for alt in _DEFAULT_ENV[provider]]
@@ -215,23 +211,6 @@ def required_env(role_cfg: RoleConfig) -> list[list[str]]:
     if provider == "bedrock" and role_cfg.region:
         alternatives = [[v for v in alt if v != "AWS_REGION"] for alt in alternatives]
     return alternatives
-
-
-def proxy_key_env(role_cfg: RoleConfig) -> str:
-    """The variable holding the virtual key of a ``proxy`` role: ``params.api_key_env``, else
-    ``TAU_PROXY_KEY_<GROUP>`` for the model group in ``model_id`` (``brain`` →
-    ``TAU_PROXY_KEY_BRAIN``). ``tau proxy keys`` writes these."""
-    explicit = role_cfg.params.get("api_key_env")
-    if explicit:
-        return str(explicit)
-    return PROXY_KEY_PREFIX + re.sub(r"[^A-Z0-9]", "_", role_cfg.model_id.upper())
-
-
-def proxy_url(role_cfg: RoleConfig | None, env: Mapping[str, str]) -> str:
-    """The proxy's base URL (no ``/v1``): ``params.base_url``, ``TAU_PROXY_URL`` or the
-    loopback default."""
-    explicit = role_cfg.params.get("base_url") if role_cfg is not None else None
-    return str(explicit or env.get(PROXY_URL_ENV) or DEFAULT_PROXY_URL).rstrip("/")
 
 
 def missing_credentials(role_cfg: RoleConfig, env: Mapping[str, str]) -> list[str]:
@@ -257,12 +236,8 @@ def resolve_model(role: str, config: Config, *, env: Mapping[str, str] | None = 
         raise ConfigError(f"Role '{role}' is not defined in tau.toml (add [models.roles.{role}]).")
     missing = missing_credentials(role_cfg, env)
     if not missing:
-        model = _tag(_build(role_cfg, env), role_cfg.provider, None, role)
-        target = role_cfg.budget.degrade_to if role_cfg.budget is not None else None
-        set_degrade = getattr(model, "set_degrade", None)
-        if target is not None and callable(set_degrade):
-            set_degrade(target, lambda: resolve_model(target, config, env=env))
-        return model
+        model = _wrap(_build(role_cfg, env), role, role_cfg, role_cfg, config, env)
+        return _tag(model, role_cfg.provider, None, role)
     fallback = role_cfg.fallback
     if fallback is not None:
         try:
@@ -277,8 +252,41 @@ def resolve_model(role: str, config: Config, *, env: Mapping[str, str] | None = 
                 ", ".join(missing),
                 fallback.provider,
             )
-            return _tag(_build(fallback, env), fallback.provider, role_cfg.provider, role)
+            model = _wrap(_build(fallback, env), role, role_cfg, fallback, config, env)
+            return _tag(model, fallback.provider, role_cfg.provider, role)
     raise MissingCredentials(role, role_cfg.provider, missing)
+
+
+def _wrap(
+    model: Model,
+    role: str,
+    role_cfg: RoleConfig,
+    serving: RoleConfig,
+    config: Config,
+    env: Mapping[str, str],
+) -> Model:
+    """Put a role with a ``budget`` or a ``failover`` inside :class:`tau_core.budget.RoleModel`
+    (``serving`` is the table that built ``model``: the role's or its credential fallback's).
+    The stand-in roles are resolved lazily, on their first use."""
+    if role_cfg.budget is None and role_cfg.failover is None:
+        return model
+    from tau_core.budget import RoleModel
+
+    def stand_in(name: str | None) -> Callable[[], Model] | None:
+        return None if name is None else (lambda: resolve_model(name, config, env=env))
+
+    return RoleModel(
+        model,
+        role=role,
+        provider=serving.provider,
+        model_id=serving.model_id,
+        config=config,
+        budget=role_cfg.budget,
+        degrade=(role_cfg.budget.degrade_to if role_cfg.budget else None),
+        degrade_factory=stand_in(role_cfg.budget.degrade_to if role_cfg.budget else None),
+        failover=role_cfg.failover,
+        failover_factory=stand_in(role_cfg.failover),
+    )
 
 
 def _tag(model: Model, provider: str, fallback_of: str | None, role: str) -> Model:
@@ -390,35 +398,61 @@ def _anthropic(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
     )
 
 
-def _openai_params(role_cfg: RoleConfig) -> dict[str, Any]:
-    """Request parameters for an OpenAI-compatible endpoint: ``max_tokens`` (4096 unless the
-    role says otherwise; Anthropic behind the proxy needs one) plus the role's ``params``."""
-    return {"max_tokens": role_cfg.max_tokens or 4096, **_provider_params(role_cfg)}
+def _api_key(role_cfg: RoleConfig, env: Mapping[str, str], *names: str) -> str | None:
+    """The key from ``params.api_key_env`` if the role names one, else the first set name."""
+    explicit = role_cfg.params.get("api_key_env")
+    for name in (str(explicit),) if explicit else names:
+        if env.get(name):
+            return env[name]
+    return None
 
 
-def _proxy(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
-    from tau_core.proxy import ProxyModel
+def _openai(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
+    """OpenAI (or any OpenAI-compatible API through ``params.base_url``)."""
+    from strands.models.openai import OpenAIModel
 
-    return ProxyModel(
-        base_url=proxy_url(role_cfg, env),
-        api_key=str(env.get(proxy_key_env(role_cfg)) or ""),
+    client_args: dict[str, Any] = {"api_key": _api_key(role_cfg, env, "OPENAI_API_KEY")}
+    if role_cfg.params.get("base_url"):
+        client_args["base_url"] = role_cfg.params["base_url"]
+    return OpenAIModel(
+        client_args=client_args,
         model_id=role_cfg.model_id,
-        params=_openai_params(role_cfg),
+        # Current OpenAI models take max_completion_tokens; max_tokens is refused by some.
+        params={"max_completion_tokens": role_cfg.max_tokens or 4096, **_provider_params(role_cfg)},
+    )
+
+
+def _gemini(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
+    """Google Gemini through Strands' ``GeminiModel`` (the ``google-genai`` SDK)."""
+    from strands.models.gemini import GeminiModel
+
+    key = _api_key(role_cfg, env, "GEMINI_API_KEY", "GOOGLE_API_KEY")
+    return GeminiModel(
+        client_args={"api_key": key},
+        model_id=role_cfg.model_id,
+        params={"max_output_tokens": role_cfg.max_tokens or 4096, **_provider_params(role_cfg)},
     )
 
 
 def _ollama(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
-    """Ollama's OpenAI-compatible endpoint, without the proxy (no budget, no fallback: those
-    need the proxy, ADR 0009). ``params.base_url`` or ``TAU_OLLAMA_URL`` pick the server."""
+    """Ollama's OpenAI-compatible endpoint: ``params.base_url``, else ``TAU_OLLAMA_URL``, else
+    this machine. It fails fast (a short connect timeout, no retries), so a role's
+    ``failover`` answers within seconds while the Mac is asleep or away."""
+    import httpx
     from strands.models.openai import OpenAIModel
 
     base = str(
         role_cfg.params.get("base_url") or env.get(OLLAMA_URL_ENV) or DEFAULT_OLLAMA_URL
     ).rstrip("/")
     return OpenAIModel(
-        client_args={"base_url": f"{base}/v1", "api_key": "ollama"},
+        client_args={
+            "base_url": f"{base}/v1",
+            "api_key": "ollama",
+            "timeout": httpx.Timeout(120.0, connect=OLLAMA_CONNECT_TIMEOUT),
+            "max_retries": 0,
+        },
         model_id=role_cfg.model_id,
-        params=_openai_params(role_cfg),
+        params={"max_tokens": role_cfg.max_tokens or 4096, **_provider_params(role_cfg)},
     )
 
 
@@ -450,10 +484,11 @@ def _fake(role_cfg: RoleConfig, env: Mapping[str, str]) -> Model:
 
 
 PROVIDERS: dict[str, Callable[[RoleConfig, Mapping[str, str]], Model]] = {
-    "proxy": _proxy,
     "anthropic": _anthropic,
-    "bedrock": _bedrock,
+    "openai": _openai,
+    "gemini": _gemini,
     "ollama": _ollama,
+    "bedrock": _bedrock,
     "fake": _fake,
 }
 """The built-in seed. Do not add to it at runtime: use ``tau_core.registry.register_provider``

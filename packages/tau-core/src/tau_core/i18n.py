@@ -185,10 +185,6 @@ MESSAGES: dict[str, dict[str, str]] = {
     "status.versions": {"en": "Versions: {versions}", "tr": "Sürümler: {versions}"},
     "status.hub": {"en": "Hub: {detail}", "tr": "Hub: {detail}"},
     "status.budget": {"en": "Budget: {detail}", "tr": "Bütçe: {detail}"},
-    "status.budget_unknown": {
-        "en": "not read yet (the proxy did not answer)",
-        "tr": "henüz okunamadı (proxy yanıt vermedi)",
-    },
     "model.current": {
         "en": "Model role: {role} ({provider})",
         "tr": "Model rolü: {role} ({provider})",
@@ -352,12 +348,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The previous turn did not finish.",
         "tr": "Önceki tur tamamlanmadı.",
     },
-    # -- model budgets and the proxy (tau_core.models, ADR 0009) ----------------------------------
+    # -- model budgets and failover (tau_core.budget, ADR 0011) ------------------------------------
     "notice.budget_exhausted": {
         "en": "The {role} budget is spent (${spend} of ${cap}) and resets at {reset}. To raise "
-        "the cap, change it in tau.toml and run tau proxy keys.",
+        "the cap, change it in tau.toml.",
         "tr": "{role} bütçesi doldu (${spend} / ${cap}); {reset} itibarıyla yenileniyor. Sınırı "
-        "artırmak için tau.toml'da değiştirip tau proxy keys çalıştırın.",
+        "artırmak için tau.toml'da değiştirin.",
     },
     "notice.budget_exhausted_also": {
         "en": "The {role} budget is spent until {reset}, and {degrade}, which stands in for it, "
@@ -369,10 +365,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The {role} budget is spent until {reset}; {degrade} answered instead.",
         "tr": "{role} bütçesi doldu ({reset} itibarıyla yenilenecek); bu yanıtı {degrade} verdi.",
     },
-    "notice.proxy_down": {
-        "en": "The model proxy at {url} is not answering. Start it with infra/litellm/proxy.sh up.",
-        "tr": "{url} adresindeki model proxy'si yanıt vermiyor. infra/litellm/proxy.sh up ile "
-        "başlatın.",
+    "notice.failover": {
+        "en": "{role} is not reachable right now; {failover} answered instead.",
+        "tr": "{role} şu an ulaşılamıyor; bu yanıtı {failover} verdi.",
     },
     "budget.reset_unknown": {"en": "the end of its period", "tr": "dönem sonu"},
     # -- Telegram channel (tau_core.channels.telegram) -------------------------------------------

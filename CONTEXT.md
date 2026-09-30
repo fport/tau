@@ -43,8 +43,12 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 ## Models and cost
 
 - **Role** — `brain` (conversation, planning), `fast` (triage, summaries), `local` (Ollama on the Mac). Code asks for a role, never for a concrete model id.
-- **Proxy** — the LiteLLM proxy container that maps roles to providers and enforces budgets.
-- **Budget** — hard spend cap on a role's virtual key (daily or monthly).
+- **Proxy** — the LiteLLM proxy container (`infra/litellm`) that maps each role, as a *model group*, to a model, falls back between groups and enforces budgets. A role on it has `provider = "proxy"`; the other providers are *direct*.
+- **Virtual key** — a role's own key on the proxy (`TAU_PROXY_KEY_<GROUP>`, written by `tau proxy keys`); it carries the role's budget and its spend.
+- **Budget** — hard spend cap on a role's virtual key for a period (`usd` per `period`, e.g. $15 per `1mo`), set in `tau.toml` and applied by `tau proxy keys`. Distinct from the per-turn token limit `max_total_tokens`.
+- **Spend** — what a role's key spent in its current budget period, as the proxy counts it; shown under `## Now`, in `/status` and by the hub's `GET /spend`.
+- **Degrade** — a spent role handing its calls to its `budget.degrade_to` role until the reset; the channel says so. *Avoid: fallback (a spent budget is never a fallback).*
+- **Fallback** — (1) a role's `fallback` table: another direct provider used only when the primary has no credentials; (2) a proxy fallback: the proxy answering with another model group when a model fails (`brain` → `fast`, `local` → `fast`).
 
 ## Safety
 

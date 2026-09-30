@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import stat
 import subprocess
 import sys
 import textwrap
+import threading
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,7 @@ from tau_core.approval import ApprovalRequest
 from tau_core.hub import ControlApi
 from tau_core.testing import test_config
 from tau_guard.service import GuardService, make_service
+from tau_guard.state import Attempt, Refusal
 from tau_guard.testing import (
     FakeClock,
     FakePresence,
@@ -328,8 +331,159 @@ async def test_cancelling_an_in_hub_unlock_cancels_the_attempt(tmp_path: Path) -
 # -- verification fixes: stopping, reflexes at the verdict, restarts, the event loop -------------
 
 
+class GatedPresence(FakePresence):
+    """A presence source whose reads block (in the named thread, or in any) until released."""
+
+    def __init__(self, thread_name: str | None = None) -> None:
+        super().__init__()
+        self.thread_name = thread_name
+        self.armed = False
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def read(self):  # type: ignore[no-untyped-def]
+        name = threading.current_thread().name
+        if self.armed and (self.thread_name is None or name == self.thread_name):
+            self.entered.set()
+            self.release.wait(10)
+        return super().read()
+
+
 def workers(script: Path) -> list[int]:
     return [int(entry["pid"]) for entry in read_requests(script)]
+
+
+def gone(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    return False
+
+
+async def test_a_request_that_read_presence_before_the_stop_starts_no_worker(
+    tmp_path: Path,
+) -> None:
+    """The hub stops services in reverse order, so /guard/verify is still served meanwhile."""
+    presence = GatedPresence("verify-route")
+    service, hub, _, script = make(tmp_path, runs=[[{"hang": True}]], presence=presence)
+    await service.start(hub)  # type: ignore[arg-type]
+    presence.armed = True
+    result: dict = {}
+
+    def route() -> None:  # what a control-API thread does for POST /guard/verify
+        result["answer"] = service._request_sync("unlock", channel="tui", client_id="c1")
+
+    thread = threading.Thread(target=route, name="verify-route")
+    thread.start()
+    await until_async(presence.entered.is_set)  # past the mode check, reading presence
+    stopping = asyncio.ensure_future(service.stop())
+    await until_async(lambda: service.mode == "stopped")
+    presence.release.set()
+    thread.join(5)
+    await stopping
+    answer, _ = result["answer"]
+    assert answer == Refusal("unavailable")
+    assert workers(script) == [] and service.machine is not None
+    assert service.machine.running is None and service.machine.state == "locked"
+
+
+async def test_no_worker_starts_once_the_hub_is_stopping(tmp_path: Path) -> None:
+    service, hub, _, script = make(tmp_path, runs=[[{"hang": True}]])
+    await service.start(hub)  # type: ignore[arg-type]
+    try:
+        service._stop_event.set()  # stop() has begun
+        with service._transaction() as machine:
+            attempt = machine.request("unlock", channel="tui", client_id="c1")
+        assert isinstance(attempt, Attempt)
+        assert (attempt.done, attempt.reason) == (True, "unavailable")
+        assert workers(script) == [] and service._all_runs == []
+    finally:
+        await service.stop()
+
+
+async def test_stop_kills_a_worker_the_machine_no_longer_tracks(tmp_path: Path) -> None:
+    service, hub, _, script = make(tmp_path, runs=[[{"hang": True}]])
+    await service.start(hub)  # type: ignore[arg-type]
+    task = asyncio.ensure_future(service.unlock(channel="tui", client_id="c1"))
+    await until_async(lambda: bool(workers(script)))
+    service._runs.clear()  # as if the lock's kill effect never found the run
+    await service.stop()
+    assert all(gone(pid) for pid in workers(script))
+    assert not (await task).ok
+
+
+def slept(clock: FakeClock, presence: FakePresence) -> None:
+    clock.sleep(120)  # the Mac slept: wall time moved, monotonic time did not
+
+
+def screen_locked(clock: FakeClock, presence: FakePresence) -> None:
+    presence.screen_locked = True
+
+
+def aged(clock: FakeClock, presence: FakePresence) -> None:
+    clock.advance(8 * 3600 + 1)
+
+
+@pytest.mark.parametrize(
+    ("change", "trigger"),
+    [(slept, "sleep"), (screen_locked, "screen_lock"), (aged, "max_age")],
+    ids=["sleep", "screen_lock", "max_age"],
+)
+async def test_a_step_up_verdict_after_a_reflex_lock_counts_for_nothing(
+    tmp_path: Path, change, trigger: str
+) -> None:
+    clock, presence = FakeClock(), FakePresence()
+    runs = [[match()], [{"sleep": 0.4}, match()]]
+    service, hub, _, script = make(tmp_path, clock=clock, presence=presence, runs=runs)
+    await service.start(hub)  # type: ignore[arg-type]
+    try:
+        assert (await service.unlock(channel="tui", client_id="c1")).ok
+        step_up = asyncio.ensure_future(service.step_up(REQUEST, client_id="c1"))
+        await until_async(lambda: len(workers(script)) == 2)
+        change(clock, presence)  # no reflex tick before the verdict arrives
+        assert await step_up is False
+        status = await service.status()
+        assert (status.state, status.lock_trigger) == ("locked", trigger)
+    finally:
+        await service.stop()
+
+
+async def test_an_unlock_verdict_after_a_screen_lock_does_not_unlock(tmp_path: Path) -> None:
+    presence = FakePresence()
+    runs = [[{"sleep": 0.4}, match()]]
+    service, hub, _, script = make(tmp_path, presence=presence, runs=runs)
+    await service.start(hub)  # type: ignore[arg-type]
+    try:
+        unlock = asyncio.ensure_future(service.unlock(channel="tui", client_id="c1"))
+        await until_async(lambda: bool(workers(script)))
+        presence.screen_locked = True
+        verdict = await unlock
+        assert (verdict.ok, verdict.reason) == (False, "cancelled")
+        status = await service.status()
+        assert (status.state, status.lock_trigger) == ("locked", "screen_lock")
+    finally:
+        await service.stop()
+
+
+async def test_subscribers_see_the_switch_to_unavailable(tmp_path: Path) -> None:
+    service, hub, _, _ = make(tmp_path)
+    seen: list[GuardStatus] = []
+    service.subscribe(seen.append)
+    await service.start(hub)  # type: ignore[arg-type]
+    assert (await service.unlock(channel="tui", client_id="c1")).ok
+    await service.stop()
+    await asyncio.sleep(0.05)
+    assert [s.state for s in seen[-2:]] == ["locked", "unavailable"]
+    assert seen[-2].lock_trigger == "hub_stop" and seen[-1].reason == "stopped"
+    broken, hub2, _, _ = make(tmp_path / "b", platform="linux")
+    later: list[GuardStatus] = []
+    broken.subscribe(later.append)
+    await broken.start(hub2)  # type: ignore[arg-type]
+    await asyncio.sleep(0.05)
+    assert later and later[-1].state == "unavailable"
+    assert later[-1].reason == "unsupported_platform"
+    await broken.stop()
 
 
 SPOOF = {"verdict": {"ok": False, "reason": "spoof", "method": None, "score": 0.3}}
@@ -372,5 +526,18 @@ async def test_a_malformed_failure_file_is_ignored(
     try:
         assert service.mode == "active" and (await service.status()).failures == 0
         assert "failures.json is malformed" in caplog.text
+    finally:
+        await service.stop()
+
+
+async def test_nothing_starts_while_the_screen_is_locked(tmp_path: Path) -> None:
+    presence = FakePresence(screen_locked=True)
+    service, hub, _, script = make(tmp_path, presence=presence)
+    await service.start(hub)  # type: ignore[arg-type]
+    try:
+        verdict = await service.unlock(channel="ssh", client_id="c1")
+        assert (verdict.ok, verdict.reason) == (False, "locked")
+        answer, _ = service._request_sync("enroll", channel="enroll", client_id="c1")
+        assert answer == Refusal("locked") and workers(script) == []
     finally:
         await service.stop()

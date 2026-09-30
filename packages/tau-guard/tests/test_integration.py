@@ -575,3 +575,33 @@ async def test_stopping_the_hub_kills_a_running_worker(tmp_path: Path) -> None:
         assert not verdict.ok
     audit = (tmp_path / "data" / "guard" / "audit.jsonl").read_text().splitlines()
     assert json.loads(audit[-1])["trigger"] == "hub_stop"
+
+
+# -- verification fixes ----------------------------------------------------------------------------
+
+
+async def test_hub_guard_step_up_after_a_sleep_fails(tmp_path: Path) -> None:
+    runs = [[match()], [{"sleep": 0.4}, match()]]
+    with running_hub(tmp_path, runs=runs) as running:
+        await unlocked_hub(running)
+        step_up = asyncio.ensure_future(running.guard.step_up(REQUEST, client_id="c1"))
+        await until_async(lambda: len(read_requests(running.script)) == 2)
+        running.clock.sleep(120)  # the Mac slept while the check ran; no reflex tick since
+        assert await step_up is False
+        status = await running.guard.status()
+        assert (status.state, status.lock_trigger) == ("locked", "sleep")
+
+
+async def test_reading_an_attempt_runs_the_reflexes_first(tmp_path: Path) -> None:
+    with running_hub(tmp_path, runs=[[match()]]) as running:
+        await unlocked_hub(running)
+        running.script_runs([match()])
+        body = {**body_for(("POST", "/guard/verify")), "kind": "step_up"}
+        attempt = call(running, "POST", "/guard/verify", body)["attempt"]
+        machine = running.service.machine
+        assert machine is not None
+        until(lambda: (machine.record(attempt) or {}).get("done") is True)
+        running.presence.screen_locked = True  # after the verdict, before any tick
+        payload = call(running, "GET", "/guard/status", attempt=attempt)
+        assert payload["attempt"]["ok"] is True  # the record is what the worker said, but
+        assert (payload["state"], payload["lock_trigger"]) == ("locked", "screen_lock")

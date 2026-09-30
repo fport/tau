@@ -13,6 +13,13 @@ guard's state inside ``tau hub run``:
   (:mod:`tau_guard.runner`). The service registers the protected ``/guard/*`` routes of
   :mod:`tau_guard.routes` and writes ``guard/audit.jsonl``. The failure count and the cooldown
   survive a restart in ``guard/failures.json`` (:mod:`tau_guard.failures`).
+- **Verdicts meet the reflexes.** A worker verdict is applied only after the reflexes ran on a
+  fresh presence reading, and ``GET /guard/status?attempt=<id>`` (and the in-hub unlock and
+  step-up) evaluate them once more before answering: a sleep, a screen lock or the max age
+  that came while a check ran cancels it, and its late ``match`` counts for nothing.
+- **Stopping.** :meth:`GuardService.stop` locks (``hub_stop``) and leaves ``active`` in one
+  critical section; a request that read presence before the stop is refused inside the lock,
+  no worker starts once stopping, and any worker still alive is killed.
 - **Active but broken** (a bad knob, an unsupported platform, no presence source, a start
   failure): ``state: "unavailable"`` with a reason; the routes answer ``unavailable`` and the
   ``/status`` block is never omitted.
@@ -247,14 +254,15 @@ class GuardService:
     async def stop(self) -> None:
         if self.mode in ("idle", "off", "stopped"):
             return
-        self._stop_event.set()
-        if self.machine is not None:
-            with self._transaction() as machine:
-                machine.lock("hub_stop")
-        with self._cond:
-            self.mode = "stopped"
-            self.reason = "stopped"
-            self._cond.notify_all()
+        self._stop_event.set()  # from here on no request passes and no worker starts
+        with self._cond:  # the lock and the mode change in one critical section
+            if self.machine is not None:
+                with self._transaction() as machine:
+                    machine.lock("hub_stop")
+            self._set_mode("stopped", "stopped", force=True)
+        for run in list(self._all_runs):
+            if run.alive:
+                run.stop("hub_stop")  # anything the lock did not reach
         loop = asyncio.get_running_loop()
         deadline = loop.time() + STOP_WAIT
         thread = self._reflex_thread
@@ -270,13 +278,22 @@ class GuardService:
         self._notify_listeners()
 
     def _unavailable(self, reason: str) -> None:
+        self._set_mode("unavailable", reason)
+
+    def _set_mode(self, mode: str, reason: str, *, force: bool = False) -> None:
+        """Leave ``active``: ``seq`` moves, waiters wake and subscribers see the change. The
+        first unavailable reason stays unless ``force``."""
         with self._cond:
-            if self.mode != "unavailable":
-                self.mode = "unavailable"
+            if force or self.mode != mode:
+                self.mode = mode
                 self.reason = reason
+            status: GuardStatus | None = None
             if self.machine is not None:
                 self.machine.seq += 1
+                status = self._guard_status()
             self._cond.notify_all()
+        if status is not None:
+            self._notify(status)
 
     # -- the reflex loop ---------------------------------------------------------------------
 
@@ -357,7 +374,13 @@ class GuardService:
             self.failure_file.save(state)
 
     def _spawn(self, attempt: Attempt) -> None:
-        assert self.machine is not None
+        machine = self.machine
+        assert machine is not None
+        if attempt.done or machine.running is not attempt:
+            return  # ended in the same transaction that started it
+        if self._stop_event.is_set() or self.mode != "active":
+            machine.finish(attempt.id, Outcome(False, "unavailable"))  # never after a stop
+            return
         op = "enroll" if attempt.kind == "enroll" else "verify"
         settings = self.settings
         request = {
@@ -391,11 +414,24 @@ class GuardService:
             )
 
     def _on_done(self, attempt_id: str, outcome: Outcome) -> None:
-        if self.machine is None:
+        """A worker's verdict (or why its run ended). The reflexes run first on a fresh
+        reading: a lock that came while the worker ran cancels the attempt, and the late
+        verdict is ignored."""
+        machine = self.machine
+        if machine is None:
             return
+        with self._cond:
+            running = machine.running
+            if running is None or running.id != attempt_id or running.done:
+                self._runs.pop(attempt_id, None)
+                return
+        reading = self._read_presence()
         with self._transaction() as machine:
-            self._runs.pop(attempt_id, None)
-            machine.finish(attempt_id, outcome)
+            if self.mode == "active":
+                machine.observe(reading)
+            if machine.finish(attempt_id, outcome):
+                self._runs.pop(attempt_id, None)
+            # else a reflex lock cancelled it just now: its kill effect stops the run
 
     # -- notifications -----------------------------------------------------------------------
 
@@ -551,14 +587,15 @@ class GuardService:
         tool: str | None = None,
         policy: Mapping[str, str] | None = None,
     ) -> tuple[Attempt | Refusal, int]:
-        if self.mode != "active" or self.machine is None:
+        if not self._accepting():
             return Refusal("unavailable"), self._seq()
         if kind != "enroll" and self._enrollment() is None:
             return Refusal("not_enrolled"), self._seq()
-        reading = self._read_presence() if kind != "enroll" else None
+        reading = self._read_presence()
         with self._transaction() as machine:
-            if reading is not None:
-                machine.observe(reading)
+            if not self._accepting():  # the hub began to stop while presence was read
+                return Refusal("unavailable"), machine.seq
+            machine.observe(reading)
             hub_policy = self.settings.policy() if self.settings is not None else {}
             result = machine.request(
                 kind,
@@ -570,6 +607,17 @@ class GuardService:
             )
             seq = max(0, result.seq - 1) if isinstance(result, Attempt) else machine.seq
         return result, seq
+
+    def _accepting(self) -> bool:
+        return self.mode == "active" and self.machine is not None and not self._stop_event.is_set()
+
+    def _settle_sync(self, attempt_id: str) -> tuple[dict[str, Any] | None, str]:
+        """An attempt's record and the state, with the reflexes evaluated once more."""
+        reading = self._read_presence()
+        with self._transaction() as machine:
+            if self.mode == "active":
+                machine.observe(reading)
+            return machine.record(attempt_id), machine.state
 
     def _cancel_sync(self, client_id: str, attempt_id: str | None) -> bool:
         if self.mode != "active" or self.machine is None:
@@ -618,6 +666,7 @@ class GuardService:
         since = query.get("since")
         wait = float(query.get("wait", 0.0))
         attempt_id = query.get("attempt")
+        specific = "attempt" in query
         deadline = time.monotonic() + wait
         with self._cond:
             # Wait only while nothing changed. A ``since`` above the current seq comes from a
@@ -627,7 +676,16 @@ class GuardService:
                 if left <= 0:
                     break
                 self._cond.wait(left)
-            return 200, self._payload(attempt_id, specific="attempt" in query)
+            if not specific or self.mode != "active" or self.machine is None:
+                return 200, self._payload(attempt_id, specific=specific)
+        # An attempt's answer is what a client counts as a success: the reflexes run once
+        # more, so a lock that is due shows before a finished ``match`` is read.
+        reading = self._read_presence()
+        with self._transaction() as machine:
+            if self.mode == "active":
+                machine.observe(reading)
+            payload = self._payload(attempt_id, specific=True)
+        return 200, payload
 
     def _route_admit(self, body: dict[str, Any]) -> tuple[int, Any]:
         turn = GuardTurn(body["channel"], body.get("session_id"), body["client_id"])
@@ -780,6 +838,10 @@ class GuardService:
                     reported = record["seq"]
                     _report(on_progress, record)
                 if record["done"]:
+                    if record["ok"] is True:  # read the success with the reflexes run again
+                        record, state = self._settle_sync(attempt_id)
+                        if record is None:
+                            return GuardVerdict(False, "unavailable")
                     return _verdict(record, state)
                 left = deadline - loop.time()
                 if left <= 0:

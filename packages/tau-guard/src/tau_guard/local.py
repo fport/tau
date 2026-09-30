@@ -37,6 +37,7 @@ from tau_guard.runner import (
     Progress,
     open_worker_log,
     parse_line,
+    parse_local_auth,
     worker_env,
 )
 
@@ -98,6 +99,11 @@ def _verdict(op: str, message: dict[str, Any], raw: bytes) -> dict[str, Any]:
         removed = message.get("removed")
         items = removed if isinstance(removed, list) else []
         answer["removed"] = [item for item in items if isinstance(item, str)]
+    if "local_auth" in message:  # the selftest-style parse of forget does not look at it
+        record = parse_local_auth(message.get("local_auth"))
+        answer["local_auth"] = (
+            None if record is None else dict(zip(("policy", "outcome", "ms"), record, strict=True))
+        )
     return answer
 
 

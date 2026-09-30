@@ -53,6 +53,8 @@ from typing import Any
 from tau_guard.state import Reading
 
 __all__ = [
+    "FINGERPRINTS",
+    "OTHER_FINGERPRINTS",
     "OWNER",
     "STRANGER",
     "FakeClock",
@@ -407,16 +409,55 @@ class SimulatedUser:
         return FakeFrameSource(self.frames)
 
 
+FINGERPRINTS = "a1" * 32
+"""The fake Mac's enrolled fingerprint set (a ``domainState`` sha256)."""
+OTHER_FINGERPRINTS = "b2" * 32
+"""The same Mac after someone added a finger."""
+
+
 class FakeLocalAuth:
     """A :class:`~tau_guard.localauth.LocalAuthFactor` that answers from a list (the last
-    answer repeats) and records every call; it never shows a prompt."""
+    answer repeats) and records every call; it never shows a prompt.
 
-    def __init__(self, *outcomes: str) -> None:
+    ``biometry`` is what Touch ID looks like (default: available, with :data:`FINGERPRINTS`).
+    Like the real factor, the biometrics policy answers ``unavailable`` unless Touch ID is
+    available and ``changed`` when a pinned ``domain_state`` differs, both without a prompt
+    (no answer is taken from the list); ``prompts`` counts the prompts that were shown."""
+
+    def __init__(self, *outcomes: str, biometry: Any = None) -> None:
+        from tau_guard.localauth import Biometry
+
         self.outcomes = list(outcomes) or ["ok"]
+        self.state = biometry or Biometry("available", domain_state=FINGERPRINTS)
         self.calls: list[tuple[str, str]] = []
+        self.pins: list[str | None] = []
+        self.timeouts: list[float] = []
+        self.probes = 0
+        self.prompts = 0
 
-    def authenticate(self, policy: str, reason: str, *, timeout: float = 60.0) -> str:
+    def biometry(self) -> Any:
+        self.probes += 1
+        return self.state
+
+    def authenticate(
+        self,
+        policy: str,
+        reason: str,
+        *,
+        timeout: float = 30.0,
+        domain_state: str | None = None,
+    ) -> str:
+        from tau_guard.localauth import BIOMETRICS
+
         self.calls.append((policy, reason))
+        self.pins.append(domain_state)
+        self.timeouts.append(timeout)
+        if policy == BIOMETRICS:
+            if self.state.state != "available":
+                return "unavailable"
+            if domain_state is not None and domain_state != self.state.domain_state:
+                return "changed"
+        self.prompts += 1
         return self.outcomes.pop(0) if len(self.outcomes) > 1 else self.outcomes[0]
 
 

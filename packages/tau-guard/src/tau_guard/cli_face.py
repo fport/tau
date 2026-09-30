@@ -27,7 +27,12 @@
   (and the enrolled and expected SFace sha after a model change), the enrollment,
   whether the template decrypts, the Keychain key, the modes, the camera device, the camera
   permission of this terminal and the hub's last camera answer (naming the app each runs
-  under), Touch ID (from issue 114 on) and the failures of the last 24 h.
+  under), Touch ID (issue 114: available or why not, the lid, and whether the fingerprints are
+  the ones pinned at enrollment; ``step_up = "none"`` and a Touch ID fallback on a Mac without
+  Touch ID are warnings) and the failures of the last 24 h.
+- **Touch ID** (issue 114) authorises re-enrollment and ``forget`` when the Mac has it (Touch
+  ID only, with the pinned fingerprints); a first enrollment and a Mac without Touch ID take
+  the device-owner prompt (Touch ID or the password). A refusal says why and what to do.
 
 Interactive lines go through ``tau_core.i18n`` (``guard.cli.*``, ``guard.progress.*``,
 ``guard.verdict.*``); help texts and doctor check names stay English. Tests pass fakes through
@@ -164,6 +169,12 @@ def _reason_text(reason: object, language: str, *, enroll: bool = False) -> str:
     return t(f"guard.verdict.{key}", language)
 
 
+def _touch_id_hint(reason: object, language: str) -> None:
+    """What to do after Touch ID refused an enrollment or ``forget``."""
+    if reason in ("touch_id_failed", "touch_id_unavailable"):
+        click.echo(t(f"guard.cli.touch_id.{reason}", language), err=True)
+
+
 class _Printer:
     """Prints each new progress step (and its live hint) once; ``labels`` replaces a step's
     text (an enrollment's ``touch_id`` step is the device-owner prompt: Touch ID or the
@@ -213,6 +224,17 @@ def _audit_local(config: Config, event: str, answer: dict[str, Any], started: fl
     common = {"channel": CLI_CHANNEL, "client_id": process_client_id()}
     if isinstance(camera_ms, int) and not isinstance(camera_ms, bool):
         log.record("camera_open", ok=True, reason=event, duration_ms=camera_ms, **common)
+    local_auth = answer.get("local_auth")
+    if isinstance(local_auth, dict):  # validated by run_local
+        log.record(
+            "touch_id",
+            trigger=event,
+            ok=local_auth.get("outcome") == "ok",
+            reason=local_auth.get("outcome"),
+            duration_ms=local_auth.get("ms"),
+            policy=local_auth.get("policy"),
+            **common,
+        )
     score = answer.get("score")
     log.record(
         event,
@@ -378,6 +400,7 @@ def _enroll(ctx: click.Context, config: Config, *, add: bool) -> tuple[bool, boo
     if answer.get("ok") is not True:
         reason = _reason_text(answer.get("reason"), language, enroll=True)
         click.echo(t("guard.cli.enroll.failed", language, reason=reason), err=True)
+        _touch_id_hint(answer.get("reason"), language)
         return False, via_hub
     key = "done_add" if add else ("done_first" if first else "done_again")
     click.echo(t(f"guard.cli.enroll.{key}", language))
@@ -558,6 +581,7 @@ def forget_command(ctx: click.Context) -> None:
     if not ok and MARKER_FILE not in removed:
         reason = _reason_text(answer.get("reason"), language)
         click.echo(t("guard.cli.forget.failed", language, reason=reason), err=True)
+        _touch_id_hint(answer.get("reason"), language)
         ctx.exit(1)
     # Behind LocalAuthentication the worker removed the marker: the guard is off, even when
     # the Keychain key could not go, so enabled = true must not keep it locked.
@@ -714,6 +738,8 @@ def _doctor_lines(ctx: click.Context, config: Config) -> list[tuple[str, str, st
         )
         if settings.unlock_liveness == "none":
             add("warn", "liveness", "guard.cli.doctor.liveness_none")
+        if settings.step_up == "none":
+            add("warn", "step_up", "guard.cli.doctor.step_up_none")
     camera = details.get("camera") if isinstance(details.get("camera"), dict) else {}
     if camera.get("device") and camera.get("builtin") is False:
         add(
@@ -749,9 +775,49 @@ def _doctor_lines(ctx: click.Context, config: Config) -> list[tuple[str, str, st
         status=t(status_key or "guard.cli.doctor.tcc.unknown", language),
     )
     lines.append(_hub_camera(ctx, config, app_name))
-    add("info", "touch id", "guard.cli.doctor.touch_id")
+    lines.extend(_touch_id_lines(details.get("touch_id"), settings, language))
     count = _failures(config, datetime.now(UTC))
     add("ok" if count == 0 else "warn", "failures", "guard.cli.doctor.failures", count=count)
+    return lines
+
+
+TOUCH_ID_WHY = ("clamshell", "lockout", "disconnected", "not_available", "no_passcode", "error")
+PIN_STATES = {
+    "ok": "ok",
+    "changed": "fail",
+    "unreadable": "fail",
+    "not_pinned": "warn",
+    "unknown": "info",
+}
+
+
+def _touch_id_lines(touch: object, settings: Any, language: str) -> list[tuple[str, str, str]]:
+    """The doctor's Touch ID lines: availability, the lid and the pinned fingerprints."""
+    touch = touch if isinstance(touch, dict) else {}
+    fallback = settings.unlock_fallback if settings is not None else "touch_id"
+    step_up = settings.step_up if settings is not None else "face"
+    state, detail, lid, pin = (touch.get(key) for key in ("biometry", "detail", "clamshell", "pin"))
+    lines: list[tuple[str, str, str]] = []
+    if state == "available":
+        lines.append(("ok", "touch id", t("guard.cli.doctor.touch_id_ok", language)))
+    elif state == "unavailable":
+        why = t(f"guard.cli.doctor.why.{detail if detail in TOUCH_ID_WHY else 'error'}", language)
+        text = t("guard.cli.doctor.touch_id_unavailable", language, why=why)
+        lines.append(("warn", "touch id", text))
+    elif state == "none":
+        needs = fallback == "touch_id" or step_up in ("touch_id", "face_or_touch_id")
+        key = "guard.cli.doctor.touch_id_none_needed" if needs else "guard.cli.doctor.touch_id_none"
+        lines.append(("warn" if needs else "info", "touch id", t(key, language)))
+    else:
+        lines.append(("warn", "touch id", t("guard.cli.doctor.touch_id_unknown", language)))
+    if lid is True:
+        lines.append(("warn", "clamshell", t("guard.cli.doctor.clamshell_closed", language)))
+    elif lid is False:
+        lines.append(("ok", "clamshell", t("guard.cli.doctor.clamshell_open", language)))
+    else:
+        lines.append(("info", "clamshell", t("guard.cli.doctor.clamshell_unknown", language)))
+    pin = pin if pin in PIN_STATES else "unknown"
+    lines.append((PIN_STATES[pin], "touch id pin", t(f"guard.cli.doctor.pin_{pin}", language)))
     return lines
 
 

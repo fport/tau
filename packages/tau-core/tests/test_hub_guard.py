@@ -21,12 +21,14 @@ import pytest
 from tau_core import Admission, Config, GuardStatus, GuardTurn, GuardVerdict, HubGuard, Tier
 from tau_core.approval import ApprovalRequest
 from tau_core.config import HubConfig
-from tau_core.guard import ENROLLED_MARKER
+from tau_core.guard import ENROLLED_MARKER, client_policy
 from tau_core.hub import ControlApi, ControlRequest, HubClient, HubError, HubUnavailable
 from tau_core.hub.control import TOKEN_FILE, response_proof
 from tau_core.testing import test_config
 
 TURN = GuardTurn(channel="tui", session_id="s1", client_id="c1")
+POLICY = {"step_up": "face", "unlock_liveness": "challenge", "unlock_fallback": "touch_id"}
+"""What a client on the defaults sends with every verification."""
 REQUEST = ApprovalRequest("r1", "lamp", Tier.PHYSICAL, {"state": "on"}, "", "s1", "tui")
 
 
@@ -579,7 +581,7 @@ def test_unlock_long_polls_and_reports_each_step_once(hub: FakeHub) -> None:
         "channel": "tui",
         "client_id": "c1",
         "kind": "unlock",
-        "policy": {"step_up": "face", "unlock_liveness": "challenge"},
+        "policy": POLICY,
     }
     sinces = [
         query["since"][0] for path, _, query in hub.routes.requests if path == "/guard/status"
@@ -689,7 +691,7 @@ def test_step_up_sends_the_request_and_passes_only_a_verified_match(hub: FakeHub
         "kind": "step_up",
         "request_id": "r1",
         "tool": "lamp",
-        "policy": {"step_up": "face", "unlock_liveness": "challenge"},
+        "policy": POLICY,
     }
     hub.routes.statuses = [
         {"state": "locked", "attempt": attempt("done", 3, done=True, ok=False, reason="no_match")}
@@ -697,6 +699,30 @@ def test_step_up_sends_the_request_and_passes_only_a_verified_match(hub: FakeHub
     assert asyncio.run(hub.guard.step_up(REQUEST, client_id="c1")) is False
     hub.api.shutdown()
     assert asyncio.run(hub.guard.step_up(REQUEST, client_id="c1")) is False
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        ({}, POLICY),
+        ({"enabled": True}, POLICY),
+        ({"step_up": "none"}, {**POLICY, "step_up": "none"}),
+        (
+            {"step_up": "touch_id", "unlock_liveness": "none", "unlock_fallback": "none"},
+            {"step_up": "touch_id", "unlock_liveness": "none", "unlock_fallback": "none"},
+        ),
+        ({"step_up": "nonee", "unlock_liveness": 0, "unlock_fallback": True}, POLICY),
+    ],
+)
+def test_the_client_sends_every_policy_knob_with_the_value_it_uses(
+    hub: FakeHub, table: dict[str, Any], expected: dict[str, str]
+) -> None:
+    config = hub.config.with_overrides(component_tables={"guard": table})
+    assert client_policy(table) == expected
+    assert HubGuard(config).policy == expected  # a missing knob is never silence
+    hub.routes.statuses = progress_script()
+    asyncio.run(HubGuard(config).step_up(REQUEST, client_id="c1"))
+    assert hub.routes.requests[0][1]["policy"] == expected
 
 
 def test_cancelling_an_unlock_posts_cancel_and_reraises(hub: FakeHub) -> None:
@@ -744,3 +770,81 @@ def test_a_lock_the_hub_did_not_confirm_is_logged_as_an_error(
     asyncio.run(hub.guard.lock(channel="tui", client_id="c1"))
     assert "did not reach the hub" in caplog.records[-1].getMessage()
     assert all(record.levelname == "ERROR" for record in caplog.records)
+
+
+# -- the Touch ID fallback (issue 114) -----------------------------------------------------------
+
+
+def test_a_touch_id_unlock_asks_the_hub_to_run_it_and_maps_the_verdict(hub: FakeHub) -> None:
+    done = attempt("done", 3, done=True, ok=True, reason="match", method="touch_id")
+    hub.routes.statuses = [
+        {"state": "verifying", "seq": 6, "attempt": attempt("touch_id", 1)},
+        {"state": "unlocked", "seq": 7, "attempt": done, "enrollment": "E1"},
+    ]
+    steps: list[Any] = []
+    verdict = asyncio.run(
+        hub.guard.unlock(channel="tui", client_id="c1", on_progress=steps.append, method="touch_id")
+    )
+    assert verdict == GuardVerdict(True, "match", "touch_id")
+    assert [p.step for p in steps] == ["touch_id", "done"]
+    assert hub.routes.requests[0][1] == {
+        "channel": "tui",
+        "client_id": "c1",
+        "kind": "unlock",
+        "policy": POLICY,
+        "fallback": "touch_id",  # a request to look, never a result
+    }
+
+
+def test_a_touch_id_unlock_the_hub_does_not_offer_is_refused(hub: FakeHub) -> None:
+    hub.routes.verify = (409, {"reason": "touch_id_unavailable"})
+    verdict = asyncio.run(hub.guard.unlock(channel="tui", client_id="c1", method="touch_id"))
+    assert verdict == GuardVerdict(False, "touch_id_unavailable")
+
+
+@pytest.mark.parametrize(
+    ("kind", "method"), [("recheck", "touch_id"), ("unlock", "password"), ("unlock", "")]
+)
+def test_only_an_unlock_may_ask_for_touch_id(hub: FakeHub, kind: str, method: str) -> None:
+    verdict = asyncio.run(hub.guard.unlock(channel="tui", client_id="c1", kind=kind, method=method))
+    assert verdict == GuardVerdict(False, "error")
+    assert hub.routes.requests == []  # nothing was sent
+
+
+@pytest.mark.parametrize(
+    ("payload", "fallback"),
+    [
+        ({"state": "locked", "fallback": "touch_id"}, "touch_id"),
+        ({"state": "locked", "fallback": "touch_id_or_password"}, "touch_id"),  # narrowed
+        ({"state": "locked", "fallback": "none"}, None),
+        ({"state": "locked", "fallback": ["touch_id"]}, None),
+        ({"state": "locked"}, None),
+        ({"state": "unlocked", "enrollment": "E1", "fallback": "touch_id"}, None),
+        ({"state": "verifying", "fallback": "touch_id"}, None),
+    ],
+)
+def test_status_reads_the_fallback_offer_only_while_locked(
+    hub: FakeHub, payload: dict[str, Any], fallback: str | None
+) -> None:
+    hub.routes.statuses = [{"seq": 3, **payload}]
+    assert asyncio.run(hub.guard.status()).fallback == fallback
+
+
+@pytest.mark.parametrize(
+    ("offer", "mine", "shown"),
+    [
+        ("touch_id_or_password", "touch_id_or_password", "touch_id_or_password"),
+        ("touch_id_or_password", "touch_id", "touch_id"),  # the client refuses the password
+        ("touch_id", "touch_id_or_password", "touch_id"),  # the hub refuses it
+        ("touch_id", "none", None),  # the client refuses the fallback
+        ("touch_id_or_password", "bogus", "touch_id"),  # unknown: the client's default
+    ],
+)
+def test_the_clients_unlock_fallback_narrows_the_offer(
+    hub: FakeHub, offer: str, mine: str, shown: str | None
+) -> None:
+    config = hub.config.with_overrides(component_tables={"guard": {"unlock_fallback": mine}})
+    hub.routes.statuses = [{"seq": 3, "state": "locked", "fallback": offer}]
+    guard = HubGuard(config)
+    assert asyncio.run(guard.status()).fallback == shown
+    assert guard.policy["unlock_fallback"] == (mine if mine != "bogus" else "touch_id")

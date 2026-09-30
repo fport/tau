@@ -12,10 +12,10 @@
   the worker's process group, then SIGKILL after :data:`KILL_GRACE` seconds.
 
 A malformed line (including a value of the wrong type), an unknown step or reason, a success
-without ``reason: "match"`` and a ``face`` or ``touch_id`` method, or an exit without a verdict
-all end the run with ``error``. The hub log then names the field that broke the protocol and
-the value's type and length, never the value: a worker bug must not copy an embedding into
-``tau.log``.
+without ``reason: "match"`` and a ``face`` or ``touch_id`` method, a Touch ID success without a
+passed ``local_auth`` record, or an exit without a verdict all end the run with ``error``. The
+hub log then names the field that broke the protocol and the value's type and length, never
+the value: a worker bug must not copy an embedding into ``tau.log``.
 
 The worker runs as ``python -P -m tau_guard.worker`` in ``guard/`` (``cwd``) without the hub's
 ``PYTHONPATH``, so a ``tau_guard`` directory in the hub's working directory cannot stand in for
@@ -42,6 +42,8 @@ from typing import IO, Any
 
 from tau_core.guard import PROGRESS_STEPS, VERDICT_REASONS
 
+from tau_guard.localauth import OUTCOMES as LA_OUTCOMES
+from tau_guard.localauth import POLICIES
 from tau_guard.state import Outcome
 
 __all__ = [
@@ -51,6 +53,7 @@ __all__ = [
     "WorkerRun",
     "open_worker_log",
     "parse_line",
+    "parse_local_auth",
     "worker_env",
 ]
 
@@ -175,7 +178,27 @@ def parse_line(raw: bytes, *, op: str = "verify") -> Progress | Outcome:
         or not 0 <= camera_ms <= MAX_CAMERA_MS
     ):
         raise Malformed(f"camera_ms must be a whole number of milliseconds ({_shape(camera_ms)})")
-    return Outcome(ok, str(reason), str(method) if ok else None, score, liveness, camera_ms)
+    local_auth = parse_local_auth(message.get("local_auth"))
+    if ok and method == "touch_id" and (local_auth is None or local_auth[1] != "ok"):
+        raise Malformed("a Touch ID success needs a passed local_auth record")
+    return Outcome(
+        ok, str(reason), str(method) if ok else None, score, liveness, camera_ms, local_auth
+    )
+
+
+def parse_local_auth(value: object) -> tuple[str, str, int] | None:
+    """A verdict's ``local_auth`` record ``{"policy", "outcome", "ms"}`` as a tuple, ``None``
+    when absent; raises :class:`Malformed`."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise Malformed(f"local_auth must be an object ({_shape(value)})")
+    policy, outcome, ms = value.get("policy"), value.get("outcome"), value.get("ms")
+    if not _member(policy, POLICIES) or not _member(outcome, LA_OUTCOMES):
+        raise Malformed("local_auth names an unknown policy or outcome")
+    if isinstance(ms, bool) or not isinstance(ms, int) or not 0 <= ms <= MAX_CAMERA_MS:
+        raise Malformed(f"local_auth ms must be a whole number of milliseconds ({_shape(ms)})")
+    return str(policy), str(outcome), ms
 
 
 def worker_env(base: Mapping[str, str] | None = None) -> dict[str, str]:

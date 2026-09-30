@@ -25,15 +25,19 @@ Rules the table in the ADR leaves to the implementation:
   screen is locked, so the camera never opens on a locked Mac.
 - **Strict attempts.** A recheck, a step-up, an unlock started while ``unlocked`` (a re-unlock)
   and any attempt a recheck joined lock with trigger ``step_up_failed`` ("locked after a
-  failed identity check") when they fail with a counted reason: any check that sees someone
-  else while tau is unlocked locks. tau-core's lock triggers have no separate recheck value.
-  An unlock from ``locked`` that fails goes back to ``locked``.
+  failed identity check") when they fail with a counted reason, or when Touch ID refused the
+  finger or the fingerprint set (:data:`TOUCH_ID_REFUSED`, which does not count toward the
+  cooldown): any check that sees someone else while tau is unlocked locks. tau-core's lock
+  triggers have no separate recheck value. An unlock from ``locked`` that fails goes back to
+  ``locked``.
 - **Policy.** A worker success the attempt's merged policy excludes (a Touch ID step-up when
-  ``step_up`` is ``face``, Touch ID when ``unlock_fallback`` is ``none``, a face unlock without
-  ``liveness: "challenge"`` when ``unlock_liveness`` is ``challenge``, a face step-up without
-  the challenge outside the freshness window, a face step-up when ``step_up`` is
-  ``touch_id``) finishes as ``error``. The worker enforces the policy first; this is the
-  hub's second line.
+  ``step_up`` is ``face``, Touch ID for an attempt that did not ask for it or when
+  ``unlock_fallback`` is ``none``, a Touch ID success through the password policy for a
+  step-up or for ``unlock_fallback = "touch_id"``, a face success for a Touch ID attempt, a
+  face unlock without ``liveness: "challenge"`` when ``unlock_liveness`` is ``challenge``, a
+  face step-up without the challenge outside the freshness window, a face step-up when
+  ``step_up`` is ``touch_id``, any worker success for a ``none`` step-up) finishes as
+  ``error``. The worker enforces the policy first; this is the hub's second line.
 - **Challenge freshness.** Only an unlock or a step-up that passed the challenge starts the
   ``challenge_fresh`` window, and every lock ends it.
 - **Abandoned challenges count.** A check dropped while its record shows a head-turn prompt
@@ -48,6 +52,32 @@ Rules the table in the ADR leaves to the implementation:
   count and its success resets nothing.
 - A verdict with ``camera_ms`` also writes a ``camera_open`` audit record (``reason`` is the
   attempt kind, ``duration_ms`` how long the camera was on).
+- **Touch ID (issue 114).** An attempt has a ``factor``: ``face`` or ``touch_id``.
+
+  - *The unlock fallback* (``request("unlock", method="touch_id")``) is offered only while
+    ``locked`` and the hub's ``unlock_fallback`` is not ``none``, after :data:`FALLBACK_AFTER`
+    failed face unlocks within :data:`FAILURE_WINDOW` (``FACE_FAILURES``) or a verdict of any
+    face check in that window that says it cannot work (``FALLBACK_NOW``: ``camera_*``,
+    ``unavailable``, ``model_changed``) (:meth:`GuardMachine.fallback_offer`, the status field
+    ``fallback``); otherwise, or when the request's merged ``unlock_fallback`` (the stricter
+    of the hub's and the client's) is ``none``, it is refused with ``touch_id_unavailable``. A
+    Touch ID only request never joins one that takes the password. The face cooldown
+    does not hold it back, a successful unlock of either method ends a running cooldown and
+    clears the offer, and Touch ID failures never count toward it. Touch ID has its own limit
+    instead: after :data:`TOUCH_ID_TRIES` unlock or recheck prompts that did not pass (a
+    wrong finger, a cancel, a timeout) within :data:`FAILURE_WINDOW`, a new Touch ID prompt
+    is refused with ``cooldown`` (and ``retry_after``) until the oldest leaves the window; a
+    Touch ID pass clears it (:meth:`GuardMachine.touch_id_backoff`).
+  - *Presence.* A Touch ID success sets ``checked_at`` (and resets the idle since it) but not
+    ``face_seen_at``: rechecks follow ``checked_at``, while ``face_fresh`` (voice) still needs a
+    face. A recheck in a session unlocked with Touch ID is a Touch ID check too, so a closed
+    lid or a covered camera does not make every later turn fail its recheck.
+  - *Step-up* follows the merged ``step_up``: ``face``; ``face_or_touch_id`` (the worker asks
+    Touch ID after a face check that could not work); ``touch_id`` (the worker's ``touch_id``
+    op, no camera); ``none``, which asks for no check: the attempt ends at once with ``ok``
+    and ``method: null`` and nothing is spawned. ``none`` is the merged value only when the hub
+    and the client both say ``none`` (:func:`tau_guard.config.stricter_policy`; a client that
+    leaves the knob out says ``face``), or for an in-hub caller when the hub says it.
 - Cooldown: three counted failures within :data:`FAILURE_WINDOW` start a cooldown of
   :data:`COOLDOWN_START` seconds. From then on every counted failure starts the next cooldown
   at twice the length, up to :data:`COOLDOWN_MAX`, until a match or a quiet window (no failure
@@ -68,11 +98,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
+from tau_core.guard import FACE_FAILURES, FALLBACK_AFTER, FALLBACK_NOW, UNLOCK_METHODS
+
 __all__ = [
     "ATTEMPT_EVENTS",
     "CHALLENGE_STEPS",
     "COUNTED_REASONS",
     "KINDS",
+    "TOUCH_ID_REFUSED",
     "STRICTNESS",
     "Attempt",
     "Clock",
@@ -96,11 +129,20 @@ ATTEMPT_EVENTS = {
 """The audit event of each attempt kind."""
 COUNTED_REASONS = frozenset({"no_match", "spoof", "multiple_faces"})
 """Verdict reasons that count as failures, for unlock, recheck and step-up alike."""
+TOUCH_ID_REFUSED = frozenset({"failed", "changed"})
+"""LocalAuthentication outcomes that refused the finger (or the fingerprint set): a strict
+attempt that ends with one locks like a counted failure, without counting toward the
+cooldown. A cancelled or timed-out prompt does not lock."""
 CHALLENGE_STEPS = frozenset({"turn_left", "turn_right", "center"})
 """Progress steps that show a head-turn prompt: a check dropped at one of them failed its
 challenge (``spoof``)."""
 
 FAILURE_WINDOW = 600.0
+TOUCH_ID_TRIES = 5
+"""Touch ID unlock or recheck prompts that did not pass (a wrong finger, a cancel, a timeout)
+within :data:`FAILURE_WINDOW` after which another one is refused with ``cooldown`` until the
+oldest leaves the window. macOS only locks Touch ID out after wrong fingers, and the sheet
+appears on the Mac's screen whichever client asked, so repeated prompts need a limit here."""
 COOLDOWN_AFTER = 3
 COOLDOWN_START = 30.0
 COOLDOWN_MAX = 900.0
@@ -118,15 +160,17 @@ _JOINS = {"unlock": frozenset({"unlock"}), "recheck": frozenset({"unlock", "rech
 STRICTNESS: dict[str, dict[str, int]] = {
     "step_up": {"none": 0, "face_or_touch_id": 1, "face": 2, "touch_id": 2},
     "unlock_liveness": {"none": 0, "challenge": 1},
+    "unlock_fallback": {"touch_id_or_password": 0, "touch_id": 1, "none": 2},
 }
 """Higher is stricter; two different values of the same rank keep the hub's."""
+_FALLBACK_RANK = STRICTNESS["unlock_fallback"]
 _STEP_UP_METHODS = {
     "face": frozenset({"face"}),
     "touch_id": frozenset({"touch_id"}),
     "face_or_touch_id": frozenset({"face", "touch_id"}),
-    "none": frozenset({"face", "touch_id"}),
 }
-"""The success methods each ``step_up`` policy accepts (an unknown value: face only)."""
+"""The worker success methods each ``step_up`` policy accepts (an unknown value: face only;
+``none`` accepts no worker success: it runs none)."""
 MAX_SAVED_FAILURES = 32
 MAX_SAVED_LEVEL = 16
 _CAMERA = {
@@ -220,6 +264,8 @@ class Outcome:
     liveness: str | None = None
     camera_ms: int | None = None
     """How long the worker had the camera on (the audit's ``camera_open``)."""
+    local_auth: tuple[str, str, int] | None = None
+    """``(policy, outcome, ms)`` of a LocalAuthentication prompt (the audit's ``touch_id``)."""
 
 
 @dataclass(frozen=True)
@@ -262,6 +308,9 @@ class Attempt:
     while ``unlocked``, or an attempt a recheck joined."""
     add: bool = False
     """An enrollment that adds samples to the existing template (``tau guard enroll --add``)."""
+    factor: str = "face"
+    """What the attempt runs: ``face`` (a ``face_or_touch_id`` step-up may still end with
+    Touch ID) or ``touch_id`` (the worker's ``touch_id`` op, no camera)."""
 
     def record(self) -> dict[str, Any]:
         """The wire shape tau-core's ``HubGuard`` reads."""
@@ -305,7 +354,18 @@ class GuardMachine:
         self.since: datetime | None = None
         self.expires_at: datetime | None = None
         self.face_seen_at: datetime | None = None
+        self.checked_at: datetime | None = None
+        """The last owner check of either method (the presence recheck follows it)."""
         self.max_idle_since_face = 0.0
+        """HID idle observed since :attr:`checked_at` (the name predates Touch ID)."""
+        self._face_failures: list[float] = []
+        """Monotonic times of failed face unlocks within the window (the fallback offer)."""
+        self._face_blocked: float | None = None
+        """When a face check last answered a verdict that says it cannot work
+        (:data:`~tau_core.guard.FALLBACK_NOW`: ``camera_*``, a missing or changed model)."""
+        self._touch_id_misses: list[float] = []
+        """Monotonic times of Touch ID unlock or recheck prompts that did not pass."""
+        self._offer: str | None = None
         self.failures = 0
         """Counted failures since the last unlock."""
         self.reported_failures = 0
@@ -349,12 +409,35 @@ class GuardMachine:
         return round(left, 1) if left > 0 else None
 
     def recheck_due(self) -> bool:
-        if self.face_seen_at is None:
+        if self.checked_at is None:
             return True
         if self.max_idle_since_face >= self.limits.recheck_after_idle:
             return True
-        age = (self.clock.wall() - self.face_seen_at).total_seconds()
+        age = (self.clock.wall() - self.checked_at).total_seconds()
         return age >= self.limits.presence_recheck
+
+    def fallback_offer(self) -> str | None:
+        """The Touch ID fallback the lock screen may offer now (``unlock_fallback``), else
+        ``None``: only while ``locked``, after :data:`~tau_core.guard.FALLBACK_AFTER` failed
+        face unlocks or a :data:`~tau_core.guard.FALLBACK_NOW` verdict (``camera_*``, a missing
+        or changed face model) within the window."""
+        mode = self.limits.unlock_fallback
+        if mode == "none" or self.state != "locked":
+            return None
+        now = self.clock.monotonic()
+        failures = [t for t in self._face_failures if now - t < FAILURE_WINDOW]
+        blocked = self._face_blocked is not None and now - self._face_blocked < FAILURE_WINDOW
+        return mode if len(failures) >= FALLBACK_AFTER or blocked else None
+
+    def touch_id_backoff(self) -> float | None:
+        """Seconds until another Touch ID unlock or recheck may start (:data:`TOUCH_ID_TRIES`),
+        ``None`` when one may start now."""
+        now = self.clock.monotonic()
+        self._touch_id_misses = [t for t in self._touch_id_misses if now - t < FAILURE_WINDOW]
+        if len(self._touch_id_misses) < TOUCH_ID_TRIES:
+            return None
+        left = self._touch_id_misses[-TOUCH_ID_TRIES] + FAILURE_WINDOW - now
+        return round(left, 1) if left > 0 else None
 
     def admission(self, *, enrolled: bool) -> tuple[bool, str]:
         """``(allowed, reason)`` for a turn; evaluate the reflexes (:meth:`observe`) first."""
@@ -396,6 +479,7 @@ class GuardMachine:
             "camera": self.camera,
             "screen": self.screen,
             "step_up_active": self.step_up_active,
+            "fallback": self.fallback_offer(),
         }
 
     def record(self, attempt_id: str) -> dict[str, Any] | None:
@@ -468,25 +552,48 @@ class GuardMachine:
         tool: str | None = None,
         policy: Mapping[str, str] | None = None,
         add: bool = False,
+        method: str = "face",
     ) -> Attempt | Refusal:
         """Ask for an attempt: a new one, a joined one, a queued one, or a refusal. ``add``
-        only applies to an enrollment."""
+        only applies to an enrollment; ``method="touch_id"`` only to an unlock while the
+        fallback is offered."""
         if kind not in KINDS:
             raise ValueError(f"unknown attempt kind {kind!r}")
+        if method not in UNLOCK_METHODS or (method == "touch_id" and kind != "unlock"):
+            return Refusal("error")
         self._prune()
         if self.screen == "locked":
-            return Refusal("locked")  # the camera never opens on a locked Mac
-        if kind != "enroll":
+            return Refusal("locked")  # neither the camera nor a prompt on a locked Mac
+        merged = dict(policy or {})
+        fallback = self._fallback_mode(merged)
+        if method == "touch_id" and (
+            fallback == "none" or (self.fallback_offer() is None and not self._touch_id_unlock())
+        ):
+            return Refusal("touch_id_unavailable")
+        if kind != "enroll" and method != "touch_id":
             left = self.cooldown_left()
             if left is not None:
                 return Refusal("cooldown", left)
         if kind in ("step_up", "recheck") and self.state != "unlocked":
             return Refusal("locked")
-        merged = dict(policy or {})
+        factor = method
+        if kind == "recheck" and self.method == "touch_id" and fallback != "none":
+            factor = "touch_id"  # a Touch ID session rechecks with Touch ID
+        if kind == "step_up" and merged.get("step_up") == "touch_id":
+            factor = "touch_id"
+        if kind == "step_up" and merged.get("step_up") == "none":
+            return self._no_step_up(channel, client_id, request_id, tool, merged)
         joins = _JOINS.get(kind, frozenset())
         for candidate in [self.running, *self.queue]:
             if candidate is None or candidate.done or candidate.kind not in joins:
                 continue
+            if candidate.factor != factor:
+                continue  # a face verdict never answers a Touch ID request, nor the reverse
+            if (
+                factor == "touch_id"
+                and _FALLBACK_RANK[fallback] > _FALLBACK_RANK[self._fallback_mode(candidate.policy)]
+            ):
+                continue  # Touch ID only never takes a verdict the password could give: it queues
             if kind == "unlock" and _rank("unlock_liveness", merged) > _rank(
                 "unlock_liveness", candidate.policy
             ):
@@ -497,6 +604,10 @@ class GuardMachine:
             return candidate
         if self.running is not None and len(self.queue) >= MAX_QUEUE:
             return Refusal("busy")
+        if factor == "touch_id" and kind in ("unlock", "recheck"):
+            left = self.touch_id_backoff()  # a new prompt; joining one above shows none
+            if left is not None:
+                return Refusal("cooldown", left)
         attempt = Attempt(
             id=secrets.token_hex(8),
             kind=kind,
@@ -509,12 +620,73 @@ class GuardMachine:
             created=self.clock.monotonic(),
             strict=kind in ("recheck", "step_up"),
             add=add and kind == "enroll",
+            factor=factor,
         )
         if self.running is None:
             self._start(attempt)
         else:
             self.queue.append(attempt)
             attempt.seq = self._bump()
+        return attempt
+
+    def _fallback_mode(self, policy: Mapping[str, str]) -> str:
+        """The stricter of the hub's ``unlock_fallback`` and ``policy``'s (an unknown value
+        counts as ``none``)."""
+        modes = [self.limits.unlock_fallback]
+        if "unlock_fallback" in policy:
+            modes.append(policy["unlock_fallback"])
+        known = [mode if mode in _FALLBACK_RANK else "none" for mode in modes]
+        return max(known, key=_FALLBACK_RANK.__getitem__)
+
+    def _touch_id_unlock(self) -> bool:
+        """A Touch ID unlock runs or waits (another client may join it)."""
+        return any(
+            attempt is not None
+            and not attempt.done
+            and attempt.kind == "unlock"
+            and attempt.factor == "touch_id"
+            for attempt in [self.running, *self.queue]
+        )
+
+    def _sync_offer(self) -> None:
+        """A change of the fallback offer is a status change (``seq`` moves)."""
+        offer = self.fallback_offer()
+        if offer != self._offer:
+            self._offer = offer
+            self._bump()
+
+    def _no_step_up(
+        self,
+        channel: str,
+        client_id: str,
+        request_id: str | None,
+        tool: str | None,
+        policy: dict[str, str],
+    ) -> Attempt:
+        """A step-up under a merged ``step_up = "none"``: no check, no worker; it ends at once
+        with ``ok`` and ``method: null`` (the human's approval is all there is)."""
+        attempt = Attempt(
+            id=secrets.token_hex(8),
+            kind="step_up",
+            channel=channel,
+            client_id=client_id,
+            request_id=request_id,
+            tool=tool,
+            policy=policy,
+            clients={client_id},
+            created=self.clock.monotonic(),
+        )
+        self._mark_done(attempt, Outcome(True, "match"))
+        self._audit(
+            "step_up",
+            channel=channel,
+            client_id=client_id,
+            ok=True,
+            reason="none",
+            duration_ms=0,
+            request_id=request_id,
+            tool=tool,
+        )
         return attempt
 
     def progress(
@@ -624,9 +796,9 @@ class GuardMachine:
         if idle >= limits.idle_lock:
             self.lock("idle")
             return
-        if self.face_seen_at is not None:
-            since_face = max(0.0, (wall - self.face_seen_at).total_seconds())
-            observed = min(max(0.0, idle), since_face)
+        if self.checked_at is not None:
+            since_check = max(0.0, (wall - self.checked_at).total_seconds())
+            observed = min(max(0.0, idle), since_check)
             if observed > self.max_idle_since_face:
                 self.max_idle_since_face = observed
 
@@ -671,6 +843,17 @@ class GuardMachine:
             if attempt.kind in ("step_up", "recheck") and self.state != "unlocked":
                 self._finish_unstarted(attempt, Outcome(False, "locked"))
                 continue
+            if attempt.kind == "unlock" and attempt.factor == "touch_id":
+                if self.fallback_offer() is None:  # an unlock came first, or the window ended
+                    self._finish_unstarted(attempt, Outcome(False, "touch_id_unavailable"))
+                    continue
+                left = self.touch_id_backoff()
+                if left is not None:
+                    attempt.retry_after = left
+                    self._finish_unstarted(attempt, Outcome(False, "cooldown"))
+                    continue
+                self._start(attempt)
+                continue
             left = self.cooldown_left() if attempt.kind != "enroll" else None
             if left is not None:
                 attempt.retry_after = left
@@ -704,6 +887,7 @@ class GuardMachine:
             duration_ms=0,
             request_id=attempt.request_id,
             tool=attempt.tool,
+            method=attempt.factor if attempt.kind != "enroll" else None,
         )
 
     def _mark_done(self, attempt: Attempt, outcome: Outcome) -> None:
@@ -728,6 +912,12 @@ class GuardMachine:
         now = self.clock.monotonic()
         checks = attempt.kind != "enroll"  # an enrollment neither counts nor resets failures
         counted = checks and not outcome.ok and outcome.reason in COUNTED_REASONS
+        wrong_finger = (  # Touch ID saw a finger that is not the owner's, or another set
+            checks
+            and not outcome.ok
+            and outcome.local_auth is not None
+            and outcome.local_auth[1] in TOUCH_ID_REFUSED
+        )
         self.last_verdict = outcome.reason
         if outcome.reason in _CAMERA:
             self.camera = _CAMERA[outcome.reason]
@@ -743,17 +933,32 @@ class GuardMachine:
                 self.method = outcome.method
                 self.since = wall
                 self.expires_at = wall + timedelta(seconds=self.limits.max_unlock)
-                self._face_seen(wall)
+                self._checked(wall, outcome.method)
                 self.reported_failures = self.failures
                 self.failures = 0
+                self._face_failures.clear()
+                self._face_blocked = None
+                self._touch_id_misses.clear()
+                self._cooldown_until_mono = self.cooldown_until = None  # the owner is back
             elif self.state == "verifying":
                 self.state = "locked"
         elif attempt.kind in ("recheck", "step_up"):
             if attempt.kind == "step_up":
                 self.step_up_active = False
             if outcome.ok:
-                self._face_seen(wall)
-        if counted and attempt.strict:
+                self._checked(wall, outcome.method)
+        if attempt.factor == "touch_id" and attempt.kind in ("unlock", "recheck"):
+            if outcome.ok:
+                self._touch_id_misses.clear()
+            else:
+                self._touch_id_misses.append(now)
+        if checks and not outcome.ok and attempt.factor == "face":
+            if outcome.reason in FALLBACK_NOW:
+                self._face_blocked = now
+            elif attempt.kind == "unlock" and outcome.reason in FACE_FAILURES:
+                self._face_failures = [t for t in self._face_failures if now - t < FAILURE_WINDOW]
+                self._face_failures.append(now)
+        if (counted or wrong_finger) and attempt.strict:
             lock_after = "step_up_failed"
         if outcome.ok and checks:
             self._failure_times.clear()
@@ -772,7 +977,22 @@ class GuardMachine:
                 reason=attempt.kind,
                 duration_ms=outcome.camera_ms,
             )
+        if outcome.local_auth is not None:
+            policy, answer, ms = outcome.local_auth
+            self._audit(
+                "touch_id",
+                channel=attempt.channel,
+                client_id=attempt.client_id,
+                trigger=attempt.kind,
+                ok=answer == "ok",
+                reason=answer,
+                duration_ms=ms,
+                request_id=attempt.request_id,
+                tool=attempt.tool,
+                policy=policy,
+            )
         self._mark_done(attempt, outcome)
+        method = outcome.method if outcome.ok else attempt.factor
         self._audit(
             ATTEMPT_EVENTS[attempt.kind],
             channel=attempt.channel,
@@ -784,6 +1004,7 @@ class GuardMachine:
             duration_ms=duration,
             request_id=attempt.request_id,
             tool=attempt.tool,
+            method=method if checks else None,
         )
         if unlocked_now:
             self._audit(
@@ -792,33 +1013,47 @@ class GuardMachine:
                 client_id=attempt.client_id,
                 ok=True,
                 reason=outcome.reason,
+                method=outcome.method,
             )
         if counted:
             self._count_failure(now, wall)
         if lock_after is not None and relock:
             self.lock(lock_after, channel=attempt.channel, client_id=attempt.client_id)
+        self._sync_offer()
 
-    def _face_seen(self, wall: datetime) -> None:
-        self.face_seen_at = wall
+    def _checked(self, wall: datetime, method: str | None) -> None:
+        """The owner passed a check: presence restarts; a face check also sets
+        ``face_seen_at``."""
+        if method == "face":
+            self.face_seen_at = wall
+        self.checked_at = wall
         self.max_idle_since_face = 0.0
 
     def _policy_allows(self, attempt: Attempt, outcome: Outcome) -> bool:
         """Whether a worker success fits the attempt's merged policy (the worker checks it
         first; this is the hub's second line)."""
         method, liveness, policy = outcome.method, outcome.liveness, attempt.policy
+        biometric = outcome.local_auth is not None and outcome.local_auth[0] == "biometrics"
         if attempt.kind == "enroll":
             return True
         if attempt.kind == "step_up":
             mode = policy.get("step_up", "face")
             if method not in _STEP_UP_METHODS.get(mode, _STEP_UP_METHODS["face"]):
+                return False  # also any worker success for "none", which spawns no worker
+            if attempt.factor == "touch_id" and method != "touch_id":
                 return False
-            if method == "face" and mode != "none":
+            if method == "face":
                 return liveness == "challenge" or (
                     attempt.challenge_fresh and liveness == "passive"
                 )
-            return True
+            return biometric  # a Touch ID step-up is Touch ID only, never the password
         if method == "touch_id":
-            return self.limits.unlock_fallback != "none"
+            fallback = self._fallback_mode(policy)
+            if attempt.factor != "touch_id" or fallback == "none":
+                return False
+            return biometric or fallback == "touch_id_or_password"
+        if method != "face" or attempt.factor != "face":
+            return False
         if attempt.kind == "unlock" and _rank("unlock_liveness", policy) > 0:
             return liveness == "challenge"
         return True
@@ -857,6 +1092,7 @@ class GuardMachine:
             self.cooldown_until = None
             self._bump()
         self._prune_records()
+        self._sync_offer()
 
     def _prune_records(self) -> None:
         now = self.clock.monotonic()

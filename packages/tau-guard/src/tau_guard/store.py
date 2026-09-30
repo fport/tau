@@ -5,9 +5,11 @@ Layout of ``TAU_DATA_DIR/guard/`` (0700, chmod explicitly):
 - ``owner.face.v1.bin`` (0600, written atomically): ``b"TAUG1" | nonce(12) |
   AESGCM(key).encrypt(nonce, payload, aad=b"tau-guard/v1|" + model_sha)``, where ``model_sha``
   is the recognizer's sha256 as lowercase hex (ASCII) and ``payload`` is JSON ``{v,
-  enrollment, created, model: {name, sha256}, dim, template, samples, calibration}``. The
-  template is the renormalised mean of the samples; the calibration is the head-turn sign and
-  amplitudes (:class:`tau_guard.liveness.Calibration`).
+  enrollment, created, model: {name, sha256}, dim, template, samples, calibration,
+  touch_id?}``. The template is the renormalised mean of the samples; the calibration is the
+  head-turn sign and amplitudes (:class:`tau_guard.liveness.Calibration`); ``touch_id`` is
+  ``{"domain_state": "<sha256>"}``, the Touch ID fingerprint set pinned at enrollment (issue
+  114, :mod:`tau_guard.localauth`), absent on a Mac without Touch ID.
 - ``enrolled`` (0600): the public marker ``{"v": 1, "enrollment", "model", "created"}`` that
   tau-core's ``resolve_guard`` and ``read_enrollment`` read. It holds no biometric data.
 
@@ -36,7 +38,8 @@ decrypt or does not parse, and a template whose enrollment id is not the marker'
 re-enrollment keeps the key, so an older template file put back must not match again).
 Whether an enrollment is the first one is decided from the Keychain item
 (:func:`first_enrollment`), never from the template file, so deleting the file does not turn
-the next enrollment into a first one.
+the next enrollment into a first one. :func:`read_pin` reads the pinned fingerprint set with the
+marker's model, so a model change does not lose it.
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ import base64
 import json
 import math
 import os
+import re
 import secrets
 import tempfile
 import threading
@@ -79,6 +83,7 @@ __all__ = [
     "macos_keyring",
     "new_key",
     "read_marker",
+    "read_pin",
     "save_enrollment",
     "secure_dir",
     "template_from",
@@ -98,6 +103,7 @@ MAX_TEMPLATE_BYTES = 1024 * 1024
 MAX_SAMPLES = 64
 VERSION = 1
 STORE_REASONS = ("not_enrolled", "template_invalid", "model_changed", "key_unavailable")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 class StoreError(Exception):
@@ -270,9 +276,11 @@ class Template:
     samples: tuple[tuple[float, ...], ...]
     calibration: Calibration
     model_name: str = SFACE_NAME
+    domain_state: str | None = None
+    """The Touch ID fingerprint set pinned at enrollment (a sha256), ``None`` without one."""
 
     def payload(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "v": VERSION,
             "enrollment": self.enrollment,
             "created": self.created,
@@ -282,6 +290,9 @@ class Template:
             "samples": [[round(value, 7) for value in sample] for sample in self.samples],
             "calibration": self.calibration.to_json(),
         }
+        if self.domain_state is not None:
+            payload["touch_id"] = {"domain_state": self.domain_state}
+        return payload
 
 
 def _aad(model_sha: str) -> bytes:
@@ -419,7 +430,29 @@ def _parse(data: Any, model_sha: str) -> Template:
         samples=tuple(_vector(sample) for sample in samples),
         calibration=calibration,
         model_name=str(model.get("name") or SFACE_NAME),
+        domain_state=_pin(data.get("touch_id")),
     )
+
+
+def _pin(value: Any) -> str | None:
+    """The ``touch_id`` field of a payload: absent, or ``{"domain_state": "<sha256>"}``."""
+    if value is None:
+        return None
+    state = value.get("domain_state") if isinstance(value, dict) else None
+    if not isinstance(state, str) or not _SHA256.fullmatch(state):
+        raise ValueError("bad touch_id pin")
+    return state
+
+
+def read_pin(guard_dir: Path, keys: KeyStore) -> str | None:
+    """The pinned Touch ID fingerprint set, read with the model the marker names (so it
+    survives a model change); ``None`` when the enrollment pinned none. Raises
+    :class:`StoreError` like :func:`load_template`."""
+    marker = read_marker(guard_dir)
+    model = marker.get("model") if marker is not None else None
+    if not isinstance(model, str) or not _SHA256.fullmatch(model):
+        raise StoreError("not_enrolled", "no readable marker")
+    return load_template(guard_dir, keys, model).domain_state
 
 
 def forget(guard_dir: Path, keys: KeyStore) -> list[str]:
@@ -449,6 +482,7 @@ def template_from(
     created: str,
     model_sha: str,
     calibration: Calibration,
+    domain_state: str | None = None,
 ) -> Template:
     """A :class:`Template` from unit samples (the vector is their renormalised mean)."""
     from tau_guard.engine import mean_vector, normalise
@@ -461,4 +495,5 @@ def template_from(
         vector=mean_vector(units),
         samples=units,
         calibration=calibration,
+        domain_state=domain_state,
     )

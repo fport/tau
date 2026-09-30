@@ -27,9 +27,20 @@ Route contract (all protected control routes, JSON; the hub side is issue 111):
   at least 60 s. A finished attempt with ``ok: true`` has ``reason: "match"``, a ``method``,
   and comes with ``state: "unlocked"`` and the ``enrollment`` id.
 - ``POST /guard/admit`` ``{channel, session_id, client_id}`` → ``{allowed, reason, enrollment}``.
-- ``POST /guard/verify`` ``{channel, client_id, kind, request_id?, tool?, policy?}`` → ``202
-  {attempt, seq}``; a refusal answers 4xx ``{reason, retry_after?}`` (``cooldown``, ``busy``).
-  The result is read through ``/guard/status?attempt=<id>``.
+- ``POST /guard/verify`` ``{channel, client_id, kind, request_id?, tool?, policy?,
+  fallback?}`` → ``202 {attempt, seq}``; a refusal answers 4xx ``{reason, retry_after?}``
+  (``cooldown``, ``busy``). The result is read through ``/guard/status?attempt=<id>``.
+  ``policy`` holds every :data:`POLICY_KEYS` knob with the value the client uses
+  (:func:`client_policy`: the strict default of :data:`POLICY_DEFAULTS` for a knob the client's
+  ``tau.toml`` leaves out); the hub applies the stricter of its own value and the client's, and
+  reads a knob missing from ``policy``, or a missing ``policy``, as that default, never as
+  agreement with a weaker hub value.
+  ``fallback: "touch_id"`` (an ``unlock`` only; ``unlock(method="touch_id")``) asks for the
+  Touch ID fallback: the hub runs it only while its status offers it (``fallback``), with the
+  stricter of its own and the client's ``unlock_fallback`` (a client's ``none`` refuses it),
+  and runs LocalAuthentication itself, so the sheet appears on the Mac's screen. No route
+  accepts a Touch ID result either. ``HubGuard`` narrows the status' ``fallback`` by its own
+  ``unlock_fallback`` the same way.
 - ``POST /guard/cancel`` ``{client_id, attempt?}`` → ``{ok}``.
 - ``POST /guard/lock`` ``{channel, client_id, trigger}`` → ``{state: "locked"}``.
 - ``POST /guard/enroll`` ``{client_id}`` → ``202 {attempt, seq}``.
@@ -47,7 +58,7 @@ import secrets
 import sys
 import threading
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
@@ -65,12 +76,19 @@ __all__ = [
     "COUNTED_FAILURES",
     "DISCOVER",
     "ENROLLED_MARKER",
+    "FACE_FAILURES",
+    "FALLBACK_AFTER",
+    "FALLBACK_MODES",
+    "FALLBACK_NOW",
     "GUARD_CONFIG_KEYS",
     "GUARD_MESSAGES",
     "LOCKED_NOTE",
     "LOCK_TRIGGERS",
+    "POLICY_DEFAULTS",
+    "POLICY_KEYS",
     "PROGRESS_STEPS",
     "STEP_UP_NOTE",
+    "UNLOCK_METHODS",
     "VERDICT_REASONS",
     "Admission",
     "Guard",
@@ -200,9 +218,23 @@ GUARD_CONFIG_KEYS = frozenset(
 """The keys ``[component.guard]`` may hold; any other key locks the guard for good (a typo
 such as ``enable = true`` must never mean "off"). An issue that adds a knob adds it here."""
 
-POLICY_KEYS = ("step_up", "unlock_liveness")
+POLICY_KEYS = ("step_up", "unlock_liveness", "unlock_fallback")
 """Weakening-sensitive knobs a client sends with every verification; the hub applies the
 stricter of its own value and the client's."""
+POLICY_DEFAULTS: dict[str, str] = {
+    "step_up": "face",
+    "unlock_liveness": "challenge",
+    "unlock_fallback": "touch_id",
+}
+"""What a client uses for a :data:`POLICY_KEYS` knob its ``[component.guard]`` leaves out or
+sets to something unknown (the documented defaults)."""
+POLICY_VALUES: dict[str, tuple[str, ...]] = {
+    "step_up": ("face", "face_or_touch_id", "touch_id", "none"),
+    "unlock_liveness": ("challenge", "none"),
+    "unlock_fallback": ("touch_id", "touch_id_or_password", "none"),
+}
+_FALLBACK_RANK = {"touch_id_or_password": 0, "touch_id": 1, "none": 2}
+"""How strict an ``unlock_fallback`` is: the password too, Touch ID only, nothing."""
 
 LOCKED_NOTE = "tau was locked before the user answered."
 """Fixed English note the model reads when a tier-1 or tier-2 call met a locked guard."""
@@ -218,6 +250,28 @@ LONG_POLL = 25.0
 ATTEMPT_LIMIT = 120.0
 """Upper bound on one unlock or step-up attempt seen from the client."""
 SUCCESS_METHODS = ("face", "touch_id")
+
+# -- the Touch ID fallback (ADR 0008 decision 15, issue 114) --------------------------------------
+
+UNLOCK_METHODS = ("face", "touch_id")
+"""What ``Guard.unlock(method=...)`` may ask for; ``touch_id`` only while it is offered."""
+FALLBACK_MODES = ("touch_id", "touch_id_or_password")
+"""``[component.guard] unlock_fallback`` values that offer Touch ID (``none`` offers nothing);
+``touch_id_or_password`` also takes the Mac password (the opt-in for a closed lid)."""
+FALLBACK_AFTER = 2
+"""Failed face unlocks in one attempt window before the lock screen offers the fallback."""
+FALLBACK_NOW = frozenset(
+    {"camera_busy", "camera_unavailable", "camera_denied", "unavailable", "model_changed"}
+)
+"""Verdicts after which the fallback is offered at once, because the face check cannot work:
+the camera cannot be used (``camera_*``), or the face model is missing or changed
+(``unavailable``, ``model_changed``; Touch ID reads the enrollment with the model it was made
+with, so it still works)."""
+FACE_FAILURES = frozenset(
+    {"no_match", "no_face", "multiple_faces", "spoof", "timeout", "too_dark", "face_too_small"}
+)
+"""Verdicts of a face check that ran and failed; :data:`FALLBACK_AFTER` of them offer the
+fallback. Refusals (``cooldown``, ``locked``, ``busy``) and ``cancelled`` do not count."""
 
 
 # -- value types -------------------------------------------------------------------------------
@@ -289,6 +343,11 @@ class GuardStatus:
     """``ok``, ``denied``, ``not_determined`` or ``unavailable``."""
     reason: str | None = None
     """Why ``unavailable``."""
+    fallback: str | None = None
+    """While ``locked``: the Touch ID fallback the lock screen may offer now (one of
+    :data:`FALLBACK_MODES`), after :data:`FALLBACK_AFTER` failed face unlocks or a
+    :data:`FALLBACK_NOW` verdict; ``None`` otherwise. ``unlock(method="touch_id")`` runs it.
+    ``HubGuard`` narrows it by the client's own ``unlock_fallback`` (the stricter applies)."""
 
 
 class GuardLocked(Exception):
@@ -305,7 +364,9 @@ class GuardLocked(Exception):
 class Guard(Protocol):
     """The owner guard as a channel sees it. Every method fails closed and never raises
     except ``asyncio.CancelledError``. ``kind`` is ``unlock`` (the full policy) or ``recheck``
-    (a passive quick check)."""
+    (a passive quick check). ``method`` is ``face`` or ``touch_id``: the Touch ID fallback of
+    an ``unlock``, which the hub runs (on the Mac's screen) only while
+    :attr:`GuardStatus.fallback` offers it."""
 
     name: str
 
@@ -322,6 +383,7 @@ class Guard(Protocol):
         client_id: str,
         kind: str = "unlock",
         on_progress: Callable[[GuardProgress], None] | None = None,
+        method: str = "face",
     ) -> GuardVerdict: ...
 
     async def cancel(self, *, client_id: str) -> None: ...
@@ -444,6 +506,7 @@ class LockedGuard:
         client_id: str,
         kind: str = "unlock",
         on_progress: Callable[[GuardProgress], None] | None = None,
+        method: str = "face",
     ) -> GuardVerdict:
         return GuardVerdict(False, self.reason if self.reason in VERDICT_REASONS else "error")
 
@@ -540,6 +603,7 @@ def status_from_json(payload: Mapping[str, Any]) -> GuardStatus:
     attempt = payload.get("attempt")
     running = isinstance(attempt, dict) and attempt.get("done") is not True
     trigger = payload.get("lock_trigger")
+    fallback = payload.get("fallback")
     return GuardStatus(
         state=state if state in GUARD_STATES else "unavailable",  # type: ignore[arg-type]
         enrolled=payload.get("enrolled") is True,
@@ -555,6 +619,7 @@ def status_from_json(payload: Mapping[str, Any]) -> GuardStatus:
         cooldown_until=_parse_time(payload.get("cooldown_until")),
         camera=_str(payload.get("camera")),
         reason=_str(payload.get("reason")),
+        fallback=fallback if fallback in FALLBACK_MODES and state == "locked" else None,
     )
 
 
@@ -568,8 +633,15 @@ def read_enrollment(config: Config) -> str | None:
 
 
 def client_policy(table: Mapping[str, Any]) -> dict[str, str]:
-    """The weakening-sensitive knobs of ``[component.guard]`` this client sends the hub."""
-    return {key: table[key] for key in POLICY_KEYS if isinstance(table.get(key), str)}
+    """The weakening-sensitive knobs of ``[component.guard]`` this client sends the hub: every
+    :data:`POLICY_KEYS` knob with the value this client uses, so a knob it leaves out (or sets
+    to an unknown value) goes as its strict default (:data:`POLICY_DEFAULTS`), never as a
+    silence the hub could read as agreeing with a weaker value of its own."""
+    policy: dict[str, str] = {}
+    for key in POLICY_KEYS:
+        value = table.get(key)
+        policy[key] = value if value in POLICY_VALUES[key] else POLICY_DEFAULTS[key]
+    return policy
 
 
 class HubGuard:
@@ -594,6 +666,13 @@ class HubGuard:
 
     # -- helpers --------------------------------------------------------------------------
 
+    def _narrowed(self, offer: str) -> str | None:
+        """The hub's fallback offer narrowed by this client's own ``unlock_fallback``: the
+        stricter of the two (``none`` offers nothing), as the hub runs it for this client."""
+        mine = self.policy.get("unlock_fallback", POLICY_DEFAULTS["unlock_fallback"])
+        stricter = max(offer, mine, key=lambda mode: _FALLBACK_RANK.get(mode, 2))
+        return stricter if stricter in FALLBACK_MODES else None
+
     def _enrollment_ok(self, enrollment: object) -> bool:
         local = read_enrollment(self.config)
         return local is not None and enrollment == local
@@ -602,6 +681,8 @@ class HubGuard:
         if not isinstance(payload, dict):
             return GuardStatus(state="unavailable", reason="bad_response")
         status = status_from_json(payload)
+        if status.fallback is not None:
+            status = replace(status, fallback=self._narrowed(status.fallback))
         if status.state == "off":
             return GuardStatus(state="unavailable", reason="guard_off")
         if status.state == "unlocked" and not self._enrollment_ok(payload.get("enrollment")):
@@ -687,10 +768,15 @@ class HubGuard:
         client_id: str,
         kind: str = "unlock",
         on_progress: Callable[[GuardProgress], None] | None = None,
+        method: str = "face",
     ) -> GuardVerdict:
-        if kind not in ("unlock", "recheck"):
+        if kind not in ("unlock", "recheck") or method not in UNLOCK_METHODS:
             return GuardVerdict(False, "error")
+        if method == "touch_id" and kind != "unlock":
+            return GuardVerdict(False, "error")  # the hub picks a recheck's method itself
         body = {"channel": channel, "client_id": client_id, "kind": kind, "policy": self.policy}
+        if method == "touch_id":
+            body["fallback"] = "touch_id"  # the hub decides whether it is offered, and runs it
         try:
             return await self._attempt(body, client_id, on_progress)
         except asyncio.CancelledError:
@@ -1227,6 +1313,20 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
     "guard.not_enrolled_hint": {
         "en": "No face is enrolled yet. Run `tau guard setup` at the Mac.",
         "tr": "Henüz kayıtlı yüz yok. Mac'in başında `tau guard setup` çalıştır.",
+    },
+    # the Touch ID fallback on the lock screen and the terminal lock prompt (issue 114);
+    # {how} is the channel's own key hint ("type t and press Enter")
+    "guard.fallback.touch_id": {
+        "en": "The face check is not working? Use Touch ID instead: {how}.",
+        "tr": "Yüz kontrolü çalışmıyor mu? Onun yerine Touch ID kullan: {how}.",
+    },
+    "guard.fallback.touch_id_or_password": {
+        "en": "The face check is not working? Use Touch ID or your Mac password instead: {how}.",
+        "tr": "Yüz kontrolü çalışmıyor mu? Onun yerine Touch ID ya da Mac parolanı kullan: {how}.",
+    },
+    "guard.fallback.confirm": {
+        "en": "Confirm in the macOS prompt on the Mac's screen.",
+        "tr": "Mac'in ekranındaki macOS isteminde onayla.",
     },
     # /status and tau doctor
     "status.guard": {"en": "Guard: {detail}", "tr": "Koruma: {detail}"},

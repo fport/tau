@@ -767,8 +767,22 @@ returns `None`.
   mean `unavailable`. `admit` has a 3 s bound, all HTTP runs in daemon threads, and
   `unlock`/`step_up` post `/guard/verify`, long-poll `GET /guard/status?since=&attempt=` for
   their own attempt (calling `on_progress` on every step) and post `/guard/cancel` when
-  cancelled. `lock` logs an error when the hub did not confirm it. The route contract is in the
-  `tau_core.guard` module docstring.
+  cancelled. Every verification carries the client's weakening-sensitive knobs (`step_up`,
+  `unlock_liveness`, `unlock_fallback`) with the values it uses: a knob its `tau.toml` leaves
+  out goes as its default (`face`, `challenge`, `touch_id`), so the hub's stricter-of-two merge
+  never reads silence as agreement with a weaker hub value. `lock` logs an error when the hub did not confirm it.
+  The route contract is in the `tau_core.guard` module docstring.
+- **Touch ID fallback (issue 114).** While the hub offers it, a locked `GuardStatus` carries
+  `fallback` (`touch_id` or `touch_id_or_password`, the stricter of the hub's and this client's
+  `[component.guard] unlock_fallback`; a client's `none` hides it): after `FALLBACK_AFTER` (2)
+  failed face unlocks in one attempt window (`FACE_FAILURES`) or any verdict that says the face
+  check cannot work (`FALLBACK_NOW`: `camera_*`, `unavailable`, `model_changed`). A channel then
+  offers it (`guard.fallback.<mode>`, with
+  its own key hint as `{how}`) and calls `unlock(method="touch_id")`; `HubGuard` sends
+  `fallback: "touch_id"` with `/guard/verify`, and the hub runs LocalAuthentication itself, so the
+  sheet appears on the Mac's screen and no route accepts a Touch ID result. A passing fallback
+  unlocks with `method = "touch_id"`. `FakeGuard(..., fallback="touch_id")` plays the offer
+  (`offered()`, `unlock_methods`).
 - **Identified in-hub channels opt out in code**: Telegram and network turns pass
   `guard=None`, and a repo rule refuses `guard=None` anywhere else. No flag, variable or
   config key selects a channel.

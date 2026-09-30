@@ -24,6 +24,7 @@ import click
 from tau_core import Config, ConfigError, t
 from tau_core.cli import help_option
 from tau_core.guard import (
+    FALLBACK_MODES,
     LOCK_TRIGGERS,
     PROGRESS_STEPS,
     config_problem,
@@ -144,6 +145,8 @@ def status_lines(payload: dict[str, Any], language: str) -> list[str]:
         lines.append(t("guard.cli.failures", language, count=failures))
     if payload.get("cooldown_until"):
         lines.append(t("guard.cli.cooldown", language, when=_when(payload["cooldown_until"])))
+    if state == "locked" and payload.get("fallback") in FALLBACK_MODES:
+        lines.append(t("guard.cli.fallback", language, mode=payload["fallback"]))
     if payload.get("screen") == "unknown" and state != "unavailable":
         lines.append(t("guard.cli.screen_unknown", language))
     return lines
@@ -245,6 +248,9 @@ def _entry_line(entry: dict[str, Any], language: str) -> str:
     reason = entry.get("reason")
     if isinstance(reason, str) and reason != "match":
         parts.append(reason)
+    for key in ("method", "policy"):  # face or touch_id; biometrics or device_owner
+        if isinstance(entry.get(key), str):
+            parts.append(entry[key])
     trigger = entry.get("trigger")
     if trigger in LOCK_TRIGGERS:
         parts.append(t(f"guard.lock_trigger.{trigger}", language))

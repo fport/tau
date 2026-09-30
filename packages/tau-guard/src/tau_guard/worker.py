@@ -42,25 +42,47 @@ Operations:
 - ``enroll``: refused with ``SSH_CONNECTION`` set; the engine; whether it is the first
   enrollment (from the Keychain item, :func:`~tau_guard.store.first_enrollment`); with
   ``add`` the existing template; the camera permission and device (``permission_pending``,
-  ``camera_denied``, ``camera_unavailable`` before any prompt); then LocalAuthentication
-  (device owner, prompt text from
-  ``reason_text``: ``touch_id_failed`` or ``touch_id_unavailable`` when it does not pass, and the
-  camera stays off); then the guided capture (:mod:`tau_guard.enroll`); then the key (a new one
+  ``camera_denied``, ``camera_unavailable`` before any prompt); then LocalAuthentication with
+  the prompt text from ``reason_text`` (:func:`admin_policy`: the device-owner policy for a
+  first enrollment, else Touch ID only with the pinned fingerprint set when the Mac has Touch
+  ID, ``touch_id_unavailable`` when it cannot be used now, the device-owner policy on a Mac
+  without it unless the enrollment pinned a set, which only Touch ID with that pin ever
+  authorises; a pin that cannot be read (:class:`StoredPin`) refuses Touch ID only, and a
+  Keychain that does not answer refuses with ``key_unavailable`` before any prompt;
+  ``touch_id_failed`` or ``touch_id_unavailable`` when it does not pass, and the camera stays
+  off); then the guided capture (:mod:`tau_guard.enroll`); then the key (a new one
   only for a first enrollment, read back before anything is written: a key store that drops
-  writes is ``key_unavailable``), the encrypted template and the marker. The verdict carries
-  ``first``.
-- ``forget``: refused with ``SSH_CONNECTION`` set; LocalAuthentication; then the template,
-  the marker and the key are removed (:func:`tau_guard.store.forget`). ``{"ok", "reason":
-  null, "removed"}`` on success; when the key cannot be removed the answer is ``ok: false``
-  (``key_unavailable``) and ``removed`` still lists what went.
-- ``touch_id``: ``touch_id_unavailable`` until issue 114.
+  writes is ``key_unavailable``), the encrypted template (with the fingerprint set pinned when
+  Touch ID is available) and the marker. The verdict carries ``first``.
+- ``forget``: refused with ``SSH_CONNECTION`` set; LocalAuthentication as for a re-enrollment;
+  then the template, the marker and the key are removed (:func:`tau_guard.store.forget`).
+  ``{"ok", "reason": null, "removed"}`` on success; when the key cannot be removed the answer
+  is ``ok: false`` (``key_unavailable``) and ``removed`` still lists what went.
+- ``touch_id`` (issue 114): the Touch ID unlock fallback (``kind`` ``unlock`` or ``recheck``:
+  ``unlock_fallback = "touch_id"`` is Touch ID only with the pinned fingerprint set,
+  ``touch_id_or_password`` the device-owner policy) and the ``step_up = "touch_id"`` step-up
+  (Touch ID only, pinned). It never opens the camera. The template must decrypt for either
+  policy (``key_unavailable``, ``template_invalid``, ...). An enrollment without a pinned set
+  gives ``touch_id_failed`` for Touch ID only; ``touch_id_unavailable`` when the lid is
+  closed, there is no sensor or the policy cannot be evaluated. A success is ``method:
+  "touch_id"``.
+- ``verify`` for a step-up with ``step_up = "face_or_touch_id"``: when the face check fails
+  for a reason that does not count (:data:`TOUCH_ID_AFTER`: ``too_dark``, ``no_face``, a
+  ``camera_*`` verdict, a missing or changed face model, ...), the camera is released and
+  Touch ID (pinned) is asked instead.
+- Every verdict that followed a LocalAuthentication prompt (or its refusal before the prompt)
+  carries ``local_auth: {"policy", "outcome", "ms"}``, from which the hub writes the ``touch_id``
+  audit record. Every prompt's ``LAContext`` is invalidated after 30 s and at once on SIGTERM
+  (:mod:`tau_guard.localauth`).
 - ``selftest``: the platform and the imports, ``{"type": "verdict", "ok", "reason", "checks"}``
   (``reason`` is ``null`` when every check passed). With ``"deep": true`` (``tau guard
   doctor``) it adds ``details``: OpenCV's version, both model checksums, the Keychain item
   (``ok``, ``missing``, ``invalid`` or ``unavailable``), whether the template decrypts, the
-  camera device and the camera permission. It never opens a camera or shows a
-  LocalAuthentication prompt; reading the Keychain may bring up macOS's Keychain access prompt
-  (after a Python upgrade changed the interpreter), which the doctor explains.
+  camera device, the camera permission and Touch ID (``touch_id``: its state and why, the lid,
+  and whether the fingerprint set is the pinned one: ``ok``, ``changed``, ``not_pinned`` or
+  ``unknown``). It never opens a camera or shows a LocalAuthentication prompt; reading the
+  Keychain may bring up macOS's Keychain access prompt (after a Python upgrade changed the
+  interpreter), which the doctor explains.
 
 The module imports nothing but the standard library at start, so the worker starts fast;
 camera, pyobjc, keyring and cryptography imports happen inside the operations. Tests call
@@ -101,6 +123,28 @@ SELFTEST_IMPORTS = (
 WORKER_ENV = {"OPENCV_LOG_LEVEL": "ERROR", "OPENCV_AVFOUNDATION_SKIP_AUTH": "1"}
 DEFAULT_REASON_TEXT = "confirm your identity for the tau guard"
 MAX_REASON_TEXT = 200
+TOUCH_ID_AFTER = frozenset(
+    {
+        "no_face",
+        "timeout",
+        "too_dark",
+        "face_too_small",
+        "camera_busy",
+        "camera_unavailable",
+        "camera_denied",
+        "permission_pending",
+        "unavailable",
+        "model_changed",
+    }
+)
+"""Face verdicts after which a ``face_or_touch_id`` step-up asks Touch ID: the face check could
+not work (the face model missing or changed included). A counted failure (``no_match``,
+``spoof``, ``multiple_faces``) never does."""
+FALLBACK_POLICIES = {"touch_id": "biometrics", "touch_id_or_password": "device_owner"}
+"""``unlock_fallback`` → the LocalAuthentication policy of the Touch ID unlock and recheck."""
+FALLBACK_RANK = {"touch_id_or_password": 0, "touch_id": 1, "none": 2}
+"""How strict an ``unlock_fallback`` is; of the hub's setting and the merged policy's, the
+stricter one picks the policy."""
 Emit = Callable[[dict[str, Any]], None]
 
 
@@ -159,17 +203,33 @@ def system_deps(op: str = "verify") -> Deps:
     for macOS's access prompt (:data:`~tau_guard.store.KEY_TIMEOUT_AT_MAC`)."""
     from tau_guard.camera import AVFoundationCamera, AVFoundationDevices, AVFoundationPermission
     from tau_guard.engine import OpenCvFaceEngine, sface_path
-    from tau_guard.localauth import MacLocalAuth
+    from tau_guard.localauth import LA_TIMEOUT, Biometry, MacLocalAuth
     from tau_guard.store import KEY_TIMEOUT, KEY_TIMEOUT_AT_MAC, KeychainKeyStore
 
     class _LazyLocalAuth:
-        def authenticate(self, policy: str, reason: str, *, timeout: float = 60.0) -> str:
+        def _factor(self) -> MacLocalAuth | None:
             try:
-                factor = MacLocalAuth()
+                return MacLocalAuth()
             except Exception as exc:
                 log(f"LocalAuthentication is not available ({type(exc).__name__})")
+                return None
+
+        def biometry(self) -> Biometry:
+            factor = self._factor()
+            return factor.biometry() if factor is not None else Biometry("unavailable", "error")
+
+        def authenticate(
+            self,
+            policy: str,
+            reason: str,
+            *,
+            timeout: float = LA_TIMEOUT,
+            domain_state: str | None = None,
+        ) -> str:
+            factor = self._factor()
+            if factor is None:
                 return "unavailable"
-            return factor.authenticate(policy, reason, timeout=timeout)
+            return factor.authenticate(policy, reason, timeout=timeout, domain_state=domain_state)
 
     return Deps(
         platform=sys.platform,
@@ -254,7 +314,7 @@ class _Progress:
 def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]:
     from tau_guard.camera import CameraError
     from tau_guard.engine import SFACE_SHA256, ModelError
-    from tau_guard.store import StoreError, load_template
+    from tau_guard.store import StoreError, load_template, read_pin
     from tau_guard.verify import PolicyError, policy_for, run_check
 
     data_dir = _data_dir(request)
@@ -269,17 +329,25 @@ def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
     if not _enrolled(request):
         return verdict(False, "not_enrolled")
     guard_dir = data_dir / "guard"
+    progress = _Progress(emit, deps)
     try:
         template = load_template(guard_dir, deps.keys, SFACE_SHA256)
     except StoreError as exc:
         log(f"verify: the template cannot be used ({exc.reason})")
+        if _touch_id_after(request, exc.reason):  # model_changed: Touch ID reads the old model
+            try:
+                pin = read_pin(guard_dir, deps.keys)
+            except StoreError as inner:
+                return verdict(False, inner.reason)
+            return _step_up_touch_id(request, deps, progress, pin, None)
         return verdict(False, exc.reason)
     try:
         engine = deps.engine(data_dir)
     except ModelError as exc:
         log(f"verify: {exc}")
+        if _touch_id_after(request, "unavailable"):
+            return _step_up_touch_id(request, deps, progress, template.domain_state, None)
         return verdict(False, "unavailable")
-    progress = _Progress(emit, deps)
     progress.step("starting")
     source = deps.source(_camera_setting(request))
     explain = _explainer(emit) if request.get("explain") is True else None
@@ -296,11 +364,43 @@ def verify_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
         )
     except CameraError as exc:
         log(f"verify: camera: {exc}")
+        if _touch_id_after(request, exc.reason):
+            return _step_up_touch_id(request, deps, progress, template.domain_state, source)
         return verdict(False, exc.reason, **_camera_ms(source))
     extra = {**_score(result.score), **_camera_ms(source)}
     if result.ok:
         return {**verdict(True, "match", **extra), "method": "face", "liveness": result.liveness}
+    if _touch_id_after(request, result.reason):
+        return _step_up_touch_id(request, deps, progress, template.domain_state, source)
     return verdict(False, result.reason, **extra)
+
+
+def _touch_id_after(request: dict[str, Any], reason: str | None) -> bool:
+    """A ``face_or_touch_id`` step-up whose face check could not work (not a counted failure)."""
+    policy = request.get("policy")
+    mode = policy.get("step_up") if isinstance(policy, dict) else None
+    return (
+        request.get("kind") == "step_up"
+        and mode == "face_or_touch_id"
+        and (reason in TOUCH_ID_AFTER)
+    )
+
+
+def _step_up_touch_id(
+    request: dict[str, Any], deps: Deps, progress: _Progress, pin: str | None, source: Any
+) -> dict[str, Any]:
+    """The Touch ID half of a ``face_or_touch_id`` step-up (the camera is already released)."""
+    from tau_guard.localauth import BIOMETRICS
+
+    camera = _camera_ms(source)
+    if pin is None:
+        log("step-up: the enrollment pinned no Touch ID fingerprint set; enroll again")
+        return verdict(False, "touch_id_failed", **camera)
+    progress.step("touch_id")
+    refused, auth = _authenticate(request, deps, BIOMETRICS, pin=pin)
+    if refused is not None:
+        return verdict(False, refused, **camera, **auth)
+    return {**verdict(True, "match", **camera, **auth), "method": "touch_id"}
 
 
 def _explainer(emit: Emit) -> Callable[[Any, str, Any], None]:
@@ -332,22 +432,158 @@ def _round(value: float | None, digits: int) -> float | None:
     return round(float(value), digits)
 
 
-def _authenticate(request: dict[str, Any], deps: Deps) -> str | None:
-    """LocalAuthentication with the device-owner policy (issue 114 adds biometrics-only);
-    ``None`` when it passed, else the verdict reason."""
-    from tau_guard.localauth import DEVICE_OWNER, LA_TIMEOUT, verdict_reason
+def _authenticate(
+    request: dict[str, Any], deps: Deps, policy: str, *, pin: str | None = None
+) -> tuple[str | None, dict[str, Any]]:
+    """LocalAuthentication with ``policy`` (Touch ID only checks the pinned fingerprint set
+    ``pin``): ``(None, extra)`` when it passed, else ``(verdict reason, extra)``; ``extra``
+    holds the ``local_auth`` record."""
+    from tau_guard.localauth import LA_TIMEOUT, OUTCOMES, verdict_reason
 
+    started = deps.clock()
     try:
         outcome = deps.local_auth.authenticate(
-            DEVICE_OWNER, _reason_text(request), timeout=LA_TIMEOUT
+            policy, _reason_text(request), timeout=LA_TIMEOUT, domain_state=pin
         )
     except Exception as exc:  # a factor must not raise; fail closed if one does
         log(f"LocalAuthentication failed ({type(exc).__name__})")
-        return "touch_id_failed"
+        outcome = "failed"
+    if outcome not in OUTCOMES:
+        log("LocalAuthentication answered something unknown; refusing")
+        outcome = "failed"
+    extra = _local_auth(policy, str(outcome), started, deps)
     if outcome == "ok":
+        return None, extra
+    if outcome == "changed":
+        log("LocalAuthentication: the Touch ID fingerprint set is not the one pinned at enrollment")
+    else:
+        log(f"LocalAuthentication did not pass ({outcome})")
+    return verdict_reason(str(outcome)), extra
+
+
+def _local_auth(policy: str, outcome: str, started: float | None, deps: Deps) -> dict[str, Any]:
+    """The ``local_auth`` field of a verdict (policy, outcome, how long the prompt took)."""
+    ms = 0 if started is None else max(0, int((deps.clock() - started) * 1000))
+    return {"local_auth": {"policy": policy, "outcome": outcome, "ms": ms}}
+
+
+def _biometry(deps: Deps) -> Any:
+    """Touch ID's state from the factor (``unavailable`` when it breaks its contract)."""
+    from tau_guard.localauth import BIOMETRY_STATES, Biometry
+
+    try:
+        biometry = deps.local_auth.biometry()
+    except Exception as exc:
+        log(f"Touch ID's state cannot be read ({type(exc).__name__})")
+        return Biometry("unavailable", "error")
+    if getattr(biometry, "state", None) not in BIOMETRY_STATES:
+        return Biometry("unavailable", "error")
+    return biometry
+
+
+@dataclass(frozen=True)
+class StoredPin:
+    """The fingerprint set the enrollment pinned, as re-enrollment, ``forget`` and the doctor
+    see it (:func:`stored_pin`)."""
+
+    state: str
+    """``pinned``; ``unpinned`` (the template decrypts and pinned nothing: made without Touch
+    ID, or before issue 114); ``absent`` (neither the marker nor the template exists: a key
+    that a failed ``forget`` left behind, nothing is enrolled); ``unreadable`` (the
+    enrollment's files exist but the template cannot be read, so whether it pinned a set is
+    unknown)."""
+    value: str | None = None
+    """The pinned set (a sha256), when ``pinned``."""
+    reason: str | None = None
+    """Why ``unreadable``: the store's reason (``template_invalid``, ``key_unavailable``, ...)."""
+
+
+def stored_pin(guard_dir: Path, deps: Deps) -> StoredPin:
+    """What :class:`StoredPin` says about the enrollment in ``guard_dir``."""
+    from tau_guard.store import MARKER_FILE, TEMPLATE_FILE, StoreError, read_pin
+
+    try:
+        value = read_pin(guard_dir, deps.keys)
+    except StoreError as exc:
+        if not (guard_dir / MARKER_FILE).exists() and not (guard_dir / TEMPLATE_FILE).exists():
+            return StoredPin("absent")
+        log(f"the pinned Touch ID fingerprint set cannot be read ({exc.reason})")
+        return StoredPin("unreadable", reason=exc.reason)
+    return StoredPin("pinned", value) if value is not None else StoredPin("unpinned")
+
+
+def admin_policy(
+    deps: Deps, *, first: bool, stored: StoredPin | None = None
+) -> tuple[str | None, str | None]:
+    """``(policy, None)`` for authorising an enrollment or ``forget``, or ``(None, outcome)``
+    with the LocalAuthentication outcome the refusal records (``unavailable`` →
+    ``touch_id_unavailable``, ``changed`` → ``touch_id_failed``).
+
+    A first enrollment uses the device-owner policy (Touch ID or the Mac password). Otherwise:
+
+    - Touch ID available: Touch ID only, compared with the pin when there is one.
+    - Touch ID that cannot be used now (a closed lid, a disconnected keyboard, a lockout):
+      ``unavailable``, never the password instead.
+    - No Touch ID (``none``): the device-owner policy, unless the enrollment pinned a set.
+      Then a Mac that reports no enrolled finger answers ``changed`` (every pinned finger was
+      removed, which takes only the Mac password), and one that reports no sensor answers
+      ``unavailable`` (the Touch ID keyboard the pin belongs to is gone): a pinned enrollment
+      is only ever authorised by Touch ID with its pin.
+    - A pin that cannot be read (``unreadable``) counts as a pin Touch ID cannot compare:
+      ``changed`` (``unavailable`` while Touch ID cannot be used), except on a Mac that
+      reports no Touch ID sensor at all, which keeps the device-owner policy. The way back is
+      the documented Keychain reset."""
+    from tau_guard.localauth import BIOMETRICS, DEVICE_OWNER
+
+    if first:
+        return DEVICE_OWNER, None
+    state = stored.state if stored is not None else "unpinned"
+    biometry = _biometry(deps)
+    no_sensor = biometry.state == "none" and biometry.detail != "not_enrolled"
+    if state == "unreadable" and not no_sensor:
+        if biometry.state == "unavailable":
+            log(f"Touch ID exists but cannot be used now ({biometry.detail})")
+            return None, "unavailable"
+        log("the enrollment's pinned fingerprint set cannot be read; refusing Touch ID only")
+        return None, "changed"
+    if biometry.state == "available":
+        return BIOMETRICS, None
+    if biometry.state == "unavailable":
+        log(f"Touch ID exists but cannot be used now ({biometry.detail})")
+        return None, "unavailable"
+    if state == "pinned":
+        if no_sensor:
+            log("the Touch ID sensor the enrollment pinned is gone; refusing the password")
+            return None, "unavailable"
+        log("every pinned Touch ID fingerprint was removed; refusing the password")
+        return None, "changed"
+    return DEVICE_OWNER, None
+
+
+def _admin_authenticate(
+    request: dict[str, Any], deps: Deps, *, first: bool, stored: StoredPin | None
+) -> tuple[str | None, dict[str, Any]]:
+    """LocalAuthentication for an enrollment or ``forget`` (:func:`admin_policy`)."""
+    from tau_guard.localauth import BIOMETRICS, verdict_reason
+
+    if not first and stored is not None and stored.reason == "key_unavailable":
+        return "key_unavailable", {}  # the Keychain did not answer: allow access, try again
+    policy, refusal = admin_policy(deps, first=first, stored=stored)
+    if policy is None:
+        outcome = refusal or "unavailable"
+        return verdict_reason(outcome), _local_auth(BIOMETRICS, outcome, None, deps)
+    pin = stored.value if stored is not None and policy == BIOMETRICS else None
+    return _authenticate(request, deps, policy, pin=pin)
+
+
+def _current_pin(deps: Deps) -> str | None:
+    """The fingerprint set to pin now: Touch ID's, when it is available."""
+    biometry = _biometry(deps)
+    if biometry.state != "available":
         return None
-    log(f"LocalAuthentication did not pass ({outcome})")
-    return verdict_reason(str(outcome))
+    if biometry.domain_state is None:
+        log("Touch ID is available but its fingerprint set cannot be read; nothing is pinned")
+    return biometry.domain_state
 
 
 def _camera_ready(request: dict[str, Any], deps: Deps) -> str | None:
@@ -407,14 +643,15 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
     except StoreError as exc:
         log(f"enroll: {exc.reason}")
         return verdict(False, exc.reason)
+    stored = None if first else stored_pin(guard_dir, deps)
     camera_refused = _camera_ready(request, deps)
     if camera_refused is not None:
         return verdict(False, camera_refused)
     progress = _Progress(emit, deps)
     progress.step("touch_id")
-    refused = _authenticate(request, deps)
+    refused, auth = _admin_authenticate(request, deps, first=first, stored=stored)
     if refused is not None:
-        return verdict(False, refused)
+        return verdict(False, refused, **auth)
     progress.step("starting")
     machine = Enrollment(
         existing_vector=existing.vector if existing else None,
@@ -426,8 +663,8 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
         result = run_enrollment(engine, source, emit=progress, machine=machine)
     except CameraError as exc:
         log(f"enroll: camera: {exc}")
-        return verdict(False, exc.reason, **_camera_ms(source))
-    camera = _camera_ms(source)
+        return verdict(False, exc.reason, **_camera_ms(source), **auth)
+    camera = {**_camera_ms(source), **auth}
     if not result.ok or result.calibration is None:
         log(f"enroll: the capture did not pass ({result.reason})")
         return verdict(False, result.reason, **camera)
@@ -437,8 +674,8 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
             raise StoreError("key_unavailable", "the key disappeared during the enrollment")
         if first:
             deps.keys.set(key)
-            stored = deps.keys.get()  # a key store that drops writes must not pass
-            if stored is None or not hmac.compare_digest(stored, key):
+            kept = deps.keys.get()  # a key store that drops writes must not pass
+            if kept is None or not hmac.compare_digest(kept, key):
                 raise StoreError("key_unavailable", "the key store did not keep the key")
     except (KeyUnavailable, StoreError) as exc:
         log(f"enroll: the key cannot be stored ({type(exc).__name__})")
@@ -450,6 +687,7 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
         created=existing.created if existing else created,
         model_sha=SFACE_SHA256,
         calibration=result.calibration,
+        domain_state=_current_pin(deps),
     )
     save_enrollment(guard_dir, template, key)
     extra = {**_score(result.consistency), **camera, "first": first}
@@ -466,15 +704,70 @@ def forget_op(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
     if os.environ.get("SSH_CONNECTION"):
         log("forget: refused in a session started over SSH")
         return verdict(False, "unavailable")
-    refused = _authenticate(request, deps)
+    guard_dir = data_dir / "guard"
+    stored = stored_pin(guard_dir, deps)
+    refused, auth = _admin_authenticate(request, deps, first=False, stored=stored)
     if refused is not None:
-        return verdict(False, refused)
+        return verdict(False, refused, **auth)
     try:
-        removed = forget(data_dir / "guard", deps.keys)
+        removed = forget(guard_dir, deps.keys)
     except StoreError as exc:
         log(f"forget: {exc.reason}")
-        return verdict(False, exc.reason, removed=exc.removed)
-    return verdict(True, None, removed=removed)
+        return verdict(False, exc.reason, removed=exc.removed, **auth)
+    return verdict(True, None, removed=removed, **auth)
+
+
+def _factor_policy(request: dict[str, Any]) -> str | None:
+    """The LocalAuthentication policy of a ``touch_id`` request, ``None`` when it asks for
+    something the settings or the merged policy do not allow."""
+    from tau_guard.localauth import BIOMETRICS
+
+    kind = request.get("kind")
+    policy = request.get("policy")
+    policy = policy if isinstance(policy, dict) else {}
+    if kind in ("unlock", "recheck"):
+        hub = _settings(request).get("unlock_fallback")
+        if hub not in FALLBACK_RANK:
+            return None  # the hub always sends its settings
+        theirs = policy.get("unlock_fallback", hub)  # the merged value; the stricter applies
+        mode = max(hub, theirs, key=lambda value: FALLBACK_RANK.get(value, FALLBACK_RANK["none"]))
+        return FALLBACK_POLICIES.get(str(mode))
+    mode = policy.get("step_up")
+    if kind == "step_up" and mode in ("touch_id", "face_or_touch_id"):
+        return BIOMETRICS
+    return None
+
+
+def touch_id_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]:
+    """The Touch ID unlock fallback, recheck or step-up; never opens the camera."""
+    from tau_guard.localauth import BIOMETRICS
+    from tau_guard.store import StoreError, read_pin
+
+    data_dir = _data_dir(request)
+    if data_dir is None:
+        log("touch_id: the request has no absolute data_dir")
+        return verdict(False, "error")
+    if not _enrolled(request):
+        return verdict(False, "not_enrolled")
+    policy = _factor_policy(request)
+    if policy is None:
+        log("touch_id: the settings or the policy do not allow Touch ID here")
+        return verdict(False, "touch_id_unavailable")
+    try:  # the enrollment must be intact for either policy; Touch ID only needs its pin
+        pin = read_pin(data_dir / "guard", deps.keys)
+    except StoreError as exc:
+        log(f"touch_id: the template cannot be used ({exc.reason})")
+        return verdict(False, exc.reason)
+    if policy != BIOMETRICS:
+        pin = None  # the device-owner policy takes the password: no pin applies
+    elif pin is None:
+        log("touch_id: the enrollment pinned no fingerprint set; enroll again to pin it")
+        return verdict(False, "touch_id_failed")
+    _Progress(emit, deps).step("touch_id")
+    refused, auth = _authenticate(request, deps, policy, pin=pin)
+    if refused is not None:
+        return verdict(False, refused, **auth)
+    return {**verdict(True, "match", **auth), "method": "touch_id"}
 
 
 def selftest(
@@ -541,6 +834,8 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
             details["template"] = exc.reason
         else:
             details["template"] = "ok"
+    stored = stored_pin(data_dir / "guard", deps) if data_dir is not None else StoredPin("absent")
+    details["touch_id"] = _touch_id_details(deps, stored)
     camera: dict[str, Any] = {"device": None, "others": 0, "permission": None}
     try:
         listed = deps.devices().devices() if deps.devices is not None else []
@@ -559,6 +854,34 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
     return details
 
 
+def _touch_id_details(deps: Deps, stored: StoredPin) -> dict[str, Any]:
+    """Touch ID for the doctor: its state and why, the lid, and the pinned fingerprint set
+    (``ok``; ``changed``, also when every pinned finger was removed; ``unreadable``, an
+    enrollment whose pin cannot be read on a Mac with Touch ID, which refuses re-enrollment
+    and ``forget``; ``not_pinned``; or ``unknown``). No prompt."""
+    biometry = _biometry(deps)
+    no_sensor = biometry.state == "none" and biometry.detail != "not_enrolled"
+    if stored.state == "unpinned":
+        pinned = "not_pinned"
+    elif stored.state == "unreadable":
+        transient = stored.reason == "key_unavailable"  # the Keychain line says why
+        pinned = "unknown" if transient or no_sensor else "unreadable"
+    elif stored.state != "pinned":
+        pinned = "unknown"
+    elif biometry.state == "none" and not no_sensor:
+        pinned = "changed"  # every pinned finger was removed
+    elif biometry.state != "available" or biometry.domain_state is None:
+        pinned = "unknown"
+    else:
+        pinned = "ok" if biometry.domain_state == stored.value else "changed"
+    return {
+        "biometry": biometry.state,
+        "detail": biometry.detail,
+        "clamshell": biometry.clamshell,
+        "pin": pinned,
+    }
+
+
 def run(
     op: str,
     request: dict[str, Any],
@@ -570,18 +893,18 @@ def run(
     emit = emit or (lambda message: None)
     if op == "selftest":
         return selftest(request=request, deps=deps)
-    if op == "touch_id":
-        return verdict(False, "touch_id_unavailable")
-    if op not in ("verify", "enroll", "forget"):
+    if op not in ("verify", "enroll", "forget", "touch_id"):
         return verdict(False, "error")
     platform = deps.platform if deps is not None else sys.platform
     if platform != "darwin":
         return verdict(False, "unsupported_platform")
-    if op == "verify" and not _enrolled(request):
+    if op in ("verify", "touch_id") and not _enrolled(request):
         return verdict(False, "not_enrolled" if _data_dir(request) else "error")
     deps = deps or system_deps(op)
     if op == "verify":
         return verify_op(request, deps, emit)
+    if op == "touch_id":
+        return touch_id_op(request, deps, emit)
     if op == "enroll":
         return enroll_op(request, deps, emit)
     return forget_op(request, deps)

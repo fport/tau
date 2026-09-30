@@ -17,12 +17,13 @@ from tau_guard.camera import CameraError
 from tau_guard.engine import SFACE_SHA256, ModelError
 from tau_guard.liveness import Calibration
 from tau_guard.local import validate_explain
-from tau_guard.localauth import DEVICE_OWNER
+from tau_guard.localauth import BIOMETRICS, DEVICE_OWNER, Biometry
 from tau_guard.runner import Progress, parse_line
 from tau_guard.state import Outcome
 from tau_guard.store import (
     MARKER_FILE,
     TEMPLATE_FILE,
+    KeyUnavailable,
     MemoryKeyStore,
     load_template,
     new_key,
@@ -30,6 +31,8 @@ from tau_guard.store import (
     template_from,
 )
 from tau_guard.testing import (
+    FINGERPRINTS,
+    OTHER_FINGERPRINTS,
     OWNER,
     STRANGER,
     FakeFrameSource,
@@ -385,11 +388,13 @@ def test_enrollment_is_refused_over_ssh(session: Session, monkeypatch: pytest.Mo
 
 
 def test_the_key_store_decides_first_enrollment(session: Session) -> None:
+    session.auth = FakeLocalAuth(biometry=Biometry("none", "no_sensor"))  # nothing to pin
     assert session.enroll()["first"] is True
     key = session.keys.key
     (session.data_dir / "guard" / TEMPLATE_FILE).unlink()  # only the file goes
     again = session.enroll()
     assert again["ok"] and again["first"] is False and session.keys.key == key
+    assert again["local_auth"]["policy"] == DEVICE_OWNER  # a re-enrollment's policy
     enrollment = read_enrollment_id(session)
     third = session.enroll()
     assert third["first"] is False and read_enrollment_id(session) != enrollment
@@ -467,14 +472,22 @@ def test_forget_behind_local_authentication(session: Session) -> None:
     answer = session.run("forget", session.request("forget", reason_text="remove it"))
     assert answer["ok"] is True and answer["reason"] is None
     assert set(answer["removed"]) == {TEMPLATE_FILE, MARKER_FILE, "key"}
-    assert session.auth.calls[-1] == (DEVICE_OWNER, "remove it")
+    assert session.auth.calls[-1] == (BIOMETRICS, "remove it")  # the Mac has Touch ID
+    assert session.auth.pins[-1] == FINGERPRINTS  # pinned at enrollment
     assert session.keys.key is None
     parse_line(json.dumps(answer).encode(), op="selftest")  # the CLI reads it like a selftest
 
 
+class _UndeletableKeyStore(MemoryKeyStore):
+    """The Keychain hands the key out but does not let it go."""
+
+    def delete(self) -> bool:
+        raise KeyUnavailable("the Keychain refused to remove the key")
+
+
 def test_forget_reports_what_went_when_the_key_cannot_go(session: Session) -> None:
     session.enroll()
-    stuck = MemoryKeyStore(session.keys.key, fail=True)
+    stuck = _UndeletableKeyStore(session.keys.key)
     answer = session.run("forget", session.request("forget"), keys=stuck)
     assert answer["ok"] is False and answer["reason"] == "key_unavailable"
     assert set(answer["removed"]) == {TEMPLATE_FILE, MARKER_FILE}
@@ -546,6 +559,12 @@ def test_the_deep_selftest_reports_everything_without_a_camera(session: Session)
         "builtin": True,
     }
     assert details["opencv"] and details["opencv_verified"] is True
+    assert details["touch_id"] == {
+        "biometry": "available",
+        "detail": None,
+        "clamshell": None,
+        "pin": "ok",
+    }
     plain = worker.selftest("darwin", request={"v": 1}, deps=deps)
     assert "details" not in plain
 
@@ -589,3 +608,63 @@ def test_nothing_holds_an_embedding_but_the_encrypted_template(
     for text in texts:
         for needle in needles:
             assert needle not in text
+
+
+@pytest.mark.parametrize(
+    ("biometry", "pin"),
+    [
+        (Biometry("available", domain_state=OTHER_FINGERPRINTS), "changed"),
+        (Biometry("unavailable", "clamshell", clamshell=True), "unknown"),
+        (Biometry("available", domain_state=None), "unknown"),
+        (Biometry("none", "no_sensor"), "unknown"),
+        (Biometry("none", "not_enrolled"), "changed"),  # every pinned finger was removed
+    ],
+)
+def test_the_deep_selftest_compares_the_pinned_fingerprints_without_a_prompt(
+    session: Session, biometry: Biometry, pin: str
+) -> None:
+    session.enroll()
+    auth = FakeLocalAuth(biometry=biometry)
+    deps = fake_deps(keys=session.keys, local_auth=auth)
+    answer = worker.selftest(
+        "darwin", request={**session.request("selftest"), "deep": True}, deps=deps
+    )
+    touch = answer["details"]["touch_id"]
+    assert touch["pin"] == pin and touch["biometry"] == biometry.state
+    assert touch["detail"] == biometry.detail and touch["clamshell"] == biometry.clamshell
+    assert auth.calls == [] and auth.probes == 1  # never a prompt
+
+
+@pytest.mark.parametrize(
+    ("biometry", "fail", "pin"),
+    [
+        (Biometry("available", domain_state=FINGERPRINTS), False, "unreadable"),
+        (Biometry("none", "not_enrolled"), False, "unreadable"),
+        (Biometry("none", "no_sensor"), False, "unknown"),  # the password repairs it there
+        (Biometry("available", domain_state=FINGERPRINTS), True, "unknown"),  # the Keychain
+    ],
+)
+def test_the_deep_selftest_names_a_pin_that_cannot_be_read(
+    session: Session, biometry: Biometry, fail: bool, pin: str
+) -> None:
+    session.enroll()
+    (session.data_dir / "guard" / TEMPLATE_FILE).write_bytes(b"TAUG1" + b"\0" * 40)
+    keys = MemoryKeyStore(fail=True) if fail else session.keys
+    deps = fake_deps(keys=keys, local_auth=FakeLocalAuth(biometry=biometry))
+    request = {**session.request("selftest"), "deep": True}
+    touch = worker.selftest("darwin", request=request, deps=deps)["details"]["touch_id"]
+    assert touch["pin"] == pin
+
+
+def test_the_deep_selftest_without_an_enrollment_or_a_pin(session: Session) -> None:
+    deps = fake_deps(keys=session.keys)
+    request = {**session.request("selftest"), "deep": True}
+    assert worker.selftest("darwin", request=request, deps=deps)["details"]["touch_id"]["pin"] == (
+        "unknown"
+    )
+    session.auth = FakeLocalAuth(biometry=Biometry("none", "no_sensor"))
+    session.enroll()
+    deps = fake_deps(keys=session.keys)
+    assert worker.selftest("darwin", request=request, deps=deps)["details"]["touch_id"]["pin"] == (
+        "not_pinned"
+    )

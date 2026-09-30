@@ -47,6 +47,7 @@ OPTIONAL_TEXT = FieldSpec("text", nullable=True)
 POLICY_FIELDS: dict[str, FieldSpec] = {
     "step_up": FieldSpec("choice", choices=CHOICES["step_up"]),
     "unlock_liveness": FieldSpec("choice", choices=CHOICES["unlock_liveness"]),
+    "unlock_fallback": FieldSpec("choice", choices=CHOICES["unlock_fallback"]),
 }
 """The only knobs a client may send; each can only make the check stricter."""
 VERIFY_KINDS = ("unlock", "recheck", "step_up")
@@ -69,6 +70,7 @@ SCHEMAS: dict[tuple[str, str], dict[str, FieldSpec]] = {
         "request_id": OPTIONAL_TEXT,
         "tool": OPTIONAL_TEXT,
         "policy": FieldSpec("policy", nullable=True),
+        "fallback": FieldSpec("choice", choices=("touch_id",)),
     },
     ("POST", "/guard/cancel"): {
         "client_id": TEXT,

@@ -24,8 +24,9 @@ the wrong type makes the service ``unavailable`` (reason ``config``, which ``/st
 whatever it says (:data:`tau_guard.camera.MAX_OPEN_SECONDS`), so above about 19 s the camera's
 limit ends the match first, with the same verdict (:mod:`tau_guard.verify`).
 
-A client sends its own ``step_up`` and ``unlock_liveness`` with every verification;
-:func:`stricter_policy` keeps the stricter of the hub's and the client's value.
+A client sends its own ``step_up``, ``unlock_liveness`` and ``unlock_fallback`` with every
+verification; :func:`stricter_policy` keeps the stricter of the hub's and the client's value,
+and reads a knob the client leaves out as the client's default.
 """
 
 from __future__ import annotations
@@ -125,7 +126,11 @@ class GuardSettings:
         )
 
     def policy(self) -> dict[str, str]:
-        return {"step_up": self.step_up, "unlock_liveness": self.unlock_liveness}
+        return {
+            "step_up": self.step_up,
+            "unlock_liveness": self.unlock_liveness,
+            "unlock_fallback": self.unlock_fallback,
+        }
 
     def worker(self) -> dict[str, Any]:
         """The knobs a worker needs (thresholds, timeout, camera, fallback)."""
@@ -178,12 +183,21 @@ def parse_settings(table: Mapping[str, Any]) -> GuardSettings:
 def stricter_policy(hub: Mapping[str, str], client: Mapping[str, str] | None) -> dict[str, str]:
     """For each weakening-sensitive knob, the stricter of the hub's and the client's value.
 
-    A client value can only raise strictness: an unknown or weaker one is ignored, and of two
-    different values with the same rank (``face`` and ``touch_id``) the hub's stays."""
+    ``client`` is ``None`` only for an in-hub caller, which has no configuration of its own:
+    the hub's values apply alone. A client's mapping that leaves a knob out, or names an
+    unknown value, counts as the client's default (:data:`DEFAULTS`, the same as
+    :data:`tau_core.guard.POLICY_DEFAULTS`), never as agreement with a weaker hub value:
+    ``none`` applies only when the hub and the client both say it. A weaker client value is
+    ignored, and of two different values with the same rank (``face`` and ``touch_id``) the
+    hub's stays."""
     merged = dict(hub)
+    if client is None:
+        return merged
     for key, ranks in STRICTNESS.items():
-        theirs = (client or {}).get(key)
+        theirs = client.get(key)
+        if theirs not in ranks:
+            theirs = DEFAULTS[key]
         mine = merged.get(key)
-        if theirs in ranks and (mine not in ranks or ranks[theirs] > ranks[mine]):
+        if mine not in ranks or ranks[theirs] > ranks[mine]:
             merged[key] = theirs
     return merged

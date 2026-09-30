@@ -181,6 +181,43 @@ def test_a_pinned_enrollment_never_falls_back_to_the_password(
     accepted_by_the_hub(op if op == "enroll" else "selftest", session.lines, answer)
 
 
+def test_a_pinned_enrollment_from_before_degrees_keeps_touch_id_and_add_measures_degrees(
+    session: Session,
+) -> None:
+    """An enrollment made between 114 and 127 (pinned, the yaw-proxy calibration): the pin
+    still answers Touch ID, the face check runs on the default calibration, the doctor says
+    both, and ``enroll --add`` behind the pin measures the turn in degrees and keeps the pin."""
+    from tau_guard import worker
+    from tau_guard.store import decrypt, encrypt
+    from tau_guard.testing import fake_deps
+
+    session.enroll()
+    path = guard_dir(session) / TEMPLATE_FILE
+    key = session.keys.get()
+    payload = json.loads(decrypt(path.read_bytes(), key, SFACE_SHA256))
+    assert payload["touch_id"] == {"domain_state": FINGERPRINTS}
+    payload["calibration"] = {"sign": 1, "left": 0.42, "right": 0.38}
+    path.write_bytes(encrypt(json.dumps(payload).encode(), key, SFACE_SHA256))
+
+    def doctor() -> dict[str, Any]:
+        deps = fake_deps(keys=session.keys, local_auth=FakeLocalAuth())
+        request = {**session.request("selftest"), "deep": True}
+        return worker.selftest("darwin", request=request, deps=deps)["details"]
+
+    assert doctor()["calibration"] == "default" and doctor()["touch_id"]["pin"] == "ok"
+    request = touch_request(session, settings={"unlock_fallback": "touch_id"})
+    answer = session.run("touch_id", request)
+    assert answer["ok"] is True and session.auth.pins[-1] == FINGERPRINTS
+    answer = session.run("verify", session.request("verify", "unlock"))
+    assert answer["ok"] is True and answer["liveness"] == "challenge"
+    added = session.enroll(add=True)
+    assert added["ok"] is True and added["local_auth"]["policy"] == BIOMETRICS
+    assert session.auth.pins[-1] == FINGERPRINTS
+    template = load_template(guard_dir(session), session.keys, SFACE_SHA256)
+    assert template.calibration.measured and template.domain_state == FINGERPRINTS
+    assert doctor()["calibration"] == "measured" and doctor()["touch_id"]["pin"] == "ok"
+
+
 def test_an_enrollment_that_never_pinned_keeps_the_password_without_fingers(
     session: Session,
 ) -> None:
@@ -482,6 +519,29 @@ def test_a_changed_face_model_with_no_pin_refuses_touch_id(
     assert answer["reason"] == "touch_id_failed" and auth.calls == []
 
 
+@pytest.mark.parametrize(
+    ("user", "rule"),
+    [
+        (SimulatedUser(wrong_way=True), "overshoot_before_target"),
+        (SimulatedUser(returns=False), "no_return"),
+    ],
+)
+def test_a_failed_challenge_never_falls_back_and_names_its_rule(
+    session: Session, user: SimulatedUser, rule: str
+) -> None:
+    """A ``spoof`` counts, so a ``face_or_touch_id`` step-up keeps it (issue 114) and the
+    verdict names the liveness rule (issue 127)."""
+    session.enroll()
+    auth = FakeLocalAuth()
+    answer = session.run(
+        "verify", step_up_request(session, "face_or_touch_id"), user=user, local_auth=auth
+    )
+    assert answer["ok"] is False and answer["reason"] == "spoof"
+    assert answer["liveness"] == rule and "local_auth" not in answer and auth.calls == []
+    outcome = accepted_by_the_hub("verify", session.lines, answer)
+    assert outcome.liveness == rule and outcome.local_auth is None
+
+
 def test_a_counted_face_failure_never_falls_back(session: Session) -> None:
     session.enroll()
     auth = FakeLocalAuth()
@@ -557,3 +617,21 @@ def test_a_local_auth_record_on_a_failure_is_read() -> None:
     }
     outcome = parse_line(json.dumps(verdict).encode(), op="touch_id")
     assert outcome.local_auth == (DEVICE_OWNER, "cancelled", 1200)
+
+
+def test_one_verdict_line_may_carry_a_liveness_rule_and_a_local_auth_record() -> None:
+    """The runner reads 127's rule and 114's prompt record side by side, and a rule it does
+    not know still breaks the protocol."""
+    verdict: dict[str, Any] = {
+        "type": "verdict",
+        "ok": False,
+        "reason": "spoof",
+        "liveness": "oscillation",
+        "camera_ms": 2100,
+        "local_auth": {"policy": BIOMETRICS, "outcome": "failed", "ms": 800},
+    }
+    outcome = parse_line(json.dumps(verdict).encode(), op="verify")
+    assert outcome.liveness == "oscillation" and outcome.camera_ms == 2100
+    assert outcome.local_auth == (BIOMETRICS, "failed", 800)
+    with pytest.raises(Malformed):
+        parse_line(json.dumps({**verdict, "liveness": "shaky"}).encode(), op="verify")

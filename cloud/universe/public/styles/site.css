@@ -1,0 +1,1287 @@
+/* tau public site. Palette from docs/brand/README.md: Void, Signal, Ember, Flare, Core, Ink.
+   No green, no red: state is Flare (online) against dim Core (offline), and every colour
+   is doubled by a shape (a filled dot or a hollow ring). */
+
+@font-face {
+  font-family: "Jost";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("/app/fonts/jost-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Jost";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("/app/fonts/jost-latin-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --void: #05071a;
+  --panel: #0a0c24;
+  --deep: #12061a;
+  --signal: #ff2e63;
+  --ember: #ff7a3d;
+  --flare: #ffb25c;
+  --core: #fff4e0;
+  --ink: #14060d;
+
+  --text: var(--core);
+  --text-muted: rgb(255 244 224 / 0.74);
+  --text-faint: rgb(255 244 224 / 0.52);
+  --line: rgb(255 244 224 / 0.09);
+  --line-strong: rgb(255 244 224 / 0.2);
+  --ring: linear-gradient(135deg, var(--signal), var(--ember));
+
+  --sans: "Jost", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --page: 72rem;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+
+  color-scheme: dark;
+}
+
+/* ---- base ------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--void);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  font-weight: 380;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 450;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+p,
+ul,
+ol,
+dl {
+  margin: 0;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+a {
+  color: var(--flare);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  color: var(--core);
+}
+
+:focus-visible {
+  outline: 2px solid var(--flare);
+  outline-offset: 3px;
+  border-radius: 0.3rem;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  color: var(--flare);
+  background: rgb(255 178 92 / 0.09);
+  border-radius: 0.35em;
+  padding: 0.12em 0.4em;
+  white-space: nowrap;
+}
+
+::selection {
+  background: rgb(255 122 61 / 0.4);
+  color: var(--core);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip {
+  position: absolute;
+  left: var(--gutter);
+  top: -4rem;
+  z-index: 10;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: var(--core);
+  color: var(--ink);
+}
+
+.skip:focus {
+  top: 1rem;
+}
+
+/* ---- header and footer ------------------------------------------------------------ */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 1rem var(--gutter);
+}
+
+.brand {
+  display: block;
+  line-height: 0;
+  border-radius: 0.5rem;
+}
+
+.brand img {
+  height: 2.75rem;
+  width: auto;
+}
+
+.site-nav {
+  display: flex;
+  gap: clamp(1rem, 3vw, 2rem);
+}
+
+.site-nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 450;
+  padding: 0.35rem 0;
+}
+
+.site-nav a:hover,
+.site-nav a[aria-current="page"] {
+  color: var(--core);
+}
+
+.site-nav a[aria-current="page"] {
+  box-shadow: inset 0 -2px 0 var(--ember);
+}
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.75rem;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 2.5rem var(--gutter) 3rem;
+  color: var(--text-faint);
+  font-size: 0.95rem;
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent) top / 100% 1px
+    no-repeat;
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+}
+
+.site-footer a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  color: var(--core);
+}
+
+.site-footer p {
+  margin-left: auto;
+}
+
+.footer-coin {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* ---- buttons ---------------------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 0.7rem 1.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--core);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.button:hover {
+  color: var(--core);
+  border-color: var(--flare);
+  background: rgb(255 178 92 / 0.06);
+}
+
+.button-primary {
+  border-color: transparent;
+  background: var(--ring);
+  color: var(--ink);
+}
+
+.button-primary:hover {
+  color: var(--ink);
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--ember), var(--flare));
+}
+
+/* ---- landing: hero ---------------------------------------------------------------- */
+
+.hero {
+  text-align: center;
+  padding-bottom: clamp(3rem, 8vw, 5.5rem);
+}
+
+.hero-stage {
+  display: block;
+  width: 100%;
+  max-width: 1280px;
+  height: auto;
+  margin: 0 auto;
+  /* The stage melts into the page instead of ending in a hard edge. */
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent),
+    linear-gradient(180deg, #000 97%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent),
+    linear-gradient(180deg, #000 97%, transparent);
+  mask-composite: intersect;
+}
+
+.hero-copy {
+  position: relative;
+  max-width: 50rem;
+  margin: clamp(1.5rem, 3vw, 2.5rem) auto 0;
+  padding: 0 var(--gutter);
+}
+
+.hero h1 {
+  font-size: clamp(2.3rem, 1.1rem + 4.4vw, 4.4rem);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.028em;
+  max-width: 15ch;
+  margin: 0 auto;
+}
+
+.lead {
+  max-width: 36rem;
+  margin: 1.5rem auto 2rem;
+  color: var(--text-muted);
+  font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.2rem);
+  text-wrap: pretty;
+}
+
+.note {
+  margin-top: 1.5rem;
+  color: var(--text-faint);
+  font-size: 0.92rem;
+}
+
+/* ---- landing: bands --------------------------------------------------------------- */
+
+.band {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr);
+  gap: 1.5rem clamp(2rem, 6vw, 5rem);
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: clamp(3.5rem, 8vw, 6rem) var(--gutter);
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent) top / 100% 1px
+    no-repeat;
+}
+
+.band > h2 {
+  align-self: start;
+  position: sticky;
+  top: 2rem;
+  font-size: clamp(1.6rem, 1.3rem + 1vw, 2rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.band-body {
+  min-width: 0;
+}
+
+.band-intro {
+  max-width: 38rem;
+  color: var(--text-muted);
+  font-size: 1.15rem;
+}
+
+.band-outro {
+  max-width: 40rem;
+  margin-top: 2.5rem;
+  color: var(--text-muted);
+}
+
+.traits {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.75rem clamp(2rem, 5vw, 4rem);
+}
+
+.trait h3 {
+  font-size: 1.3rem;
+  margin-bottom: 0.6rem;
+}
+
+.trait p {
+  color: var(--text-muted);
+  max-width: 30rem;
+}
+
+/* How it works: three stations on a dashed wire, the same line the universe draws
+   between taus that talk. */
+
+.route {
+  --node: 2.75rem;
+  --gap: clamp(1.5rem, 3vw, 2.5rem);
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Node row, heading row, text row: shared by the three stations (subgrid below), so
+     the headings line up whatever the wire labels need. */
+  grid-template-rows: auto auto auto;
+  gap: 0 var(--gap);
+  margin: 2.5rem 0 0;
+  padding: 0;
+}
+
+.station {
+  display: grid;
+  grid-row: span 3;
+  grid-template-columns: var(--node) minmax(0, 1fr);
+  grid-template-rows: subgrid;
+  grid-template-areas:
+    "node wire"
+    "title title"
+    "text text";
+  column-gap: 0.75rem;
+  align-content: start;
+}
+
+.station > .node {
+  grid-area: node;
+}
+
+.station h3 {
+  grid-area: title;
+  font-size: 1.25rem;
+  margin: 1.1rem 0 0.5rem;
+}
+
+.station p {
+  grid-area: text;
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.station p.wire {
+  grid-area: wire;
+  align-self: start;
+  margin-top: calc(var(--node) / 2 - 1px);
+  margin-right: calc(-1 * var(--gap) + 0.75rem);
+  padding-top: 0.55rem;
+  border-top: 2px dashed rgb(255 122 61 / 0.75);
+  color: var(--text-faint);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.node {
+  flex: none;
+  width: var(--node);
+  height: var(--node);
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  background: var(--panel);
+}
+
+.station-hub .node {
+  border-color: var(--flare);
+  background: radial-gradient(
+    circle,
+    rgb(255 178 92 / 0.45),
+    rgb(255 122 61 / 0.12) 60%,
+    var(--panel)
+  );
+  box-shadow:
+    0 0 0 6px rgb(255 178 92 / 0.08),
+    0 0 28px rgb(255 178 92 / 0.45);
+}
+
+.station-spine .node {
+  border-color: var(--ember);
+  box-shadow: 0 0 22px rgb(255 122 61 / 0.25);
+}
+
+.station-peers .node {
+  position: relative;
+  border-color: rgb(255 244 224 / 0.35);
+}
+
+.station-peers .node::after {
+  content: "";
+  position: absolute;
+  width: 1.3rem;
+  height: 1.3rem;
+  right: -1.6rem;
+  top: -0.6rem;
+  border-radius: 50%;
+  border: 2px solid rgb(255 244 224 / 0.25);
+  background: var(--panel);
+}
+
+/* Privacy: what stays home next to what the universe shows. */
+
+.ledger {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.5rem clamp(2rem, 5vw, 4rem);
+}
+
+.ledger h3 {
+  font-size: 1.25rem;
+  margin-bottom: 1.1rem;
+}
+
+.ledger ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.ledger li {
+  position: relative;
+  padding-left: 1.6rem;
+  color: var(--text-muted);
+}
+
+.ledger li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--flare);
+  box-shadow: 0 0 10px rgb(255 178 92 / 0.6);
+}
+
+.ledger-public li::before {
+  background: transparent;
+  border: 2px solid var(--ember);
+  box-shadow: none;
+}
+
+.actions-start {
+  justify-content: flex-start;
+  margin-top: 2rem;
+}
+
+/* ---- universe --------------------------------------------------------------------- */
+
+.universe {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 0.5rem var(--gutter) 4rem;
+}
+
+.sky {
+  position: relative;
+  isolation: isolate;
+  padding: clamp(1rem, 2.5vw, 1.75rem);
+  border: 1px solid var(--line);
+  border-radius: 1.75rem;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 60%, rgb(255 90 31 / 0.1), transparent 70%),
+    linear-gradient(180deg, var(--panel), #07091f);
+  overflow: hidden;
+}
+
+.sky-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem 1rem;
+}
+
+.sky-icon {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+}
+
+.sky-titles h1 {
+  font-size: 1.55rem;
+  font-weight: 450;
+}
+
+.sky-count {
+  color: var(--text-muted);
+  font-size: 0.98rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.search {
+  flex: 0 1 19rem;
+  margin-left: auto;
+}
+
+.search input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem 0.55rem 2.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='8.5' cy='8.5' r='5.5' fill='none' stroke='%23FFF4E0' stroke-opacity='.6' stroke-width='1.8'/%3E%3Cpath d='M13 13l4 4' stroke='%23FFF4E0' stroke-opacity='.6' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E")
+      0.95rem 50% / 1.1rem no-repeat,
+    rgb(5 7 26 / 0.65);
+  color: var(--core);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.search input::placeholder {
+  color: var(--text-faint);
+}
+
+.search input:focus-visible {
+  outline-offset: 1px;
+  border-color: var(--flare);
+}
+
+.search input:disabled {
+  opacity: 0.5;
+}
+
+.sky-stage {
+  position: relative;
+  margin-top: 1.25rem;
+}
+
+.graph-box {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  min-height: 20rem;
+  max-height: 72vh;
+  width: 100%;
+  border-radius: 1.1rem;
+}
+
+.graph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.stage-message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.9rem;
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.stage-message p:first-child {
+  font-size: 1.2rem;
+  color: var(--core);
+}
+
+.stage-note {
+  position: absolute;
+  left: 50%;
+  bottom: 0.9rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgb(5 7 26 / 0.75);
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  text-align: center;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.6rem;
+  margin-top: 1rem;
+  color: var(--text-faint);
+  font-size: 0.88rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 50%;
+}
+
+.dot-online {
+  background: var(--flare);
+  box-shadow: 0 0 8px rgb(255 178 92 / 0.7);
+}
+
+.dot-offline {
+  border: 1.5px solid rgb(255 244 224 / 0.45);
+}
+
+.dash {
+  display: inline-block;
+  width: 1.8rem;
+  border-top: 2px dashed var(--ember);
+}
+
+/* Graph marks. Sizes are in the graph's own units; the viewBox fits the drawing. */
+
+.hull path {
+  fill: rgb(255 122 61 / 0.07);
+  stroke: rgb(255 122 61 / 0.3);
+  stroke-width: 1;
+  transition: opacity 0.25s;
+}
+
+.hull-label,
+.node-name {
+  paint-order: stroke;
+  stroke: #090b22;
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
+.hull-label {
+  fill: rgb(255 244 224 / 0.62);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.link-line {
+  stroke: var(--ember);
+  stroke-opacity: 0.62;
+  stroke-dasharray: 5 6;
+  stroke-linecap: round;
+}
+
+.link.active .link-line {
+  stroke: var(--flare);
+  stroke-opacity: 0.95;
+}
+
+.link-hit {
+  stroke: transparent;
+  stroke-width: 14;
+}
+
+.node .disc {
+  fill: #0d0f2b;
+  stroke: rgb(255 244 224 / 0.3);
+  stroke-width: 1.5;
+}
+
+.node .ring {
+  fill: none;
+  stroke: none;
+}
+
+.node .initial {
+  fill: rgb(255 244 224 / 0.5);
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.node-name {
+  fill: rgb(255 244 224 / 0.62);
+  font-size: 10.5px;
+  pointer-events: none;
+}
+
+.node.online .disc {
+  fill: #1b1024;
+  stroke: var(--flare);
+  stroke-width: 2;
+}
+
+.node.online .initial {
+  fill: var(--core);
+}
+
+.node.online .node-name {
+  fill: rgb(255 244 224 / 0.85);
+}
+
+.node .halo {
+  fill: var(--flare);
+  opacity: 0.55;
+  filter: url(#halo);
+  animation: breathe 5s ease-in-out infinite;
+}
+
+.node {
+  cursor: pointer;
+  touch-action: none;
+  transition: opacity 0.25s;
+}
+
+.node.hovered .disc,
+.node.selected .disc {
+  stroke: var(--core);
+}
+
+.node.selected .ring {
+  stroke: var(--flare);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+
+.node.dimmed,
+.link.dimmed,
+.hull.dimmed {
+  opacity: 0.16;
+}
+
+.link {
+  transition: opacity 0.25s;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* The detail card: floats over the graph on wide screens, sits under it on phones. */
+
+.detail {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 2;
+  width: min(20rem, calc(100% - 1.8rem));
+  max-height: calc(100% - 1.8rem);
+  overflow: auto;
+  padding: 1rem 1.15rem 1.1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 1.1rem;
+  background: rgb(10 12 36 / 0.94);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.35);
+}
+
+/* A card shown on hover never catches the pointer, so it cannot steal the hover. */
+.detail:not(.pinned) {
+  pointer-events: none;
+}
+
+.detail.on-left {
+  right: auto;
+  left: 0.9rem;
+}
+
+.detail-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.6rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.detail-close:hover {
+  color: var(--core);
+  background: rgb(255 244 224 / 0.07);
+}
+
+.detail-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-faint);
+  font-size: 0.88rem;
+}
+
+.detail-status.is-online {
+  color: var(--flare);
+}
+
+.detail-name {
+  margin-top: 0.35rem;
+  padding-right: 2rem;
+  font-size: 1.3rem;
+  overflow-wrap: anywhere;
+}
+
+.detail-address {
+  margin-top: 0.3rem;
+}
+
+.detail-address code,
+.tau-card-address {
+  white-space: normal;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  background: none;
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-about {
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.97rem;
+  overflow-wrap: anywhere;
+}
+
+.detail-facts {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.85rem;
+  font-size: 0.92rem;
+}
+
+.detail-facts div {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.detail-facts dt {
+  min-width: 6.5rem;
+  color: var(--text-faint);
+}
+
+.detail-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-heading {
+  margin-top: 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.detail-links {
+  list-style: none;
+  padding: 0;
+  margin-top: 0.4rem;
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.95rem;
+}
+
+.detail-links li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.detail-links a {
+  overflow-wrap: anywhere;
+}
+
+.detail-count {
+  flex: none;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-none {
+  margin-top: 1rem;
+  color: var(--text-faint);
+  font-size: 0.92rem;
+}
+
+/* The roster: every tau as a link, the keyboard way into the graph. */
+
+.roster {
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+}
+
+.roster-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.roster-head h2,
+.join h2 {
+  font-size: 1.6rem;
+  font-weight: 400;
+}
+
+.roster-count,
+.roster-empty {
+  color: var(--text-faint);
+}
+
+.tau-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16.5rem), 1fr));
+  gap: 0.9rem;
+}
+
+.tau-card {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  height: 100%;
+  padding: 1rem 1.1rem 1.05rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: rgb(10 12 36 / 0.6);
+  color: var(--core);
+  text-decoration: none;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.tau-card:hover {
+  color: var(--core);
+  border-color: var(--line-strong);
+  background: rgb(10 12 36 / 0.95);
+}
+
+.tau-card[aria-current="true"] {
+  border-color: var(--flare);
+  background: rgb(255 178 92 / 0.06);
+}
+
+.tau-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.tau-card-name {
+  font-size: 1.1rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.tau-card-owner,
+.tau-card-about {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.tau-card-meta {
+  margin-top: 0.2rem;
+  color: var(--text-faint);
+  font-size: 0.86rem;
+}
+
+.tau-card.is-offline .tau-card-name {
+  color: var(--text-muted);
+}
+
+/* Join. */
+
+.join {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr);
+  gap: 1.25rem clamp(2rem, 6vw, 5rem);
+  margin-top: clamp(3rem, 7vw, 5rem);
+  padding-top: clamp(2.5rem, 6vw, 4rem);
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent) top / 100% 1px
+    no-repeat;
+}
+
+.join-body {
+  display: grid;
+  gap: 1rem;
+  max-width: 40rem;
+  color: var(--text-muted);
+}
+
+.command {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.5rem 0.5rem 0.5rem 1.1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgb(10 12 36 / 0.8);
+}
+
+.command code {
+  background: none;
+  padding: 0;
+  font-size: 1rem;
+  color: var(--core);
+}
+
+.copy {
+  min-height: 2.25rem;
+  padding: 0.3rem 0.95rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.copy:hover {
+  color: var(--core);
+  border-color: var(--flare);
+}
+
+/* ---- 404 -------------------------------------------------------------------------- */
+
+.missing {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: clamp(3rem, 10vw, 7rem) var(--gutter) 6rem;
+  text-align: center;
+}
+
+.missing-mark {
+  width: 8rem;
+  height: 8rem;
+  margin-bottom: 1.5rem;
+}
+
+.missing h1 {
+  font-size: clamp(2rem, 1.4rem + 2.5vw, 3rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.missing p {
+  margin: 1rem 0 2rem;
+  color: var(--text-muted);
+}
+
+/* ---- narrow screens --------------------------------------------------------------- */
+
+@media (max-width: 56rem) {
+  .band,
+  .join {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .band > h2 {
+    position: static;
+  }
+
+  .route {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+
+  /* The wire turns vertical: it runs down from each node to the next one, and its label
+     becomes a caption under the station's text. */
+  .station {
+    position: relative;
+    grid-row: auto;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "node title"
+      "node text"
+      "node wire";
+    column-gap: 1rem;
+    padding-bottom: 2.25rem;
+  }
+
+  .station:last-child {
+    padding-bottom: 0;
+  }
+
+  .station > .node {
+    align-self: start;
+  }
+
+  .station h3 {
+    margin-top: 0.55rem;
+  }
+
+  .station p.wire {
+    margin: 0.75rem 0 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .station-peers .node::after {
+    right: auto;
+    left: -0.8rem;
+  }
+
+  .station:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    left: calc(var(--node) / 2 - 1px);
+    top: calc(var(--node) + 0.4rem);
+    bottom: 0.4rem;
+    border-left: 2px dashed rgb(255 122 61 / 0.75);
+  }
+}
+
+@media (max-width: 44rem) {
+  .traits,
+  .ledger {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .site-footer p {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+
+  .search {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .hero-stage {
+    height: 15rem;
+    object-fit: cover;
+  }
+
+  .graph-box {
+    aspect-ratio: 4 / 5;
+    min-height: 18rem;
+  }
+
+  .detail,
+  .detail.on-left {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+    width: auto;
+    max-height: none;
+    margin-top: 1rem;
+    box-shadow: none;
+  }
+
+  .stage-note {
+    bottom: 0.6rem;
+    font-size: 0.85rem;
+    border-radius: 1rem;
+  }
+}
+
+@media (min-width: 48rem) {
+  .brand img {
+    height: 3.25rem;
+  }
+}
+
+/* ---- motion ----------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

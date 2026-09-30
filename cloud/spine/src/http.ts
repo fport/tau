@@ -31,6 +31,16 @@ export function methodNotAllowed(allow: string[]): Response {
   return json({ error: "method_not_allowed" }, 405, { allow: allow.join(", ") });
 }
 
+/** Whether the request asks to switch to WebSocket (`Upgrade: websocket`). */
+export function isWebSocketUpgrade(request: Request): boolean {
+  return (request.headers.get("upgrade") ?? "").trim().toLowerCase() === "websocket";
+}
+
+/** `426 {"error": "upgrade_required"}` with `Upgrade: websocket`. */
+export function upgradeRequired(): Response {
+  return json({ error: "upgrade_required" }, 426, { upgrade: "websocket" });
+}
+
 /**
  * Reads a body of at most `max` bytes. Returns null as soon as it is larger (the stream is
  * cancelled, so an oversized body is never buffered in full).

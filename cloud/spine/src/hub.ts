@@ -1,7 +1,8 @@
 /**
  * The hub API (§5 of docs/reference/tau-network.md): bearer-token routes the owner's hub
- * uses to publish the card, long-poll the mailbox and acknowledge envelopes. The mailbox is
- * the Mailbox Durable Object (mailbox.ts); cloud-mode routes are dispatched to store.ts.
+ * uses to publish the card, fetch or long-poll the mailbox, wait on the doorbell and
+ * acknowledge envelopes. The mailbox is the Mailbox Durable Object (mailbox.ts); cloud-mode
+ * routes are dispatched to store.ts.
  */
 
 import { ownAddress } from "./address";
@@ -11,11 +12,13 @@ import {
   badRequest,
   error,
   intParam,
+  isWebSocketUpgrade,
   json,
   methodNotAllowed,
   notFound,
   rawJson,
   readJsonObject,
+  upgradeRequired,
 } from "./http";
 import { mailboxOf } from "./mailbox";
 import { publicCard, readStoredCard, writeStoredCard } from "./net";
@@ -54,6 +57,8 @@ export async function handleHub(request: Request, env: SpineEnv, url: URL): Prom
       return method === "GET" ? updates(env, url) : methodNotAllowed(["GET"]);
     case "/hub/ack":
       return method === "POST" ? ack(request, env) : methodNotAllowed(["POST"]);
+    case "/hub/ws":
+      return method === "GET" ? doorbell(request, env) : methodNotAllowed(["GET"]);
   }
   if (isCloudRoute(path)) {
     if (modeOf(env) !== "cloud") return error(404, "cloud_mode_off");
@@ -120,6 +125,17 @@ async function updates(env: SpineEnv, url: URL): Promise<Response> {
     (row) => `{"seq":${row.seq},"received_at":${row.received_at},"envelope":${row.envelope}}`,
   );
   return rawJson(`{"updates":[${items.join(",")}]}`);
+}
+
+/**
+ * GET /hub/ws: the doorbell. The hub sends its bearer token in the upgrade request (it is not
+ * a browser), so it passed authorize() above; the Mailbox accepts the socket. The socket only
+ * says "look now": the hub fetches with `GET /hub/updates?timeout=0` and acknowledges with
+ * `POST /hub/ack`.
+ */
+async function doorbell(request: Request, env: SpineEnv): Promise<Response> {
+  if (!isWebSocketUpgrade(request)) return upgradeRequired();
+  return mailboxOf(env).fetch(request);
 }
 
 /** POST /hub/ack: `{seqs: [int, ...]}` deletes those envelopes. */

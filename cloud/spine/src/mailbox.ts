@@ -8,10 +8,19 @@
  * - `seen`: envelope ids per sender, the replay guard, whose rows of the last hour are the
  *   sender's arrival count for the rate limit;
  * - the mailbox cap;
- * - the waiting long polls, which a delivery wakes.
+ * - the waiting long polls, which a delivery wakes;
+ * - the hub's doorbell: WebSockets accepted with the Hibernation API, rung on every delivery.
  *
  * Data and wake-up live in the same object, and every storage call here is synchronous, so a
  * poll that finds nothing and starts to wait cannot miss an envelope stored in between.
+ *
+ * The doorbell (`GET /hub/ws`, §5) is how a hub waits without keeping this object active. The
+ * object accepts the socket with `ctx.acceptWebSocket`, so it may hibernate between envelopes
+ * and is not billed for duration while it does; the hub's keepalive `ping` is answered by
+ * `setWebSocketAutoResponse` without waking it. The socket only ever carries `{"type":
+ * "hello"|"mail", "depth": n}`: the hub fetches and acknowledges envelopes over HTTP. A long
+ * poll, by contrast, holds a request (and a timer) inside the object, which keeps it active
+ * and billed for the whole wait.
  *
  * The Worker parses the envelope, fetches the sender's card and verifies the signature; only
  * then does it call deliver(), which judges duplicate → rate limit → mailbox cap in that order
@@ -21,6 +30,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import type { SpineEnv } from "./env";
+import { isWebSocketUpgrade, upgradeRequired } from "./http";
 
 /** The single instance of the spine (`idFromName("hub")`). */
 export const MAILBOX_NAME = "hub";
@@ -33,6 +43,16 @@ export const SEEN_RETENTION_SECONDS = 86_400;
 const RATE_WINDOW_SECONDS = 3_600;
 /** Upper bound for one wait, a little above the longest long poll (25 s). */
 const MAX_WAIT_MS = 30_000;
+/** The hub's keepalive text and its automatic answer; neither wakes a hibernating object. */
+export const DOORBELL_PING = "ping";
+export const DOORBELL_PONG = "pong";
+/**
+ * Doorbell sockets kept at once. A hub holds one; a hub that reconnects before the old
+ * socket closed briefly holds two. Beyond this the oldest are closed.
+ */
+export const MAX_DOORBELLS = 4;
+/** Close code for a doorbell pushed out by newer ones (RFC 6455 §7.4.1: policy violation). */
+const CLOSE_REPLACED = 1008;
 /** Durable Object SQLite allows 100 bound parameters per statement. */
 const MAX_BOUND_PARAMETERS = 100;
 
@@ -78,6 +98,9 @@ export type MailboxRow = { seq: number; received_at: number; envelope: string };
 /** Rows deleted by prune(). */
 export type Pruned = { mailbox: number; seen: number };
 
+/** What the doorbell sends: on connect (`hello`) and after every queued envelope (`mail`). */
+export type Doorbell = { type: "hello" | "mail"; depth: number };
+
 /** Creates the tables on first use; `meta` holds the schema version. */
 function migrate(sql: SqlStorage): void {
   sql.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL)");
@@ -103,13 +126,45 @@ export class Mailbox extends DurableObject<SpineEnv> {
     this.sql = ctx.storage.sql;
     // Synchronous, so it completes before the object takes its first call.
     ctx.storage.transactionSync(() => migrate(this.sql));
+    // The runtime answers the hub's keepalive itself, without waking a hibernating object.
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(DOORBELL_PING, DOORBELL_PONG));
+  }
+
+  /**
+   * The doorbell: the Worker hands over `GET /hub/ws` after checking the hub token. Accepts
+   * the WebSocket with the Hibernation API and says hello with the current depth, so a hub
+   * that (re)connects fetches whatever arrived while it was away.
+   */
+  override async fetch(request: Request): Promise<Response> {
+    if (!isWebSocketUpgrade(request)) return upgradeRequired();
+    this.trimDoorbells(MAX_DOORBELLS - 1);
+    const { 0: client, 1: server } = new WebSocketPair();
+    // The tag is the accept time, so the oldest sockets can be found without storage.
+    this.ctx.acceptWebSocket(server, [String(Date.now())]);
+    server.send(doorbell("hello", this.depth()));
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /**
+   * The hub sends nothing but `ping`, which the auto-response answers before this handler
+   * would run. Anything else is ignored; a stray `ping` that gets here is still answered.
+   */
+  override webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
+    if (message === DOORBELL_PING) ws.send(DOORBELL_PONG);
+  }
+
+  /** The runtime answers the close frame itself (compatibility date 2026-04-07 or later). */
+  override webSocketClose(): void {}
+
+  override webSocketError(_ws: WebSocket, err: unknown): void {
+    console.warn(JSON.stringify({ event: "doorbell_error", error: String(err) }));
   }
 
   /**
    * Stores an envelope that passed the Worker's checks (§4 steps 1–6), unless it is a
    * duplicate, its sender is over the rate limit or the mailbox is full, judged in that
    * order. `receivedAt` is the arrival time in Unix seconds. A queued envelope wakes every
-   * waiting long poll.
+   * waiting long poll and rings every doorbell.
    */
   deliver(from: string, id: string, receivedAt: number, envelope: string): Delivery {
     const delivery = this.ctx.storage.transactionSync((): Delivery => {
@@ -134,7 +189,10 @@ export class Mailbox extends DurableObject<SpineEnv> {
         .one();
       return { status: "queued", seq };
     });
-    if (delivery.status === "queued") this.wake();
+    if (delivery.status === "queued") {
+      this.wake();
+      this.ring();
+    }
     return delivery;
   }
 
@@ -219,6 +277,39 @@ export class Mailbox extends DurableObject<SpineEnv> {
   private wake(): void {
     for (const finish of [...this.waiters]) finish(true);
   }
+
+  /** Tells every doorbell that mail is waiting. Outgoing messages are not billed. */
+  private ring(): void {
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length === 0) return;
+    const message = doorbell("mail", this.depth());
+    for (const ws of sockets) {
+      try {
+        ws.send(message);
+      } catch {
+        // A socket that is closing; the runtime drops it.
+      }
+    }
+  }
+
+  /** Closes the oldest doorbells until at most `keep` remain. */
+  private trimDoorbells(keep: number): void {
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length <= keep) return;
+    const since = (ws: WebSocket): number => Number(this.ctx.getTags(ws)[0] ?? 0);
+    const oldest = [...sockets].sort((a, b) => since(a) - since(b));
+    for (const ws of oldest.slice(0, sockets.length - keep)) {
+      try {
+        ws.close(CLOSE_REPLACED, "replaced by a newer doorbell");
+      } catch {
+        // Already closing.
+      }
+    }
+  }
+}
+
+function doorbell(type: Doorbell["type"], depth: number): string {
+  return JSON.stringify({ type, depth } satisfies Doorbell);
 }
 
 /** The spine's Mailbox: the one instance named "hub". */

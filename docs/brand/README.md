@@ -42,21 +42,35 @@ Neon (Signal → Ember ring, Ember τ with a Core line) only on Void or darker. 
 
 ## Site theme
 
-The public site, tau-host's app and this docs site wear a harder theme ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §8): near-black with a faint grid and a dark-blue code texture, one neon red accent taken from the tau triangle, chrome-white type, thin lines, square corners and HUD rings. The tokens live in `cloud/shared/theme.css`; `docs/stylesheets/brand.css` repeats the ones the docs need.
+The public site, tau-host's app and this docs site wear a harder theme ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §8) built from the palette above: Void with a faint grid and a dark-blue code texture, Signal as the one accent, Ember for links and heat, Core-white type, 1 px lines and square or chamfered corners (the top-left and bottom-right corners cut at 45°). The landing page and the universe page carry the hero's motifs around the live graph: two neon triangles on a reflecting floor, faint vertical beams, instrument rings, the thinking comet and small HUD readouts. The tokens live in `cloud/shared/theme.css`; `docs/stylesheets/brand.css` repeats the ones the docs need.
 
 | Token | Hex | Use |
 |---|---|---|
-| `--bg` | `#07080A` | Page background |
-| `--bg-2` · `--bg-3` | `#0D0F13` · `#13161C` | Panels, cards, code |
-| `--line` · `--line-2` | `#1F232B` · `#2E3440` | Hairlines; edges you can act on |
-| `--text` | `#E8ECF1` | Chrome-white type |
-| `--muted` | `#8A93A3` | Secondary text |
-| `--accent` | `#FF2E3E` | The one accent: primary buttons, lit states, links on hover, HUD rings |
-| `--accent-glow` | `rgba(255, 46, 62, .45)` | The accent's glow |
+| `--bg` | `#05071A` | Page background (Void) |
+| `--bg-2` · `--bg-3` | `#0A0D24` · `#10142F` | Panels, cards, code |
+| `--line` · `--line-2` | `#1B2042` · `#2D335C` | Hairlines; edges you can act on |
+| `--text` | `#F3EEE6` | Core-white type |
+| `--muted` | `#979BB9` | Secondary text |
+| `--accent` | `#FF2E63` | Signal, the one accent: primary buttons, lit states, HUD rings |
+| `--accent-hot` | `#FF7A3D` | Ember: links, hover, heat |
+| `--accent-glow` | `rgba(255, 46, 99, .45)` | The accent's glow |
+| `--void` · `--signal` · `--ember` · `--flare` · `--core` | the palette | The brand colours by name |
+| `--fire` | Signal → Ember → Flare | Beams, floors, small triangles |
 
-The mark on these surfaces is `tau-coin.svg` drawn in the accent (`cloud/universe/scripts/sync-brand.mjs` derives `tau-coin-red.svg`). Type is Jost (thin weights for the big chrome letters) with a system monospace for HUD labels. Online is a lit red square and offline a hollow one, so state never rests on colour alone.
+Type is hard and technical, with nothing rounded: **Chakra Petch** (500, 600; angular letters with cut corners) for headings, buttons and names, **IBM Plex Sans** for reading, and **JetBrains Mono** for HUD labels, the menu and code. The site bundles all three (from @fontsource, served by the site itself, so the pages' CSP allows no other font source); the docs site loads the same families through MkDocs Material.
 
-**Characters.** Every tau and sub-tau also has a generated character: a small creature on a triangle body in one colour of a fixed neon palette, drawn by `cloud/shared/character.ts` from its address. They are not logos: never put one in place of the mark.
+The mark on these surfaces is `tau-coin.svg` drawn in Signal (`cloud/universe/scripts/sync-brand.mjs` derives `tau-coin-red.svg`). Online is a lit Signal square and offline a hollow one, so state never rests on colour alone.
+
+**Sigils.** Every tau and sub-tau also has a generated **ember sigil**, drawn by `cloud/shared/character.ts` from its address: a sharp neon triangle, double-stroked from its hue's first colour to its second, with a flame of layered, angular tongues burning inside it on a white-hot core, and HUD accents around it. There are no faces or mascot parts.
+
+- A **tau's** sigil is the richer one: a second triangle (nested, inverted or an echo behind it) and a partial τ ring with a comet head, instrument ticks and square fragments.
+- A **sub-tau's** sigil is a smaller triangle with a single flame and no ring, burning in its tau's hue, so a tau and its sub-taus read as one family.
+- The triangle is equilateral, tall, split at the apex, broken at the apex, notched or chamfered; the flame has one to three tongues and varies in height and lean, with sparks and ember fragments; a scan line and a reflecting floor come and go.
+- Hues are mostly the fire family (signal red, ember orange, flare amber, infra crimson) with a minority of cold fires (ion blue, plasma violet, toxic green), about one in four, so neighbours in the graph stay apart.
+- Below 34 px only the triangle, the flame and a tau's ring are drawn, with strokes kept visible; below 64 px the fine HUD details drop out.
+- The flame flickers, its core pulses and a tau's ring turns slowly; all of it stops under `prefers-reduced-motion`, and an offline tau's sigil goes cold and still in the graph.
+
+Sigils are not logos: never put one in place of the mark.
 
 ## Rules
 

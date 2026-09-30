@@ -5,8 +5,8 @@ TypeScript shared by tau's Workers ([ADR 0013](../../docs/adr/0013-hosted-taus-h
 | Path | What it is |
 |---|---|
 | `net/` | The tau network protocol's TypeScript half ([tau-network.md](../../docs/reference/tau-network.md), [tau-universe.md](../../docs/reference/tau-universe.md) §1), byte-compatible with tau-net |
-| `character.ts` | `character(seed, {size, animated, label})`: the SVG creature of a tau (seed: its address) or a sub-tau (`<address>/<name>`). Pure and deterministic, no ids, no inline styles; the golden and coverage tests are in `cloud/universe/test/character.test.ts` |
-| `theme.css` | The hard theme's tokens (`--bg`, `--line`, `--text`, `--muted`, `--accent`, …), the Jost @font-face (relative `fonts/` next to the file), base styles, buttons, chips, HUD rings and the characters' idle motion, all stopped under `prefers-reduced-motion`. A Worker's build copies it next to its fonts |
+| `character.ts` | `character(seed, {size, animated, label, kind})`: the ember sigil of a tau (seed: its address) or a sub-tau (`<address>/<name>`, in its tau's hue): a neon triangle with a flame inside and HUD accents, fewer details at small sizes. `kind` is `"tau"` or `"sub"`, from the seed unless given. Pure and deterministic, no ids, no inline styles; `traits`, `describe`, `kindOf` and `ownerOf` are exported too. The golden and coverage tests are in `cloud/universe/test/character.test.ts`, the gallery is `cloud/universe/scripts/gallery.mjs` |
+| `theme.css` | The hard theme's tokens (`--bg`, `--line`, `--text`, `--muted`, `--accent`, the brand colours, `--fire`, …), the @font-face rules of Chakra Petch, IBM Plex Sans and JetBrains Mono (relative `fonts/` next to the file), base styles, chamfered buttons, chips and boxes (`.cut`), HUD rings, triangles, beams and the floor, and the sigils' motion, all stopped under `prefers-reduced-motion`. A Worker's build copies it next to its fonts (`cloud/universe/scripts/fonts.mjs` lists them) |
 
 ## `net/`: the protocol
 

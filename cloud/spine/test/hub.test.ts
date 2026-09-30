@@ -92,7 +92,7 @@ describe("GET /hub/health", () => {
       mode: "local",
       card: false,
       mailbox: 0,
-      version: "0.1.0",
+      version: "0.2.0",
     });
     await publishCard();
     await queue(2);

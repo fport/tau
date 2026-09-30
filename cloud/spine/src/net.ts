@@ -42,7 +42,11 @@ export const PEER_CACHE_TTL_SECONDS = 3_600;
 
 const CARD_KEY = "card";
 const ENVELOPE_ID = /^[A-Za-z0-9_-]{16,64}$/;
-const KINDS = new Set(["contact_request", "contact_accept", "message"]);
+/**
+ * The envelope kinds of §3. `visit` (ADR 0013 §5) comes from a universe that relays an
+ * anonymous visitor of a public sub-tau's page; the spine only stores it, and the hub decides.
+ */
+const KINDS = new Set(["contact_request", "contact_accept", "message", "visit"]);
 
 /** What the hub published with PUT /hub/card. */
 export interface StoredCard {
@@ -160,7 +164,8 @@ function peerSignKey(card: unknown, from: string): Uint8Array | null {
 
 /**
  * The sender's signing key from its card: KV cache first (`peer:<from>`, one hour), then
- * `GET <scheme>://<from>/.well-known/tau.json` with a 5 s timeout and an 8 KiB cap.
+ * `GET <scheme>://<from>/.well-known/tau.json` with a 5 s timeout and an 8 KiB cap. A sender
+ * with a handle address (`tau.example.com/@alice`) has its card under that path.
  */
 async function senderSignKey(
   env: SpineEnv,

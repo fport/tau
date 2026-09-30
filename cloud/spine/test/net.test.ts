@@ -73,7 +73,7 @@ describe("card", () => {
       sign_key: VECTOR.signKey,
       box_key: VECTOR.boxKey,
       inbox: `https://${SELF}/net/inbox`,
-      software: "tau-spine/0.1.0",
+      software: "tau-spine/0.2.0",
     };
     expect(await put.json()).toEqual(expected);
 
@@ -323,6 +323,67 @@ describe("POST /net/inbox", () => {
       expect(res.status).toBe(503);
       expect(await res.json()).toEqual({ error: "mailbox_full" });
       expect(await mailboxCount()).toBe(1000);
+    });
+  });
+
+  describe("handle addresses and visits (ADR 0013)", () => {
+    const HOSTED = "tau.example.com/@alice";
+    const HOSTED_URL = `https://${HOSTED}`;
+
+    it("accepts a sender with a handle address, fetching its card under the path", async () => {
+      const spy = mockCards({ [HOSTED_URL]: peerCard(HOSTED) });
+      const one = await envelope({ from: HOSTED });
+      const res = await postEnvelope(one);
+      expect(res.status).toBe(202);
+      expect(await res.json()).toEqual({ status: "queued", id: one.id });
+      expect(String(spy.mock.calls[0]?.[0])).toBe(
+        "https://tau.example.com/@alice/.well-known/tau.json",
+      );
+      expect(await env.TAU.get(`peer:${HOSTED}`, "json")).toEqual(peerCard(HOSTED));
+      const row = await inMailbox((sql) =>
+        sql.exec<{ sender: string }>("SELECT sender FROM mailbox").one(),
+      );
+      expect(row.sender).toBe(HOSTED);
+      // the second envelope uses the cached card
+      expect((await postEnvelope(await envelope({ from: HOSTED }))).status).toBe(202);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the handle: another handle on the same host is another sender", async () => {
+      mockCards({ [HOSTED_URL]: peerCard(HOSTED) });
+      // The card answers for /@alice; a sender claiming /@bob gets no card from it.
+      const res = await postEnvelope(await envelope({ from: "tau.example.com/@bob" }));
+      expect(res.status).toBe(502);
+      expect(await res.json()).toEqual({ error: "sender_card_unavailable" });
+      // A card whose address lacks the handle does not vouch for the handle address.
+      vi.restoreAllMocks();
+      mockCards({ [HOSTED_URL]: peerCard("tau.example.com") });
+      expect((await postEnvelope(await envelope({ from: HOSTED }))).status).toBe(502);
+    });
+
+    for (const bad of ["tau.example.com/@", "tau.example.com/@Upper", "tau.example.com/@a/b/c"]) {
+      it(`400 bad_request for the sender ${bad}`, async () => {
+        const spy = mockCards({});
+        const res = await postEnvelope(await envelope({ from: bad }));
+        expect(res.status).toBe(400);
+        expect(((await res.json()) as { error: string }).error).toBe("bad_request");
+        expect(spy).not.toHaveBeenCalled();
+      });
+    }
+
+    it("400 wrong_recipient for a handle address: a spine's own address is a plain host", async () => {
+      const res = await postEnvelope(await envelope({ to: `${SELF}/@bob` }));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "wrong_recipient" });
+    });
+
+    it("queues a visit like any other kind (the hub decides)", async () => {
+      mockCards({ "https://universe.example": peerCard("universe.example") });
+      const visit = await envelope({ kind: "visit", from: "universe.example" });
+      const res = await postEnvelope(visit);
+      expect(res.status).toBe(202);
+      expect(await res.json()).toEqual({ status: "queued", id: visit.id });
+      expect(await mailboxCount()).toBe(1);
     });
   });
 

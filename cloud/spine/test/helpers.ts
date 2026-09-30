@@ -140,7 +140,7 @@ export function peerCard(
     sign_key: signKey,
     box_key: VECTOR.boxKey,
     inbox: `https://${address}/net/inbox`,
-    software: "tau-spine/0.1.0",
+    software: "tau-spine/0.2.0",
   };
 }
 

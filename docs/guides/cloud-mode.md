@@ -98,4 +98,4 @@ A `tau chat` with the same variables then stores its session in the local spine'
 
 ## Going back to local mode
 
-Deploy the local-mode configuration again (`pnpm run configure --force && pnpm run deploy`). The container stops, and your address and contacts stay. The data stored in D1 and KV stays in your account until you delete it (`wrangler d1 execute`, `wrangler kv key delete`, or delete the resources in the dashboard).
+Deploy the local-mode configuration again (`pnpm run configure --force && pnpm run deploy`), with a `deleted_classes` migration for `TauBrain` added to its `migrations` list. `cloud/spine/README.md` shows the exact list. The container stops and your address stays. Your contacts stay too, but they live in the spine's state, so copy them to the hub first: with `[component.net] store = "spine"`, `tau net contacts` still reads them. The data stored in D1 and KV stays in your account until you delete it (`wrangler d1 execute`, `wrangler kv key delete`, or delete the resources in the dashboard).

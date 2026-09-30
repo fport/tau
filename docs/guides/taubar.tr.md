@@ -8,23 +8,29 @@ seçtiğin şekilde uyanık tutar ve oturum açılışında başlar. Kaynak kod 
 (imzalama, dosyalar, geliştirme)
 [`apps/taubar/README.md`](https://github.com/fport/tau/blob/main/apps/taubar/README.md) içinde.
 
+τ'ya sol tıklayınca aşağıdaki panel açılır; sağ tık aynı öğeleri sade bir menü olarak gösterir.
+Panel açık ve koyu moda uyar, başka bir yere tıklayınca ya da Esc'e basınca kapanır.
+
 ```text
-Hub: up 2 h 5 min · pid 1234
-Telegram: polling as @your_bot
-Last crash: none
-✓ Run the hub
-  Open Hub Log
-──────────
-Sleep: kept awake on AC power
-  Normal
-✓ Keep awake on AC power
-  Keep awake with the lid closed (needs setup)
-──────────
-✓ Launch at login
-  Settings…
-  Open TauBar Log
-──────────
-  Quit TauBar
+Hub                                      [ on]
+(τ)  Up 2 h 5 min
+     pid 1234 · started by TauBar
+(➤)  Telegram
+     polling as @your_bot
+(!)  Last crash
+     none
+──────────────────────────────────────────────
+Sleep
+( )  Normal
+(●)  Keep awake on AC power
+( )  Keep awake with the lid closed    Set up…
+──────────────────────────────────────────────
+Launch at login                          [ on]
+Open Hub Log
+Open TauBar Log
+Settings…                                   ⌘,
+──────────────────────────────────────────────
+Quit TauBar                                 ⌘Q
 ```
 
 ## Derle ve kur
@@ -52,21 +58,21 @@ penceresi açılır; sonrasında uygulama menü çubuğunda yaşar.
     altında kapatarak yer aç. Hidden Bar gibi bir menü çubuğu yöneticisi, ayırıcısının solundaki
     her şeyi gizler: onu genişlet ve τ'yu Cmd ile sürükleyerek ayırıcının sağına taşı.
 
-Ardından **Launch at login** kutusunu işaretle ve `infra/remote/setup.sh` komutunu bir kez
+Ardından **Launch at login** anahtarını aç ve `infra/remote/setup.sh` komutunu bir kez
 çalıştır: TauBar `/Applications` içindeyken bu komut
 [uzaktan erişim kurulumundaki](phone-tailscale-termius.md) `com.tau.keepawake` agent'ını
 kaldırır, çünkü aynı işi TauBar yapar. `infra/remote/doctor.sh` ikisini de kabul eder.
 
 ## Hub'ı çalıştır
 
-**Run the hub** kutusunu işaretle; TauBar bu Mac'te hub'ın gözetmeni olur. macOS'ta varsayılan
+**Run the hub** anahtarını aç; TauBar bu Mac'te hub'ın gözetmeni olur. macOS'ta varsayılan
 budur ([alternatifi](hub-service.md#macos-alternative-launchd-user-agent) bir launchd agent'ıdır):
 
 - `tau hub run` komutunu kendi alt süreci olarak başlatır ve kontrol API'si yanıt verir vermez
   `Hub: up …` gösterir;
 - bir çökme ya da `kill -9` bir saniye sonra yeniden başlatılır (başarısız olmaya devam ettikçe
   beklemeler uzar) ve yeni hub çökmeyi bildirir;
-- `tau hub stop` hub'ı durmuş hâlde bırakır; kutunun işaretini kaldırmak onu durdurur; TauBar'dan
+- `tau hub stop` hub'ı durmuş hâlde bırakır; anahtarı kapatmak onu durdurur; TauBar'dan
   çıkmak onun başlattığı hub'ı durdurur;
 - asla ikinci bir hub başlatmaz: elle ya da launchd ile başlatılmış bir hub gösterilir
   (`started outside TauBar`, `run by launchd`) ve kendi hâline bırakılır.
@@ -74,7 +80,7 @@ budur ([alternatifi](hub-service.md#macos-alternative-launchd-user-agent) bir la
 TauBar'ın tau-core kurulu Python'a ve `TAU_HOME` değerine ihtiyacı var. İlk açılışta bunları
 kurulu bir `com.tau.hub` launchd agent'ından kopyalar; yoksa penceresini aç, **How TauBar starts
 the hub** → **Use a tau checkout…** yolunu izle. Hub'ı launchd'den devralmak için checkout
-içinde `uv run tau hub uninstall` çalıştır ve **Run the hub** kutusunu işaretle. Veri dizini,
+içinde `uv run tau hub uninstall` çalıştır ve **Run the hub** anahtarını aç. Veri dizini,
 port ve ortam alanları dahil ayrıntılar: [tau'yu servis olarak çalıştır](hub-service.md#macos-taubar-default).
 
 ## Uyku modları
@@ -112,10 +118,10 @@ Uyumayan kapalı bir MacBook yine de ısınır: bu modu fişe takılıyken, aç�
 
 ## Oturum açılışında başlat
 
-**Launch at login** kutusu TauBar'ı bir launchd agent'ı üzerinden değil, `SMAppService`
+**Launch at login** anahtarı TauBar'ı bir launchd agent'ı üzerinden değil, `SMAppService`
 üzerinden kaydeder (System Settings → General → Login Items → Open at Login): bazı Mac'lerde
 launchd, kullanıcı agent'larının otomatik başlatılmasını süresiz olarak bekletir (bkz.
 [tau'yu servis olarak çalıştır](hub-service.md#macos-taubar-default)). Login item uygulamanın
 mevcut konumunu gösterir; bu yüzden TauBar onu yalnızca `/Applications` (ya da
-`~/Applications`) içinden çalışırken açar, aksi hâlde bunu söyler. **Run the hub** işaretliyken
+`~/Applications`) içinden çalışırken açar, aksi hâlde bunu söyler. **Run the hub** açıkken
 hub da oturum açılışında bu yolla başlar.

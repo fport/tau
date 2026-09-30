@@ -1,38 +1,57 @@
 # TauBar
 
-tau's macOS menu bar app: Tauri v2 with a Rust core and a small React/TypeScript window. Tray
-only, no Dock icon.
+tau's macOS menu bar app: Tauri v2 with a Rust core and a small React/TypeScript UI (the panel
+and the settings window). Tray only, no Dock icon.
 
 What it does today:
 
-- **Runs the hub:** with "Run the hub" ticked, TauBar starts `tau hub run`, restarts it after a
-  crash, leaves it stopped after `tau hub stop`, stops it when TauBar quits, and never starts a
-  second hub. The menu shows whether the hub is up, its Telegram poller and its last crash.
+- **Runs the hub:** with "Run the hub" switched on, TauBar starts `tau hub run`, restarts it
+  after a crash, leaves it stopped after `tau hub stop`, stops it when TauBar quits, and never
+  starts a second hub. It shows whether the hub is up, its Telegram poller and its last crash.
 - **Sleep modes:** Normal, Keep awake on AC power (default), Keep awake with the lid closed.
-- **Launch at login:** a checkbox that registers TauBar as a login item.
-- A **window** (Settings…) with the same switches, the hub's settings and TauBar's own log.
+- **Launch at login:** a switch that registers TauBar as a login item.
+- A **panel** under the τ with all of that (left click), the same items as a native **menu**
+  (right click), and a **window** (Settings…) with the same switches, the hub's settings and
+  TauBar's own log.
 
-The status panel, approvals and voice come with later roadmap issues (025, 031).
+The status panel for nodes, spend and approvals, and voice come with later roadmap issues (025,
+031).
 
 ```text
-τ
-├─ Hub: up 2 h 5 min · pid 1234
-├─ Telegram: polling as @your_bot
-├─ Last crash: none
-├─ ✓ Run the hub
-├─   Open Hub Log
-├─ ──────────
-├─ Sleep: kept awake on AC power
-├─   Normal
-├─ ✓ Keep awake on AC power
-├─   Keep awake with the lid closed (needs setup)
-├─ ──────────
-├─ ✓ Launch at login
-├─   Settings…                              ⌘,
-├─   Open TauBar Log
-├─ ──────────
-└─   Quit TauBar                            ⌘Q
+Hub                                      [ on]
+(τ)  Up 2 h 5 min
+     pid 1234 · started by TauBar
+(➤)  Telegram
+     polling as @your_bot
+(!)  Last crash
+     none
+──────────────────────────────────────────────
+Sleep
+( )  Normal
+(●)  Keep awake on AC power
+( )  Keep awake with the lid closed    Set up…
+──────────────────────────────────────────────
+Launch at login                          [ on]
+Open Hub Log
+Open TauBar Log
+Settings…                                   ⌘,
+──────────────────────────────────────────────
+Quit TauBar                                 ⌘Q
 ```
+
+## The panel
+
+A left click on the τ opens the panel under the icon; another click, Esc, or clicking anywhere
+else closes it, as with a menu, and the icon stays pressed while it is open. It is a borderless,
+transparent window with macOS's popover material behind the page, so it follows light and dark
+mode and the wallpaper shows through; its height follows its content. ⌘, opens the settings
+window and ⌘Q quits TauBar while it has focus. The coin next to the hub status carries the state:
+Ember when the hub is up, Flare when it needs attention, Signal on an error, dimmed otherwise.
+
+The right click shows the old native menu with the same items, so every action stays reachable
+if the panel ever fails to open (TauBar then also shows the menu on the left click and says why
+in its log). Transparent windows use a private macOS API (`app.macOSPrivateApi` in
+`tauri.conf.json`): fine for a Mac that builds its own TauBar, not allowed in the App Store.
 
 ## Build
 
@@ -231,10 +250,15 @@ nobody logged out while this was built; check it after your next login.
 ## Development
 
 ```sh
-pnpm test                          # vitest: the window's display and form logic
+pnpm test                          # vitest: the display and form logic of the panel and window
 pnpm build                         # tsc + vite
 (cd src-tauri && cargo test)       # Rust: supervisor, restart policy, sleep modes, settings, …
 ```
+
+To work on the UI without the app, run `pnpm dev` and open http://localhost:1420/ (the settings
+window) or http://localhost:1420/#panel (the panel) in a browser: outside Tauri a development
+build answers the commands from `src/devmock.ts`, a stand-in with example values. No build
+contains it.
 
 The supervisor tests run real `/bin/sh` children as stand-in hubs (crash, `kill -9`, clean
 exit, a SIGTERM-deaf hub, a foreign lock holder, an orphan to adopt) against a fake probe, so
@@ -243,15 +267,18 @@ they need no tau checkout and never touch a real hub.
 | File | Job |
 |---|---|
 | `src-tauri/src/lib.rs` | app setup (tray only), menu actions, window, ticker and hub threads |
-| `src-tauri/src/core.rs` | state shared by the menu and the window |
+| `src-tauri/src/core.rs` | state shared by the panel, the menu and the window |
 | `src-tauri/src/hub/supervisor.rs` | the hub supervisor (start, reap, restart, stop, adopt, never a second hub) |
 | `src-tauri/src/hub/policy.rs` | which exits are restarted, and the backoff |
-| `src-tauri/src/hub/probe.rs`, `launch.rs`, `display.rs` | lock/control API/launchd probes, the command and environment, the menu lines |
+| `src-tauri/src/hub/probe.rs`, `launch.rs`, `display.rs` | lock/control API/launchd probes, the command and environment, the menu lines and panel rows |
 | `src-tauri/src/sleep.rs` | the three modes behind a `Power` trait (a fake in tests) |
 | `src-tauri/src/login.rs` | `SMAppService.mainApp` |
-| `src-tauri/src/tray.rs` | the native menu |
-| `src-tauri/src/settings.rs`, `eventlog.rs`, `signals.rs`, `commands.rs` | settings files, TauBar's log, quit on signals, window commands |
-| `src/App.tsx`, `src/api.ts`, `src/format.ts` | the window |
+| `src-tauri/src/tray.rs` | the icon and the native menu (right click) |
+| `src-tauri/src/panel.rs` | the panel's window: open under the icon, hide on focus loss, fit its height |
+| `src-tauri/src/settings.rs`, `eventlog.rs`, `signals.rs`, `commands.rs` | settings files, TauBar's log, quit on signals, the commands the UI calls |
+| `src/Panel.tsx`, `src/panel.css`, `src/icons.tsx` | the panel |
+| `src/App.tsx`, `src/styles.css` | the settings window |
+| `src/main.tsx`, `src/api.ts`, `src/format.ts`, `src/devmock.ts` | which view a window shows, the commands, display helpers, the browser stand-in |
 | `sudoers/` | the lid-closed rule and its install/uninstall scripts |
 
 The UI is English only for now; tau's other UIs take their strings from the `tau_core.i18n`

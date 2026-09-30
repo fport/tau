@@ -653,14 +653,15 @@ returns `None`.
   `unlock`/`step_up` post `/guard/verify`, long-poll `GET /guard/status?since=&attempt=` for
   their own attempt (calling `on_progress` on every step) and post `/guard/cancel` when
   cancelled. Every verification carries the client's weakening-sensitive knobs (`step_up`,
-  `unlock_liveness`) with the values it uses: a knob its `tau.toml` leaves out goes as its
-  strict default (`face`, `challenge`), so the hub's stricter-of-two merge never reads silence
-  as agreement with a weaker hub value. `lock` logs an error when the hub did not confirm it.
+  `unlock_liveness`, `unlock_fallback`) with the values it uses: a knob its `tau.toml` leaves
+  out goes as its default (`face`, `challenge`, `touch_id`), so the hub's stricter-of-two merge
+  never reads silence as agreement with a weaker hub value. `lock` logs an error when the hub did not confirm it.
   The route contract is in the `tau_core.guard` module docstring.
 - **Touch ID fallback (issue 114).** While the hub offers it, a locked `GuardStatus` carries
-  `fallback` (`touch_id` or `touch_id_or_password`, from `[component.guard] unlock_fallback`):
-  after `FALLBACK_AFTER` (2) failed face unlocks in one attempt window (`FACE_FAILURES`) or any
-  `camera_*` verdict (`FALLBACK_NOW`). A channel then offers it (`guard.fallback.<mode>`, with
+  `fallback` (`touch_id` or `touch_id_or_password`, the stricter of the hub's and this client's
+  `[component.guard] unlock_fallback`; a client's `none` hides it): after `FALLBACK_AFTER` (2)
+  failed face unlocks in one attempt window (`FACE_FAILURES`) or any `camera_*` verdict
+  (`FALLBACK_NOW`). A channel then offers it (`guard.fallback.<mode>`, with
   its own key hint as `{how}`) and calls `unlock(method="touch_id")`; `HubGuard` sends
   `fallback: "touch_id"` with `/guard/verify`, and the hub runs LocalAuthentication itself, so the
   sheet appears on the Mac's screen and no route accepts a Touch ID result. A passing fallback

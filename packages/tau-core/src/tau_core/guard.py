@@ -36,9 +36,11 @@ Route contract (all protected control routes, JSON; the hub side is issue 111):
   reads a knob missing from ``policy``, or a missing ``policy``, as that default, never as
   agreement with a weaker hub value.
   ``fallback: "touch_id"`` (an ``unlock`` only; ``unlock(method="touch_id")``) asks for the
-  Touch ID fallback: the hub runs it only while its status offers it (``fallback``), and runs
-  LocalAuthentication itself, so the sheet appears on the Mac's screen. No route accepts a
-  Touch ID result either.
+  Touch ID fallback: the hub runs it only while its status offers it (``fallback``), with the
+  stricter of its own and the client's ``unlock_fallback`` (a client's ``none`` refuses it),
+  and runs LocalAuthentication itself, so the sheet appears on the Mac's screen. No route
+  accepts a Touch ID result either. ``HubGuard`` narrows the status' ``fallback`` by its own
+  ``unlock_fallback`` the same way.
 - ``POST /guard/cancel`` ``{client_id, attempt?}`` → ``{ok}``.
 - ``POST /guard/lock`` ``{channel, client_id, trigger}`` → ``{state: "locked"}``.
 - ``POST /guard/enroll`` ``{client_id}`` → ``202 {attempt, seq}``.
@@ -56,7 +58,7 @@ import secrets
 import sys
 import threading
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
@@ -209,16 +211,23 @@ GUARD_CONFIG_KEYS = frozenset(
 """The keys ``[component.guard]`` may hold; any other key locks the guard for good (a typo
 such as ``enable = true`` must never mean "off"). An issue that adds a knob adds it here."""
 
-POLICY_KEYS = ("step_up", "unlock_liveness")
+POLICY_KEYS = ("step_up", "unlock_liveness", "unlock_fallback")
 """Weakening-sensitive knobs a client sends with every verification; the hub applies the
 stricter of its own value and the client's."""
-POLICY_DEFAULTS: dict[str, str] = {"step_up": "face", "unlock_liveness": "challenge"}
+POLICY_DEFAULTS: dict[str, str] = {
+    "step_up": "face",
+    "unlock_liveness": "challenge",
+    "unlock_fallback": "touch_id",
+}
 """What a client uses for a :data:`POLICY_KEYS` knob its ``[component.guard]`` leaves out or
-sets to something unknown; each default is also the knob's strictest value."""
+sets to something unknown (the documented defaults)."""
 POLICY_VALUES: dict[str, tuple[str, ...]] = {
     "step_up": ("face", "face_or_touch_id", "touch_id", "none"),
     "unlock_liveness": ("challenge", "none"),
+    "unlock_fallback": ("touch_id", "touch_id_or_password", "none"),
 }
+_FALLBACK_RANK = {"touch_id_or_password": 0, "touch_id": 1, "none": 2}
+"""How strict an ``unlock_fallback`` is: the password too, Touch ID only, nothing."""
 
 LOCKED_NOTE = "tau was locked before the user answered."
 """Fixed English note the model reads when a tier-1 or tier-2 call met a locked guard."""
@@ -325,7 +334,8 @@ class GuardStatus:
     fallback: str | None = None
     """While ``locked``: the Touch ID fallback the lock screen may offer now (one of
     :data:`FALLBACK_MODES`), after :data:`FALLBACK_AFTER` failed face unlocks or a
-    :data:`FALLBACK_NOW` verdict; ``None`` otherwise. ``unlock(method="touch_id")`` runs it."""
+    :data:`FALLBACK_NOW` verdict; ``None`` otherwise. ``unlock(method="touch_id")`` runs it.
+    ``HubGuard`` narrows it by the client's own ``unlock_fallback`` (the stricter applies)."""
 
 
 class GuardLocked(Exception):
@@ -644,6 +654,13 @@ class HubGuard:
 
     # -- helpers --------------------------------------------------------------------------
 
+    def _narrowed(self, offer: str) -> str | None:
+        """The hub's fallback offer narrowed by this client's own ``unlock_fallback``: the
+        stricter of the two (``none`` offers nothing), as the hub runs it for this client."""
+        mine = self.policy.get("unlock_fallback", POLICY_DEFAULTS["unlock_fallback"])
+        stricter = max(offer, mine, key=lambda mode: _FALLBACK_RANK.get(mode, 2))
+        return stricter if stricter in FALLBACK_MODES else None
+
     def _enrollment_ok(self, enrollment: object) -> bool:
         local = read_enrollment(self.config)
         return local is not None and enrollment == local
@@ -652,6 +669,8 @@ class HubGuard:
         if not isinstance(payload, dict):
             return GuardStatus(state="unavailable", reason="bad_response")
         status = status_from_json(payload)
+        if status.fallback is not None:
+            status = replace(status, fallback=self._narrowed(status.fallback))
         if status.state == "off":
             return GuardStatus(state="unavailable", reason="guard_off")
         if status.state == "unlocked" and not self._enrollment_ok(payload.get("enrollment")):

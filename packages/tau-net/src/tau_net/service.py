@@ -13,6 +13,12 @@ acknowledges it and then stores the cursor, so a crash re-handles rather than lo
   is read again only on a restart).
 - Blocking HTTP runs in daemon threads, so the hub loop stays responsive and :meth:`stop`
   returns at once even while a long poll is in flight.
+- With a ``[component.net] universe`` host, a second task reports to that universe (ADR 0010)
+  once the card is published and then every ``universe_report_minutes``, but only while the
+  owner's profile says ``universe_join`` (it is read again at every interval, so ``tau net
+  universe join`` and ``leave`` take effect without a restart). A universe that no longer lists
+  the tau gets a fresh join. A failure only shows in ``/status`` as ``net.universe``; it never
+  stops the hub or the poll loop.
 
 The token never reaches a log line, an exception message or ``/status``.
 """
@@ -21,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -62,9 +69,14 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def _iso(seconds: float) -> str:
+    return datetime.fromtimestamp(seconds, UTC).isoformat(timespec="seconds")
+
+
 class NetService:
     """The ``net`` hub service. Tests pass ``env``, a ``transport`` (a
-    :class:`tau_net.testing.FakeNetwork`), a ``model_factory`` and a fast ``sleep``."""
+    :class:`tau_net.testing.FakeNetwork`), a ``model_factory``, a fast ``sleep`` (backoff),
+    a ``universe_sleep`` (the report interval) and a ``clock``."""
 
     name = SERVICE_NAME
 
@@ -78,6 +90,8 @@ class NetService:
         session_store: SessionStore | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         blocking: Callable[[Callable[[], Any]], Awaitable[Any]] = run_blocking,
+        universe_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        clock: Callable[[], float] = time.time,
     ):
         self.config = config
         self.env = env
@@ -86,8 +100,12 @@ class NetService:
         self.session_store = session_store
         self._sleep = sleep
         self._blocking = blocking
+        self._universe_sleep = universe_sleep
+        self.clock = clock
         self.node: NetNode | None = None
         self._task: asyncio.Task[None] | None = None
+        self._universe_task: asyncio.Task[None] | None = None
+        self._ready: asyncio.Event | None = None
         self.state = "idle"
         self.idle_reason: str | None = None
         self.address: str | None = None
@@ -95,6 +113,11 @@ class NetService:
         self.last_poll_at: str | None = None
         self.last_error: str | None = None
         self.retry_in_s: float | None = None
+        self.universe_joined = False
+        self.universe_last_report_at: str | None = None
+        self.universe_last_error: str | None = None
+        self.universe_visible_links: int | None = None
+        self.universe_reports = 0
 
     # -- HubService ----------------------------------------------------------------------------
 
@@ -118,6 +141,7 @@ class NetService:
                 transport=self.transport,
                 model_factory=self.model_factory,
                 session_store=self.session_store,
+                clock=self.clock,
             )
         except (NetConfigError, IdentityError, NetError) as exc:
             self.idle_reason = str(exc)
@@ -138,14 +162,19 @@ class NetService:
             logger.info("net: %s is missing; network turns share nothing about you", note.name)
         self.state = "starting"
         set_active_node(self.node)  # the owner's tools in this hub share the node
+        self._ready = asyncio.Event()
         self._task = asyncio.create_task(self._run(), name="tau-net-poller")
+        if self.node.settings.universe:
+            self._universe_task = asyncio.create_task(self._universe_run(), name="tau-net-universe")
 
     async def stop(self) -> None:
-        task, self._task = self._task, None
-        if task is not None:
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+        tasks = [self._task, self._universe_task]
+        self._task = self._universe_task = None
+        for task in tasks:
+            if task is not None:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
         if self.node is not None:
             set_active_node(None)
             self.node.close()
@@ -167,6 +196,19 @@ class NetService:
             "retry_in_s": self.retry_in_s,
             **self.node.stats,
             **counts,
+            "universe": self.universe_status(),
+        }
+
+    def universe_status(self) -> dict[str, Any]:
+        """``net.universe`` in ``/status``: the host (``""`` = off), whether the profile says
+        joined, the last successful report, the last error and the universe's
+        ``visible_links``."""
+        return {
+            "universe": self.node.settings.universe if self.node is not None else "",
+            "joined": self.universe_joined,
+            "last_report_at": self.universe_last_report_at,
+            "last_error": self.universe_last_error,
+            "visible_links": self.universe_visible_links,
         }
 
     def _counts(self) -> dict[str, int]:
@@ -231,6 +273,8 @@ class NetService:
         assert node is not None
         if not await self._prepare():
             return
+        if self._ready is not None:
+            self._ready.set()
         timeout = node.settings.poll_timeout_seconds
         failures = 0
         while True:
@@ -262,6 +306,49 @@ class NetService:
             self.last_poll_at = _now_iso()
             if timeout == 0:
                 await self._sleep(1.0)  # no long poll: do not spin
+
+    # -- the universe --------------------------------------------------------------------------
+
+    async def _universe_run(self) -> None:
+        """Report once the card is published, then every ``universe_report_minutes``."""
+        node = self.node
+        assert node is not None and self._ready is not None
+        await self._ready.wait()
+        interval = node.settings.universe_report_minutes * 60
+        while True:
+            await self.universe_tick()
+            await self._universe_sleep(interval)
+
+    async def universe_tick(self) -> None:
+        """One report interval; never raises (a failure lands in ``net.universe``)."""
+        node = self.node
+        if node is None:
+            return
+        try:
+            profile = await self._blocking(node.profile)
+            self.universe_joined = profile.universe_join
+            if not profile.universe_join:
+                self.universe_last_error = None
+                return
+            sync = await self._blocking(node.universe_sync)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # never crash the hub
+            self.universe_last_error = " ".join(str(exc).split()) or type(exc).__name__
+            logger.warning("net: the universe report failed: %s", self.universe_last_error)
+            return
+        self.universe_joined = sync.joined
+        self.universe_last_error = None
+        if sync.joined:
+            self.universe_reports += 1
+            self.universe_last_report_at = _iso(self.clock())
+            self.universe_visible_links = sync.visible_links
+            logger.info(
+                "net: reported to the universe %s%s (%s visible links)",
+                node.settings.universe,
+                " after joining again" if sync.rejoined else "",
+                sync.visible_links,
+            )
 
 
 def make_service(config: Config) -> NetService:

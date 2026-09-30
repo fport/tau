@@ -22,7 +22,9 @@ cannot deliver a second reply (the recipient's spine answers ``duplicate``).
 
 Every ``message`` handled from an accepted contact and every one delivered to a contact adds one
 to the store's ``counts`` document (only when its log entry is new, so nothing is counted
-twice). The card name comes from the owner's profile (:mod:`tau_net.profile`).
+twice). The universe methods (:meth:`NetNode.universe_join`, :meth:`NetNode.universe_report`,
+:meth:`NetNode.universe_leave`, :meth:`NetNode.universe_sync`) turn the owner's profile and
+those counts into signed requests to the ``[component.net] universe`` (ADR 0010).
 """
 
 from __future__ import annotations
@@ -67,6 +69,7 @@ from tau_net.profile import NetProfile, check_profile_changes
 from tau_net.spine import SpineClient, Transport, Update
 from tau_net.store import FileBackend, NetStore, SpineBackend
 from tau_net.turns import NetworkTurns
+from tau_net.universe import UniverseClient, UniverseError, listed_addresses, select_links
 
 if TYPE_CHECKING:
     from tau_net.turns import ModelFactory
@@ -76,6 +79,7 @@ __all__ = [
     "NetError",
     "NetNode",
     "NetNotConfigured",
+    "UniverseSync",
     "open_node",
     "reply_id",
     "run_blocking",
@@ -156,6 +160,17 @@ class _TurnJob:
     history: list[dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class UniverseSync:
+    """One report interval of the hub: ``joined`` is the profile's ``universe_join``;
+    ``visible_links`` is the universe's answer to the report (``None`` when none was sent);
+    ``rejoined`` is set when the universe no longer listed the tau and it joined again."""
+
+    joined: bool
+    visible_links: int | None = None
+    rejoined: bool = False
+
+
 def _drop(reason: str, sender: str | None = None, kind: str | None = None, **kw: Any) -> Handled:
     return Handled("dropped", sender=sender, kind=kind, reason=reason, **kw)
 
@@ -193,6 +208,7 @@ class NetNode:
         self.events = events or EventBus()
         """Agent events of the network (``contact_request``); subscribe to be told."""
         self._address: str | None = None
+        self._universe: UniverseClient | None = None
         self.stats = {"handled": 0, "dropped": 0, "replied": 0}
 
     def __repr__(self) -> str:
@@ -638,6 +654,89 @@ class NetNode:
         after = await blocking(self.store.cursor)
         updates = await blocking(lambda: spine.updates(after=after, timeout=timeout, limit=limit))
         return [await self.take(update, blocking=blocking) for update in updates]
+
+    # -- the universe (ADR 0010) ---------------------------------------------------------------
+
+    def universe(self) -> UniverseClient:
+        """The client of ``[component.net] universe`` (one per node, so ``ts`` never repeats);
+        :class:`NetError` when the universe is switched off."""
+        if not self.settings.universe:
+            raise NetError('the universe is switched off ([component.net] universe = "")')
+        if self._universe is None:
+            self._universe = UniverseClient(
+                self.settings.universe,
+                transport=self.peers.transport,
+                allow_insecure=self.peers.allow_insecure,
+                clock=self.clock,
+            )
+        return self._universe
+
+    def universe_links_enabled(self, profile: NetProfile | None = None) -> bool:
+        """The profile's ``universe_links`` override, else ``[component.net] universe_links``."""
+        profile = profile or self.profile()
+        if profile.universe_links is not None:
+            return profile.universe_links
+        return self.settings.universe_links
+
+    def universe_links(self, profile: NetProfile | None = None) -> list[dict[str, Any]]:
+        """The ``links`` of a report: accepted contacts the universe lists (it reads the
+        snapshot first), with their message counts; ``[]`` when links are off."""
+        if not self.universe_links_enabled(profile):
+            return []
+        listed = listed_addresses(self.universe().snapshot())
+        accepted = [c.address for c in self.contacts.all() if c.state == ACCEPTED]
+        return select_links(accepted, self.store.counts(), listed, own_address=self.address())
+
+    def universe_join(self, profile: NetProfile | None = None) -> dict[str, Any]:
+        """``POST /api/join`` with the profile's owner and about; the answer has ``url``."""
+        profile = profile or self.profile()
+        client = self.universe()
+        return client.join(
+            self.require_identity(),
+            self.address(),
+            owner=profile.universe_owner,
+            about=profile.universe_about,
+        )
+
+    def universe_report(
+        self, profile: NetProfile | None = None, *, links: list[dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
+        """``POST /api/report`` with ``links`` (default: :meth:`universe_links`); the answer
+        has ``visible_links``."""
+        client = self.universe()
+        identity = self.require_identity()
+        if links is None:
+            links = self.universe_links(profile)
+        return client.report(identity, self.address(), links)
+
+    def universe_leave(self) -> dict[str, Any]:
+        """``POST /api/leave``."""
+        client = self.universe()
+        return client.leave(self.require_identity(), self.address())
+
+    def universe_sync(self) -> UniverseSync:
+        """What the hub does every report interval: nothing unless the profile says
+        ``universe_join``; otherwise a report, preceded by a join when the universe no longer
+        lists this tau (it forgets taus after 30 days without a report)."""
+        profile = self.profile()
+        if not profile.universe_join or not self.settings.universe:
+            return UniverseSync(joined=profile.universe_join)
+        rejoined = False
+        try:
+            answer = self.universe_report(profile)
+        except UniverseError as exc:
+            if exc.code != "not_joined" or not self.profile().universe_join:
+                raise
+            logger.info("net: the universe %s no longer lists this tau; joining again", exc.host)
+            self.universe_join(profile)
+            answer = self.universe_report(profile)
+            rejoined = True
+        visible = answer.get("visible_links")
+        return UniverseSync(
+            joined=True,
+            visible_links=visible if isinstance(visible, int) else None,
+            rejoined=rejoined,
+        )
 
     def close(self) -> None:
         self.turns.close()

@@ -5,8 +5,9 @@ Every command reads ``tau.toml`` and ``.env`` like the rest of tau (``--home``, 
 help texts and error lines are English. Exit codes: 0 ok, 1 error with one line on stderr,
 2 when the configuration itself cannot be loaded.
 
-Nothing here writes ``tau.toml``: the card name (``tau net init --name``, ``tau net name``) is
-the owner's profile in the network store (:mod:`tau_net.profile`).
+Nothing here writes ``tau.toml``: the card name (``tau net init --name``, ``tau net name``) and
+the universe membership (``tau net universe join|leave``) are the owner's profile in the
+network store (:mod:`tau_net.profile`).
 
 Tests pass a transport through the click context object (``obj={"net_transport": ...}``);
 ``net_env`` and ``net_model_factory`` work the same way.
@@ -40,6 +41,7 @@ from tau_net.node import NetError, NetNode, open_node
 from tau_net.peers import CardError
 from tau_net.service import doctor_check
 from tau_net.spine import SpineError
+from tau_net.universe import MalformedRequest, UniverseError, tau_links
 
 __all__ = ["net"]
 
@@ -54,6 +56,8 @@ ERRORS = (
     IdentityError,
     NetConfigError,
     EnvelopeError,
+    UniverseError,
+    MalformedRequest,
 )
 
 
@@ -444,3 +448,157 @@ def poll_command(ctx: click.Context, once: bool) -> None:
         "replied": sum(1 for h in handled if h.replied),
     }
     _Say(config)("net.poll.done", **counts)
+
+
+# -- the universe ------------------------------------------------------------------------------
+
+
+@net.group(
+    name="universe",
+    help="The tau universe: an opt-in public directory of taus at the [component.net] "
+    "universe host (default tau.getporti.com). A listed tau shows its card name, the owner and "
+    "about lines you choose, and the links to contacts that are listed too and report you "
+    "back. Message contents and unlisted contacts never leave the hub.",
+    short_help="Join or leave the tau universe.",
+)
+@help_option()
+def universe() -> None:
+    pass
+
+
+@universe.command(
+    name="join",
+    help="List this tau in the universe: sets universe_join in the network profile (with "
+    "--owner, --about and --links/--no-links), publishes the card when it is missing or "
+    "different, sends a signed join and then a report, and prints this tau's universe page. "
+    "While the profile says joined, the hub reports every universe_report_minutes.",
+    short_help="List this tau in the universe.",
+)
+@help_option()
+@click.option("--owner", metavar="NAME", help="Your display name there (0 to 60 characters).")
+@click.option("--about", metavar="TEXT", help="One line about your tau (0 to 200 characters).")
+@click.option(
+    "--links/--no-links",
+    default=None,
+    help="Report (or not) mutual links, with message counts, to contacts the universe lists. "
+    "Default: [component.net] universe_links.",
+)
+@click.pass_context
+def universe_join_command(
+    ctx: click.Context, owner: str | None, about: str | None, links: bool | None
+) -> None:
+    config = _config(ctx)
+    say = _Say(config)
+    node = _node(ctx, config)
+    client = _run(ctx, node.universe)
+    changes: dict[str, Any] = {"universe_join": True}
+    for key, value in (("universe_owner", owner), ("universe_about", about)):
+        if value is not None:
+            changes[key] = value
+    if links is not None:
+        changes["universe_links"] = links
+    profile = _run(ctx, lambda: node.update_profile(**changes))
+    if _run(ctx, node.ensure_card):
+        say("net.publish.done", address=node.address(), name=node.display_name())
+    try:
+        answer = node.universe_join(profile)
+    except ERRORS as exc:
+        _fail(ctx, NetError(f"the join failed: {exc}"))
+    address = node.address()
+    url = answer.get("url")
+    if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+        url = client.url_for(address)
+    say("net.universe.joined", universe=client.host, url=url)
+    try:
+        sent = node.universe_links(profile)
+        report = node.universe_report(profile, links=sent)
+    except ERRORS as exc:
+        _fail(ctx, NetError(f"joined, but the report failed: {exc}"))
+    visible = report.get("visible_links")
+    visible = visible if isinstance(visible, int) else 0
+    if node.universe_links_enabled(profile):
+        say("net.universe.reported", links=len(sent), visible=visible)
+    else:
+        say("net.universe.reported_off")
+
+
+@universe.command(
+    name="leave",
+    help="Leave the universe: sets universe_join off in the network profile (the hub stops "
+    "reporting) and sends a signed leave, which removes this tau and its links from the "
+    "directory.",
+    short_help="Leave the universe.",
+)
+@help_option()
+@click.pass_context
+def universe_leave_command(ctx: click.Context) -> None:
+    config = _config(ctx)
+    say = _Say(config)
+    node = _node(ctx, config)
+    client = _run(ctx, node.universe)
+    _run(ctx, lambda: node.update_profile(universe_join=False))
+    try:
+        node.universe_leave()
+    except UniverseError as exc:
+        if exc.code != "not_joined":
+            _fail(ctx, NetError(f"universe_join is off, but the leave failed: {exc}"))
+        say("net.universe.left_unlisted", universe=client.host)
+        return
+    except ERRORS as exc:
+        _fail(ctx, NetError(f"universe_join is off, but the leave failed: {exc}"))
+    say("net.universe.left", universe=client.host)
+
+
+@universe.command(
+    name="status",
+    help="Show the universe host, whether the profile says joined, the links setting, and "
+    "whether the universe lists this tau, with its visible links.",
+    short_help="Show the universe status.",
+)
+@help_option()
+@click.pass_context
+def universe_status_command(ctx: click.Context) -> None:
+    from datetime import datetime
+
+    from tau_core.persona import TIMEZONE
+
+    config = _config(ctx)
+    say = _Say(config)
+    node = _node(ctx, config)
+    settings = node.settings
+    if not settings.universe:
+        say("net.universe.status.off")
+        return
+    profile = _run(ctx, node.profile)
+    say("net.universe.status.host", universe=settings.universe)
+    if profile.universe_join:
+        say("net.universe.status.joined", minutes=settings.universe_report_minutes)
+    else:
+        say("net.universe.status.not_joined")
+    if node.universe_links_enabled(profile):
+        say("net.universe.status.links_on")
+    else:
+        say("net.universe.status.links_off")
+    if profile.universe_owner:
+        say("net.universe.status.owner", owner=profile.universe_owner)
+    if profile.universe_about:
+        say("net.universe.status.about", about=profile.universe_about)
+    client = node.universe()
+    address = _run(ctx, node.address)
+    entry = _run(ctx, lambda: client.tau(address))
+    if entry is None:
+        say("net.universe.status.unlisted")
+        return
+    tau = entry["tau"] if isinstance(entry.get("tau"), dict) else entry
+    seen = tau.get("last_seen")
+    when = (
+        f"{datetime.fromtimestamp(seen, TIMEZONE):%d.%m.%Y %H:%M}" if isinstance(seen, int) else "?"
+    )
+    online = tau.get("online") is True
+    say("net.universe.status.online" if online else "net.universe.status.offline", when=when)
+    say("net.universe.status.url", url=client.url_for(address))
+    links = tau_links(entry, address)
+    if not links:
+        say("net.universe.status.no_links")
+    for peer, messages in links:
+        say("net.universe.status.link", peer=peer, messages=messages)

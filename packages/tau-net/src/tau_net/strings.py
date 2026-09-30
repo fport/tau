@@ -137,6 +137,73 @@ NET_MESSAGES: dict[str, dict[str, str]] = {
         "en": "{handled} handled, {dropped} dropped, {replied} replied.",
         "tr": "{handled} işlendi, {dropped} düşürüldü, {replied} yanıtlandı.",
     },
+    # -- the universe --------------------------------------------------------------------------
+    "net.universe.joined": {
+        "en": "Joined the universe {universe}: {url}",
+        "tr": "{universe} evrenine katıldın: {url}",
+    },
+    "net.universe.reported": {
+        "en": "Report sent. Listed contacts: {links}; visible links: {visible} "
+        "(a link shows once both taus report each other).",
+        "tr": "Rapor gönderildi. Listelenen kişiler: {links}; görünür bağlantılar: {visible} "
+        "(bir bağlantı iki tau da birbirini bildirince görünür).",
+    },
+    "net.universe.reported_off": {
+        "en": "Report sent without links (links are off).",
+        "tr": "Rapor bağlantısız gönderildi (bağlantılar kapalı).",
+    },
+    "net.universe.left": {
+        "en": "Left the universe {universe}: this tau and its links are no longer listed.",
+        "tr": "{universe} evreninden ayrıldın: bu tau ve bağlantıları artık listelenmiyor.",
+    },
+    "net.universe.left_unlisted": {
+        "en": "This tau was not listed in {universe}; universe_join is off now.",
+        "tr": "Bu tau {universe} evreninde listelenmiyordu; universe_join artık kapalı.",
+    },
+    "net.universe.status.off": {
+        "en": 'universe: off ([component.net] universe = "")',
+        "tr": 'evren:    kapalı ([component.net] universe = "")',
+    },
+    "net.universe.status.host": {"en": "universe: {universe}", "tr": "evren:    {universe}"},
+    "net.universe.status.joined": {
+        "en": "joined:   yes, the hub reports every {minutes} min",
+        "tr": "katılım:  evet, hub her {minutes} dakikada bir raporlar",
+    },
+    "net.universe.status.not_joined": {
+        "en": "joined:   no (`tau net universe join` lists this tau)",
+        "tr": "katılım:  hayır (`tau net universe join` bu tau'yu listeler)",
+    },
+    "net.universe.status.links_on": {
+        "en": "links:    on (mutual links with listed contacts are reported)",
+        "tr": "bağlar:   açık (listelenen kişilerle karşılıklı bağlantılar raporlanır)",
+    },
+    "net.universe.status.links_off": {
+        "en": "links:    off (no contacts are reported)",
+        "tr": "bağlar:   kapalı (hiçbir kişi raporlanmaz)",
+    },
+    "net.universe.status.owner": {"en": "owner:    {owner}", "tr": "sahip:    {owner}"},
+    "net.universe.status.about": {"en": "about:    {about}", "tr": "hakkında: {about}"},
+    "net.universe.status.unlisted": {
+        "en": "listed:   no",
+        "tr": "listede:  hayır",
+    },
+    "net.universe.status.online": {
+        "en": "listed:   yes, online, last report {when}",
+        "tr": "listede:  evet, çevrimiçi, son rapor {when}",
+    },
+    "net.universe.status.offline": {
+        "en": "listed:   yes, offline, last report {when}",
+        "tr": "listede:  evet, çevrimdışı, son rapor {when}",
+    },
+    "net.universe.status.url": {"en": "page:     {url}", "tr": "sayfa:    {url}"},
+    "net.universe.status.no_links": {
+        "en": "visible:  no links yet (a link shows once both taus report each other)",
+        "tr": "görünür:  henüz bağlantı yok (iki tau da birbirini bildirince görünür)",
+    },
+    "net.universe.status.link": {
+        "en": "visible:  {peer}, messages: {messages}",
+        "tr": "görünür:  {peer}, mesaj: {messages}",
+    },
 }
 
 _collisions = set(NET_MESSAGES) & set(MESSAGES)

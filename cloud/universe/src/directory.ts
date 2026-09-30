@@ -10,6 +10,7 @@
  *   slugs    the short pages `/<name>`: each name belongs to the first tau that reported a
  *            public sub-tau with it, until that tau leaves or expires
  *   clocks   the last accepted `ts` per address (the replay guard; survives a leave)
+ *   nonces   the nonces of accepted claims, for the claim window (their replay guard)
  *   hits     one row per accepted request (the rate limit)
  *
  * The Worker parses and verifies every request (size, shape, universe, clock window, card,
@@ -24,7 +25,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { hostedHandle } from "./address";
 import type { UniverseEnv } from "./env";
-import { RESERVED_SUB_NAMES, type ReportedSub } from "./protocol";
+import { CLAIM_WINDOW_SECONDS, RESERVED_SUB_NAMES, type ReportedSub } from "./protocol";
 import { isSlugCandidate } from "./routes";
 import {
   buildSnapshot,
@@ -43,10 +44,7 @@ import {
 export const RATE_LIMIT_PER_HOUR = 30;
 export const RATE_WINDOW_SECONDS = 3_600;
 export const TAU_RETENTION_SECONDS = 30 * 86_400;
-/**
- * Clocks older than this can go: the clock windows (±300 s, ±3 600 s for a claim) already
- * refuse anything older.
- */
+/** Clocks older than this can go: the ±300 s window already refuses anything older. */
 export const CLOCK_RETENTION_SECONDS = 3_600;
 
 export const SCHEMA_VERSION = 3;
@@ -81,8 +79,9 @@ export const SCHEMA_V1 = [
 export const SCHEMA_V2 = ["ALTER TABLE taus ADD COLUMN subs TEXT NOT NULL DEFAULT '[]'"];
 
 /**
- * v3 (ADR 0013 §6): a handle per tau (unique; the GitHub id that claimed it beside it) and
- * the slugs. Each stored sub-tau gains `web`, `starters` and `first_seen` (`upgradeSubsToV3`).
+ * v3 (ADR 0013 §6): a handle per tau (unique; the GitHub id that claimed it beside it), the
+ * slugs, and the claim nonces. Each stored sub-tau gains `web`, `starters` and `first_seen`
+ * (`upgradeSubsToV3`).
  */
 export const SCHEMA_V3 = [
   "ALTER TABLE taus ADD COLUMN handle TEXT",
@@ -94,6 +93,13 @@ export const SCHEMA_V3 = [
     claimed_at INTEGER NOT NULL
   )`,
   "CREATE INDEX slugs_address ON slugs (address)",
+  `CREATE TABLE nonces (
+    address TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    ts INTEGER NOT NULL,
+    PRIMARY KEY (address, nonce)
+  )`,
+  "CREATE INDEX nonces_ts ON nonces (ts)",
 ];
 
 const TAU_COLUMNS = "address, name, owner, about, joined_at, last_seen, handle, subs";
@@ -179,6 +185,7 @@ export type LeaveInput = Signed;
 export interface ClaimInput extends Signed {
   /** The universe's own host, to recognise hosted addresses. */
   universe: string;
+  nonce: string;
   /** The GitHub login (lower case) and id signed in on the claim page, from tau-host. */
   handle: string;
   github_id: string;
@@ -198,6 +205,7 @@ export interface Pruned {
   reports: number;
   hits: number;
   clocks: number;
+  nonces: number;
 }
 
 export class Directory extends DurableObject<UniverseEnv> {
@@ -261,8 +269,17 @@ export class Directory extends DurableObject<UniverseEnv> {
     return rows[0]?.ts ?? null;
   }
 
+  /** Whether a claim nonce of this address was accepted (the Worker's early stale check). */
+  nonceUsed(address: string, nonce: string): boolean {
+    return (
+      this.sql
+        .exec("SELECT 1 FROM nonces WHERE address = ? AND nonce = ?", address, nonce)
+        .toArray().length > 0
+    );
+  }
+
   join(input: JoinInput): Outcome<object> {
-    return this.accept(input, false, () => {
+    return this.accept(input, { joined: false }, () => {
       this.sql.exec(
         `INSERT INTO taus (address, name, sign_key, owner, about, joined_at, last_seen)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -283,7 +300,7 @@ export class Directory extends DurableObject<UniverseEnv> {
   }
 
   report(input: ReportInput): Outcome<{ visible_links: number }> {
-    return this.accept(input, true, () => {
+    return this.accept(input, { joined: true }, () => {
       const wanted = new Map<string, number>();
       for (const link of input.links) {
         if (link.peer !== input.address) wanted.set(link.peer, link.messages);
@@ -343,7 +360,7 @@ export class Directory extends DurableObject<UniverseEnv> {
   }
 
   leave(input: LeaveInput): Outcome<object> {
-    return this.accept(input, true, () => {
+    return this.accept(input, { joined: true }, () => {
       this.forget([input.address]);
       return { ok: true };
     });
@@ -359,7 +376,7 @@ export class Directory extends DurableObject<UniverseEnv> {
    * - the claiming tau's earlier handle, if any, is released.
    */
   claim(input: ClaimInput): Outcome<Claimed> {
-    return this.accept(input, true, (): Outcome<Claimed> => {
+    return this.accept(input, { joined: true, nonce: input.nonce }, (): Outcome<Claimed> => {
       const own = hostedHandle(input.address, input.universe);
       if (own !== null && own !== input.handle) return { ok: false, error: "handle_mismatch" };
       const holder = this.sql
@@ -429,7 +446,7 @@ export class Directory extends DurableObject<UniverseEnv> {
     return this.addressOfHandle(ref.handle) !== null;
   }
 
-  /** The hourly cron: taus silent for 30 days, old rate-limit rows and old clocks. */
+  /** The hourly cron: taus silent for 30 days, old rate-limit rows, clocks and nonces. */
   prune(now: number): Pruned {
     return this.ctx.storage.transactionSync(() => {
       const expired = this.sql
@@ -446,24 +463,32 @@ export class Directory extends DurableObject<UniverseEnv> {
       const clocks = this.sql
         .exec("DELETE FROM clocks WHERE ts < ? RETURNING ts", now - CLOCK_RETENTION_SECONDS)
         .toArray().length;
-      return { taus: expired.length, reports, hits, clocks };
+      const nonces = this.sql
+        .exec("DELETE FROM nonces WHERE ts < ? RETURNING ts", now - CLAIM_WINDOW_SECONDS)
+        .toArray().length;
+      return { taus: expired.length, reports, hits, clocks, nonces };
     });
   }
 
   /**
    * The checks that need stored state, in the reference's order, then the effect; all in
-   * one transaction. The effect may still refuse (the handle rules) before it writes. A
-   * refusal writes nothing.
+   * one transaction. The replay guard is the address's last `ts`, or for a claim its nonce
+   * (a claim may be up to an hour old, older than the tau's last report). The effect may
+   * still refuse (the handle rules) before it writes. A refusal writes nothing.
    */
   private accept<T extends object>(
     input: Signed,
-    mustBeJoined: boolean,
+    rules: { joined: boolean; nonce?: string },
     effect: () => Outcome<T>,
   ): Outcome<T> {
     return this.ctx.storage.transactionSync((): Outcome<T> => {
-      const last = this.lastTs(input.address);
-      if (last !== null && input.ts <= last) return { ok: false, error: "stale" };
-      if (mustBeJoined && !this.isJoined(input.address)) return { ok: false, error: "not_joined" };
+      if (rules.nonce === undefined) {
+        const last = this.lastTs(input.address);
+        if (last !== null && input.ts <= last) return { ok: false, error: "stale" };
+      } else if (this.nonceUsed(input.address, rules.nonce)) {
+        return { ok: false, error: "stale" };
+      }
+      if (rules.joined && !this.isJoined(input.address)) return { ok: false, error: "not_joined" };
       const recent = this.sql
         .exec<{ n: number }>(
           "SELECT COUNT(*) AS n FROM hits WHERE address = ? AND at > ?",
@@ -474,12 +499,21 @@ export class Directory extends DurableObject<UniverseEnv> {
       if (recent >= RATE_LIMIT_PER_HOUR) return { ok: false, error: "rate_limited" };
       const outcome = effect();
       if (!outcome.ok) return outcome;
-      this.sql.exec(
-        `INSERT INTO clocks (address, ts) VALUES (?, ?)
-         ON CONFLICT (address) DO UPDATE SET ts = excluded.ts`,
-        input.address,
-        input.ts,
-      );
+      if (rules.nonce === undefined) {
+        this.sql.exec(
+          `INSERT INTO clocks (address, ts) VALUES (?, ?)
+           ON CONFLICT (address) DO UPDATE SET ts = excluded.ts`,
+          input.address,
+          input.ts,
+        );
+      } else {
+        this.sql.exec(
+          "INSERT INTO nonces (address, nonce, ts) VALUES (?, ?, ?)",
+          input.address,
+          rules.nonce,
+          input.ts,
+        );
+      }
       this.sql.exec("INSERT INTO hits (address, at) VALUES (?, ?)", input.address, input.now);
       return outcome;
     });

@@ -32,14 +32,14 @@ export const RESERVED_SUB_NAMES: ReadonlySet<string> = new Set([
 /** A web sub-tau suggests at most this many first messages, each 1–80 characters. */
 export const MAX_STARTERS = 4;
 export const MAX_STARTER_CHARS = 80;
-/** A claim's nonce: 16–64 base64url characters, like an envelope id (cloud/shared/net). */
+/** A claim's single-use token: 16–64 base64url characters, like an envelope id. */
 export const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
 /** The clock window of join, report and leave, in seconds. */
 export const CLOCK_WINDOW_SECONDS = 300;
 /**
  * The clock window of a claim: the owner opens the claim link and signs in with GitHub in
- * between, so it is valid for an hour. Like every request, it must also be newer than the
- * last request accepted from its address.
+ * between, so it is valid for an hour. Its nonce, not its `ts`, guards against replay: a
+ * report the hub sends meanwhile must not make the claim link stale.
  */
 export const CLAIM_WINDOW_SECONDS = 3_600;
 /** Card names are 1–80 characters on the spine (`PUT /hub/card`). */
@@ -82,7 +82,7 @@ export interface LeavePayload extends Common {
 /** Binds the GitHub account signed in on the claim page to this tau (ADR 0013 §6). */
 export interface ClaimPayload extends Common {
   kind: "claim";
-  /** Makes every claim link unique; the `ts` guard makes each one single use. */
+  /** Single use: a second claim with the same nonce is refused. */
   nonce: string;
 }
 

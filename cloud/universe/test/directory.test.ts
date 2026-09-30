@@ -40,7 +40,7 @@ function reported(name: string, about = "", extra: { web?: boolean; starters?: s
 
 /** Drops every table and rebuilds the schema as version `version` left it. */
 function rebuild(sql: SqlStorage, version: 1 | 2): void {
-  for (const table of ["taus", "reports", "clocks", "hits", "slugs", "schema_version"]) {
+  for (const table of ["taus", "reports", "clocks", "hits", "slugs", "nonces", "schema_version"]) {
     sql.exec(`DROP TABLE IF EXISTS ${table}`);
   }
   for (const statement of SCHEMA_V1) sql.exec(statement);
@@ -302,7 +302,7 @@ describe("hourly cron", () => {
     const d = directory();
     await d.join(joinInput("a.example", T - 3_700, T - 3_700));
     await d.join(joinInput("b.example", T - 100, T - 100));
-    expect(await d.prune(T)).toEqual({ taus: 0, reports: 0, hits: 1, clocks: 1 });
+    expect(await d.prune(T)).toEqual({ taus: 0, reports: 0, hits: 1, clocks: 1, nonces: 0 });
     expect(await count("hits")).toBe(1);
     expect(await d.lastTs("b.example")).toBe(T - 100);
     expect(await d.lastTs("a.example")).toBeNull();

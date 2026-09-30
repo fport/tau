@@ -5,6 +5,7 @@
 
 import { reset } from "cloudflare:test";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { b64uDecode } from "../src/crypto";
 import {
   ALICE,
   BOB,
@@ -183,41 +184,40 @@ describe("POST /api/claim", () => {
     expect((await sendClaim(host, ALICE, { account: GITHUB_ALICE, wire })).status).toBe(200);
   });
 
-  it("is single use", async () => {
+  it("uses a nonce once", async () => {
     const wire = await signed("claim", ALICE);
     expect((await sendClaim(host, ALICE, { account: GITHUB_ALICE, wire })).status).toBe(200);
     const replay = await sendClaim(host, ALICE, { account: GITHUB_ALICE, wire });
     expect(replay.status).toBe(400);
     expect(await replay.json()).toEqual({ error: "stale" });
+    // The same nonce in a newly signed claim is refused too.
+    const { nonce } = JSON.parse(new TextDecoder().decode(b64uDecode(wire.payload)!)) as {
+      nonce: string;
+    };
+    const again = await sendClaim(host, ALICE, { account: GITHUB_ALICE, overrides: { nonce } });
+    expect(again.status).toBe(400);
+    expect(await again.json()).toEqual({ error: "stale" });
   });
 
-  it("is valid for an hour, and newer than the tau's last accepted request", async () => {
+  it("is valid for an hour, even when the tau reported after the link was made", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const now = nowSeconds() + 10_000;
     vi.setSystemTime(now * 1000);
-    // Alice and Bob joined in beforeEach, a few seconds before `now - 10 000`.
-    const hourOld = await sendClaim(host, ALICE, {
-      account: GITHUB_ALICE,
-      overrides: { ts: now - 3_500 },
-    });
-    expect(hourOld.status).toBe(200);
+    // The link was made almost an hour ago; the hub reported since.
+    const hourOld = await signed("claim", ALICE, { ts: now - 3_500 });
+    expect((await send("report", ALICE, { ts: now - 100 })).status).toBe(200);
+    expect((await sendClaim(host, ALICE, { account: GITHUB_ALICE, wire: hourOld })).status).toBe(
+      200,
+    );
     for (const ts of [now - 3_700, now + 3_700]) {
       const res = await sendClaim(host, BOB, { account: GITHUB_BOB, overrides: { ts } });
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "stale" });
     }
-    // A request accepted after the claim was signed makes the claim stale, and an accepted
-    // claim moves the tau's clock like any request.
-    expect((await send("report", BOB, { ts: now - 100 })).status).toBe(200);
-    const behind = await sendClaim(host, BOB, {
-      account: GITHUB_BOB,
-      overrides: { ts: now - 200 },
-    });
-    expect(behind.status).toBe(400);
-    expect(await behind.json()).toEqual({ error: "stale" });
-    const report = await send("report", ALICE, { ts: now - 3_500 });
-    expect(await report.json()).toEqual({ error: "stale" });
-    expect((await send("report", ALICE, { ts: now })).status).toBe(200);
+    // An accepted claim does not move the tau's clock: a report older than the claim is fine.
+    const fresh = await sendClaim(host, BOB, { account: GITHUB_BOB, overrides: { ts: now - 10 } });
+    expect(fresh.status).toBe(200);
+    expect((await send("report", BOB, { ts: now - 50 })).status).toBe(200);
   });
 
   it("moves the handle to another tau of the same GitHub account", async () => {

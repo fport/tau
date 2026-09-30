@@ -76,7 +76,7 @@ REFLEX_STALE = 6.0
 """Admission refuses (``unavailable``) when the reflex loop's last tick is older than this."""
 RECORD_KEEP = 120.0
 """How long a finished attempt's record stays readable (the contract says at least 60 s)."""
-MAX_RECORDS = 64
+MAX_RECORDS = 256
 MAX_QUEUE = 8
 
 _JOINS = {"unlock": frozenset({"unlock"}), "recheck": frozenset({"unlock", "recheck"})}

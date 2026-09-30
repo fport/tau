@@ -167,6 +167,7 @@ class GuardService:
         self._stop_event = threading.Event()
         self._reflex_thread: threading.Thread | None = None
         self._routes: list[tuple[str, str]] = []
+        self._presence_failed = False
 
     @property
     def guard_dir(self) -> Path:
@@ -293,7 +294,9 @@ class GuardService:
         try:
             reading = source.read()
         except Exception:
-            logger.exception("guard: the presence source failed; treating it as unknown")
+            if not self._presence_failed:
+                self._presence_failed = True
+                logger.exception("guard: the presence source failed; treating it as unknown")
             return Reading(None, None)
         idle = reading.idle_seconds
         screen = reading.screen_locked
@@ -416,7 +419,7 @@ class GuardService:
             wake()
 
     async def _wait_change(self, since: int, timeout: float) -> None:
-        """Wait until ``seq`` moves past ``since``, the service stops, or ``timeout``."""
+        """Wait until ``seq`` differs from ``since``, the service stops, or ``timeout``."""
         loop = asyncio.get_running_loop()
         event = asyncio.Event()
 
@@ -427,7 +430,7 @@ class GuardService:
         with self._cond:
             self._listeners.add(wake)
         try:
-            if self._seq() > since or self.mode != "active":
+            if self._seq() != since or self.mode != "active":
                 return
             with suppress(TimeoutError):
                 await asyncio.wait_for(event.wait(), max(0.0, timeout))
@@ -602,7 +605,9 @@ class GuardService:
         attempt_id = query.get("attempt")
         deadline = time.monotonic() + wait
         with self._cond:
-            while since is not None and self._seq() <= since and self.mode == "active":
+            # Wait only while nothing changed. A ``since`` above the current seq comes from a
+            # hub that ran before this one (seq starts over), so it is answered at once.
+            while since is not None and self._seq() == since and self.mode == "active":
                 left = deadline - time.monotonic()
                 if left <= 0:
                     break

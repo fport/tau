@@ -510,6 +510,10 @@ def test_status_long_poll_waits_for_a_change(tmp_path: Path) -> None:
         assert payload["seq"] == seq and time.monotonic() - began >= 0.25
         payload = call(running, "GET", "/guard/status", since=str(seq - 1), wait="5")
         assert time.monotonic() - began < 2
+        # a seq from a hub that ran before this one is answered at once, not after the wait
+        began = time.monotonic()
+        payload = call(running, "GET", "/guard/status", since=str(seq + 500), wait="5")
+        assert payload["seq"] == seq and time.monotonic() - began < 2
 
 
 def test_open_status_carries_only_the_guard_block(tmp_path: Path) -> None:

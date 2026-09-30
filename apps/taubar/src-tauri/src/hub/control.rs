@@ -91,6 +91,9 @@ pub fn response_proof(
 }
 
 /// Does `given` (the answer's `X-Tau-Proof`) prove this answer? Compared in constant time.
+///
+/// Only the 64 lower-case hex digits `hexdigest()` writes count: tau-core compares the hex
+/// strings, so the same MAC in upper case is no proof there, and none here either.
 pub fn proof_matches(
     token: &str,
     nonce: &str,
@@ -100,6 +103,13 @@ pub fn proof_matches(
     body: &[u8],
     given: &str,
 ) -> bool {
+    let lower_hex = given.len() == 64
+        && given
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    if !lower_hex {
+        return false;
+    }
     let Ok(bytes) = hex::decode(given) else {
         return false;
     };
@@ -365,6 +375,19 @@ pub(crate) mod tests {
             b"{}",
             &proof[..62]
         ));
+        // The same MAC in upper case or with padding is no proof, as in tau-core's
+        // compare_digest on the lower-case hex string.
+        assert!(proof.bytes().any(|b| b.is_ascii_alphabetic()));
+        for variant in [
+            proof.to_ascii_uppercase(),
+            format!(" {proof}"),
+            format!("{proof}00"),
+        ] {
+            assert!(
+                !proof_matches("tok", "n", "POST", "/guard/lock", 200, b"{}", &variant),
+                "{variant}"
+            );
+        }
     }
 
     #[test]

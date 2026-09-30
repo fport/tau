@@ -1,0 +1,41 @@
+name: universe
+
+# cloud/universe: the public site tau.<domain>, the opt-in universe and the visitor relay
+# (ADR 0010, 0013). It imports cloud/shared by relative path; its postinstall installs
+# cloud/shared's dependencies.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/universe
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.2
+      # bun installs and runs the scripts; Vitest, its Workers pool and Wrangler run on Node,
+      # which `bun run` starts through their `#!/usr/bin/env node` shebangs.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('cloud/universe/bun.lock', 'cloud/shared/bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun run typecheck
+      - run: bun run test
+      - name: Brand files match docs/brand
+        run: bun run sync-brand --check

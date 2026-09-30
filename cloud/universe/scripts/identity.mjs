@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// pnpm run identity [--out FILE | --dev] [--force]
+// bun run identity [--out FILE | --dev] [--force]
 //
 // Makes the universe's own network identity (ADR 0013 §5): a fresh Ed25519 signing key and
 // X25519 box key in tau-net's TAU_NET_IDENTITY form (the identity JSON, base64url-encoded),
@@ -9,15 +9,15 @@
 // The secret is never printed. It goes into a file of mode 0600 that you pipe into Wrangler:
 //
 //   --out FILE   write it to FILE (default: .universe-identity, gitignored), then run
-//                  npx wrangler secret put UNIVERSE_IDENTITY < .universe-identity
+//                  bunx wrangler secret put UNIVERSE_IDENTITY < .universe-identity
 // --dev          write it to .dev.vars (gitignored, mode 0600) as UNIVERSE_IDENTITY=..., for
-//                `pnpm dev`
+//                `bun run dev`
 // --force        replace an identity that is already there. Hubs that pinned the old keys
 //                drop the new identity's visits until their owner runs `tau net universe
 //                leave` and `join` again, so keep the file (offline) rather than make a new one.
 //
 // Only the public keys are printed. Node runs cloud/shared's TypeScript directly (type
-// stripping, Node 22.18 or newer); `pnpm install` has installed its dependency.
+// stripping, Node 22.18 or newer); `bun install` has installed its dependency.
 
 import { chmodSync, copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -27,7 +27,7 @@ import { Identity } from "../../shared/net/identity.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NAME = "UNIVERSE_IDENTITY";
-const usage = "Usage: pnpm run identity [--out FILE | --dev] [--force]";
+const usage = "Usage: bun run identity [--out FILE | --dev] [--force]";
 
 let out = null;
 let dev = false;
@@ -76,7 +76,7 @@ if (dev) {
   lines.push(`${NAME}=${value}`, "");
   writeFileSync(target, lines.join("\n"), { mode: 0o600 });
   chmodSync(target, 0o600);
-  console.log(`Wrote ${NAME} to .dev.vars (mode 0600) for \`pnpm dev\`.`);
+  console.log(`Wrote ${NAME} to .dev.vars (mode 0600) for \`bun run dev\`.`);
 } else {
   const target = resolve(root, out ?? ".universe-identity");
   if (existsSync(target) && !force) {
@@ -89,7 +89,7 @@ if (dev) {
   console.log(`Wrote a new universe identity to ${shown} (mode 0600).`);
   console.log("It is the secret: never commit it, and keep a copy offline.");
   console.log("To give it to the deployed universe:\n");
-  console.log(`  npx wrangler secret put ${NAME} < ${shown}\n`);
+  console.log(`  bunx wrangler secret put ${NAME} < ${shown}\n`);
 }
 console.log("Public keys (the universe's card shows them at /.well-known/tau.json):");
 console.log(`  sign_key  ${identity.signKey}`);

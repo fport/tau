@@ -11,7 +11,7 @@ import { RESERVED_SUB_NAMES, SUB_NAME } from "./protocol";
 
 /**
  * Names a slug can never be, because the site uses them itself: every page and template,
- * every top-level file or directory under public/ (and public/app/, the build output),
+ * every top-level file or directory under public/ (and public/static/, the build output),
  * every path prefix of the Worker and of tau-host, and a few names kept for later. A test
  * checks that every top-level entry of public/ is listed here.
  */

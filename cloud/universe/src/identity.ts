@@ -3,7 +3,7 @@
  *
  * A visitor of a web sub-tau that runs on a hub has no key and no card, so the universe
  * relays the visitor's messages under its own identity: the secret `UNIVERSE_IDENTITY`, in
- * tau-net's `TAU_NET_IDENTITY` form (the identity JSON, base64url-encoded; `pnpm run
+ * tau-net's `TAU_NET_IDENTITY` form (the identity JSON, base64url-encoded; `bun run
  * identity` makes one). Its card is served at `/.well-known/tau.json` with the universe's
  * host as the address, and hubs pin its keys at the first visit.
  *

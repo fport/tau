@@ -794,7 +794,7 @@ describe("POST checks, in the reference's order", () => {
     const worker = (await import("../src/index")).default;
     const local = { ...ALICE, address: "127.0.0.1:8791" };
     const spy = mockCards({ "http://127.0.0.1:8791": card(local) });
-    // A local universe on http://127.0.0.1:8790, as in `pnpm dev`.
+    // A local universe on http://127.0.0.1:8790, as in `bun run dev`.
     const payload = payloadOf("join", local, { universe: "127.0.0.1:8790" });
     const wire = await signRaw(new TextEncoder().encode(JSON.stringify(payload)), local.seed);
     const res = await worker.fetch(

@@ -16,6 +16,7 @@ use crate::launch::{venv_python, Launch};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Write};
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::sync::mpsc;
@@ -27,6 +28,8 @@ pub const SETTINGS_FILE: &str = "settings.json";
 pub const TAU_HOME_VAR: &str = "TAU_HOME";
 /// How long `python -m tau_core version` may take (a cold venv on a slow disk takes seconds).
 pub const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
+/// After a timed-out check is killed, how long its output pipes get to close.
+pub const KILL_GRACE: Duration = Duration::from_secs(1);
 
 /// Where a home came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,9 +140,14 @@ pub fn validate(
 }
 
 /// Run `launch` to completion, killing it after `timeout`.
+///
+/// The check runs in its own process group, so a timeout kills whatever it started as well.
+/// After the kill, the output pipes get [`KILL_GRACE`] to close; something that left the group
+/// and still holds them is not waited for.
 pub fn run_with_timeout(launch: &Launch, timeout: Duration) -> Result<Output, String> {
-    let child = launch
-        .command()
+    let mut command = launch.command();
+    command.process_group(0);
+    let child = command
         .spawn()
         .map_err(|err| format!("`{}` could not start: {err}", launch.display()))?;
     let pid = child.id();
@@ -153,12 +161,12 @@ pub fn run_with_timeout(launch: &Launch, timeout: Duration) -> Result<Output, St
     let result = match rx.recv_timeout(timeout) {
         Ok(result) => result,
         Err(_) => {
-            // SAFETY: plain kill(2) on the pid of our own child, which has not been reaped
-            // (the waiting thread still holds it).
+            // SAFETY: killpg(2) on the group of our own child. The waiting thread reaps the
+            // child only after both pipes have closed, so its pid (the group id) is still ours.
             unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+                libc::killpg(pid as libc::pid_t, libc::SIGKILL);
             }
-            let _ = rx.recv();
+            let _ = rx.recv_timeout(KILL_GRACE);
             return Err(format!(
                 "`{}` did not finish within {} s.",
                 launch.display(),
@@ -373,6 +381,39 @@ mod tests {
         .unwrap_err();
         assert!(err.contains("did not finish"), "{err}");
         assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn a_timeout_stops_what_the_check_started() {
+        // A Python that leaves a child behind holding the output pipes, then hangs.
+        let home = checkout(
+            "runner-grandchild",
+            "#!/bin/sh\nsleep 30 &\necho $! > grandchild.pid\nexec sleep 30\n",
+        );
+        let started = std::time::Instant::now();
+        let err = validate(&home, no_env, |launch| {
+            run_with_timeout(launch, Duration::from_millis(500))
+        })
+        .unwrap_err();
+        assert!(err.contains("did not finish"), "{err}");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "waited for the pipes: {:?}",
+            started.elapsed()
+        );
+        let grandchild: libc::pid_t = fs::read_to_string(home.join("grandchild.pid"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while unsafe { libc::kill(grandchild, 0) } == 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the check's child {grandchild} survived"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     #[test]

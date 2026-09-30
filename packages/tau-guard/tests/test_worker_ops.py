@@ -347,6 +347,38 @@ def test_a_failing_key_store_never_counts_as_a_first_enrollment(session: Session
     assert answer["reason"] == "key_unavailable" and session.auth.calls == []
 
 
+def test_a_key_store_that_drops_writes_fails_the_enrollment(session: Session) -> None:
+    """keyring's null backend (``PYTHON_KEYRING_BACKEND``) accepts a key and forgets it; the
+    template must not be written with a key nobody can read back."""
+    from tau_guard.store import KeychainKeyStore
+
+    class NullKeyring:
+        def get_password(self, service: str, account: str) -> None:
+            return None
+
+        def set_password(self, service: str, account: str, value: str) -> None:
+            pass
+
+        def delete_password(self, service: str, account: str) -> None:
+            raise AssertionError("nothing to delete")
+
+    keys = KeychainKeyStore(backend=NullKeyring())
+    answer = session.run(
+        "enroll", session.request("enroll"), keys=keys, user=SimulatedUser(duration=25)
+    )
+    assert answer["ok"] is False and answer["reason"] == "key_unavailable"
+    guard = session.data_dir / "guard"
+    assert not (guard / TEMPLATE_FILE).exists() and not (guard / MARKER_FILE).exists()
+
+
+def test_enroll_and_forget_wait_longer_for_the_keychain() -> None:
+    from tau_guard.store import KEY_TIMEOUT, KEY_TIMEOUT_AT_MAC
+
+    assert worker.system_deps("verify").keys.timeout == KEY_TIMEOUT
+    assert worker.system_deps("enroll").keys.timeout == KEY_TIMEOUT_AT_MAC
+    assert worker.system_deps("forget").keys.timeout == KEY_TIMEOUT_AT_MAC > KEY_TIMEOUT
+
+
 def test_adding_samples(session: Session) -> None:
     assert session.run("enroll", session.request("enroll", add=True))["reason"] == "not_enrolled"
     session.enroll()
@@ -444,6 +476,23 @@ def test_the_deep_selftest_reports_everything_without_a_camera(session: Session)
     assert details["opencv"] and details["opencv_verified"] is True
     plain = worker.selftest("darwin", request={"v": 1}, deps=deps)
     assert "details" not in plain
+
+    from tau_guard.store import KeychainKeyStore
+
+    class Junk:
+        def get_password(self, service: str, account: str) -> str:
+            return "not a key"
+
+    deps = fake_deps(keys=KeychainKeyStore(backend=Junk()), devices=Devices, permission=Permission)
+    answer = worker.selftest(
+        "darwin", request={**session.request("selftest"), "deep": True}, deps=deps
+    )
+    assert answer["details"]["keychain"] == "invalid"
+    deps = fake_deps(keys=MemoryKeyStore(fail=True), devices=Devices, permission=Permission)
+    answer = worker.selftest(
+        "darwin", request={**session.request("selftest"), "deep": True}, deps=deps
+    )
+    assert answer["details"]["keychain"] == "unavailable"
 
 
 # -- hygiene -------------------------------------------------------------------------------------

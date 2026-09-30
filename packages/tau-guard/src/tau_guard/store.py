@@ -14,8 +14,19 @@ Layout of ``TAU_DATA_DIR/guard/`` (0700, chmod explicitly):
 The key (256 bits, base64) lives in the macOS Keychain through ``keyring`` (service
 ``tau-guard``, account ``template-key-v1``) and is read only inside the worker, with a timeout
 (:class:`KeychainKeyStore`); a timeout or a failure is ``key_unavailable``. A copy of the data
-dir or a backup therefore cannot decrypt the template. Tests use :class:`MemoryKeyStore`, and
-no test touches the real Keychain.
+dir or a backup therefore cannot decrypt the template. The store always builds keyring's macOS
+Keychain backend itself (:func:`macos_keyring`), never the default backend that
+``PYTHON_KEYRING_BACKEND``, a ``keyringrc.cfg`` or an installed plugin (a null or a plaintext
+file backend) would pick; the hub drops that variable from the worker's environment too. A
+first enrollment reads the new key back before it writes anything, so a key store that drops
+writes fails the enrollment (``key_unavailable``) instead of leaving a template nobody can
+decrypt. Tests use :class:`MemoryKeyStore`, and no test touches the real Keychain.
+
+The key timeout is :data:`KEY_TIMEOUT` (5 s) for a check and :data:`KEY_TIMEOUT_AT_MAC` (30 s)
+for an enrollment or ``forget``, where the owner is at the Mac and may have to allow access in
+macOS's Keychain prompt (it appears after a Python upgrade changed the interpreter). A Keychain
+item that is not a 32-byte base64 key is :class:`KeyInvalid` (``key_unavailable``); ``forget``
+still removes it.
 
 :func:`load_template` reads the file again for every verification, so ``tau guard forget``
 takes effect at once. It raises :class:`StoreError` with ``not_enrolled`` (no template),
@@ -49,6 +60,9 @@ __all__ = [
     "MAGIC",
     "MARKER_FILE",
     "TEMPLATE_FILE",
+    "KEY_TIMEOUT",
+    "KEY_TIMEOUT_AT_MAC",
+    "KeyInvalid",
     "KeyStore",
     "KeyUnavailable",
     "KeychainKeyStore",
@@ -60,6 +74,7 @@ __all__ = [
     "first_enrollment",
     "forget",
     "load_template",
+    "macos_keyring",
     "new_key",
     "read_marker",
     "save_enrollment",
@@ -76,6 +91,7 @@ KEY_BYTES = 32
 KEY_SERVICE = "tau-guard"
 KEY_ACCOUNT = "template-key-v1"
 KEY_TIMEOUT = 5.0
+KEY_TIMEOUT_AT_MAC = 30.0
 MAX_TEMPLATE_BYTES = 1024 * 1024
 MAX_SAMPLES = 64
 VERSION = 1
@@ -92,6 +108,10 @@ class StoreError(Exception):
 
 class KeyUnavailable(Exception):
     """The key store failed or did not answer in time."""
+
+
+class KeyInvalid(KeyUnavailable):
+    """The key store holds something under the key's name that is not a key."""
 
 
 def secure_dir(path: Path) -> Path:
@@ -148,11 +168,28 @@ class MemoryKeyStore:
         return existed
 
 
+def macos_keyring() -> Any:
+    """keyring's macOS Keychain backend, built explicitly: never the backend that
+    ``PYTHON_KEYRING_BACKEND``, a ``keyringrc.cfg`` or an installed plugin would choose. Raises
+    :class:`KeyUnavailable` when it cannot be loaded or is not usable (not macOS, no Security
+    framework)."""
+    try:
+        from keyring.backends import macOS  # type: ignore[import-not-found]
+    except Exception as exc:
+        name = type(exc).__name__
+        raise KeyUnavailable(f"the macOS Keychain backend cannot be loaded: {name}") from exc
+    if not macOS.Keyring.viable:
+        raise KeyUnavailable("the macOS Keychain backend is not usable here")
+    backend = macOS.Keyring()
+    backend.keychain = None  # the login keychain, never a KEYCHAIN_PATH or property override
+    return backend
+
+
 class KeychainKeyStore:
     """The key in the macOS Keychain through ``keyring`` (service ``tau-guard``, account
     ``template-key-v1``). Every call runs in a daemon thread and gives up after ``timeout``
-    seconds (a Keychain prompt nobody answers must not hang the worker). ``backend`` is the
-    ``keyring`` module (tests pass a fake; the real one is imported lazily)."""
+    seconds (a Keychain prompt nobody answers must not hang the worker). ``backend`` is a
+    keyring backend (tests pass a fake); by default :func:`macos_keyring`, built lazily."""
 
     def __init__(self, *, timeout: float = KEY_TIMEOUT, backend: Any | None = None) -> None:
         self.timeout = timeout
@@ -160,9 +197,7 @@ class KeychainKeyStore:
 
     def _keyring(self) -> Any:
         if self._backend is None:
-            import keyring  # type: ignore[import-not-found]
-
-            self._backend = keyring
+            self._backend = macos_keyring()
         return self._backend
 
     def _call(self, name: str, *args: Any) -> Any:
@@ -180,7 +215,10 @@ class KeychainKeyStore:
         if not done.wait(self.timeout):
             raise KeyUnavailable(f"the Keychain did not answer within {self.timeout:g} s")
         if "error" in box:
-            raise KeyUnavailable(f"the Keychain failed: {type(box['error']).__name__}")
+            error = box["error"]
+            if isinstance(error, KeyUnavailable):
+                raise error
+            raise KeyUnavailable(f"the Keychain failed: {type(error).__name__}")
         return box.get("value")
 
     def get(self) -> bytes | None:
@@ -190,16 +228,17 @@ class KeychainKeyStore:
         try:
             key = base64.b64decode(str(value), validate=True)
         except ValueError as exc:
-            raise KeyUnavailable("the Keychain item is not a key") from exc
+            raise KeyInvalid("the Keychain item is not a key") from exc
         if len(key) != KEY_BYTES:
-            raise KeyUnavailable("the Keychain item is not a key")
+            raise KeyInvalid("the Keychain item is not a key")
         return key
 
     def set(self, key: bytes) -> None:
         self._call("set_password", KEY_SERVICE, KEY_ACCOUNT, base64.b64encode(key).decode())
 
     def delete(self) -> bool:
-        if self.get() is None:
+        """Remove the item, whether or not it holds a valid key."""
+        if self._call("get_password", KEY_SERVICE, KEY_ACCOUNT) is None:
             return False
         self._call("delete_password", KEY_SERVICE, KEY_ACCOUNT)
         return True

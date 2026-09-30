@@ -44,7 +44,8 @@ Operations:
   ``add`` the existing template; then LocalAuthentication (device owner, prompt text from
   ``reason_text``: ``touch_id_failed`` or ``touch_id_unavailable`` when it does not pass, and the
   camera stays off); then the guided capture (:mod:`tau_guard.enroll`); then the key (a new one
-  only for a first enrollment), the encrypted template and the marker. The verdict carries
+  only for a first enrollment, read back before anything is written: a key store that drops
+  writes is ``key_unavailable``), the encrypted template and the marker. The verdict carries
   ``first``.
 - ``forget``: refused with ``SSH_CONNECTION`` set; LocalAuthentication; then the template,
   the marker and the key are removed (:func:`tau_guard.store.forget`). ``{"ok", "reason":
@@ -52,9 +53,11 @@ Operations:
 - ``touch_id``: ``touch_id_unavailable`` until issue 114.
 - ``selftest``: the platform and the imports, ``{"type": "verdict", "ok", "reason", "checks"}``
   (``reason`` is ``null`` when every check passed). With ``"deep": true`` (``tau guard
-  doctor``) it adds ``details``: OpenCV's version, both model checksums, the Keychain item,
-  whether the template decrypts, the camera device and the camera permission. It never opens a
-  camera or shows a prompt.
+  doctor``) it adds ``details``: OpenCV's version, both model checksums, the Keychain item
+  (``ok``, ``missing``, ``invalid`` or ``unavailable``), whether the template decrypts, the
+  camera device and the camera permission. It never opens a camera or shows a
+  LocalAuthentication prompt; reading the Keychain may bring up macOS's Keychain access prompt
+  (after a Python upgrade changed the interpreter), which the doctor explains.
 
 The module imports nothing but the standard library at start, so the worker starts fast;
 camera, pyobjc, keyring and cryptography imports happen inside the operations. Tests call
@@ -145,12 +148,14 @@ class Deps:
     """For ``selftest``: → a :class:`~tau_guard.camera.Permission`."""
 
 
-def system_deps() -> Deps:
-    """The real camera, engine, Keychain and LocalAuthentication (constructed lazily)."""
+def system_deps(op: str = "verify") -> Deps:
+    """The real camera, engine, Keychain and LocalAuthentication (constructed lazily). An
+    enrollment and ``forget`` run with the owner at the Mac, so their Keychain calls may wait
+    for macOS's access prompt (:data:`~tau_guard.store.KEY_TIMEOUT_AT_MAC`)."""
     from tau_guard.camera import AVFoundationCamera, AVFoundationDevices, AVFoundationPermission
     from tau_guard.engine import OpenCvFaceEngine, sface_path
     from tau_guard.localauth import MacLocalAuth
-    from tau_guard.store import KeychainKeyStore
+    from tau_guard.store import KEY_TIMEOUT, KEY_TIMEOUT_AT_MAC, KeychainKeyStore
 
     class _LazyLocalAuth:
         def authenticate(self, policy: str, reason: str, *, timeout: float = 60.0) -> str:
@@ -165,7 +170,9 @@ def system_deps() -> Deps:
         platform=sys.platform,
         source=lambda camera: AVFoundationCamera(camera),
         engine=lambda data_dir: OpenCvFaceEngine(sface_path(data_dir)),
-        keys=KeychainKeyStore(),
+        keys=KeychainKeyStore(
+            timeout=KEY_TIMEOUT_AT_MAC if op in ("enroll", "forget") else KEY_TIMEOUT
+        ),
         local_auth=_LazyLocalAuth(),
         devices=AVFoundationDevices,
         permission=AVFoundationPermission,
@@ -339,6 +346,7 @@ def _authenticate(request: dict[str, Any], deps: Deps) -> str | None:
 
 
 def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]:
+    import hmac
     import secrets
 
     from tau_guard.camera import CameraError
@@ -401,6 +409,9 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
             raise StoreError("key_unavailable", "the key disappeared during the enrollment")
         if first:
             deps.keys.set(key)
+            stored = deps.keys.get()  # a key store that drops writes must not pass
+            if stored is None or not hmac.compare_digest(stored, key):
+                raise StoreError("key_unavailable", "the key store did not keep the key")
     except (KeyUnavailable, StoreError) as exc:
         log(f"enroll: the key cannot be stored ({type(exc).__name__})")
         return verdict(False, "key_unavailable", **camera)
@@ -445,7 +456,7 @@ def selftest(
     deps: Deps | None = None,
 ) -> dict[str, Any]:
     """Platform and import checks (plus ``details`` when ``deep``); never opens a camera or a
-    prompt."""
+    LocalAuthentication prompt."""
     platform = sys.platform if platform is None else platform
     checks: dict[str, bool] = {"platform": platform == "darwin"}
     for name in SELFTEST_IMPORTS:
@@ -474,7 +485,7 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
         sface_path,
         vendored_yunet,
     )
-    from tau_guard.store import KeyUnavailable, StoreError, load_template
+    from tau_guard.store import KeyInvalid, KeyUnavailable, StoreError, load_template
 
     details: dict[str, Any] = {}
     try:
@@ -489,6 +500,8 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
     details["sface"] = model_state(sface_path(data_dir), SFACE_SHA256) if data_dir else "missing"
     try:
         details["keychain"] = "ok" if deps.keys.get() is not None else "missing"
+    except KeyInvalid:
+        details["keychain"] = "invalid"
     except KeyUnavailable:
         details["keychain"] = "unavailable"
     if data_dir is None or not (data_dir / ENROLLED_MARKER).is_file():
@@ -537,7 +550,7 @@ def run(
         return verdict(False, "unsupported_platform")
     if op == "verify" and not _enrolled(request):
         return verdict(False, "not_enrolled" if _data_dir(request) else "error")
-    deps = deps or system_deps()
+    deps = deps or system_deps(op)
     if op == "verify":
         return verify_op(request, deps, emit)
     if op == "enroll":

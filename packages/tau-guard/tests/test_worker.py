@@ -17,6 +17,7 @@ import pytest
 from tau_guard.runner import (
     DEFAULT_COMMAND,
     KILL_GRACE,
+    WORKER_ENV,
     Malformed,
     Progress,
     WorkerRun,
@@ -406,6 +407,13 @@ def test_the_worker_runs_without_the_working_directory_on_its_path(
     monkeypatch.chdir(shadow.parent)
     monkeypatch.setenv("PYTHONPATH", str(shadow.parent))
     assert "-P" in DEFAULT_COMMAND and "PYTHONPATH" not in worker_env()
+    hub = {
+        "PATH": "/usr/bin",
+        "PYTHONPATH": "/tmp/shadow",
+        "PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
+        "KEYCHAIN_PATH": "/tmp/other.keychain",
+    }
+    assert worker_env(hub) == {"PATH": "/usr/bin", **WORKER_ENV}
     guard_dir = tmp_path / "guard"
     guard_dir.mkdir()
     collector = Collector()

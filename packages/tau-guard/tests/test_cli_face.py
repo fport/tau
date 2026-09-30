@@ -407,6 +407,10 @@ def test_doctor_reports_problems(tmp_path: Path) -> None:
     assert "fail sface:" in out and "warn opencv:" in out and "fail keychain:" in out
     assert "warn liveness:" in out and "fail camera:" in out and "warn camera permission:" in out
     assert t("guard.verdict.key_unavailable") in out
+    assert t("guard.cli.doctor.keychain_unavailable") in out  # says how to answer macOS's prompt
+    result, _ = doctor(config, selftest_answer(keychain="invalid", template="key_unavailable"))
+    assert "fail keychain:" in result.output
+    assert t("guard.cli.doctor.keychain_invalid") in result.output
 
 
 def test_doctor_names_the_hubs_app(tmp_path: Path) -> None:

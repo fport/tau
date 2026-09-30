@@ -331,8 +331,17 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
     "guard.cli.doctor.keychain_ok": {"en": "readable", "tr": "okunabiliyor"},
     "guard.cli.doctor.keychain_missing": {"en": "no key", "tr": "anahtar yok"},
     "guard.cli.doctor.keychain_unavailable": {
-        "en": "could not be read",
-        "tr": "okunamadı",
+        "en": "could not be read in time; if macOS asked for Keychain access (it does after a "
+        "Python upgrade), run `tau guard doctor` at the Mac and allow it",
+        "tr": "zamanında okunamadı; macOS Anahtar Zinciri erişimi sorduysa (Python "
+        "güncellemesinden sonra sorar), `tau guard doctor` komutunu Mac'in başında çalıştır ve "
+        "izin ver",
+    },
+    "guard.cli.doctor.keychain_invalid": {
+        "en": "the item tau-guard / template-key-v1 is not a tau-guard key; `tau guard forget` "
+        "removes it",
+        "tr": "tau-guard / template-key-v1 öğesi bir tau-guard anahtarı değil; `tau guard "
+        "forget` onu siler",
     },
     "guard.cli.doctor.modes": {
         "en": "unlock_liveness = {liveness}, step_up = {step_up}, unlock_fallback = {fallback}, "

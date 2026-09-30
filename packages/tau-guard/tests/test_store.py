@@ -23,6 +23,7 @@ from tau_guard.store import (
     MARKER_FILE,
     TEMPLATE_FILE,
     KeychainKeyStore,
+    KeyInvalid,
     KeyStore,
     KeyUnavailable,
     MemoryKeyStore,
@@ -31,6 +32,7 @@ from tau_guard.store import (
     first_enrollment,
     forget,
     load_template,
+    macos_keyring,
     new_key,
     read_marker,
     save_enrollment,
@@ -244,8 +246,43 @@ def test_the_keychain_store_through_keyring() -> None:
     assert store.get() == key
     assert store.delete() is True and store.get() is None
     backend.items[(KEY_SERVICE, KEY_ACCOUNT)] = "not a key"
-    with pytest.raises(KeyUnavailable):
+    with pytest.raises(KeyInvalid):
         store.get()
+
+
+def test_a_keychain_item_that_is_not_a_key_can_still_be_forgotten(tmp_path: Path) -> None:
+    backend = FakeKeyring()
+    store = KeychainKeyStore(backend=backend)
+    for junk in ("not a key", "c2hvcnQ="):  # not base64; base64 but 5 bytes
+        backend.items[(KEY_SERVICE, KEY_ACCOUNT)] = junk
+        with pytest.raises(KeyInvalid):
+            store.get()
+        with pytest.raises(StoreError) as caught:
+            first_enrollment(store)  # an enrollment refuses it (key_unavailable) ...
+        assert caught.value.reason == "key_unavailable"
+        assert forget(tmp_path / "guard", store) == ["key"]  # ... and forget removes it
+        assert backend.items == {}
+
+
+def test_the_store_pins_the_macos_keychain_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``PYTHON_KEYRING_BACKEND`` (a null or plaintext backend) never decides where the key
+    goes: off macOS the store refuses instead of falling back to another backend. Nothing here
+    reads or writes a real Keychain item."""
+    import platform
+
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
+    try:
+        from keyring.backends import macOS
+    except ImportError:  # keyring is a macOS-only dependency
+        macOS = None  # noqa: N806
+    if macOS is not None and platform.system() == "Darwin":
+        backend = macos_keyring()  # built, never called
+        assert type(backend) is macOS.Keyring and backend.keychain is None
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    with pytest.raises(KeyUnavailable):
+        macos_keyring()
+    with pytest.raises(KeyUnavailable):
+        KeychainKeyStore().get()
 
 
 def test_the_keychain_read_has_a_timeout() -> None:

@@ -19,7 +19,7 @@ the value's type and length, never the value: a worker bug must not copy an embe
 
 The worker runs as ``python -P -m tau_guard.worker`` in ``guard/`` (``cwd``) without the hub's
 ``PYTHONPATH``, so a ``tau_guard`` directory in the hub's working directory cannot stand in for
-it.
+it, and without ``PYTHON_KEYRING_BACKEND`` or ``KEYCHAIN_PATH`` (:data:`DROPPED_ENV`).
 """
 
 from __future__ import annotations
@@ -73,8 +73,10 @@ WORKER_REASONS = frozenset(VERDICT_REASONS) - HUB_REASONS
 LIVENESS = frozenset({"challenge", "passive", "none"})
 MAX_CAMERA_MS = 10 * 60 * 1000
 WORKER_ENV = {"OPENCV_LOG_LEVEL": "ERROR", "OPENCV_AVFOUNDATION_SKIP_AUTH": "1"}
-DROPPED_ENV = ("PYTHONPATH",)
-"""Hub variables a worker never inherits."""
+DROPPED_ENV = ("PYTHONPATH", "PYTHON_KEYRING_BACKEND", "KEYCHAIN_PATH")
+"""Hub variables a worker never inherits: a module path that could shadow the worker, and the
+switches that point keyring somewhere else than the macOS Keychain (the store pins that backend
+itself as well, :func:`tau_guard.store.macos_keyring`)."""
 
 
 class Malformed(ValueError):

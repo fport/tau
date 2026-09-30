@@ -666,7 +666,7 @@ def _doctor_lines(ctx: click.Context, config: Config) -> list[tuple[str, str, st
         status = "warn" if template == "not_enrolled" else "fail"
         lines.append((status, "template", _reason_text(template, language)))
     keychain = details.get("keychain")
-    if keychain is not None:
+    if keychain in ("ok", "missing", "invalid", "unavailable"):
         status = {"ok": "ok", "missing": "warn"}.get(str(keychain), "fail")
         add(status, "keychain", f"guard.cli.doctor.keychain_{keychain}")
     if settings is not None:

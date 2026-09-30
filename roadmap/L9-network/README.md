@@ -25,5 +25,8 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 102 | [Deploy a spine without cloning the repo](102-spine-without-clone.md) | AFK | 078, 092 |
 | 103 | [Card key rotation and contact re-keying](103-key-rotation.md) | AFK | 093 |
 | 104 | [R2 media store in cloud mode](104-cloud-media-r2.md) | AFK | 094 |
+| 105 | [Keep the hub link within the Workers Free plan: WebSocket hibernation instead of a DO-held long poll](105-spine-free-plan-link.md) | AFK | 092, 093 |
+| 106 | [Network turns without the owner's profile: a context option in `build_agent`](106-network-turn-context.md) | AFK | 093 |
+| 107 | [`tau doctor` checks from components](107-component-doctor-checks.md) | AFK | 093 |
 
 Live status: `python3 roadmap/board.py --layer L9`

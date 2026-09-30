@@ -35,3 +35,4 @@ The first live cloud-mode tau. Steps for the user:
 ## Comments
 
 - 2026-09-30: opened with ADR 0007.
+- 2026-09-30: note from the L2 session. The LiteLLM proxy (010) is a local docker compose stack, so a cloud-mode container uses the direct-provider mode (`provider = "anthropic"` or `"bedrock"`) and gets no proxy budgets. Set a spend limit at the provider for the key you give the container.

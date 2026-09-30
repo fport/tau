@@ -164,8 +164,10 @@ The decisions are in [ADR 0008](../../docs/adr/0008-owner-guard.md) (decisions 1
       count toward the cooldown and their success resets nothing.
     - A step arms only on a frame near the baseline after its prompt, so a head (or clip) that
       is already turned when the prompt appears does not pass. Every challenge failure,
-      including a step past its deadline, is `spoof` (counted), so a looping clip cannot retry
-      for free; the camera's 20 s cap ending a check mid-challenge is `timeout`.
+      including a step past its deadline, is `spoof` (counted). (Corrected in the verification
+      round below: as first built, a cancel or a lock at a prompt was a free `cancelled`, and
+      the camera's 20 s cap ending a check was an uncounted `timeout`, so a looping clip could
+      retry for free.)
     - A worker verdict may carry `camera_ms`; the hub writes the `camera_open` audit record from
       it. Local CLI runs are audited too (channel `cli`, trigger `local`).
     - `verify` without a hub (or with the hub's guard off) runs in a local worker and unlocks
@@ -181,3 +183,70 @@ The decisions are in [ADR 0008](../../docs/adr/0008-owner-guard.md) (decisions 1
     be skipped on screen (the verdict is unaffected).
   - **Left for the owner:** the two (user) criteria: a live `tau guard setup`, a `tau tui`
     unlock and a tier-2 step-up, and the printed-photo and phone-clip attempts.
+- 2026-09-30: verification fixes on `guard/service` (commits 3dfa1d2, 7f079ec, 2eb9ceb, 969074a,
+  ad69da9, c90db7e, cc62f45, 5db8220, d12f0e7, 40d6aa8, 4c573d5, 383499a). Every blocker and
+  major of the contract and adversarial review is addressed (one of them partly, by design, see
+  below), and most minors; each fix has a test. tau-guard now has 536 tests (8 opt-in skipped);
+  the full suite passes except the pre-existing `test_no_personal_paths_in_tracked_files`
+  (issue 130); the tau-guard tests also pass with pyobjc and keyring imports blocked; the opt-in
+  `-m models` tests pass on the Mac from the existing cache (8, nothing downloaded into the
+  repo); ruff and `mkdocs build --strict` are clean. ADR 0008 gained a "Refinement (issue 112)"
+  section with all of this.
+  - **The camera's 20 s limit.** The check knows when the frames stop (`stops_at`): the frontal
+    match's deadline never lies beyond it, a prompt is published only when its step (the last
+    one with the match after it) can end in time, else the check ends as `timeout` before the
+    prompt. Frames that stop anyway give the phase's verdict: `no_match` after a non-matching
+    quality frame (a stranger with `verify_timeout_seconds = 30` now counts), the hint,
+    `spoof` during a published step (closing the lid does not skip a prompt), `no_match` after
+    the steps.
+  - **Keychain.** The store builds keyring's macOS backend itself (never the one
+    `PYTHON_KEYRING_BACKEND` or a keyringrc picks) and the hub drops that variable and
+    `KEYCHAIN_PATH` from the worker; a first enrollment reads the new key back before it writes
+    anything. A malformed Keychain item is `KeyInvalid`, forget removes it and the doctor names
+    it. Enroll and forget wait 30 s for the Keychain; the doctor explains an unreadable one.
+  - **Abandoned challenges count.** A cancel or any lock while the record shows `turn_left`,
+    `turn_right` or `center` ends the check as `spoof` (counted; a strict attempt locks with
+    `step_up_failed`, a lock already under way keeps its trigger). Before the first prompt it
+    stays `cancelled`; enrollments never count.
+  - **Identity during the steps.** Challenge frames near the baseline are embedded; each step
+    needs 2 matches and no more misses than matches, else `spoof`. From the frontal match on, a
+    face gone for more than 0.2 s aborts. The owner's photo for the frontal checks with someone
+    else turning in between went from 200/200 to 0/200 passes in the probe.
+  - **Movement in a pause.** `|Δp|` beyond 0.15 while no prompt is up aborts (`spoof`). Head
+    shaking at 0.5/0.8 Hz went from 12/9 % to 0.2/0 % of unlocks (0.3 Hz stays at 3 %).
+  - **Minors fixed.** forget reports what it removed when the key cannot go and still writes
+    `enabled = false` once the marker is gone (exit 1, run it again); enrollment checks the
+    camera permission and device before LocalAuthentication, and the CLI shows that prompt as
+    "Touch ID or your Mac password"; a template file must carry the marker's enrollment id;
+    more than one "built-in" camera or a copied uniqueID is `camera_unavailable`, and the doctor
+    warns on a non-`bltn` camera; the doctor prints the models' pinned sha256 and, after a
+    model change, the enrolled and expected sha; setup says the hub's app needs its own camera
+    permission (enrollment on a first setup runs locally because the hub's guard is not active
+    yet; this is a deviation from "enrollment goes through the hub when one runs"); the README's
+    honest limits now follow decision 23.
+  - **Left to the owner (spec-level, measured with the synthetic probe, 400 runs each).**
+    Looping clips of natural head turns still pass 4-16 % of 2-step unlocks (a left-only loop
+    with a 1 s hold: 16 %) and 1-7 % of 3-step step-ups; with the cooldown schedule that is
+    about 10 counted attempts per hour and 38 in 8 hours. A noisy simulated owner passes 99 %
+    (2 steps) and 98.5 % (3 steps), as before the fixes. Timing rules a human can still meet
+    help little: a 1.5 s window to return after `center` took the worst loop from 17 % to 13 %
+    (no cost to the simulated owner, whose real prompt latency is unknown), and a 1.2 s window
+    with a 0.4-1.6 s hold got it to 8 % at a 7-10 % owner FRR cost; neither was made. Options
+    that need an ADR change: 3 steps for unlock, up and down prompts (the enrollment already
+    calibrates them), a return window, or a lockout after repeated `spoof` that only Touch ID
+    or the password lifts (114). Also for the owner: a slow
+    step is a counted `spoof` and a failed step-up locks, so watch step-ups in the live test; a
+    second face at 45 %+ but under 40 px is ignored (kept as the spec says, recorded as a
+    limit); check during the live setup whether macOS's camera prompt stays up after the worker
+    answers `permission_pending` and exits.
+  - **Not changed, with reasons.** The hub-enrolled "enrolled" versus "enrolled again" wording
+    comes from the marker: it stays accurate (a present marker means a template was replaced),
+    and the attempt record's shape is fixed by tau-core. The rolled-back-template fix checks the
+    marker's enrollment id instead of putting it into the AAD, so the file format of ADR 0008
+    stays as specified.
+  - **For 113.** Esc or Ctrl-C while a head-turn prompt is up now counts as a failed check, and
+    in a step-up it locks tau; a channel should only cancel on the user's explicit request.
+  - **For 114.** `KEY_TIMEOUT_AT_MAC` (30 s) covers enroll and forget; the lockout option above
+    belongs with Touch ID.
+  - **For the orchestrator.** Raise tau-guard's (and tau-tui's) `tau-core>=` floor in the
+    release that ships the guard: 112 relies on the new `PROGRESS_STEPS` values too.

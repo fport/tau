@@ -94,6 +94,11 @@ def test_the_worker_module_imports_only_the_standard_library() -> None:
 # -- parse_line ----------------------------------------------------------------------------------
 
 
+EMBEDDING = [round(0.0123 * i, 4) for i in range(1, 129)]
+"""What a worker bug might put where a string belongs."""
+FLOATS = [0.0123, 0.0246]
+
+
 def line(message: Any) -> bytes:
     return json.dumps(message).encode()
 
@@ -134,11 +139,44 @@ def test_parse_progress_and_verdict() -> None:
         line({"type": "verdict", "ok": False, "reason": "cooldown"}),  # the hub decides that
         line({"type": "verdict", "ok": False, "reason": "no_match", "score": "high"}),
         line({"type": "verdict", "ok": False, "reason": "no_match", "liveness": "vibes"}),
+        # values of the wrong type never raise anything but Malformed (no TypeError)
+        line({"type": "progress", "step": ["look"]}),
+        line({"type": "progress", "step": "look", "hint": FLOATS}),
+        line({"type": "progress", "step": "look", "hint": {"a": 1}}),
+        line({"type": FLOATS}),
+        line({"type": {"verdict": True}}),
+        line({"type": "verdict", "ok": False, "reason": FLOATS}),
+        line({"type": "verdict", "ok": False, "reason": {"no_match": 1}}),
+        line({"type": "verdict", "ok": True, "reason": "match", "method": ["face"]}),
+        line({"type": "verdict", "ok": True, "reason": "match", "method": {"face": 1}}),
+        line({"type": "verdict", "ok": False, "reason": "no_match", "liveness": FLOATS}),
+        line({"type": "verdict", "ok": False, "reason": "no_match", "liveness": {"a": 1}}),
+        line({"type": "verdict", "ok": False, "reason": "no_match", "score": FLOATS}),
+        b'{"type": "verdict", "ok": false, "reason": "no_match", "score": NaN}',
+        b'{"type": "verdict", "ok": false, "reason": "no_match", "score": Infinity}',
+        b'{"type": "verdict", "ok": false, "reason": "no_match", "score": 1' + b"0" * 400 + b"}",
+        b"[" * 5000 + b"]" * 5000,
     ],
 )
 def test_malformed_lines(raw: bytes) -> None:
     with pytest.raises(Malformed):
         parse_line(raw)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"type": EMBEDDING},
+        {"type": "verdict", "ok": False, "reason": str(EMBEDDING)},
+        {"type": "verdict", "ok": False, "reason": "no_match", "liveness": str(EMBEDDING)},
+        {"type": "progress", "step": str(EMBEDDING)},
+        {"type": "verdict", "ok": False, "reason": EMBEDDING},
+    ],
+)
+def test_malformed_messages_never_echo_worker_values(message: dict) -> None:
+    with pytest.raises(Malformed) as caught:
+        parse_line(line(message))
+    assert "0.0123" not in str(caught.value) and len(str(caught.value)) < 100
 
 
 # -- WorkerRun with the fake worker --------------------------------------------------------------
@@ -288,3 +326,49 @@ def test_a_missing_worker_binary_gives_error(tmp_path: Path) -> None:
     )
     run.start()
     assert collector.outcomes == [Outcome(False, "error")]
+
+
+def raw_worker(tmp_path: Path, message: dict) -> list[str]:
+    worker = tmp_path / "raw_worker.py"
+    worker.write_text(
+        f"import sys\nsys.stdin.read()\nprint({json.dumps(message)!r}, flush=True)\n"
+        "import time\ntime.sleep(30)\n",
+        encoding="utf-8",
+    )
+    return [sys.executable, str(worker)]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"type": "verdict", "ok": False, "reason": EMBEDDING},
+        {"type": "progress", "step": "look", "hint": EMBEDDING},
+        {"type": "verdict", "ok": False, "reason": "no_match", "liveness": {"a": 1}},
+        {"type": "verdict", "ok": True, "reason": "match", "method": ["face"]},
+        {"type": "verdict", "ok": False, "reason": str(EMBEDDING)},
+    ],
+)
+def test_a_value_of_the_wrong_type_ends_the_run_with_error_at_once(
+    tmp_path: Path, message: dict, caplog: pytest.LogCaptureFixture, monkeypatch
+) -> None:
+    uncaught: list[BaseException | None] = []
+    monkeypatch.setattr(threading, "excepthook", lambda args: uncaught.append(args.exc_value))
+    collector = Collector()
+    began = time.monotonic()
+    run = WorkerRun(
+        "verify",
+        {"v": 1},
+        command=raw_worker(tmp_path, message),
+        log_dir=tmp_path,
+        timeout=20,
+        on_progress=collector.on_progress,
+        on_done=collector.on_done,
+    )
+    with caplog.at_level("DEBUG", logger="tau_guard"):
+        run.start()
+        assert collector.done.wait(10)
+        assert run.wait(5)
+    assert collector.outcomes == [Outcome(False, "error")]
+    assert time.monotonic() - began < 5  # never left to the watchdog
+    assert uncaught == []  # the reader thread did not die
+    assert "0.0123" not in caplog.text  # the hub log names the field, never the value

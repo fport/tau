@@ -11,21 +11,25 @@
 - :meth:`WorkerRun.stop` (cancel, lock, hub stop) and the watchdog (timeout) send SIGTERM to
   the worker's process group, then SIGKILL after :data:`KILL_GRACE` seconds.
 
-A malformed line, an unknown step or reason, a success without ``reason: "match"`` and a
-``face`` or ``touch_id`` method, or an exit without a verdict all end the run with ``error``.
+A malformed line (including a value of the wrong type), an unknown step or reason, a success
+without ``reason: "match"`` and a ``face`` or ``touch_id`` method, or an exit without a verdict
+all end the run with ``error``. The hub log then names the field that broke the protocol and
+the value's type and length, never the value: a worker bug must not copy an embedding into
+``tau.log``.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import signal
 import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -66,7 +70,20 @@ WORKER_ENV = {"OPENCV_LOG_LEVEL": "ERROR", "OPENCV_AVFOUNDATION_SKIP_AUTH": "1"}
 
 
 class Malformed(ValueError):
-    """A worker line that breaks the protocol."""
+    """A worker line that breaks the protocol. The message never holds a worker value."""
+
+
+def _shape(value: object) -> str:
+    """A worker value for the hub log: its type and length, never the value itself."""
+    name = type(value).__name__
+    if isinstance(value, str | bytes | list | dict):
+        return f"{name} of length {len(value)}"
+    return name
+
+
+def _member(value: object, allowed: Collection[str]) -> bool:
+    """``value`` is one of the ``allowed`` strings (a list or a dict never raises here)."""
+    return isinstance(value, str) and value in allowed
 
 
 @dataclass(frozen=True)
@@ -95,7 +112,7 @@ def parse_line(raw: bytes, *, op: str = "verify") -> Progress | Outcome:
     :class:`Malformed`. Unknown keys are ignored and never passed on."""
     try:
         message = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError) as exc:
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise Malformed("not a JSON line") from exc
     if not isinstance(message, dict):
         raise Malformed("not a JSON object")
@@ -103,13 +120,13 @@ def parse_line(raw: bytes, *, op: str = "verify") -> Progress | Outcome:
     if kind == "progress":
         step = message.get("step")
         hint = message.get("hint")
-        if step not in PROGRESS_STEPS:
-            raise Malformed(f"unknown progress step {step!r}")
-        if hint is not None and hint not in WORKER_REASONS:
-            raise Malformed(f"unknown hint {hint!r}")
+        if not _member(step, PROGRESS_STEPS):
+            raise Malformed(f"unknown progress step ({_shape(step)})")
+        if hint is not None and not _member(hint, WORKER_REASONS):
+            raise Malformed(f"unknown hint ({_shape(hint)})")
         return Progress(str(step), hint, _deadline(message.get("deadline")))
     if kind != "verdict":
-        raise Malformed(f"unknown message type {kind!r}")
+        raise Malformed(f"unknown message type ({_shape(kind)})")
     ok = message.get("ok")
     reason = message.get("reason")
     method = message.get("method")
@@ -118,24 +135,30 @@ def parse_line(raw: bytes, *, op: str = "verify") -> Progress | Outcome:
     if op == "selftest":
         if ok and reason is not None:
             raise Malformed("a passing selftest has no reason")
-        if not ok and reason not in WORKER_REASONS:
-            raise Malformed(f"unknown reason {reason!r}")
-        return Outcome(ok, reason or "match")
-    if reason not in WORKER_REASONS:
-        raise Malformed(f"unknown reason {reason!r}")
-    if ok and (reason != "match" or method not in SUCCESS_METHODS):
+        if not ok and not _member(reason, WORKER_REASONS):
+            raise Malformed(f"unknown reason ({_shape(reason)})")
+        return Outcome(ok, str(reason) if reason is not None else "match")
+    if not _member(reason, WORKER_REASONS):
+        raise Malformed(f"unknown reason ({_shape(reason)})")
+    if ok and (reason != "match" or not _member(method, SUCCESS_METHODS)):
         raise Malformed("a success needs reason 'match' and method 'face' or 'touch_id'")
     if not ok and reason == "match":
         raise Malformed("a failure cannot say 'match'")
     score = message.get("score")
     if score is not None:
         if isinstance(score, bool) or not isinstance(score, int | float):
-            raise Malformed("score must be a number")
-        score = round(float(score), 2)
+            raise Malformed(f"score must be a number ({_shape(score)})")
+        try:
+            number = float(score)
+        except OverflowError as exc:
+            raise Malformed("score must be a finite number") from exc
+        if not math.isfinite(number):
+            raise Malformed("score must be a finite number")
+        score = round(number, 2)
     liveness = message.get("liveness")
-    if liveness is not None and liveness not in LIVENESS:
-        raise Malformed(f"unknown liveness {liveness!r}")
-    return Outcome(ok, str(reason), method if ok else None, score, liveness)
+    if liveness is not None and not _member(liveness, LIVENESS):
+        raise Malformed(f"unknown liveness ({_shape(liveness)})")
+    return Outcome(ok, str(reason), str(method) if ok else None, score, liveness)
 
 
 def worker_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -344,6 +367,10 @@ class WorkerRun:
                 message = parse_line(raw, op=self.op)
             except Malformed as exc:
                 logger.warning("guard: the worker broke the protocol: %s", exc)
+                self._malformed()
+                return Outcome(False, "error")
+            except Exception as exc:  # a parser gap must fail closed, never kill this thread
+                logger.warning("guard: a worker line could not be read (%s)", type(exc).__name__)
                 self._malformed()
                 return Outcome(False, "error")
             if isinstance(message, Outcome):

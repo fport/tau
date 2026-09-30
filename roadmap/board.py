@@ -16,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ISSUE_FILE = re.compile(r"^(\d{3})-[a-z0-9-]+\.md$")
+LAYER_DIR = re.compile(r"^L(\d+)-")
 STATUSES = (
     "needs-triage", "needs-info", "ready-for-agent", "ready-for-human",
     "needs-hardware", "in-progress", "done", "wontfix",
@@ -62,6 +63,18 @@ def load():
     return issues, problems
 
 
+def layer_key(layer):
+    """Numeric layer order: L0, L1, ..., L9, L10, then everything else (backlog) by name."""
+    match = LAYER_DIR.match(layer)
+    return (0, int(match.group(1)), layer) if match else (1, 0, layer)
+
+
+def layer_matches(layer, wanted):
+    """`--layer L1` names L1-agent only, never L10-guard; the full directory name works too."""
+    wanted = wanted.lower()
+    return wanted in (layer.lower(), layer.split("-")[0].lower())
+
+
 def open_blockers(issue, issues):
     return [b for b in issue["blocked_by"] if issues.get(b, {}).get("status") != "done"]
 
@@ -72,7 +85,7 @@ def main():
     group.add_argument("--next", action="store_true", help="unblocked ready-for-agent issues")
     group.add_argument("--human", action="store_true", help="unblocked ready-for-human issues")
     group.add_argument("--check", action="store_true", help="validate the tracker")
-    parser.add_argument("--layer", help="filter by layer prefix, e.g. L1 or backlog")
+    parser.add_argument("--layer", help="filter by layer, e.g. L1, L10 or backlog")
     args = parser.parse_args()
 
     issues, problems = load()
@@ -82,9 +95,9 @@ def main():
         print(f"{len(issues)} issues, {len(problems)} problems")
         return 1 if problems else 0
 
-    rows = list(issues.values())
+    rows = sorted(issues.values(), key=lambda i: (layer_key(i["layer"]), i["id"]))
     if args.layer:
-        rows = [i for i in rows if i["layer"].lower().startswith(args.layer.lower())]
+        rows = [i for i in rows if layer_matches(i["layer"], args.layer)]
 
     if args.next or args.human:
         wanted = "ready-for-agent" if args.next else "ready-for-human"

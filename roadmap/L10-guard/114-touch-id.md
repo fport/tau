@@ -128,3 +128,38 @@ It runs in the worker subprocess like the camera, and like the face check it can
     `tau guard doctor` (the `touch id pin` line should say `ok`). Check that the macOS sheet
     appears from TauBar's hub (LocalAuthentication from a background process was not tried on
     a real Mac here).
+- 2026-09-30: fixed what the verifiers found. Commits: 1c017f6 + c7f493d (`step_up = "none"`
+  and `unlock_liveness = "none"` apply only when the client says so too: `client_policy` sends
+  every knob with the value it uses, strict default for a missing or unknown one, and the hub
+  reads a knob missing from a client's policy, or a missing policy, as that default; the README,
+  ADR 0008 and the doctor's `step_up_none` text say so), e39b37e (deleting every fingerprint no
+  longer brings the password back: a pinned enrollment is only ever authorised by Touch ID with
+  its pin, `not_enrolled` biometry answers `touch_id_failed` / `changed` and the doctor fails the
+  pin; a pin that cannot be read refuses Touch ID only instead of counting as no pin, a Keychain
+  that does not answer refuses with `key_unavailable` before any prompt), 49a5904 + a9eb59c
+  (`unlock_fallback` is a merged policy knob, strictness none > touch_id > touch_id_or_password,
+  and `HubGuard` narrows the status' offer; the hub refuses a device-owner success for a step-up
+  or under `touch_id`; README and ADR record that the hub does not probe Touch ID for the offer
+  and that a paired Apple Watch answers the device-owner policy), b7a4744 (a closed lid only
+  matters on a Mac with a Touch ID sensor), 736f5e1 (`tau guard log` text names the method and
+  the Touch ID policy), c213500 (a Touch ID step-up or recheck that refused the finger or met a
+  changed set locks with `step_up_failed`, not counted; LAErrorNotInteractive maps to
+  `unavailable`), 14aa8a4 (after five Touch ID unlock or recheck prompts that did not pass in
+  10 minutes a new one is refused with `cooldown` and `retry_after`; the "macOS rate-limits
+  Touch ID" sentence is corrected), 0648a3f + 26026f3 (`unavailable` and `model_changed` are in
+  `FALLBACK_NOW`: the offer comes at once, and a `face_or_touch_id` step-up asks Touch ID before
+  the camera opens, the pin read with the marker's model), c7d35a3 (a shadowed name in
+  `enroll_op`). Full suite on this branch: 1920 passed, 8 skipped, plus the known issue-130
+  failure; `git merge-tree` with `feat/guard` is clean and the merged tree passed (2493 passed,
+  11 skipped; the two timing-flaky tau-net universe tests passed on a rerun).
+  - **Kept as documented, not changed.** Pinning stays trust on first use (a first enrollment
+    with the lid closed pins nothing; ADR 0008 says so and the doctor warns `not_pinned`); the
+    enrollment attempt record has no field to carry a warning through the hub, and refusing a
+    clamshell first enrollment would block setup with an external display. A device-owner
+    unlock keeps `method = "touch_id"` in status and audit (the `touch_id` record's `policy:
+    device_owner` tells them apart), since `UNLOCK_METHODS` is 110's contract.
+  - **Still left.** The channel half of the fourth criterion (as above); the offer now also
+    appears at once after `unavailable` or `model_changed`, which `FakeGuard` follows. After the
+    merge, the docs site pages from the feat/guard docs pass (`docs/guides/guard.md`,
+    `docs/reference/guard.md` and their `.tr.md` twins) still say Touch ID "comes with issue
+    114" and need the fallback offer, the step-up modes, the pin and the doctor lines.

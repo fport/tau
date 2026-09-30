@@ -149,7 +149,11 @@ one nothing below applies and nothing on screen changes except the `/guard` menu
 - **One guard.** `build_app` resolves the guard once (`guard=` for tests, a `FakeGuard`) and
   passes the same object to every agent build: the first one, `/new`, `/resume`, `/model`,
   `/compact` and a settings save. While there is no guard it is resolved again before every
-  build and every submit, so a guard set up while the app runs locks it at once.
+  build and every submit, so a guard set up while the app runs locks it at once, the way a
+  live lock does (the open approval rejected, the running turn cancelled). The agent built
+  without it is rebuilt with it on the same session and role at the unlock, and before its
+  next turn or `/compact` if a turn was still winding down; when that rebuild fails nothing
+  is sent.
 - **The lock comes first.** The app opens on `GuardScreen`, an opaque modal (its
   `background: $background` rule is in the App CSS, since the app's `ModalScreen` rule is
   translucent), and builds its first agent only after the first unlock; the setup screen (a
@@ -181,17 +185,25 @@ one nothing below applies and nothing on screen changes except the `/guard` menu
   lock` from Telegram, ctrl+l), the app rejects an open approval dialog (`REJECTED`), cancels
   the running turn the way Esc does (the summarizer of `/compact` too; the turn gets "tau
   locked; the turn was stopped.") and shows the lock screen; `TuiApprover` rejects at once
-  while locked. When the guard reports `unlocked` (another channel unlocked it) the lock screen
-  closes by itself.
+  while locked. A running recheck is cancelled and a step-up's camera stopped (`guard.cancel`);
+  the tier gate asks the guard once more after a passed step-up, so a call never runs under a
+  lock. When the guard reports `unlocked` (another channel unlocked it) the lock screen closes
+  by itself; an `unlocked` answer older than the last state applied (a lower `seq`, a
+  `status()` call that crossed a lock) is dropped. The watcher never stops: a state it cannot
+  apply locks the app.
 - **The composer** checks the watched state before it clears itself, so a prompt submitted
   while locked stays. A turn the guard refused ends with the footer "Locked" and its prompt goes
   back into an empty composer; a `recheck` refusal runs the passive check in the busy line
-  ("Checking that it is still you…") and resends the prompt.
+  ("Checking that it is still you…") and resends the prompt. Esc during that check cancels it
+  (footer "Cancelled", the prompt goes back into the composer, nothing is sent); a failed check
+  keeps the app unlocked while the guard reports `unlocked`.
 - **Step-up.** The tier gate's `guard` events show a tier-2 step-up in the busy line ("Confirm
   it is you: look at the camera.", then "Identity check: Turn your head left."), each with a
   bell; a failed one adds "The guard could not confirm it is you; the action was not run."
 - **Header.** With a guard active the context label starts with `⚿` (ASCII `K`), and with
-  `⚿ ◉` (ASCII `K O`) while an attempt runs.
+  `⚿ ◉` (ASCII `K O`) while an attempt runs. Like `◆` and `●`, `⚿` has an ambiguous East
+  Asian width: a terminal that draws ambiguous characters wide shifts the header by one cell
+  (`TAU_TUI_ASCII=1` avoids it).
 
 ## Settings
 

@@ -7,6 +7,7 @@ Keychain or Touch ID is ever touched, and approvals are always a key press.
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -31,7 +32,9 @@ from tau_core import (
     GuardVerdict,
     MemorySessionStore,
     Tier,
+    command_hint,
     registry,
+    tau_tool,
 )
 from tau_core.guard import process_client_id
 from tau_core.i18n import t
@@ -246,6 +249,10 @@ async def test_only_the_allowed_commands_run_on_the_lock_screen(tmp_path: Path) 
         assert not any("/status" in line for line in screen.message_lines)
         await type_entry(pilot, "/guard")
         assert screen.message_lines == ["Guard: locked"]
+        await type_entry(pilot, "/hlep")  # answered here, not in the hidden transcript
+        unknown = t("chat.unknown_command", "en", name="hlep", hint=command_hint("en"))
+        assert screen.message_lines == [unknown]
+        assert unknown not in app.transcript.text
         await type_entry(pilot, "hello")
         assert screen.message_lines == [t("guard.prompt.not_sent", "en")]
         assert screen.query_one("#entry", Input).value == "hello"  # not sent, kept
@@ -608,3 +615,282 @@ async def test_the_lock_screen_has_an_ascii_twin(
         screen = await lock_screen(pilot)
         assert screen.has_class("-ascii") and screen.text.startswith("K tau is locked")
         assert screen.query_one("#dialog").styles.border_top[0] == "ascii"
+
+
+# -- races: a screen dismissed before it mounted ---------------------------------------------
+
+
+async def test_a_lock_in_the_same_tick_as_the_approval_dialog_does_not_crash(
+    tmp_path: Path,
+) -> None:
+    guard = FakeGuard("unlocked")
+    app = guard_app(tmp_path, guard)
+    request = ApprovalRequest("r1", "move_arm", Tier.PHYSICAL, {}, "", SESSION_ID, "tui")
+    async with app.run_test(size=(80, 24)) as pilot:
+        await unlocked(pilot)
+        assert app.approver is not None
+        task = asyncio.create_task(app.approver.decide(request))
+        await asyncio.sleep(0)  # decide pushed the dialog and waits for it
+        assert isinstance(app.screen, ApprovalScreen) and not app.screen.is_mounted
+        await app.enter_lock(GuardStatus("locked", seq=5))  # before the dialog mounted
+        assert await asyncio.wait_for(task, 2.0) == Decision.REJECTED
+        await pilot.pause(0.2)
+        assert app.is_running and isinstance(app.screen, GuardScreen)
+        assert not any(isinstance(s, ApprovalScreen) for s in app.screen_stack)
+
+
+async def test_a_lock_and_an_unlock_in_the_same_tick_do_not_crash(tmp_path: Path) -> None:
+    guard = FakeGuard("unlocked")
+    app = guard_app(tmp_path, guard)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await unlocked(pilot)
+        await app.enter_lock(GuardStatus("locked", seq=5))
+        assert app.guard_screen is not None and not app.guard_screen.is_mounted
+        await app.leave_lock("face")  # before the lock screen mounted
+        await pilot.pause(0.2)
+        assert app.is_running and not app.locked
+        assert not any(isinstance(s, GuardScreen) for s in app.screen_stack)
+
+
+# -- a guard that appears while the app runs -------------------------------------------------
+
+
+@pytest.fixture
+def found_guard(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """What ``resolve_guard`` finds: ``None`` until the test puts a guard in slot 0."""
+    found: list[Any] = [None]
+    monkeypatch.setattr("tau_tui.app.resolve_guard", lambda config: found[0])
+    return found
+
+
+async def test_a_guard_found_mid_session_rebuilds_the_agent_at_the_unlock(
+    tmp_path: Path, found_guard: list[Any]
+) -> None:
+    """The agent built before ``tau guard setup`` gets the guard at the unlock: its turns are
+    admitted and a tier-2 call is stepped up (and refused when the step-up fails)."""
+    calls: list[dict[str, Any]] = []
+    guard = FakeGuard("locked", verdicts=[MATCH], step_ups=[False])
+    model = FakeModel([[ToolCall("move_arm", {"direction": "left"})], "Not moved."])
+    app = make_app(tmp_path, [], model=model, tools=[arm_tool(calls)], approve_delay=0)
+    async with app.run_test(size=(80, 24)) as pilot:
+        first = app.agent
+        assert first is not None and first.guard is None
+        found_guard[0] = guard
+        await send(pilot, "move the arm")  # the guard is found on the submit
+        await lock_screen(pilot)
+        assert app.agent is first and app.composer.text == "move the arm"
+        await pilot.press("enter")
+        await unlocked(pilot)
+        await wait_until(pilot, lambda: app.agent is not first)
+        agent = app.agent
+        assert agent.guard is guard and agent.gate.guard is guard
+        assert agent.session_id == first.session_id
+        await send(pilot, "move the arm")
+        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+        await pilot.press("y")
+        await finish(pilot)
+        assert t("guard.step_up.failed", "en") in app.transcript.text
+    assert [name for name, _ in guard.calls].count("step_up") == 1
+    assert any(name == "admit" for name, _ in guard.calls)
+    assert calls == []  # the step-up failed: the arm never moved
+
+
+async def test_a_guard_found_unlocked_rebuilds_the_agent_when_the_lock_leaves(
+    tmp_path: Path, found_guard: list[Any]
+) -> None:
+    calls: list[dict[str, Any]] = []
+    guard = FakeGuard("unlocked", step_ups=[False])
+    model = FakeModel([[ToolCall("move_arm", {"direction": "left"})], "Not moved."])
+    app = make_app(tmp_path, [], model=model, tools=[arm_tool(calls)], approve_delay=0)
+    async with app.run_test(size=(80, 24)) as pilot:
+        first = app.agent
+        found_guard[0] = guard
+        await send(pilot, "move the arm")  # locks, then the watcher reads unlocked
+        await wait_until(pilot, lambda: app.guard is guard and not app.locked)
+        await wait_until(
+            pilot, lambda: not any(isinstance(s, GuardScreen) for s in app.screen_stack)
+        )
+        assert app.agent is not first and app.agent.guard is guard
+        assert app.composer.text == "move the arm"  # kept, not sent
+        await send(pilot, "move the arm")
+        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+        await pilot.press("y")
+        await finish(pilot)
+    assert any(name == "step_up" for name, _ in guard.calls)
+    assert calls == []
+
+
+async def test_a_guard_found_during_a_turn_cancels_it(
+    tmp_path: Path, found_guard: list[Any]
+) -> None:
+    release = threading.Event()
+
+    @tau_tool(tier=Tier.READ)
+    def slow_read() -> str:
+        """Reads slowly."""
+        release.wait(5)
+        return "read"
+
+    guard = FakeGuard("locked")
+    model = FakeModel([[ToolCall("slow_read", {})], "Done reading."])
+    app = make_app(tmp_path, [], model=model, tools=[slow_read])
+    async with app.run_test(size=(80, 24)) as pilot:
+        await send(pilot, "read slowly")
+        await wait_until(pilot, lambda: app.busy and "slow_read" in app.transcript.text)
+        found_guard[0] = guard
+        await send(pilot, "one more thing")  # busy: the submit finds the guard
+        await lock_screen(pilot)
+        release.set()
+        await wait_until(pilot, lambda: not app.busy)
+        assert t("guard.locked_during_turn", "en") in app.transcript.text
+        assert app.composer.text == "one more thing"
+    assert len(model.calls) == 1  # the reply after the tool was never asked for
+
+
+async def test_a_guard_found_with_the_approval_dialog_open_rejects_it(
+    tmp_path: Path, found_guard: list[Any]
+) -> None:
+    calls: list[dict[str, Any]] = []
+    guard = FakeGuard("unlocked")
+    model = FakeModel([[ToolCall("move_arm", {"direction": "left"})], "Moved."])
+    app = make_app(tmp_path, [], model=model, tools=[arm_tool(calls)], approve_delay=0)
+    approvals = record_events(app.bus, "approval")
+    async with app.run_test(size=(80, 24)) as pilot:
+        await send(pilot, "move the arm")
+        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+        found_guard[0] = guard
+        await pilot.press("ctrl+l")  # finds the guard, then locks it
+        await lock_screen(pilot)
+        await wait_until(pilot, lambda: not app.busy)
+        assert not any(isinstance(s, ApprovalScreen) for s in app.screen_stack)
+        assert [e.data["decision"] for e in approvals] == ["rejected"]
+        assert t("guard.locked_during_turn", "en") in app.transcript.text
+    assert calls == []
+
+
+# -- the order of states, the watcher ---------------------------------------------------------
+
+
+class SlowStatusGuard(FakeGuard):
+    """``status()`` answers what it saw when asked, after the test releases it."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.hold: asyncio.Event | None = None
+
+    async def status(self) -> GuardStatus:
+        snapshot = self._status()
+        self.calls.append(("status", None))
+        if self.hold is not None:
+            await self.hold.wait()
+        return snapshot
+
+
+async def test_a_stale_unlocked_answer_does_not_leave_the_lock(tmp_path: Path) -> None:
+    guard = SlowStatusGuard("unlocked")
+    app = guard_app(tmp_path, guard)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await unlocked(pilot)
+        guard.hold = asyncio.Event()
+        asking = asyncio.create_task(app.guard_command(""))  # /guard, answered late
+        await wait_until(pilot, lambda: ("status", None) in guard.calls)
+        guard.set_state("locked", trigger="telegram")
+        screen = await lock_screen(pilot)
+        guard.hold.set()
+        await asyncio.wait_for(asking, 2.0)
+        await pilot.pause(0.1)
+        assert app.locked and app.screen is screen
+        assert screen.message_lines == ["Guard: locked · locked from Telegram"]
+
+
+async def test_the_watcher_survives_a_state_it_could_not_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    guard = FakeGuard("unlocked")
+    app = guard_app(tmp_path, guard)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await unlocked(pilot)
+        original = app.apply_guard_status
+        failing = [True]
+
+        async def flaky(status: GuardStatus) -> None:
+            if failing and failing.pop():
+                raise RuntimeError("boom")
+            await original(status)
+
+        monkeypatch.setattr(app, "apply_guard_status", flaky)
+        guard.set_state("locked")
+        await lock_screen(pilot)  # failed closed
+        assert app.locked
+        guard.set_state("unlocked")  # the watcher still runs
+        await unlocked(pilot)
+
+
+# -- the recheck and the step-up under Esc and a lock ------------------------------------------
+
+
+async def test_esc_during_a_recheck_cancels_it_and_sends_nothing(tmp_path: Path) -> None:
+    guard = WaitingGuard("unlocked", verdicts=[MATCH], admissions=["recheck"])
+    model = FakeModel(["Okay."])
+    app = guard_app(tmp_path, guard, model=model)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await unlocked(pilot)
+        await send(pilot, "hello")
+        await wait_until(pilot, lambda: app.attempt_running and app.busy)
+        await pilot.press("escape")
+        await wait_until(pilot, lambda: not app.busy)
+        assert guard.cancelled
+        assert ("cancel", process_client_id()) in guard.calls
+        assert app.composer.text == "hello"  # not sent, back in the composer
+        assert not app.attempt_running and not app._cancelling
+        assert "Cancelled" in app.transcript.text
+    assert model.calls == []
+
+
+async def test_a_lock_during_a_recheck_cancels_it_and_the_lock_screen_works(
+    tmp_path: Path,
+) -> None:
+    guard = WaitingGuard("unlocked", admissions=["recheck"])
+    model = FakeModel(["Okay."])
+    app = guard_app(tmp_path, guard, model=model)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await unlocked(pilot)
+        await send(pilot, "hello")
+        await wait_until(pilot, lambda: app.attempt_running and app.busy)
+        guard.set_state("locked", trigger="idle")
+        await lock_screen(pilot)
+        await wait_until(pilot, lambda: not app.busy and not app.attempt_running)
+        assert guard.cancelled and app.composer.text == "hello"
+        await pilot.press("enter")  # the lock screen's own attempt can start now
+        await wait_until(pilot, lambda: guard.calls.count(("unlock", "unlock")) == 1)
+    assert model.calls == []
+
+
+async def test_a_lock_during_a_step_up_stops_the_camera_and_the_call(tmp_path: Path) -> None:
+    calls: list[dict[str, Any]] = []
+    guard = SlowStepUpGuard()
+    model = FakeModel([[ToolCall("move_arm", {"direction": "left"})], "Stopped."])
+    app = guard_app(tmp_path, guard, model=model, tools=[arm_tool(calls)], approve_delay=0)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await unlocked(pilot)
+        await send(pilot, "move the arm")
+        await wait_until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+        await pilot.press("y")
+        await wait_until(pilot, lambda: app.attempt_running)
+        guard.set_state("locked", trigger="screen_lock")
+        await lock_screen(pilot)
+        await wait_until(pilot, lambda: ("cancel", process_client_id()) in guard.calls)
+        guard.release.set()  # this fake's step-up passes anyway; the gate asks once more
+        await wait_until(pilot, lambda: not app.busy)
+    assert calls == []  # the arm never moved under the lock
+
+
+async def test_the_unlock_method_is_translated(tmp_path: Path) -> None:
+    guard = FakeGuard("locked", verdicts=[MATCH])
+    app = guard_app(tmp_path, guard)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await lock_screen(pilot)
+        await type_entry(pilot, "/lang tr")
+        await pilot.press("enter")
+        await unlocked(pilot)
+        assert notices(app)[-1] == "▸ Kilit açıldı (yüz). Son açılıştan beri başarısız deneme: 0."

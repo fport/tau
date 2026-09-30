@@ -21,6 +21,7 @@ from tau_core import ApprovalRequest, Decision, t
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
@@ -150,14 +151,21 @@ class ApprovalScreen(ModalScreen[Decision]):
 
     def on_mount(self) -> None:
         mark_ascii(self)
+        if self._decided or not self.query("#reject"):
+            return  # a lock rejected it before it mounted: nothing to focus or arm
         self.query_one("#reject", Button).focus()  # Enter rejects; Tab toggles the buttons
         if not self.armed:
             self.set_timer(self.approve_delay, self._arm)
 
     def _arm(self) -> None:
+        if self._decided:
+            return
         self.armed = True
-        self.query_one("#approve", Button).disabled = False
-        self.query_one("#hint", Static).update(self._hint())
+        try:
+            self.query_one("#approve", Button).disabled = False
+            self.query_one("#hint", Static).update(self._hint())
+        except NoMatches:
+            return
 
     def _decide(self, decision: Decision) -> None:
         if self._decided or self.app.screen is not self:

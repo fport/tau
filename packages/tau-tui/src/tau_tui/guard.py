@@ -19,8 +19,8 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from rich.text import Text
-from tau_core import GuardProgress, GuardStatus, GuardVerdict, t
-from tau_core.guard import VERDICT_REASONS, guard_status_line
+from tau_core import GuardProgress, GuardStatus, t
+from tau_core.guard import guard_status_line, progress_text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -35,26 +35,6 @@ if TYPE_CHECKING:
 
 LOCKED = GuardStatus(state="locked")
 """What the lock screen shows before the guard's first answer."""
-
-
-def progress_text(progress: GuardProgress, language: str) -> str:
-    """One challenge step ("Turn your head left."), with a live hint ("It is too dark.")."""
-    try:
-        text = t(f"guard.progress.{progress.step}", language)
-    except KeyError:
-        text = str(progress.step)
-    if progress.hint in VERDICT_REASONS:
-        text = f"{text} {t(f'guard.verdict.{progress.hint}', language)}"
-    return text
-
-
-def verdict_text(verdict: GuardVerdict, language: str) -> str:
-    """Why an attempt did not pass, with "try again in N s" for a cooldown."""
-    reason = verdict.reason if verdict.reason in VERDICT_REASONS else "error"
-    text = t(f"guard.verdict.{reason}", language)
-    if verdict.retry_after:
-        text = f"{text} {t('guard.retry_after', language, seconds=f'{verdict.retry_after:.0f}')}"
-    return text
 
 
 class GuardScreen(ModalScreen[bool]):
@@ -108,7 +88,9 @@ class GuardScreen(ModalScreen[bool]):
     def on_mount(self) -> None:
         mark_ascii(self)
         self._update_texts()
-        self.query_one("#entry", Input).focus()
+        entry = self.query("#entry")
+        if entry:  # empty when an unlock dismissed the screen before it mounted
+            entry.first(Input).focus()
 
     def _title(self) -> Text:
         mark = glyph("camera") if self.attempt else glyph("lock")

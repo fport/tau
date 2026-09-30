@@ -435,4 +435,6 @@ def test_the_worker_runs_without_the_working_directory_on_its_path(
     )
     run.start()
     assert collector.done.wait(30) and run.wait(5)
-    assert collector.outcomes == [Outcome(False, "not_enrolled")]  # the real worker answered
+    # the real worker answered (the shadow would have printed a match); off macOS it refuses
+    expected = "not_enrolled" if sys.platform == "darwin" else "unsupported_platform"
+    assert collector.outcomes == [Outcome(False, expected)]

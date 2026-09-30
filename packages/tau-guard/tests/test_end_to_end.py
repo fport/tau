@@ -10,6 +10,7 @@ the live hub's.
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -104,6 +105,9 @@ class RealHub:
 
 @pytest.fixture
 def real_hub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[RealHub]:
+    # v1 is macOS-only: build_agent's DISCOVER resolves the guard for sys.platform, so the test
+    # runs as the hub Mac would on CI's Linux runners too
+    monkeypatch.setattr(sys, "platform", "darwin")
     reset_guards()
     hub = RealHub(tmp_path, monkeypatch)
     try:

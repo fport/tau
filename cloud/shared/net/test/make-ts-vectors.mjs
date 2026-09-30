@@ -4,7 +4,7 @@
  * half from fresh random inputs, for tau-net to check
  * (packages/tau-net/tests/test_ts_vectors.py). Every key in it is test-only.
  *
- * Run `pnpm run vectors` in cloud/shared after a change that alters what the TypeScript
+ * Run `bun run vectors` in cloud/shared after a change that alters what the TypeScript
  * writes (ts-vectors.test.ts fails until then), and commit the file. Node runs the TypeScript
  * modules directly (type stripping, Node 22.18 or newer).
  */

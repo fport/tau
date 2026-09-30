@@ -265,7 +265,7 @@ describe("the package", () => {
     expect(VERSION).toBe(pkg.version);
   });
 
-  it("tracks the brand files as exact copies of docs/brand (run `pnpm run sync-brand`)", () => {
+  it("tracks the brand files as exact copies of docs/brand (run `bun run sync-brand`)", () => {
     expect(heroCopy).toBe(hero);
     expect(lockupCopy).toBe(lockup);
     expect(markCopy).toBe(mark);

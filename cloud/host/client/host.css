@@ -104,6 +104,8 @@ p {
 
 .mono {
   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  /* Tau addresses are long and have no spaces: they wrap anywhere on a phone. */
+  overflow-wrap: anywhere;
 }
 
 /* -- controls ------------------------------------------------------------------------ */
@@ -889,6 +891,7 @@ details.result pre {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
   margin: 0 0 14px;
   border-bottom: 1px solid var(--line, #1f232b);

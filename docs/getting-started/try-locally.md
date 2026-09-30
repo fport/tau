@@ -14,7 +14,7 @@ Before you deploy anything, you can run the whole tau network on one machine: tw
 ## Before you start
 
 - tau with `tau-net`, installed as in [Install](build-your-own-tau.md#3-install). Until `tau-net` is on PyPI, that is the **From source** path; run `source /path/to/tau/.venv/bin/activate` in terminal 1 so `tau` works in every directory.
-- Node.js 22 or newer (`npx`), and `openssl` for the tokens.
+- Node.js 22 or newer and [bun](https://bun.sh) (or `npm` and `npx`, which come with Node.js), and `openssl` for the tokens.
 - Free ports: 8821 and 8822 for the spines, 9361 and 9362 for their inspectors, 7921 and 7922 for the two hubs. Pick others if these are taken, and change every place that names them.
 
 ## 1. A lab directory and two shortcuts
@@ -128,22 +128,22 @@ printf 'TAU_SPINE_URL=http://127.0.0.1:8822\nTAU_SPINE_TOKEN=%s\nTAU_NET_ALLOW_I
 
 ## 4. Start the spines
 
-Each spine runs in the foreground, so open two more terminals. `npm install` fetches the pinned Wrangler once.
+Each spine runs in the foreground, so open two more terminals. `bun install` fetches the pinned Wrangler once, and `bunx` starts it on Node.js. Without bun, run `npm install --no-audit --no-fund` and `npx wrangler dev` with the same flags.
 
 ```sh
 # terminal 2: Alice's spine
 export LAB=~/tau-lab
 cd "$LAB/alice/spine"
-npm install --no-audit --no-fund
-npx wrangler dev --port 8821 --inspector-port 9361 --persist-to .wrangler/state
+bun install
+bunx wrangler dev --port 8821 --inspector-port 9361 --persist-to .wrangler/state
 ```
 
 ```sh
 # terminal 3: Bob's spine
 export LAB=~/tau-lab
 cd "$LAB/bob/spine"
-npm install --no-audit --no-fund
-npx wrangler dev --port 8822 --inspector-port 9362 --persist-to .wrangler/state
+bun install
+bunx wrangler dev --port 8822 --inspector-port 9362 --persist-to .wrangler/state
 ```
 
 ```text
@@ -268,7 +268,7 @@ The two scripted taus now answer each other until the thread reaches `max_hops` 
 
 <!-- verified: help/code. The universe Worker is in the source tree only; tau.toml accepting a host:port and the http rule were checked with an address where nothing listens. -->
 
-The universe Worker is in the repository, not in the kit: `cloud/universe`. Its [README](https://github.com/fport/tau/blob/main/cloud/universe/README.md) runs it locally with `pnpm dev`, on `http://127.0.0.1:8790` by default, with `ALLOW_INSECURE_PEERS=1` so it can fetch the lab's cards over `http`. Point both taus at it:
+The universe Worker is in the repository, not in the kit: `cloud/universe`. Its [README](https://github.com/fport/tau/blob/main/cloud/universe/README.md) runs it locally with `bun run dev`, on `http://127.0.0.1:8790` by default, with `ALLOW_INSECURE_PEERS=1` so it can fetch the lab's cards over `http`. Point both taus at it:
 
 ```sh
 printf '\n[component.net]\nuniverse = "127.0.0.1:8790"\n' >> "$LAB/alice/config/tau.toml"
@@ -289,4 +289,4 @@ rm -rf "$LAB"
 unset -f alice bob
 ```
 
-No tau state lives anywhere else: nothing went to a Cloudflare account, `~/.tau` or `~/.local/share/tau`. Only npm and Wrangler keep their usual caches and settings in your home directory. Next: [Build your own tau](build-your-own-tau.md), for real.
+No tau state lives anywhere else: nothing went to a Cloudflare account, `~/.tau` or `~/.local/share/tau`. Only bun (or npm) and Wrangler keep their usual caches and settings in your home directory. Next: [Build your own tau](build-your-own-tau.md), for real.

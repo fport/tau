@@ -65,7 +65,7 @@ jobs:
         working-directory: apps/tau-desktop/src-tauri
 
   # tau-net ships the spine Worker as a kit (packages/tau-net/src/tau_net/spine_kit/, used by
-  # `tau net spine init`). It is generated from cloud/spine by `pnpm run kit` and tracked, so
+  # `tau net spine init`). It is generated from cloud/spine by `bun run kit` and tracked, so
   # a change to the spine without a fresh kit fails here.
   spine-kit:
     runs-on: ubuntu-latest
@@ -74,16 +74,21 @@ jobs:
         working-directory: cloud/spine
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10
+          bun-version: 1.3.2
+      # bun installs and runs the scripts; Wrangler (and Vitest) run on Node, which `bun run`
+      # starts through their `#!/usr/bin/env node` shebangs.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: cloud/spine/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run kit
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('cloud/spine/bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: bun run kit
       - name: The tracked kit matches the build
         run: |
           kit=packages/tau-net/src/tau_net/spine_kit
@@ -91,7 +96,7 @@ jobs:
           if [ -n "$(git status --porcelain -- "$kit")" ]; then
             git status --short -- "$kit"
             git diff --stat -- "$kit"
-            echo "::error::$kit is stale: run \`pnpm run kit\` in cloud/spine and commit the result"
+            echo "::error::$kit is stale: run \`bun run kit\` in cloud/spine and commit the result"
             exit 1
           fi
 

@@ -70,8 +70,8 @@ client/messages.ts the script's strings in English and Turkish
 public/            the English site: index.html, how-it-works.html, universe.html, 404.html,
                    styles/, _headers
 public/tr/         the Turkish site: the same four files, translated
-public/brand/      copies of docs/brand files (`pnpm run sync-brand`; a test keeps them exact)
-public/app/        build output, gitignored: universe.js and the Jost web font
+public/brand/      copies of docs/brand files (`bun run sync-brand`; a test keeps them exact)
+public/static/     build output, gitignored: universe.js, theme.css and the Jost web font
 scripts/           configure.mjs, identity.mjs, build.mjs, sync-brand.mjs, dev-taus.mjs
 ```
 
@@ -80,7 +80,7 @@ scripts/           configure.mjs, identity.mjs, build.mjs, sync-brand.mjs, dev-t
 - **Storage: SQLite Durable Objects, no D1.** Many Cloudflare accounts on the Workers Free plan are at their D1 database limit; SQLite-backed Durable Objects are available on the Free plan and need no provisioning or ids. The single `Directory` instance (`idFromName("universe")`) owns every table of the directory and creates them on first use (a `schema_version` table tracks the version). The Worker does the request parsing, card fetch and signature check (and for a claim asks tau-host who is signed in), then calls the object's RPC methods (`lastTs`, `nonceUsed`, `join`, `report`, `leave`, `claim`, `snapshot`, `tau`, `person`, `sub`, `pageExists`, `prune`). The replay, joined and rate-limit checks, the handle rules and the effect run in one synchronous transaction, so two copies of a request can never both pass. Schema version 3 added handles, slugs and claim nonces; an older database is upgraded in place on first use.
 - **No card cache.** A tau sends about one request an hour (its report), so a one-hour cache like the spine's would almost never hit. Without one, a new key or card name counts from the next request. The clock and replay checks run before the fetch, so a replayed request never triggers one.
 - **Person and sub-tau pages.** They are templates (`public/person.html`, `public/sub.html`, `public/claim.html` and their Turkish twins). `run_worker_first` sends `/@*`, `/tr/@*` and `/claim` to the Worker; a sub-tau's short page `/<slug>` reaches it because no file matches. The Worker looks the handle or slug up in the directory and answers the template, or the 404 page when there is no such person or sub-tau; the page's script then reads `/api/people/<handle>` or `/api/subs/…`. Slugs are global and first come, and every name the site uses is reserved (`RESERVED_NAMES` in `src/routes.ts`; a test checks it covers every top-level entry of `public/`).
-- **tau-host behind the universe.** With the `HOST` service binding (`pnpm run configure --host-service tau-host`), the universe stays the front door of `tau.<domain>`: it forwards tau-host's paths unchanged and asks tau-host who is signed in when a handle is claimed. A hosted tau's card is fetched through the binding too, because a Worker cannot fetch its own host. Without the binding, those paths are 404, claims are 501 and `pnpm dev` serves everything else.
+- **tau-host behind the universe.** With the `HOST` service binding (`bun run configure --host-service tau-host`), the universe stays the front door of `tau.<domain>`: it forwards tau-host's paths unchanged and asks tau-host who is signed in when a handle is claimed. A hosted tau's card is fetched through the binding too, because a Worker cannot fetch its own host. Without the binding, those paths are 404, claims are 501 and `bun run dev` serves everything else.
 - **Visitors.** A web sub-tau's page talks to `/api/chat/<target>` (the reference's §5). Each thread is its own `Relay` Durable Object, named by the thread id, with its own SQLite tables, created only when the thread begins, and an alarm that deletes it 24 hours later. A send stores the message and answers at once; the delivery runs after the answer (`waitUntil`): a hosted sub-tau's answer comes from tau-host's `POST /api/visit/<handle>/<name>` through `HOST`, a hub-run sub-tau gets a `visit` envelope signed and sealed with `cloud/shared/net` under `UNIVERSE_IDENTITY`, and its hub's answer arrives at `POST /net/inbox`, which takes only answers to the universe's own visits. The page's poll waits in the Worker, reading the Relay every 2 seconds, so a waiting visitor never keeps a Durable Object active; it waits only while an answer is pending. Every send is limited per client IP by the `CHAT_IP_LIMIT` Rate Limiting binding (10 a minute).
 - **Pages and headers.** `run_worker_first` sends `/api/*` and every page in both languages to the Worker, which adds the security headers of §2 (CSP `default-src 'self'` and friends, `nosniff`, `Referrer-Policy`). Every other file is served straight from the asset store with `public/_headers`. Unknown paths reach the Worker, which answers `public/404.html` (or `public/tr/404.html` under `/tr/`) with status 404. There is no inline script or style anywhere (a test checks it); the graph code and the explainer's diagrams (inline SVG styled from `site.css`) need none, and no third-party script or font is loaded.
 - **The page.** It reads `/api/universe` once. Taus with the same owner share a hull, links are dashed and wider for more messages, online taus glow. A tau's public sub-taus are small nodes circling it inside the hull, labelled `/name`, and chips in its cards. `#<address>` pins a tau and `#<address>/<name>` one of its sub-taus; the list under the graph is the keyboard path to every tau. Under `prefers-reduced-motion` the layout is computed up front and nothing moves. The layout data (orbits, labels, search, the `#` target) is the pure `client/layout.ts`, which the tests check.
@@ -108,23 +108,23 @@ The site is bilingual. English is the source; Turkish is a translation, written 
 2. Write its Turkish twin as `public/tr/<name>.html`: `<html lang="tr">`, the Turkish menu, links under `/tr/`, docs links under `https://docs.tau.getporti.com/tr/`, and the same element ids as the English page.
 3. Add both paths to `PAGES` in `src/pages.ts` and to `run_worker_first` in `wrangler.example.jsonc` (a test checks the two agree), then add the pair to `TWINS` in `test/pages.test.ts`.
 4. Link the new page from the menu or the footer of every page, in both languages.
-5. Run `pnpm test`: it checks both pages' status, headers, language, `hreflang` links, switcher, links and matching ids.
+5. Run `bun run test`: it checks both pages' status, headers, language, `hreflang` links, switcher, links and matching ids.
 
 When the English text changes, change the Turkish page in the same commit, or put `<!-- tr: out of date -->` at the top of the Turkish file until it is translated.
 
 ## Local development
 
-Requirements: Node 24 and pnpm 10. No Cloudflare account is needed.
+Requirements: bun 1.3 (and Node 24, which runs Wrangler and Vitest). No Cloudflare account is needed.
 
 ```sh
 cd cloud/universe
-pnpm install
-pnpm run configure    # writes wrangler.jsonc and .dev.vars (ALLOW_INSECURE_PEERS=1)
-pnpm run identity --dev   # optional: a network identity in .dev.vars, for visitors of hub-run sub-taus
-pnpm dev              # builds the page script, then http://127.0.0.1:8790
+bun install
+bun run configure    # writes wrangler.jsonc and .dev.vars (ALLOW_INSECURE_PEERS=1)
+bun run identity --dev   # optional: a network identity in .dev.vars, for visitors of hub-run sub-taus
+bun run dev              # builds the page script, then http://127.0.0.1:8790
 ```
 
-`pnpm install` also installs `cloud/shared`'s dependencies (its `postinstall`), which the Worker imports by relative path.
+`bun install` also installs `cloud/shared`'s dependencies (its `postinstall`), which the Worker imports by relative path.
 
 `wrangler dev` keeps the Durable Object's SQLite under `.wrangler/state`. Open http://127.0.0.1:8790/, http://127.0.0.1:8790/how-it-works and http://127.0.0.1:8790/universe, and the same under `/tr/`. `wrangler dev` reads the list of static files when it starts: restart it after adding a page.
 
@@ -141,21 +141,21 @@ Other commands:
 
 | Command | What it does |
 |---|---|
-| `pnpm test` | the Vitest suite in the Workers runtime: API, Directory (and its schema upgrades), snapshot builder, handles, claims and slugs with a fake tau-host, the visitor chat (the universe's card and inbox, the Relay, hosted sub-taus with a fake tau-host, hub-run ones with a fake spine and answers built with `cloud/shared/net`), the page routes and forwarding, the page's layout data, pages in both languages, the language choice, the script's strings, brand copies |
-| `pnpm typecheck` | `tsc --noEmit` for the Worker and for the page script |
-| `pnpm run build` | bundles `client/universe.ts` into `public/app/universe.js` and copies the web font (`wrangler dev` and `wrangler deploy` run it too) |
-| `pnpm run identity [--out FILE \| --dev] [--force]` | makes the universe's network identity: writes the secret to `.universe-identity` (mode 0600) or, with `--dev`, to `.dev.vars`, and prints only the public keys |
-| `pnpm run sync-brand` | copies the brand files from `docs/brand/` into `public/brand/`; `--check` only reports differences |
-| `pnpm run types` | regenerates `worker-configuration.d.ts` (the `Env` type) from `wrangler.example.jsonc` |
+| `bun run test` | the Vitest suite in the Workers runtime: API, Directory (and its schema upgrades), snapshot builder, handles, claims and slugs with a fake tau-host, the visitor chat (the universe's card and inbox, the Relay, hosted sub-taus with a fake tau-host, hub-run ones with a fake spine and answers built with `cloud/shared/net`), the page routes and forwarding, the page's layout data, pages in both languages, the language choice, the script's strings, brand copies |
+| `bun run typecheck` | `tsc --noEmit` for the Worker and for the page script |
+| `bun run build` | bundles `client/universe.ts` into `public/static/universe.js` and copies the web font (`wrangler dev` and `wrangler deploy` run it too) |
+| `bun run identity [--out FILE \| --dev] [--force]` | makes the universe's network identity: writes the secret to `.universe-identity` (mode 0600) or, with `--dev`, to `.dev.vars`, and prints only the public keys |
+| `bun run sync-brand` | copies the brand files from `docs/brand/` into `public/brand/`; `--check` only reports differences |
+| `bun run types` | regenerates `worker-configuration.d.ts` (the `Env` type) from `wrangler.example.jsonc` |
 | `curl http://127.0.0.1:8790/cdn-cgi/local/scheduled` | runs the cron once (`wrangler dev` does not run crons by itself) |
 
-`pnpm run configure --route HOST` also sets `UNIVERSE` to `HOST`. Signed requests must name the universe's host, so for local development configure without `--route` (the universe is then the request host, `127.0.0.1:8790`), or run `pnpm exec wrangler dev --var UNIVERSE:`.
+`bun run configure --route HOST` also sets `UNIVERSE` to `HOST`. Signed requests must name the universe's host, so for local development configure without `--route` (the universe is then the request host, `127.0.0.1:8790`), or run `bunx wrangler dev --var UNIVERSE:`.
 
 ### Joining from a local tau
 
 A hub running against a local spine can join the local universe. The universe fetches the tau's card from its spine, over http for a loopback address because `.dev.vars` sets `ALLOW_INSECURE_PEERS=1`.
 
-1. Run a local spine with a published card (see [`cloud/spine/README.md`](../spine/README.md): `pnpm dev` there, then `tau net init` and `tau net publish` on the hub).
+1. Run a local spine with a published card (see [`cloud/spine/README.md`](../spine/README.md): `bun run dev` there, then `tau net init` and `tau net publish` on the hub).
 2. Point the hub at the local universe. In `tau.toml`:
 
    ```toml
@@ -175,7 +175,7 @@ A hub running against a local spine can join the local universe. The universe fe
 
 ### Talking to a local hub's sub-tau
 
-With the universe's identity in `.dev.vars` (`pnpm run identity --dev`, then restart `pnpm dev`), a visitor can talk to a public web sub-tau of that hub:
+With the universe's identity in `.dev.vars` (`bun run identity --dev`, then restart `bun run dev`), a visitor can talk to a public web sub-tau of that hub:
 
 1. On the hub: `tau sub new coach --about "A patient running coach" --public --web --starter "Plan my week"`, then `tau net universe join` (or wait for the hub's next report). The sub-tau takes the short page `/coach`.
 2. Send a message as a visitor. The chat API wants the page's `Origin`:
@@ -198,9 +198,9 @@ The universe runs on the Workers Free plan: one Worker, its static assets, two S
 
 ```sh
 cd cloud/universe
-pnpm run configure --route tau.example.com   # or --force to replace an existing wrangler.jsonc
-npx wrangler login                           # once
-pnpm run deploy                              # builds the page script and deploys
+bun run configure --route tau.example.com   # or --force to replace an existing wrangler.jsonc
+bunx wrangler login                           # once
+bun run deploy                              # builds the page script and deploys
 ```
 
 - `--route` adds `"routes": [{ "pattern": "tau.example.com", "custom_domain": true }]` and sets `UNIVERSE` to the same host. The zone must be on your Cloudflare account; Wrangler creates the DNS record and the certificate.
@@ -208,8 +208,8 @@ pnpm run deploy                              # builds the page script and deploy
 - `--host-service NAME` adds the service binding `"services": [{ "binding": "HOST", "service": NAME }]` to a tau-host Worker in the same account (ADR 0013 §6). Deploy tau-host first, because a service binding needs the Worker it names. The universe then forwards tau-host's paths and can bind handles. `--no-host-service` drops a binding that `--force` would carry over.
 - Hubs point at a universe with `[component.net] universe = "<host>"`; `tau.getporti.com` is the default.
 - `--limit-namespaces N` sets the `namespace_id` of the three Rate Limiting bindings to N, N+1 and N+2 (default 10601). A namespace is shared by every Worker of the account that uses it, so two universes on one account need different ones.
-- `wrangler.jsonc` is gitignored; keep it. Re-running `pnpm run configure --force` carries its routes, `UNIVERSE`, `HOST` binding and rate-limit namespaces over.
-- **The universe's network identity** (optional, needed for visitors of hub-run sub-taus): run `pnpm run identity` once, then `npx wrangler secret put UNIVERSE_IDENTITY < .universe-identity`. The file is the secret: keep a copy offline rather than make a new identity later, because hubs pin the universe's keys at its first visit and drop visits signed by another key until their owner leaves and joins again. `pnpm run configure --check-identity` says whether the deployed Worker has the secret. Without it, the universe has no card, its inbox answers 503, and only hosted sub-taus can be talked to.
+- `wrangler.jsonc` is gitignored; keep it. Re-running `bun run configure --force` carries its routes, `UNIVERSE`, `HOST` binding and rate-limit namespaces over.
+- **The universe's network identity** (optional, needed for visitors of hub-run sub-taus): run `bun run identity` once, then `bunx wrangler secret put UNIVERSE_IDENTITY < .universe-identity`. The file is the secret: keep a copy offline rather than make a new identity later, because hubs pin the universe's keys at its first visit and drop visits signed by another key until their owner leaves and joins again. `bun run configure --check-identity` says whether the deployed Worker has the secret. Without it, the universe has no card, its inbox answers 503, and only hosted sub-taus can be talked to.
 
 Check a deployment:
 

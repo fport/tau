@@ -964,5 +964,355 @@
     "payload": "eyJ2IjoxLCJraW5kIjoibGVhdmUiLCJ1bml2ZXJzZSI6InVuaXZlcnNlLmV4YW1wbGUuY29tIn0",
     "envelope_sig": "vY2A9aqHI8a7C-Az5F4gS6hGWBQLVnkZReI-JaDztKz8_RYC2YAmrkPp0dLMMg6tdc-Y4wDCLw2X-kYnTlDpAA",
     "universe_sig": "usaEbln39c5Lkwc4fuSF1O35dqR3x2LUDvV9HghrCnrYUhtMEw2JLJRsgtwakVh5_4E9bB6r-Ve-PTEpVh8FAw"
+  },
+  "hosted": {
+    "about": "A hub (alice at alice.example.com) and the universe write to a hosted tau: bob's test identity at host.example/@bob. For cloud/host (issue 162).",
+    "hosted": {
+      "identity": "bob",
+      "address": "host.example/@bob"
+    },
+    "envelopes": [
+      {
+        "name": "hosted_contact_request",
+        "note": "a hub asks a hosted tau: the owner accepts it in the app",
+        "built_with": "build_envelope",
+        "sender": "alice",
+        "recipient": "bob_hosted",
+        "input": {
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "kind": "contact_request",
+          "content": {
+            "name": "Alice's tau",
+            "text": "Hi Bob, shall our taus connect? 🌿"
+          },
+          "id": "01J0000000000000000HOSTREQ1",
+          "thread": null,
+          "reply_to": null,
+          "hops": 0,
+          "ts": 1790000000,
+          "ephemeral_secret": "_zQiZk2WOzyw8n6cIOi1NXQ-FBrNmuPQfYxR5ll8OSY",
+          "nonce": "cBHZMM4zoeF8Fg3i"
+        },
+        "payload": {
+          "v": 1,
+          "id": "01J0000000000000000HOSTREQ1",
+          "kind": "contact_request",
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "ts": 1790000000,
+          "thread": "01J0000000000000000HOSTREQ1",
+          "reply_to": null,
+          "hops": 0,
+          "box": {
+            "epk": "p_MkXBBO5M2qpAMwY9JBvpKfoZ4qI9F5kKdCaR5GtRQ",
+            "nonce": "cBHZMM4zoeF8Fg3i",
+            "ct": "iqn3nlRjG8UlbkXqfc9tfCwwJ_9IETB2oD0k5d9TkpBC_wOGZ3pphPLHH8xXg_XNmyqpQ-CxqBrw8GayiSvbE5XxXCm1TiCwXfr1TQ6Y8S7lp3e0"
+          }
+        },
+        "envelope": {
+          "payload": "eyJ2IjoxLCJpZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUUkVRMSIsImtpbmQiOiJjb250YWN0X3JlcXVlc3QiLCJmcm9tIjoiYWxpY2UuZXhhbXBsZS5jb20iLCJ0byI6Imhvc3QuZXhhbXBsZS9AYm9iIiwidHMiOjE3OTAwMDAwMDAsInRocmVhZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUUkVRMSIsInJlcGx5X3RvIjpudWxsLCJob3BzIjowLCJib3giOnsiZXBrIjoicF9Na1hCQk81TTJxcEFNd1k5SkJ2cEtmb1o0cUk5RjVrS2RDYVI1R3RSUSIsIm5vbmNlIjoiY0JIWk1NNHpvZUY4RmczaSIsImN0IjoiaXFuM25sUmpHOFVsYmtYcWZjOXRmQ3d3Sl85SUVUQjJvRDBrNWQ5VGtwQkNfd09HWjNwcGhQTEhIOHhYZ19YTm15cXBRLUN4cUJydzhHYXlpU3ZiRTVYeFhDbTFUaUN3WGZyMVRRNlk4UzdscDNlMCJ9fQ",
+          "sig": "Zf-fPZJvRHW4qRBckJMq9XxPOT9G0mOy0Sv2806AMYMFQ_sH3w4zDlwysIt0M6sQ3jlE4Kf4HX_n5U8YzD71CA"
+        }
+      },
+      {
+        "name": "hosted_contact_accept",
+        "note": "a hub accepts the hosted tau's request",
+        "built_with": "build_envelope",
+        "sender": "alice",
+        "recipient": "bob_hosted",
+        "input": {
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "kind": "contact_accept",
+          "content": {
+            "name": "Alice's tau"
+          },
+          "id": "01J0000000000000000HOSTACC1",
+          "thread": "01J0000000000000000HOSTBOB1",
+          "reply_to": "01J0000000000000000HOSTBOB1",
+          "hops": 1,
+          "ts": 1790000000,
+          "ephemeral_secret": "qyK-V4TJ3a1mLpned3bTzdXV6Bb9pzfP1KtAc7tTvWc",
+          "nonce": "_dFPW2aVjgHKov5R"
+        },
+        "payload": {
+          "v": 1,
+          "id": "01J0000000000000000HOSTACC1",
+          "kind": "contact_accept",
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "ts": 1790000000,
+          "thread": "01J0000000000000000HOSTBOB1",
+          "reply_to": "01J0000000000000000HOSTBOB1",
+          "hops": 1,
+          "box": {
+            "epk": "b-C9AGj4qtmfHrSt3mdPDvpUkIaBVjMGgPKwxAktjFE",
+            "nonce": "_dFPW2aVjgHKov5R",
+            "ct": "kgPkR-qNIulcq-ba15ydUBnmAhwOkZTF84UNnWSAAPIL3k-oIoU"
+          }
+        },
+        "envelope": {
+          "payload": "eyJ2IjoxLCJpZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUQUNDMSIsImtpbmQiOiJjb250YWN0X2FjY2VwdCIsImZyb20iOiJhbGljZS5leGFtcGxlLmNvbSIsInRvIjoiaG9zdC5leGFtcGxlL0Bib2IiLCJ0cyI6MTc5MDAwMDAwMCwidGhyZWFkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMEhPU1RCT0IxIiwicmVwbHlfdG8iOiIwMUowMDAwMDAwMDAwMDAwMDAwSE9TVEJPQjEiLCJob3BzIjoxLCJib3giOnsiZXBrIjoiYi1DOUFHajRxdG1mSHJTdDNtZFBEdnBVa0lhQlZqTUdnUEt3eEFrdGpGRSIsIm5vbmNlIjoiX2RGUFcyYVZqZ0hLb3Y1UiIsImN0Ijoia2dQa1ItcU5JdWxjcS1iYTE1eWRVQm5tQWh3T2taVEY4NFVObldTQUFQSUwzay1vSW9VIn19",
+          "sig": "iix5fosFhTt4snwoyDUqcbZ4iFW8Ky2-7ik9Zk_v0LCDIpQ-FcN4ylpco_MRJS2TJalRlkdxTPW7sYE7a-g2Bw"
+        }
+      },
+      {
+        "name": "hosted_message",
+        "note": "a message for the hosted main tau: a network turn and a reply",
+        "built_with": "build_envelope",
+        "sender": "alice",
+        "recipient": "bob_hosted",
+        "input": {
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "kind": "message",
+          "content": {
+            "text": "Merhaba Bob! How is your week going?"
+          },
+          "id": "01J0000000000000000HOSTMSG1",
+          "thread": null,
+          "reply_to": null,
+          "hops": 0,
+          "ts": 1790000000,
+          "ephemeral_secret": "Dm0DBqlGmRbpUMIFHF-vcg8JtaRaCMcXjT64EgpMH3E",
+          "nonce": "jMP2Kmt1nAAkZTts"
+        },
+        "payload": {
+          "v": 1,
+          "id": "01J0000000000000000HOSTMSG1",
+          "kind": "message",
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "ts": 1790000000,
+          "thread": "01J0000000000000000HOSTMSG1",
+          "reply_to": null,
+          "hops": 0,
+          "box": {
+            "epk": "jQIyR0ghTvWeMTSunYxW5coaKsKVBOKL7FzQPywZTkQ",
+            "nonce": "jMP2Kmt1nAAkZTts",
+            "ct": "nyPKX8ugu46wufrCT-766liofMiifyw2Fxf-yq0kEYnIGcmXIHZC5U-lV5CbcaWinX3yeVqL8krmAJWBgLbs"
+          }
+        },
+        "envelope": {
+          "payload": "eyJ2IjoxLCJpZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUTVNHMSIsImtpbmQiOiJtZXNzYWdlIiwiZnJvbSI6ImFsaWNlLmV4YW1wbGUuY29tIiwidG8iOiJob3N0LmV4YW1wbGUvQGJvYiIsInRzIjoxNzkwMDAwMDAwLCJ0aHJlYWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwSE9TVE1TRzEiLCJyZXBseV90byI6bnVsbCwiaG9wcyI6MCwiYm94Ijp7ImVwayI6ImpRSXlSMGdoVHZXZU1UU3VuWXhXNWNvYUtzS1ZCT0tMN0Z6UVB5d1pUa1EiLCJub25jZSI6ImpNUDJLbXQxbkFBa1pUdHMiLCJjdCI6Im55UEtYOHVndTQ2d3VmckNULTc2Nmxpb2ZNaWlmeXcyRnhmLXlxMGtFWW5JR2NtWElIWkM1VS1sVjVDYmNhV2luWDN5ZVZxTDhrcm1BSldCZ0xicyJ9fQ",
+          "sig": "pPD9dLKmCgepg_3Hmgh-khPUwQ8Qgj9bcGaRp9U4x_sNwnVnvc6rcqoXid46whN9w0hwWnbjeor5YcvLCqLbDw"
+        }
+      },
+      {
+        "name": "hosted_message_for_sub",
+        "note": "even hops: for the hosted tau's public sub-tau /coach",
+        "built_with": "build_envelope",
+        "sender": "alice",
+        "recipient": "bob_hosted",
+        "input": {
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "kind": "message",
+          "content": {
+            "text": "Coach, can you plan my 10k?",
+            "sub": "coach"
+          },
+          "id": "01J0000000000000000HOSTSUB1",
+          "thread": null,
+          "reply_to": null,
+          "hops": 0,
+          "ts": 1790000000,
+          "ephemeral_secret": "ZZR6fX-vkFynkhfy6oMeK0xdzqXvGP7nDBWAzvRR2P8",
+          "nonce": "CmnnXhOe_wjldWpj"
+        },
+        "payload": {
+          "v": 1,
+          "id": "01J0000000000000000HOSTSUB1",
+          "kind": "message",
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "ts": 1790000000,
+          "thread": "01J0000000000000000HOSTSUB1",
+          "reply_to": null,
+          "hops": 0,
+          "box": {
+            "epk": "hF-vsyIIwukds59kXrrknUUVhGtQ-_dbJcDgyXzvUgk",
+            "nonce": "CmnnXhOe_wjldWpj",
+            "ct": "w6MzqlqKLgUHOlFHMvBYkfLEOOXL8r1_m_6ca6ND1268baWz-51aJKHxBDt5BWGtOycDKUy-fKyQ_ueF0C-bAb3xC2k"
+          }
+        },
+        "envelope": {
+          "payload": "eyJ2IjoxLCJpZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUU1VCMSIsImtpbmQiOiJtZXNzYWdlIiwiZnJvbSI6ImFsaWNlLmV4YW1wbGUuY29tIiwidG8iOiJob3N0LmV4YW1wbGUvQGJvYiIsInRzIjoxNzkwMDAwMDAwLCJ0aHJlYWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwSE9TVFNVQjEiLCJyZXBseV90byI6bnVsbCwiaG9wcyI6MCwiYm94Ijp7ImVwayI6ImhGLXZzeUlJd3VrZHM1OWtYcnJrblVVVmhHdFEtX2RiSmNEZ3lYenZVZ2siLCJub25jZSI6IkNtbm5YaE9lX3dqbGRXcGoiLCJjdCI6Inc2TXpxbHFLTGdVSE9sRkhNdkJZa2ZMRU9PWEw4cjFfbV82Y2E2TkQxMjY4YmFXei01MWFKS0h4QkR0NUJXR3RPeWNES1V5LWZLeVFfdWVGMEMtYkFiM3hDMmsifX0",
+          "sig": "XdI1m46ddn9JPklREMnvP7fr1DTaD5if4k2Y3G0FKoiua1LaxExxaWySZXBLGnrQx64zqBwkRliBwru7MOkSAw"
+        }
+      },
+      {
+        "name": "hosted_message_for_private_sub",
+        "note": "even hops: a private sub-tau is never reached; the message is dropped",
+        "built_with": "build_envelope",
+        "sender": "alice",
+        "recipient": "bob_hosted",
+        "input": {
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "kind": "message",
+          "content": {
+            "text": "Diary, what did Bob write today?",
+            "sub": "diary"
+          },
+          "id": "01J0000000000000000HOSTPRV1",
+          "thread": null,
+          "reply_to": null,
+          "hops": 0,
+          "ts": 1790000000,
+          "ephemeral_secret": "8l5CvMzh-US8Zxfpz2jPrWybZ4meiJVlu5RVjSCL3TI",
+          "nonce": "rIvm3u1I6fhJAgmQ"
+        },
+        "payload": {
+          "v": 1,
+          "id": "01J0000000000000000HOSTPRV1",
+          "kind": "message",
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "ts": 1790000000,
+          "thread": "01J0000000000000000HOSTPRV1",
+          "reply_to": null,
+          "hops": 0,
+          "box": {
+            "epk": "djvqRZ_IC7tRCrbrSofE8UXxmvMszDgwSu66csYkamc",
+            "nonce": "rIvm3u1I6fhJAgmQ",
+            "ct": "KSsqeGaBdSeHvxWITvhkHdTfVvr71_w7ZgFMHYzTGWo_OLJo1qh5hhA2aiaVMTXKSykxf00rexKFJZIFrHu-RlJ8PX9dstQMeA"
+          }
+        },
+        "envelope": {
+          "payload": "eyJ2IjoxLCJpZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUUFJWMSIsImtpbmQiOiJtZXNzYWdlIiwiZnJvbSI6ImFsaWNlLmV4YW1wbGUuY29tIiwidG8iOiJob3N0LmV4YW1wbGUvQGJvYiIsInRzIjoxNzkwMDAwMDAwLCJ0aHJlYWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwSE9TVFBSVjEiLCJyZXBseV90byI6bnVsbCwiaG9wcyI6MCwiYm94Ijp7ImVwayI6ImRqdnFSWl9JQzd0UkNyYnJTb2ZFOFVYeG12TXN6RGd3U3U2NmNzWWthbWMiLCJub25jZSI6InJJdm0zdTFJNmZoSkFnbVEiLCJjdCI6IktTc3FlR2FCZFNlSHZ4V0lUdmhrSGRUZlZ2cjcxX3c3WmdGTUhZelRHV29fT0xKbzFxaDVoaEEyYWlhVk1UWEtTeWt4ZjAwcmV4S0ZKWklGckh1LVJsSjhQWDlkc3RRTWVBIn19",
+          "sig": "9bVHhlYENhC161C9PfBHOevc0ZLvDLOKybcE4gpLk9uBpnvn1lYhPLxaLu7KAUCHFHs3PlA-6j-WWQQmkSvMAQ"
+        }
+      },
+      {
+        "name": "hosted_reply_from_sub",
+        "note": "odd hops: the hub's own /coach answered a thread the hosted tau started",
+        "built_with": "build_envelope",
+        "sender": "alice",
+        "recipient": "bob_hosted",
+        "input": {
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "kind": "message",
+          "content": {
+            "text": "Your plan looks good, start slow.",
+            "sub": "coach"
+          },
+          "id": "01J0000000000000000HOSTSUB2",
+          "thread": "01J0000000000000000HOSTOUT1",
+          "reply_to": "01J0000000000000000HOSTOUT1",
+          "hops": 1,
+          "ts": 1790000000,
+          "ephemeral_secret": "7gbMHCuARYA24g7O36ixIDMbex6Wz3XRQtqisCdMBqg",
+          "nonce": "PWKIFo-hcaQmXfRq"
+        },
+        "payload": {
+          "v": 1,
+          "id": "01J0000000000000000HOSTSUB2",
+          "kind": "message",
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "ts": 1790000000,
+          "thread": "01J0000000000000000HOSTOUT1",
+          "reply_to": "01J0000000000000000HOSTOUT1",
+          "hops": 1,
+          "box": {
+            "epk": "logRFEqHu8krW6iK7UpvGxrhK96IxIrazuN-NW5_uQo",
+            "nonce": "PWKIFo-hcaQmXfRq",
+            "ct": "VwEZca0X51t6dvTCs5QQFFfEsESzMxBTaG3FLT9P1iV0BOgNGflvo0La3w3YrJh4XY-fjLpZbf361z5Cnpf51EPNbQPkzEAXUv4"
+          }
+        },
+        "envelope": {
+          "payload": "eyJ2IjoxLCJpZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUU1VCMiIsImtpbmQiOiJtZXNzYWdlIiwiZnJvbSI6ImFsaWNlLmV4YW1wbGUuY29tIiwidG8iOiJob3N0LmV4YW1wbGUvQGJvYiIsInRzIjoxNzkwMDAwMDAwLCJ0aHJlYWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwSE9TVE9VVDEiLCJyZXBseV90byI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUT1VUMSIsImhvcHMiOjEsImJveCI6eyJlcGsiOiJsb2dSRkVxSHU4a3JXNmlLN1Vwdkd4cmhLOTZJeElyYXp1Ti1OVzVfdVFvIiwibm9uY2UiOiJQV0tJRm8taGNhUW1YZlJxIiwiY3QiOiJWd0VaY2EwWDUxdDZkdlRDczVRUUZGZkVzRVN6TXhCVGFHM0ZMVDlQMWlWMEJPZ05HZmx2bzBMYTN3M1lySmg0WFktZmpMcFpiZjM2MXo1Q25wZjUxRVBOYlFQa3pFQVhVdjQifX0",
+          "sig": "pe8h8Zff1Bm2G-Gg2o8HbVUA6cpeUmF9COS949QyI2L8ZeJiDGKaud_atYgTqFHvB3F68w2DosuZzO6DMtCKDg"
+        }
+      },
+      {
+        "name": "hosted_message_last_hop",
+        "note": "a reply would be hop 7, over max_hops 6: no model call, no reply",
+        "built_with": "build_envelope",
+        "sender": "alice",
+        "recipient": "bob_hosted",
+        "input": {
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "kind": "message",
+          "content": {
+            "text": "One more thing."
+          },
+          "id": "01J0000000000000000HOSTHOP6",
+          "thread": "01J0000000000000000HOSTOUT1",
+          "reply_to": "01J0000000000000000HOSTHOP5",
+          "hops": 6,
+          "ts": 1790000000,
+          "ephemeral_secret": "MN90sWhyDC6PEtwaAU5qWK09dPozQ_qFHrZ_6JI_ttE",
+          "nonce": "9MfZXbKCLAPu2Bc6"
+        },
+        "payload": {
+          "v": 1,
+          "id": "01J0000000000000000HOSTHOP6",
+          "kind": "message",
+          "from": "alice.example.com",
+          "to": "host.example/@bob",
+          "ts": 1790000000,
+          "thread": "01J0000000000000000HOSTOUT1",
+          "reply_to": "01J0000000000000000HOSTHOP5",
+          "hops": 6,
+          "box": {
+            "epk": "pi7FkORU0yw1E0p3QpmaqtFMZnDzb11_8xWjC_JViiY",
+            "nonce": "9MfZXbKCLAPu2Bc6",
+            "ct": "d36v8K3B9Ro0CQIYMpQlUkCfbcfIX6BOUDcgyY5Soqc13kvylH7Y-xMF"
+          }
+        },
+        "envelope": {
+          "payload": "eyJ2IjoxLCJpZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUSE9QNiIsImtpbmQiOiJtZXNzYWdlIiwiZnJvbSI6ImFsaWNlLmV4YW1wbGUuY29tIiwidG8iOiJob3N0LmV4YW1wbGUvQGJvYiIsInRzIjoxNzkwMDAwMDAwLCJ0aHJlYWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwSE9TVE9VVDEiLCJyZXBseV90byI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUSE9QNSIsImhvcHMiOjYsImJveCI6eyJlcGsiOiJwaTdGa09SVTB5dzFFMHAzUXBtYXF0Rk1abkR6YjExXzh4V2pDX0pWaWlZIiwibm9uY2UiOiI5TWZaWGJLQ0xBUHUyQmM2IiwiY3QiOiJkMzZ2OEszQjlSbzBDUUlZTXBRbFVrQ2ZiY2ZJWDZCT1VEY2d5WTVTb3FjMTNrdnlsSDdZLXhNRiJ9fQ",
+          "sig": "KooPlGw1bp2BNd0nPhhM_G4OgHasSV4Xl501Ml7n-QNREYjl6FAy5vUZci37KOSmUxyaKjzel-SPOC_y2_vqBQ"
+        }
+      },
+      {
+        "name": "hosted_visit",
+        "note": "a universe relays a visitor to a web sub-tau of a tau-host it lists",
+        "built_with": "primitives",
+        "sender": "universe",
+        "recipient": "bob_hosted",
+        "input": {
+          "from": "universe.example.com",
+          "to": "host.example/@bob",
+          "kind": "visit",
+          "content": {
+            "text": "Hi coach! Can you plan my week?",
+            "sub": "coach"
+          },
+          "id": "01J0000000000000000HOSTVIS1",
+          "thread": "visitor-thread-000000000002",
+          "reply_to": null,
+          "hops": 0,
+          "ts": 1790000000,
+          "ephemeral_secret": "7hwrTTrtx1ZmRNHUBuP1yxzI1JzvYMGT5x9XIlKubzw",
+          "nonce": "ReMWL35eZJn_n9C0"
+        },
+        "payload": {
+          "v": 1,
+          "id": "01J0000000000000000HOSTVIS1",
+          "kind": "visit",
+          "from": "universe.example.com",
+          "to": "host.example/@bob",
+          "ts": 1790000000,
+          "thread": "visitor-thread-000000000002",
+          "reply_to": null,
+          "hops": 0,
+          "box": {
+            "epk": "bHBVTilB3vd7h9z1exOxlXlJ6ODT7fqd8i8J1aUs53c",
+            "nonce": "ReMWL35eZJn_n9C0",
+            "ct": "VjR0ODBAETcZGqXDe-leROFSH0mM84pbEee2Hene4wj3eO6Bm-koEnFgrB2Ku0BI3n7nWKmDMo-c3MM4Ln-lHDJ6Jtq5C8lS"
+          }
+        },
+        "envelope": {
+          "payload": "eyJ2IjoxLCJpZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDBIT1NUVklTMSIsImtpbmQiOiJ2aXNpdCIsImZyb20iOiJ1bml2ZXJzZS5leGFtcGxlLmNvbSIsInRvIjoiaG9zdC5leGFtcGxlL0Bib2IiLCJ0cyI6MTc5MDAwMDAwMCwidGhyZWFkIjoidmlzaXRvci10aHJlYWQtMDAwMDAwMDAwMDAyIiwicmVwbHlfdG8iOm51bGwsImhvcHMiOjAsImJveCI6eyJlcGsiOiJiSEJWVGlsQjN2ZDdoOXoxZXhPeGxYbEo2T0RUN2ZxZDhpOEoxYVVzNTNjIiwibm9uY2UiOiJSZU1XTDM1ZVpKbl9uOUMwIiwiY3QiOiJWalIwT0RCQUVUY1pHcVhEZS1sZVJPRlNIMG1NODRwYkVlZTJIZW5lNHdqM2VPNkJtLWtvRW5GZ3JCMkt1MEJJM243bldLbURNby1jM01NNExuLWxIREo2SnRxNUM4bFMifX0",
+          "sig": "I3sBZ978HbvWtr1vqWmatcgvGN3vEce1MesC4d3W1RIy9JpWMBkBXiEiGmYEidgtyjfGc8sJEXEImiebI17zAA"
+        }
+      }
+    ]
   }
 }

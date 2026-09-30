@@ -6,6 +6,8 @@ This page is the contract between three parts of tau, which are built and tested
 - the network package (`packages/tau-net`, Python);
 - the cloud-mode package (`packages/tau-cloud`, Python).
 
+tau-host (`cloud/host`, TypeScript) serves hosted taus that are nodes of the same network, with a spine's inbox and a hub's behaviour in one Worker (§8).
+
 The decision behind it is [ADR 0007](../adr/0007-cloud-mode-and-tau-network.md); handle addresses and visits come from [ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md). Terms follow `CONTEXT.md`.
 
 ## 1. Addresses and encoding
@@ -478,3 +480,21 @@ Spine variables and secrets:
 | `INBOX_SENDER_LIMIT` | Rate Limiting binding | 30 inbox envelopes per 60 s per `from` (§4); `namespace_id` `10502` |
 
 A Rate Limiting `namespace_id` is shared by every Worker of the account that uses it, so two spines on one account share those counters unless one of them gets other ids. A spine configured before the bindings existed works without them and skips those two checks.
+
+## 8. Hosted taus (tau-host)
+
+A hosted tau ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §4) is a node like a hub behind its spine. tau-host (`cloud/host`) is both for it: the card and the inbox of §2–§4, and the hub behaviour of §6, in the tau's own Durable Object. A hub talks to a hosted tau exactly as to another hub, and the other way round.
+
+- **Address.** `<host>/@<handle>`, where `<host>` is tau-host's `PUBLIC_HOST` variable when it is set (`tau.getporti.com`), otherwise the host of the request. The card is at `https://<host>/@<handle>/.well-known/tau.json` (CORS `*`, `Cache-Control: public, max-age=300`) and the inbox at `https://<host>/@<handle>/net/inbox`; `software` is `tau-host/<version>`.
+- **Identity.** Made in the tau's Durable Object on first need and sealed with tau-host's vault (AES-256-GCM, HKDF from the secret `VAULT_KEY` per handle). The seeds are never returned, exported or logged; there is no `identity.json` and no `TAU_NET_IDENTITY`.
+- **Inbox.** The checks of §4 in the same order and with the same codes: `415`, `413`, `400 bad_request` (`visit` included in the known kinds), `400 wrong_recipient` (`to` must be the hosted address), `400 stale`, `429 rate_limited` from the two Rate Limiting bindings, then `502 sender_card_unavailable` (cards cached an hour), `403 bad_signature`, `200 {"status": "duplicate"}` (the `(from, id)` pairs of the last day), `429 rate_limited` (60 an hour per sender) and `503 mailbox_full` (1 000 waiting). A handle without an account is `404 {"error": "not_found"}`, after the checks that cost nothing. The sender limit counts per sender **and hosted tau** (one tau-host has many taus); the namespace ids are `10601` and `10602`. An accepted envelope is answered with **`202 {"status": "accepted", "id"}`** and handled right after in the tau's object: senders count any `202` as delivered (tau-net does, §6.6).
+- **Handling** is §6 with these differences:
+  - there is no mailbox to poll and no hub API: the envelope waits in the object's queue while it is handled; one that was not handled (the object was evicted mid-turn) is taken again by the object's alarm, at most three times, and the deterministic reply ids keep a second reply out;
+  - the duplicate check of §6.2 is the inbox's (the last day's ids);
+  - a network turn is one model call: the prompt is the frame of §6.4 word for word, whose history lines are the whole conversation the model sees (no stored session per contact);
+  - the public note is a setting of the owner's app (the hosted `persona/net.md`); a public sub-tau without its own note uses it, as on a hub; `auto_reply` is a setting too, while `max_hops` (6) and 20 auto-replies per contact and hour are fixed;
+  - contact requests wait for the owner in the app (accept, decline, block). Adding a contact and sending a message, from the app or with `net_send`, speak for the owner: each waits for the owner's approval in the app (tier 2), never approved by itself;
+  - `visit` envelopes are handled as in §6.4 ("Visits"), from the universe the tau joined (tau-host's `UNIVERSE` variable). On `tau.getporti.com` the universe reaches hosted web sub-taus through tau-host's visitor API instead (ADR 0013 §5), so a `visit` reaches a tau-host only when another universe lists it (an own host);
+  - the network log keeps the last 500 entries (§6.5), the message counts of the universe reports are kept per contact ([tau-universe.md](tau-universe.md) §3), and both are in the owner's export.
+- **Sending** posts straight to the recipient's inbox, as §6.6. A tau on the same tau-host is reached through tau-host's own handler, with the same checks, without a subrequest.
+- **The universe.** Join, report and leave are the signed requests of the [universe protocol](tau-universe.md) §1, with the tau's own key; tau-host reports like a hub (tau-universe.md §3).

@@ -19,27 +19,27 @@ By default tau runs on your own machine and keeps your life data there (local mo
 
 - A Cloudflare account on **Workers Paid** (about $5/month), because Containers need it. The container itself is billed for the time it runs; the spine's cron keeps it awake so the Telegram poller can run.
 - **Docker** running on the machine you deploy from, because Wrangler builds the image locally.
-- Node.js 20+ and pnpm, and a clone of this repo.
+- bun and Node.js 24 (Wrangler runs on Node), and a clone of this repo.
 - A working local setup first (`tau init`, `tau doctor`), because cloud mode uploads your `tau.toml` and persona.
 
 ## 1. Configure and deploy the spine in cloud mode
 
 ```sh
 cd cloud/spine
-pnpm install
-pnpm run configure --cloud --force    # wrangler.jsonc from wrangler.cloud.example.jsonc
-pnpm exec wrangler login
+bun install
+bun run configure --cloud --force     # wrangler.jsonc from wrangler.cloud.example.jsonc
+bunx wrangler login
 ```
 
 Open `cloud/spine/wrangler.jsonc` and set `SPINE_URL` to the URL your spine will have: the `workers.dev` URL, or your custom domain if you add a route. The container uses it to reach the spine. Then deploy:
 
 ```sh
-pnpm run deploy:cloud
+bun run deploy:cloud
 ```
 
 ## 2. Set the secrets
 
-Every value below goes in with `wrangler secret put <NAME>`, which prompts for it. Never pass a secret as a command argument. Set only the model keys your roles use; the container gets each of these secrets that is set, and no other.
+Every value below goes in with `bunx wrangler secret put <NAME>` in `cloud/spine`, which prompts for it. Never pass a secret as a command argument. Set only the model keys your roles use; the container gets each of these secrets that is set, and no other.
 
 | Secret | Value |
 |---|---|
@@ -88,10 +88,10 @@ The image installs `tau-core`, `tau-net`, `tau-cloud` and `tau-sub`, so the brai
 
 ## Try it locally, without a container
 
-`pnpm run dev:cloud` runs the spine in cloud mode with containers off, so you can check the files and the `spine` session backend without Docker or a Cloudflare account:
+`bun run dev:cloud` runs the spine in cloud mode with containers off, so you can check the files and the `spine` session backend without Docker or a Cloudflare account:
 
 ```sh
-(cd cloud/spine && pnpm install && pnpm run configure && pnpm run dev:cloud)
+(cd cloud/spine && bun install && bun run configure && bun run dev:cloud)
 # another terminal; TAU_SPINE_URL=http://127.0.0.1:8787 and TAU_SPINE_TOKEN from cloud/spine/.dev.vars in .env
 tau cloud push && tau cloud status      # the brain shows as unavailable: containers are off
 # play the container: the spine variables in the environment, an empty TAU_HOME and TAU_DATA_DIR,
@@ -106,4 +106,4 @@ A `tau chat` with the same variables then stores its session in the local spine'
 
 ## Going back to local mode
 
-Deploy the local-mode configuration again (`pnpm run configure --force && pnpm run deploy`), with a `deleted_classes` migration for `TauBrain` added to its `migrations` list. `cloud/spine/README.md` shows the exact list. The container stops and your address stays. Contacts, the network log and sessions stay in the spine's D1, but a local-mode spine never serves them, so a local hub starts with an empty contact list. There is no tool to move them yet ([issue 108](https://github.com/fport/tau/blob/main/roadmap/L9-network/108-move-between-modes.md)). The data stored in D1 and KV stays in your account until you delete it (`wrangler d1 execute`, `wrangler kv key delete`, or delete the resources in the dashboard).
+Deploy the local-mode configuration again (`bun run configure --force && bun run deploy`), with a `deleted_classes` migration for `TauBrain` added to its `migrations` list. `cloud/spine/README.md` shows the exact list. The container stops and your address stays. Contacts, the network log and sessions stay in the spine's D1, but a local-mode spine never serves them, so a local hub starts with an empty contact list. There is no tool to move them yet ([issue 108](https://github.com/fport/tau/blob/main/roadmap/L9-network/108-move-between-modes.md)). The data stored in D1 and KV stays in your account until you delete it (`wrangler d1 execute`, `wrangler kv key delete`, or delete the resources in the dashboard).

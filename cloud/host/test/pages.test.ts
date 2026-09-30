@@ -47,9 +47,11 @@ describe("pages", () => {
     const apiMiss = await request(HOST, "/api/nothing");
     expect(apiMiss.status).toBe(404);
     expect(await apiMiss.json()).toEqual({ error: "not_found" });
-    // The network routes belong to issue 162.
+    // The network routes (test/net.test.ts): no such tau, and only JSON is read.
     expect((await request(HOST, "/@alice/.well-known/tau.json")).status).toBe(404);
-    expect((await request(HOST, "/@alice/net/inbox", { method: "POST" })).status).toBe(405);
+    expect((await request(HOST, "/@alice/net/inbox", { method: "POST" })).status).toBe(415);
+    expect((await request(HOST, "/@alice/net/inbox")).status).toBe(405);
+    expect(await (await request(HOST, "/@alice/net/other")).json()).toEqual({ error: "not_found" });
   });
 
   it("escapes HTML and keeps JSON inert inside a script block", () => {

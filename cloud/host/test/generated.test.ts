@@ -1,7 +1,7 @@
 /**
  * src/generated/ is data from tau-core (ADR 0013 §2): each file carries the SHA-256 of the
- * template it was made from, so a template changed without `pnpm run generate` fails here
- * (and in `pnpm run check-generated`, which compares the whole files).
+ * template it was made from, so a template changed without `bun run generate` fails here
+ * (and in `bun run check-generated`, which compares the whole files).
  */
 
 import { describe, expect, it } from "vitest";

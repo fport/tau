@@ -1,5 +1,5 @@
 """The spine kit (tau-universe.md §4): the files tau-net ships, ``tau net spine init`` and
-``tau net spine deploy`` with a fake runner. Nothing here starts npm or Wrangler."""
+``tau net spine deploy`` with a fake runner. Nothing here starts bun, npm or Wrangler."""
 
 from __future__ import annotations
 
@@ -22,12 +22,15 @@ from tau_core.builder import env_with_dotenv
 from tau_core.i18n import LANGUAGES, MESSAGES
 from tau_net.cli import net
 from tau_net.spine_kit import (
+    BUN,
     GITIGNORE,
+    NPM,
     Completed,
     SpineKitError,
     SubprocessRunner,
     kit_root,
     load_kit,
+    package_tools,
     parse_jsonc,
     render_config,
     spine_host,
@@ -115,7 +118,7 @@ def test_the_kit_holds_nothing_personal() -> None:
 
 def _source_hash(spine: Path) -> str:
     """The rule of cloud/spine/scripts/kit.mjs: sha256 over `<sha256>  <path>\\n` lines."""
-    files = ["package.json", "pnpm-lock.yaml", "tsconfig.json", "wrangler.example.jsonc"]
+    files = ["package.json", "bun.lock", "tsconfig.json", "wrangler.example.jsonc"]
     files.append("scripts/kit.mjs")
     for folder in ("src", "migrations"):
         files += [
@@ -130,12 +133,12 @@ def _source_hash(spine: Path) -> str:
 
 @pytest.mark.skipif(not (SPINE / "src").is_dir(), reason="needs the repository's cloud/spine")
 def test_the_kit_is_fresh() -> None:
-    """The kit matches cloud/spine; after a change there, run `pnpm run kit` in cloud/spine."""
+    """The kit matches cloud/spine; after a change there, run `bun run kit` in cloud/spine."""
     kit = load_kit()
     version, _, digest = kit.version.partition("+")
     spine_package = json.loads((SPINE / "package.json").read_text(encoding="utf-8"))
     assert version == spine_package["version"]
-    assert _source_hash(SPINE).startswith(digest), "stale kit: run `pnpm run kit` in cloud/spine"
+    assert _source_hash(SPINE).startswith(digest), "stale kit: run `bun run kit` in cloud/spine"
 
     example = parse_jsonc((SPINE / "wrangler.example.jsonc").read_text(encoding="utf-8"))
     if example.get("d1_databases"):
@@ -144,12 +147,11 @@ def test_the_kit_is_fresh() -> None:
     else:
         assert not kit.migrations
 
-    lock = (SPINE / "pnpm-lock.yaml").read_text(encoding="utf-8")
-    pinned = re.search(
-        r"\n      wrangler:\n        specifier: .*\n        version: ([0-9.]+)", lock
-    )
-    assert pinned is not None
-    assert json.loads(kit.package)["devDependencies"]["wrangler"] == pinned.group(1)
+    # bun.lock is JSON with trailing commas; a top-level package is keyed by its bare name.
+    lock = parse_jsonc((SPINE / "bun.lock").read_text(encoding="utf-8"))
+    name, _, pinned = lock["packages"]["wrangler"][0].rpartition("@")
+    assert name == "wrangler" and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", pinned)
+    assert json.loads(kit.package)["devDependencies"]["wrangler"] == pinned
 
 
 @pytest.mark.skipif(shutil.which("uv") is None, reason="needs uv to build the wheel")
@@ -267,7 +269,7 @@ def test_init_writes_the_project(tmp_path: Path, cli) -> None:
         assert (target / "migrations" / name).read_bytes() == data
     assert f"Wrote the spine project (kit {kit.version}) to {target.resolve()}." in result.output
     assert "tau-spine.<your-subdomain>.workers.dev" in result.output
-    assert "npx wrangler login" in result.output
+    assert "bunx wrangler login" in result.output and "npx wrangler login" in result.output
     assert f"tau net spine deploy {target}" in result.output
 
 
@@ -335,7 +337,8 @@ class Call:
 
 @dataclass
 class FakeRunner:
-    """Answers like npm and Wrangler would; ``answers`` maps an argv prefix to a result."""
+    """Answers like bun, npm and Wrangler would; ``answers`` maps an argv prefix to a result.
+    ``found`` is what is on ``PATH``: npm only by default."""
 
     answers: dict[str, Completed] = field(default_factory=dict)
     found: tuple[str, ...] = ("npx", "npm")
@@ -371,7 +374,13 @@ DEFAULT_ANSWERS = {
     "npx wrangler deploy": Completed(0, DEPLOY_OUTPUT),
     "npx wrangler d1 migrations apply": Completed(0, "Migrations applied\n"),
     "npx wrangler secret put": Completed(0, "Success! Uploaded secret HUB_TOKEN\n"),
+    "bunx wrangler@": Completed(0, WHOAMI_IN + "\n"),
+    "bun install": Completed(0, "38 packages installed [1.20s]\n"),
+    "bunx wrangler deploy": Completed(0, DEPLOY_OUTPUT),
+    "bunx wrangler d1 migrations apply": Completed(0, "Migrations applied\n"),
+    "bunx wrangler secret put": Completed(0, "Success! Uploaded secret HUB_TOKEN\n"),
 }
+WITH_BUN = ("bun", "bunx", "node", "npx", "npm")
 
 
 def _project(tmp_path: Path, cli, *args: str, d1: bool | None = None) -> Path:
@@ -395,27 +404,32 @@ def _dotenv(tmp_path: Path) -> dict[str, str]:
     return env_with_dotenv(tmp_path / "home", {})
 
 
-def _expected(pin: str, *, d1: bool) -> list[list[str]]:
+def _expected(pin: str, *, d1: bool, bun: bool = False) -> list[list[str]]:
+    if bun:
+        fetch, install, x = ["bunx"], ["bun", "install"], "bunx"
+    else:
+        fetch, install, x = ["npx", "--yes"], ["npm", "install", "--no-audit", "--no-fund"], "npx"
     return [
-        ["npx", "--yes", f"wrangler@{pin}", "whoami", "--json"],
-        ["npm", "install", "--no-audit", "--no-fund"],
-        ["npx", "wrangler", "deploy"],
-        *([["npx", "wrangler", "d1", "migrations", "apply", "DB", "--remote"]] if d1 else []),
-        ["npx", "wrangler", "secret", "put", "HUB_TOKEN"],
+        [*fetch, f"wrangler@{pin}", "whoami", "--json"],
+        install,
+        [x, "wrangler", "deploy"],
+        *([[x, "wrangler", "d1", "migrations", "apply", "DB", "--remote"]] if d1 else []),
+        [x, "wrangler", "secret", "put", "HUB_TOKEN"],
     ]
 
 
+@pytest.mark.parametrize("bun", [True, False])
 @pytest.mark.parametrize("d1", [True, False])
 def test_deploy_runs_the_steps_and_keeps_the_token_off_the_command_line(
-    tmp_path: Path, cli, d1: bool
+    tmp_path: Path, cli, d1: bool, bun: bool
 ) -> None:
     target = _project(tmp_path, cli, d1=d1)
-    runner = FakeRunner()
+    runner = FakeRunner(found=WITH_BUN) if bun else FakeRunner()
     result = cli("spine", "deploy", str(target), spine_runner=runner, spine_environ={})
     assert result.exit_code == 0, _text(result)
 
     pin = json.loads(load_kit().package)["devDependencies"]["wrangler"]
-    assert runner.argvs == _expected(pin, d1=d1)
+    assert runner.argvs == _expected(pin, d1=d1, bun=bun)
     assert all(call.cwd == target.resolve() for call in runner.calls)
 
     env = _dotenv(tmp_path)
@@ -438,7 +452,8 @@ def test_deploy_runs_the_steps_and_keeps_the_token_off_the_command_line(
     assert f"The spine is deployed at {WORKERS_DEV}." in output
     for step in ("tau net init", "tau net publish", "tau net status"):
         assert step in output
-    assert "$ npx wrangler deploy" in output and "Uploaded tau-spine" in output
+    assert f"$ {'bunx' if bun else 'npx'} wrangler deploy" in output
+    assert "Uploaded tau-spine" in output
 
 
 def test_deploy_reuses_the_token(tmp_path: Path, cli) -> None:
@@ -522,12 +537,46 @@ def test_deploy_stops_when_wrangler_is_not_logged_in(tmp_path: Path, cli, answer
     assert not (tmp_path / "home" / ".env").exists()
 
 
+def test_deploy_stops_when_wrangler_is_not_logged_in_with_bun(tmp_path: Path, cli) -> None:
+    target = _project(tmp_path, cli)
+    answer = Completed(1, WHOAMI_OUT + "\n")
+    runner = FakeRunner(answers={"bunx wrangler@": answer}, found=WITH_BUN)
+    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    assert result.exit_code == 1
+    assert "run `bunx wrangler login`" in _text(result)
+    assert runner.argvs[0][0] == "bunx" and len(runner.calls) == 1
+
+
 def test_deploy_needs_npx(tmp_path: Path, cli) -> None:
     target = _project(tmp_path, cli)
     runner = FakeRunner(found=("npm",))
     result = cli("spine", "deploy", str(target), spine_runner=runner)
     assert result.exit_code == 1
     assert "npx was not found on PATH; install Node.js 22 or newer" in _text(result)
+    assert runner.calls == []
+
+
+@pytest.mark.parametrize(
+    ("found", "tools"),
+    [
+        (WITH_BUN, "bun"),
+        (("bun", "bunx", "node"), "bun"),
+        (("bun", "node", "npx", "npm"), "npm"),  # no bunx: npm
+        (("bunx", "node", "npx", "npm"), "npm"),  # no bun: npm
+        (("npx", "npm"), "npm"),
+    ],
+)
+def test_bun_is_preferred_when_it_is_on_path(found: tuple[str, ...], tools: str) -> None:
+    assert package_tools(FakeRunner(found=found)) == (BUN if tools == "bun" else NPM)
+
+
+def test_deploy_with_bun_still_needs_node(tmp_path: Path, cli) -> None:
+    """Wrangler runs on Node.js; without ``node`` bunx would run it on bun."""
+    target = _project(tmp_path, cli)
+    runner = FakeRunner(found=("bun", "bunx", "npx", "npm"))
+    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    assert result.exit_code == 1
+    assert "node was not found on PATH; Wrangler runs on Node.js, also with bun" in _text(result)
     assert runner.calls == []
 
 

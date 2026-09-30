@@ -32,17 +32,17 @@ Failures throw typed errors (`MalformedEnvelope`, `BadSignature`, `BoxError`, `E
 import { buildEnvelope, Identity, openEnvelope } from "../../shared/net/index.ts";
 ```
 
-1. **Install the dependencies here.** esbuild, Vite and TypeScript resolve `@noble/ciphers` from the importing file, which lives in `cloud/shared/net/`. So `cloud/shared/node_modules` must exist, and the Worker's own `node_modules` does not help. Run `pnpm install` in `cloud/shared` before building or testing a Worker that imports it, for example from the Worker's `package.json`:
+1. **Install the dependencies here.** esbuild, Vite and TypeScript resolve `@noble/ciphers` from the importing file, which lives in `cloud/shared/net/`. So `cloud/shared/node_modules` must exist, and the Worker's own `node_modules` does not help. Run `bun install` in `cloud/shared` before building or testing a Worker that imports it, for example from the Worker's `package.json`:
 
    ```json
-   "scripts": { "postinstall": "pnpm --dir ../shared install --frozen-lockfile" }
+   "scripts": { "postinstall": "cd ../shared && bun install --frozen-lockfile" }
    ```
 
-   In CI, add `cloud/shared/pnpm-lock.yaml` to the cache dependency paths.
+   bun runs a project's own `postinstall` on every `bun install`, also with `--frozen-lockfile` and when nothing changed. In CI, add `cloud/shared/bun.lock` to the key of the bun cache.
 2. **TypeScript:** the shared files import each other with `.ts` extensions (so Node can run them for the vectors), so the Worker's `tsconfig.json` needs `"allowImportingTsExtensions": true`, which works together with its `"noEmit": true`.
 3. **Types:** the modules are written against `@cloudflare/workers-types`, which every Worker here already uses.
 
-`pnpm run bundle-check` bundles the tiny Worker in `net/test/bundle/` with `wrangler deploy --dry-run`, which proves that the imports resolve in a real bundle. Nothing is deployed.
+`bun run bundle-check` bundles the tiny Worker in `net/test/bundle/` with `wrangler deploy --dry-run`, which proves that the imports resolve in a real bundle. Nothing is deployed.
 
 ## Test vectors
 
@@ -54,19 +54,21 @@ The two halves check each other in both directions:
   uv run python packages/tau-net/scripts/make_ts_vectors.py
   ```
 
-  It holds identities, base64url and address verdicts, envelopes built by `build_envelope`, tampered envelopes and universe requests. The script pins the ephemeral key and nonce, so the output is deterministic. `net/test/vectors.test.ts` verifies and opens every envelope, and rebuilds each one byte for byte. `packages/tau-net/tests/test_ts_vectors.py` fails when the file is stale.
-- **TypeScript → Python**: `net/ts-vectors.json` is written by `pnpm run vectors` from fresh random keys, with `host/@handle` addresses, `visit` envelopes and `claim` requests. tau-net's test verifies and opens them, and signs and seals the same bytes from the recorded inputs. `net/test/ts-vectors.test.ts` rebuilds the file from its inputs and fails when the TypeScript output has changed. When it does, run `pnpm run vectors` and commit the file.
+  It holds identities, base64url and address verdicts, envelopes built by `build_envelope`, tampered envelopes and universe requests, and in `hosted` the envelopes a hub and the universe write to a hosted tau at `host.example/@bob`, which tau-host's tests deliver (`cloud/host/test/interop.test.ts`). The script pins the ephemeral key and nonce, so the output is deterministic. `net/test/vectors.test.ts` verifies and opens every envelope, and rebuilds each one byte for byte. `packages/tau-net/tests/test_ts_vectors.py` fails when the file is stale.
+- **TypeScript → Python**: `net/ts-vectors.json` is written by `bun run vectors` from fresh random keys, with `host/@handle` addresses, `visit` envelopes and `claim` requests. tau-net's test verifies and opens them, and signs and seals the same bytes from the recorded inputs. `net/test/ts-vectors.test.ts` rebuilds the file from its inputs and fails when the TypeScript output has changed. When it does, run `bun run vectors` and commit the file.
 
 Every key in both files is a test-only key.
 
 ## Commands
 
+Requirements: bun (and Node 24). `bun run` starts Vitest, Wrangler and the vectors script on Node (`vectors` runs the TypeScript with Node's type stripping).
+
 ```sh
-pnpm install          # once, and after a change to package.json
-pnpm test             # vitest, every test in workerd and in Node
-pnpm run typecheck    # tsc
-pnpm run vectors      # rewrite net/ts-vectors.json
-pnpm run bundle-check # bundle net/test/bundle/ with wrangler (dry run)
+bun install              # once, and after a change to package.json
+bun run test             # vitest, every test in workerd and in Node
+bun run typecheck        # tsc
+bun run vectors          # rewrite net/ts-vectors.json
+bun run bundle-check     # bundle net/test/bundle/ with wrangler (dry run)
 ```
 
 CI runs the same commands in `.github/workflows/cloud-shared.yml`.

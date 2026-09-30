@@ -4,7 +4,7 @@
  * Pages are small HTML shells with no inline script and no inline style (the CSP allows
  * neither). Data a page's script needs goes into a `<script type="application/json">`
  * block, which the browser never runs. Styles and scripts come from /app/assets/, built by
- * `pnpm run build`: theme.css (the shared theme when cloud/shared/theme.css exists, else
+ * `bun run build`: theme.css (the shared theme when cloud/shared/theme.css exists, else
  * tau-host's own tokens), host.css, app.js and visit.js.
  */
 

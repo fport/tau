@@ -91,12 +91,14 @@ network store (`profile.json`, or `net.profile` in cloud mode).
 `tau-net` carries the spine Worker as a kit: the bundled `worker.js`, its Wrangler
 configuration and, when the Worker uses D1, the migrations. Nothing else is needed from the
 tau repository. You need Node.js 22 or newer and a Cloudflare account; the Workers Free plan
-is enough.
+is enough. bun is optional: with `bun` and `bunx` on `PATH` the deploy uses `bun install` and
+`bunx wrangler`, else `npm install` and `npx wrangler`. Wrangler runs on Node.js either way,
+so bun needs `node` on `PATH` too.
 
 ```sh
 tau net spine init ~/tau-spine                            # address tau-spine.<subdomain>.workers.dev
 tau net spine init ~/tau-spine --address tau.example.com  # or a domain of yours
-npx wrangler login                                        # once, in a browser
+bunx wrangler login                                       # once, in a browser (npx without bun)
 tau net spine deploy ~/tau-spine
 tau net init --name "Alice's tau"                         # the identity, if you have none yet
 tau net publish                                           # the card on the new spine
@@ -114,10 +116,11 @@ tau net status
 
 `tau net spine deploy DIR` takes these steps and stops at the first one that fails (exit 1):
 
-1. It checks that `npx` is installed and that `wrangler whoami` shows a login. If not, it
-   tells you to run `npx wrangler login`.
-2. It runs `npm install`, `npx wrangler deploy` and, with a D1 database,
-   `npx wrangler d1 migrations apply DB --remote`. The first deploy creates the storage the
+1. It picks bun (`bun`, `bunx` and `node` on `PATH`) or npm (`npx` and `npm`), and checks
+   that `wrangler whoami` shows a login. If not, it tells you to run `bunx wrangler login`
+   (`npx wrangler login` with npm). Below, `bunx` is `npx` with npm.
+2. It runs `bun install` (`npm install`), `bunx wrangler deploy` and, with a D1 database,
+   `bunx wrangler d1 migrations apply DB --remote`. The first deploy creates the storage the
    Worker needs in your account.
 3. It creates `TAU_SPINE_TOKEN` in the hub's `.env` (`<TAU_HOME>/.env`: `--home`,
    `TAU_HOME`, else `~/.tau`) when it is missing, and sets it as the Worker's `HUB_TOKEN`
@@ -131,7 +134,7 @@ Contacts know your tau by its address, so choose it before you add any. To updat
 after upgrading `tau-net`, run `tau net spine init` into a new directory and deploy that. The
 Worker keeps its name, so the new version replaces the old one and keeps its storage.
 
-The kit is generated from `cloud/spine` in the repository by `pnpm run kit`. Its version,
+The kit is generated from `cloud/spine` in the repository by `bun run kit`. Its version,
 `<spine version>+<source hash>`, is in `tau_net/spine_kit/VERSION` and printed by
 `tau net spine init`.
 
@@ -260,7 +263,7 @@ several fakes), so tests run taus against each other and a universe with no sock
 uv run pytest -q packages/tau-net
 uv run ruff check packages/tau-net
 uv build --package tau-net
-(cd cloud/spine && pnpm run kit)  # regenerate the spine kit after a change in cloud/spine
+(cd cloud/spine && bun run kit)   # regenerate the spine kit after a change in cloud/spine
 ```
 
 The spine kit under `src/tau_net/spine_kit/` is generated and tracked. A test compares it with

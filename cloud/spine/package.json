@@ -25,10 +25,8 @@
   "dependencies": {
     "@cloudflare/containers": "^0.3.7"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "workerd"
-    ]
-  }
+  "trustedDependencies": [
+    "esbuild",
+    "workerd"
+  ]
 }

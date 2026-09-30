@@ -1,6 +1,6 @@
 # Development setup
 
-The repository is a uv workspace of independently publishable Python packages plus, later, TypeScript parts managed with pnpm. This page gets you to a green test run and explains the checks CI enforces.
+The repository is a uv workspace of independently publishable Python packages plus TypeScript parts (`cloud/`, `apps/taubar`) managed with bun. This page gets you to a green test run and explains the checks CI enforces.
 
 ## Requirements
 
@@ -108,6 +108,20 @@ ls dist/
 ```
 
 Each package builds on its own from its `pyproject.toml` (hatchling). Publishing is described in [Releasing](release.md).
+
+## The TypeScript parts
+
+The Workers under `cloud/` and the TauBar app in `apps/taubar` are TypeScript, each with its own `package.json` and lockfile. They need [bun](https://bun.sh) 1.3 and Node.js 24. bun installs the packages and runs the scripts; Vitest, its Workers pool and Wrangler still run on Node, because `bun run` and `bunx` start a program with the `node` its `#!/usr/bin/env node` line names. Without Node on `PATH`, bun runs them itself, and then the Workers pool times out and `wrangler dev` answers no requests.
+
+```sh
+cd cloud/spine
+bun install                   # CI runs bun install --frozen-lockfile against bun.lock
+bun run test                  # Vitest; `bun test` would start bun's own test runner instead
+bun run typecheck
+bunx wrangler login           # one-off binaries through bunx
+```
+
+Dependencies whose install scripts must run (esbuild, workerd) are listed under `trustedDependencies` in `package.json`, because bun runs the install scripts of trusted dependencies only.
 
 ## CI
 

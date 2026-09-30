@@ -46,6 +46,11 @@ export interface NowFacts {
   budget: string;
   /** Visitors never learn the owner's profile. */
   visitor?: boolean;
+  /**
+   * What profile, host role and budget read instead of their values: a network turn says
+   * "not shared with other taus" (tau-net's `private_context`). `visitor` means NOT_SHARED.
+   */
+  withheld?: string;
 }
 
 function two(value: number): string {
@@ -57,12 +62,13 @@ export function nowBlock(facts: NowFacts): string {
   const stamp =
     `${two(date.getUTCDate())}.${two(date.getUTCMonth() + 1)}.${date.getUTCFullYear()} ` +
     `${two(date.getUTCHours())}:${two(date.getUTCMinutes())}, ${WEEKDAYS[date.getUTCDay()]} (UTC)`;
+  const withheld = facts.withheld ?? (facts.visitor ? NOT_SHARED : null);
   return [
     `- Date and time: ${stamp}`,
-    `- Profile: ${facts.visitor ? NOT_SHARED : UNKNOWN}`,
-    `- Host role: ${facts.visitor ? NOT_SHARED : HOST_ROLE}`,
+    `- Profile: ${withheld ?? UNKNOWN}`,
+    `- Host role: ${withheld ?? HOST_ROLE}`,
     "- Live nodes: none",
-    `- Budget: ${facts.visitor ? NOT_SHARED : facts.budget}`,
+    `- Budget: ${withheld ?? facts.budget}`,
   ].join("\n");
 }
 

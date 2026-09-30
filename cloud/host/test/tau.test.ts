@@ -177,7 +177,7 @@ describe("chat", () => {
     expect(body.system).toContain("## User\n- Name: Alice");
     expect(body.system).not.toContain("hidden note");
     expect(body.system).toContain("## Now\n- Date and time:");
-    expect(body.tools.map((t: { name: string }) => t.name)).toEqual(["ask_sub", "create_sub"]);
+    expect(body.tools.map((t: { name: string }) => t.name)).toEqual(["ask_sub", "create_sub", "net_contacts", "net_log", "net_send"]);
     const budget = (await state(owner)).budget;
     expect(budget.spent_usd).toBeCloseTo((412 * 2 + 12 * 10 + 100 * 0.2) / 1e6, 9);
   });

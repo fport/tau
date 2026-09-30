@@ -21,27 +21,27 @@ Varsayılan olarak tau kendi makinende çalışır ve yaşam verini orada tutar 
 
 - **Workers Paid** planında (ayda yaklaşık 5 $) bir Cloudflare hesabı, çünkü Container'lar bunu gerektirir. Container'ın kendisi çalıştığı süre kadar faturalanır; spine'ın cron'u Telegram poller'ı çalışabilsin diye onu uyanık tutar.
 - Deploy ettiğin (yayına aldığın) makinede çalışan **Docker**, çünkü Wrangler imajı yerelde derler.
-- Node.js 20+ ve pnpm, bir de bu deponun bir klonu.
+- bun ve Node.js 24 (Wrangler Node üzerinde çalışır), bir de bu deponun bir klonu.
 - Önce çalışan bir yerel kurulum (`tau init`, `tau doctor`), çünkü bulut modu senin `tau.toml` ve persona dosyalarını yükler.
 
 ## 1. Spine'ı bulut modunda yapılandır ve deploy et
 
 ```sh
 cd cloud/spine
-pnpm install
-pnpm run configure --cloud --force    # wrangler.jsonc from wrangler.cloud.example.jsonc
-pnpm exec wrangler login
+bun install
+bun run configure --cloud --force     # wrangler.jsonc from wrangler.cloud.example.jsonc
+bunx wrangler login
 ```
 
 `cloud/spine/wrangler.jsonc` dosyasını aç ve `SPINE_URL` değerini spine'ının sahip olacağı URL'ye ayarla: `workers.dev` URL'si ya da bir rota eklersen kendi alan adın. Container spine'a bununla ulaşır. Sonra deploy et:
 
 ```sh
-pnpm run deploy:cloud
+bun run deploy:cloud
 ```
 
 ## 2. Secret'ları ayarla
 
-Aşağıdaki her değer `wrangler secret put <NAME>` ile girilir; komut değeri sana sorar. Bir secret'ı asla komut argümanı olarak verme. Yalnızca rollerinin kullandığı model anahtarlarını ayarla; container bu secret'lardan ayarlı olan her birini alır, başka hiçbirini almaz.
+Aşağıdaki her değer `cloud/spine` içinde `bunx wrangler secret put <NAME>` ile girilir; komut değeri sana sorar. Bir secret'ı asla komut argümanı olarak verme. Yalnızca rollerinin kullandığı model anahtarlarını ayarla; container bu secret'lardan ayarlı olan her birini alır, başka hiçbirini almaz.
 
 | Secret | Değer |
 |---|---|
@@ -90,10 +90,10 @@ Telegram'da botuna yaz. Container'daki hub yanıt verir ve tier-2 onaylar (her z
 
 ## Container olmadan yerelde dene
 
-`pnpm run dev:cloud`, spine'ı container'lar kapalıyken bulut modunda çalıştırır; böylece dosyaları ve `spine` oturum arka ucunu Docker ya da Cloudflare hesabı olmadan kontrol edebilirsin:
+`bun run dev:cloud`, spine'ı container'lar kapalıyken bulut modunda çalıştırır; böylece dosyaları ve `spine` oturum arka ucunu Docker ya da Cloudflare hesabı olmadan kontrol edebilirsin:
 
 ```sh
-(cd cloud/spine && pnpm install && pnpm run configure && pnpm run dev:cloud)
+(cd cloud/spine && bun install && bun run configure && bun run dev:cloud)
 # another terminal; TAU_SPINE_URL=http://127.0.0.1:8787 and TAU_SPINE_TOKEN from cloud/spine/.dev.vars in .env
 tau cloud push && tau cloud status      # the brain shows as unavailable: containers are off
 # play the container: the spine variables in the environment, an empty TAU_HOME and TAU_DATA_DIR,
@@ -108,4 +108,4 @@ Aynı değişkenlerle çalıştırılan bir `tau chat` de oturumunu yerel spine'
 
 ## Yerel moda geri dönmek
 
-Yerel mod yapılandırmasını, `migrations` listesine `TauBrain` için bir `deleted_classes` migration'ı ekleyerek yeniden deploy et (`pnpm run configure --force && pnpm run deploy`). Tam liste `cloud/spine/README.md` içinde. Container durur, adresin kalır. Kişiler (contacts), ağ logu ve oturumlar spine'ın D1'inde kalır; ama yerel moddaki bir spine onları asla sunmaz, dolayısıyla yerel bir hub boş bir kişi listesiyle başlar. Onları taşıyacak bir araç henüz yok ([issue 108](https://github.com/fport/tau/blob/main/roadmap/L9-network/108-move-between-modes.md)). D1 ve KV'de saklanan veriler sen silene kadar hesabında kalır (`wrangler d1 execute`, `wrangler kv key delete` ya da kaynakları panodan sil).
+Yerel mod yapılandırmasını, `migrations` listesine `TauBrain` için bir `deleted_classes` migration'ı ekleyerek yeniden deploy et (`bun run configure --force && bun run deploy`). Tam liste `cloud/spine/README.md` içinde. Container durur, adresin kalır. Kişiler (contacts), ağ logu ve oturumlar spine'ın D1'inde kalır; ama yerel moddaki bir spine onları asla sunmaz, dolayısıyla yerel bir hub boş bir kişi listesiyle başlar. Onları taşıyacak bir araç henüz yok ([issue 108](https://github.com/fport/tau/blob/main/roadmap/L9-network/108-move-between-modes.md)). D1 ve KV'de saklanan veriler sen silene kadar hesabında kalır (`wrangler d1 execute`, `wrangler kv key delete` ya da kaynakları panodan sil).

@@ -16,7 +16,9 @@ output is deterministic and the file can be compared with a fresh run. Kinds and
 this tau-net may not know yet (``visit``, the universe ``claim``) are built from its
 primitives (``seal``, ``sign_payload``, ``build_request``) instead of its validating builders.
 The addresses are plain hosts only: ``host/@handle`` addresses are tested on the TypeScript
-side, and in ``cloud/shared/net/ts-vectors.json``.
+side, and in ``cloud/shared/net/ts-vectors.json``. The one exception is the ``hosted`` section:
+envelopes a hub and the universe write to a hosted tau at ``host.example/@bob``, which
+tau-host's tests deliver to its inbox (issue 162).
 
 Every key here is a **test-only** key, derived from a fixed label and published in this
 repository: never use one for a real tau.
@@ -27,7 +29,7 @@ Run from the repository root::
     uv run python packages/tau-net/scripts/make_ts_vectors.py --check   # exit 1 when stale
 
 ``packages/tau-net/tests/test_ts_vectors.py`` fails when the file is stale, and checks the
-vectors TypeScript wrote (``ts-vectors.json``, ``pnpm run vectors`` in ``cloud/shared``).
+vectors TypeScript wrote (``ts-vectors.json``, ``bun run vectors`` in ``cloud/shared``).
 """
 
 from __future__ import annotations
@@ -567,6 +569,114 @@ def universe_vectors(t: dict[str, Tau]) -> list[dict[str, Any]]:
     return cases
 
 
+HOSTED = "host.example/@bob"
+
+
+def hosted_vectors(t: dict[str, Tau]) -> dict[str, Any]:
+    """A hub (alice) and the universe writing to a hosted tau (ADR 0013 §4, issue 162).
+
+    tau-host's tests (``cloud/host/test/interop.test.ts``) give the hosted tau ``bob`` at
+    ``host.example/@bob`` bob's test identity, deliver these envelopes to its inbox and check
+    what it does and answers. The existing vectors stay as they are; these are new."""
+    alice, universe = t["alice"], t["universe"]
+    bob = Tau("bob_hosted", HOSTED, t["bob"].identity)
+    request = "01J0000000000000000HOSTREQ1"
+    started = "01J0000000000000000HOSTOUT1"
+    cases = [
+        envelope_case(
+            "hosted_contact_request",
+            alice,
+            bob,
+            kind="contact_request",
+            content={"name": "Alice's tau", "text": "Hi Bob, shall our taus connect? 🌿"},
+            envelope_id=request,
+            note="a hub asks a hosted tau: the owner accepts it in the app",
+        ),
+        envelope_case(
+            "hosted_contact_accept",
+            alice,
+            bob,
+            kind="contact_accept",
+            content={"name": "Alice's tau"},
+            envelope_id="01J0000000000000000HOSTACC1",
+            thread="01J0000000000000000HOSTBOB1",
+            reply_to="01J0000000000000000HOSTBOB1",
+            hops=1,
+            note="a hub accepts the hosted tau's request",
+        ),
+        envelope_case(
+            "hosted_message",
+            alice,
+            bob,
+            kind="message",
+            content={"text": "Merhaba Bob! How is your week going?"},
+            envelope_id="01J0000000000000000HOSTMSG1",
+            note="a message for the hosted main tau: a network turn and a reply",
+        ),
+        envelope_case(
+            "hosted_message_for_sub",
+            alice,
+            bob,
+            kind="message",
+            content={"text": "Coach, can you plan my 10k?", "sub": "coach"},
+            envelope_id="01J0000000000000000HOSTSUB1",
+            note="even hops: for the hosted tau's public sub-tau /coach",
+        ),
+        envelope_case(
+            "hosted_message_for_private_sub",
+            alice,
+            bob,
+            kind="message",
+            content={"text": "Diary, what did Bob write today?", "sub": "diary"},
+            envelope_id="01J0000000000000000HOSTPRV1",
+            note="even hops: a private sub-tau is never reached; the message is dropped",
+        ),
+        envelope_case(
+            "hosted_reply_from_sub",
+            alice,
+            bob,
+            kind="message",
+            content={"text": "Your plan looks good, start slow.", "sub": "coach"},
+            envelope_id="01J0000000000000000HOSTSUB2",
+            thread=started,
+            reply_to=started,
+            hops=1,
+            note="odd hops: the hub's own /coach answered a thread the hosted tau started",
+        ),
+        envelope_case(
+            "hosted_message_last_hop",
+            alice,
+            bob,
+            kind="message",
+            content={"text": "One more thing."},
+            envelope_id="01J0000000000000000HOSTHOP6",
+            thread=started,
+            reply_to="01J0000000000000000HOSTHOP5",
+            hops=6,
+            note="a reply would be hop 7, over max_hops 6: no model call, no reply",
+        ),
+        envelope_case(
+            "hosted_visit",
+            universe,
+            bob,
+            kind="visit",
+            content={"text": "Hi coach! Can you plan my week?", "sub": "coach"},
+            envelope_id="01J0000000000000000HOSTVIS1",
+            thread="visitor-thread-000000000002",
+            note="a universe relays a visitor to a web sub-tau of a tau-host it lists",
+            primitives=True,
+        ),
+    ]
+    return {
+        "about": (
+            "A hub (alice at alice.example.com) and the universe write to a hosted tau: bob's "
+            "test identity at host.example/@bob. For cloud/host (issue 162)."
+        ),
+        "hosted": {"identity": "bob", "address": HOSTED},
+        "envelopes": cases,
+    }
+
+
 def domain_separation(t: dict[str, Tau]) -> dict[str, Any]:
     """One payload signed in both domains: each signature verifies only in its own."""
     alice = t["alice"].identity
@@ -598,6 +708,7 @@ def make_vectors() -> dict[str, Any]:
         "bad_envelopes": bad_envelope_vectors(t, envelopes),
         "universe": universe_vectors(t),
         "domain_separation": domain_separation(t),
+        "hosted": hosted_vectors(t),
     }
 
 

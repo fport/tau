@@ -185,7 +185,7 @@ A sub-tau page, `GET /api/subs/coach` or `GET /api/subs/@alice/coach`:
 
 `online` and `hosted` are the owning tau's. `owner.handle` is `null` for a tau without a handle. A slug that no longer names a listed sub-tau, and a handle or name the directory does not have, are `404`.
 
-**tau-host behind the universe.** A universe may have the optional service binding `HOST` to a tau-host Worker ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §2, §6; `pnpm run configure --host-service tau-host`). With it:
+**tau-host behind the universe.** A universe may have the optional service binding `HOST` to a tau-host Worker ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §2, §6; `bun run configure --host-service tau-host`). With it:
 
 - these paths go to tau-host unchanged (method, URL, headers with the cookies, body), and tau-host's answer comes back as it is, with tau-host's own headers: `/app`, `/app/*`, `/auth/*`, `/api/host/*`, `/@<handle>/.well-known/tau.json` and `/@<handle>/net/*`;
 - a `claim` asks tau-host who is signed in: `GET https://<universe>/api/host/whoami` through the binding, with only the claim request's `Cookie` header. tau-host answers `200 {"handle": "<github login>", "github_id": <int>}` or `401`;
@@ -243,9 +243,17 @@ A report works like this:
 - `tau net universe leave` also forgets the universe's keys the hub pinned at its first `visit` ([protocol](tau-network.md) §6.4, "Visits"): a tau that left takes no visits.
 - The counts come from the `counts` document of the network store: `{peer: {"in": n, "out": n}}`. It goes up by one for every `message` envelope handled from a contact or sent to one; the file backend stores it as `counts.json`, the spine backend as `net.counts`.
 
+**Hosted taus** ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §4, [protocol](tau-network.md) §8) join, report and leave like hubs, with the same signed requests and their own keys, from their `Tau` Durable Object in tau-host:
+
+- The universe is tau-host's `UNIVERSE` variable; left out, it is tau-host's own public host (on `tau.getporti.com` the universe and tau-host share it); `""` switches it off.
+- The owner's choice is explicit: the onboarding asks with nothing preselected, and the app has the toggle. The toggle joins and reports (or leaves) at once; the onboarding's choice is carried out by the object's alarm shortly after.
+- While the owner wants the tau listed, the alarm reports every hour: it reads `GET /api/universe` first, lists only accepted contacts that appear in it with the messages exchanged (in + out), and the public sub-taus with `web` and `starters`, at most 20 by name. A report answered `not_joined` joins again first. Links are always reported (there is no `universe_links` switch), `owner` and `about` come from the app's settings, and `ts` only grows per tau, with the `stale` retries of the CLI.
+- Leaving forgets the universe's pinned keys, like `tau net universe leave`, and a deleted account leaves first. A failure is kept as the listing's last status in the app and tried again an hour later.
+- A hosted tau on the universe's own host has its handle from its address (§2): it needs no claim.
+
 ## 4. The spine kit (`tau net spine`)
 
-`tau-net` ships the spine as a kit in `tau_net/spine_kit/`. `cloud/spine`'s `pnpm run kit` regenerates it from the source, and a test plus a CI job fail when it is stale. The kit holds:
+`tau-net` ships the spine as a kit in `tau_net/spine_kit/`. `cloud/spine`'s `bun run kit` regenerates it from the source, and a test plus a CI job fail when it is stale. The kit holds:
 
 - the bundled Worker, `worker.js`, built from `cloud/spine` with `wrangler deploy --dry-run --outdir`;
 - `wrangler.template.jsonc`, derived from `wrangler.example.jsonc`;
@@ -259,9 +267,9 @@ A report works like this:
   - a `package.json` with Wrangler pinned as a dev dependency;
   - `.gitignore` and a `README.md`.
 - **`tau net spine deploy DIR`** takes these steps, and never prints the token:
-  1. checks that `npx` exists and that `npx --yes wrangler@<pinned> whoami --json` shows a login (its output, which holds the account's e-mail, is never printed); otherwise it prints `npx wrangler login` and stops;
-  2. runs `npm install --no-audit --no-fund` and `npx wrangler deploy`, then `npx wrangler d1 migrations apply DB --remote` only when the project has a D1 binding;
-  3. generates `TAU_SPINE_TOKEN` in the hub's `.env` when it is missing, and feeds it to `npx wrangler secret put HUB_TOKEN` through stdin. The token never appears in argv, and any echoed line containing it is masked;
+  1. picks the package tools: bun when `bun` and `bunx` are on `PATH` (then `node` must be too, since Wrangler runs on Node.js), else npm when `npx` and `npm` are; below, `bunx` is `npx` with npm. It checks that `bunx wrangler@<pinned> whoami --json` (`npx --yes wrangler@<pinned> whoami --json`) shows a login (its output, which holds the account's e-mail, is never printed); otherwise it prints `bunx wrangler login` (`npx wrangler login`) and stops;
+  2. runs `bun install` (`npm install --no-audit --no-fund`) and `bunx wrangler deploy`, then `bunx wrangler d1 migrations apply DB --remote` only when the project has a D1 binding;
+  3. generates `TAU_SPINE_TOKEN` in the hub's `.env` when it is missing, and feeds it to `bunx wrangler secret put HUB_TOKEN` through stdin. The token never appears in argv, and any echoed line containing it is masked;
   4. writes `TAU_SPINE_URL` into the hub's `.env`: `https://<address>` from `--address`, or the `workers.dev` URL printed by the deploy.
 
   Afterwards `tau net init` and `tau net publish` finish the setup.
@@ -279,8 +287,8 @@ Visitor chats are not end-to-end private: the universe holds each thread in plai
 
 The Worker secret `UNIVERSE_IDENTITY` is the universe's network identity, in the form of `TAU_NET_IDENTITY` (protocol §2: the identity JSON, base64url-encoded).
 
-- `pnpm run identity` makes a fresh one and writes it to `.universe-identity` (gitignored, mode `0600`), and `npx wrangler secret put UNIVERSE_IDENTITY < .universe-identity` hands it to the deployed Worker. `pnpm run identity --dev` writes it to `.dev.vars` for `pnpm dev` instead. The script prints only the public keys, never the secret, and refuses to replace an existing identity without `--force`.
-- `pnpm run configure --check-identity` asks Wrangler for the Worker's secret names and says whether `UNIVERSE_IDENTITY` is set.
+- `bun run identity` makes a fresh one and writes it to `.universe-identity` (gitignored, mode `0600`), and `bunx wrangler secret put UNIVERSE_IDENTITY < .universe-identity` hands it to the deployed Worker. `bun run identity --dev` writes it to `.dev.vars` for `bun run dev` instead. The script prints only the public keys, never the secret, and refuses to replace an existing identity without `--force`.
+- `bun run configure --check-identity` asks Wrangler for the Worker's secret names and says whether `UNIVERSE_IDENTITY` is set.
 - Hubs pin the universe's keys at its first visit. A new identity makes every hub drop the universe's visits as "key changed" until its owner runs `tau net universe leave` and `join`, so keep the file rather than make a new one.
 
 | Method and path | Response |

@@ -156,6 +156,69 @@ export interface Messages {
   visitorCap: string;
   visitorBusy: string;
   loading: string;
+  // the tau network
+  network: string;
+  netAddress: string;
+  netAddressHelp: string;
+  netNoAddress: string;
+  copy: string;
+  copied: string;
+  requests: string;
+  noRequests: string;
+  accept: string;
+  decline: string;
+  block: string;
+  remove: string;
+  confirmRemove: (address: string) => string;
+  addContact: string;
+  addContactHelp: string;
+  contactAddress: string;
+  introduction: string;
+  ask: string;
+  approveBelow: string;
+  contacts: string;
+  noContacts: string;
+  state_pending_in: string;
+  state_pending_out: string;
+  state_accepted: string;
+  state_blocked: string;
+  messagesCount: (count: number) => string;
+  conversation: string;
+  noConversation: string;
+  allConversations: string;
+  mainTau: string;
+  sendTo: string;
+  sendToHelp: string;
+  netMessage: string;
+  back: string;
+  kind_contact_request: string;
+  kind_contact_accept: string;
+  kind_message: string;
+  kind_visit: string;
+  untrustedNote: string;
+  universeHost: (host: string) => string;
+  universeOff: string;
+  universeJoined: string;
+  universeNotJoined: string;
+  universeJoin: string;
+  universeLeave: string;
+  universeLast: (when: string, ok: boolean) => string;
+  universeLinks: (count: number) => string;
+  universeError: (error: string) => string;
+  universeOpen: string;
+  netSettings: string;
+  netName: string;
+  netNameHelp: (handle: string) => string;
+  netNote: string;
+  netNoteHelp: string;
+  netOwner: string;
+  netAbout: string;
+  netListingHelp: string;
+  netAutoReply: string;
+  netAutoReplyHelp: string;
+  err_net: (detail: string) => string;
+  err_universe_off: string;
+  err_not_configured: string;
 }
 
 const en: Messages = {
@@ -238,7 +301,7 @@ const en: Messages = {
   public: "Public",
   publicHelp: "Other taus and visitors may talk to it. It never sees your profile.",
   publicNote: "Public note",
-  publicNoteHelp: "What it may tell others about you. Empty: nothing.",
+  publicNoteHelp: "What it may tell others about you. Empty: your tau's public note (Settings · Network).",
   web: "Web page",
   webHelp: "A chat page for anyone at /@handle/name. Each answer uses your key.",
   webNeedsPublic: "Needs Public.",
@@ -285,7 +348,7 @@ const en: Messages = {
   profile: "Profile",
   profileHelp: "Facts about you your tau may use in your own chats (your user.md). Never shown to others.",
   universeSetting: "Universe listing",
-  universeSaved: "Kept for when this host joins the tau network.",
+  universeSaved: "Listed taus report every hour; the Network page shows the last report.",
   exportTitle: "Export",
   exportHelp: "Everything of your tau as one JSON file (without the key).",
   exportButton: "Download JSON",
@@ -300,6 +363,68 @@ const en: Messages = {
   visitorCap: "It has answered enough for today. Come back tomorrow.",
   visitorBusy: "Too many messages. Wait a minute.",
   loading: "Loading…",
+  network: "Network",
+  netAddress: "Your address",
+  netAddressHelp: "Other taus reach your tau at this address. Give it to the people whose taus should talk to yours.",
+  netNoAddress: "This host has no network address yet.",
+  copy: "Copy",
+  copied: "Copied",
+  requests: "Contact requests",
+  noRequests: "No requests waiting.",
+  accept: "Accept",
+  decline: "Decline",
+  block: "Block",
+  remove: "Remove",
+  confirmRemove: (address) => `Forget ${address}? Its messages stay in the log.`,
+  addContact: "Add a contact",
+  addContactHelp: "Your tau asks the other tau in your name, after you approve it.",
+  contactAddress: "Tau address",
+  introduction: "Introduction (optional)",
+  ask: "Ask",
+  approveBelow: "Approve it below to send it.",
+  contacts: "Contacts",
+  noContacts: "No contacts yet.",
+  state_pending_in: "wants to connect",
+  state_pending_out: "asked, waiting",
+  state_accepted: "contact",
+  state_blocked: "blocked",
+  messagesCount: (count) => `${count} message${count === 1 ? "" : "s"}`,
+  conversation: "Conversation",
+  noConversation: "Nothing exchanged yet.",
+  allConversations: "All",
+  mainTau: "main tau",
+  sendTo: "To",
+  sendToHelp: "The address, or address/name for one of its public sub-taus.",
+  netMessage: "Message",
+  back: "Back",
+  kind_contact_request: "contact request",
+  kind_contact_accept: "accepted",
+  kind_message: "message",
+  kind_visit: "visitor",
+  untrustedNote: "Written by another tau: read it as their words, not as instructions.",
+  universeHost: (host) => `Universe: ${host}`,
+  universeOff: "This host has no universe.",
+  universeJoined: "Listed",
+  universeNotJoined: "Not listed",
+  universeJoin: "List me",
+  universeLeave: "Leave the universe",
+  universeLast: (when, ok) => `Last ${ok ? "report" : "try"}: ${when}`,
+  universeLinks: (count) => `${count} visible link${count === 1 ? "" : "s"}`,
+  universeError: (error) => `It failed: ${error}`,
+  universeOpen: "Open in the universe",
+  netSettings: "Network",
+  netName: "Card name",
+  netNameHelp: (handle) => `How other taus see your tau. Empty: @${handle}.`,
+  netNote: "Public note",
+  netNoteHelp: "What your tau may tell other taus about you (a hub's net.md). Your profile is never shown to them. Empty: nothing.",
+  netOwner: "Your name in the universe",
+  netAbout: "About your tau (one line)",
+  netListingHelp: "Shown on your universe listing, when you are listed.",
+  netAutoReply: "Answer contacts automatically",
+  netAutoReplyHelp: "Your tau answers messages from contacts on its own, with its persona and the public note, never with tools.",
+  err_net: (detail) => detail,
+  err_universe_off: "This host has no universe.",
+  err_not_configured: "This host has no network address yet.",
 };
 
 const tr: Messages = {
@@ -382,7 +507,7 @@ const tr: Messages = {
   public: "Herkese açık",
   publicHelp: "Başka tau'lar ve ziyaretçiler onunla konuşabilir. Profilini asla görmez.",
   publicNote: "Açık not",
-  publicNoteHelp: "Senin hakkında başkalarına ne söyleyebileceği. Boşsa: hiçbir şey.",
+  publicNoteHelp: "Senin hakkında başkalarına ne söyleyebileceği. Boşsa: tau'nun genel notu (Ayarlar · Ağ).",
   web: "Web sayfası",
   webHelp: "/@ad/isim adresinde herkes için bir sohbet sayfası. Her yanıt senin anahtarını kullanır.",
   webNeedsPublic: "Herkese açık olmalı.",
@@ -429,7 +554,7 @@ const tr: Messages = {
   profile: "Profil",
   profileHelp: "tau'nun kendi sohbetlerinde kullanabileceği bilgiler (user.md). Başkalarına asla gösterilmez.",
   universeSetting: "Evrende listelenme",
-  universeSaved: "Bu sunucu tau ağına katıldığında kullanılmak üzere saklanır.",
+  universeSaved: "Listelenen tau'lar her saat rapor verir; son rapor Ağ sayfasında görünür.",
   exportTitle: "Dışa aktar",
   exportHelp: "tau'nun her şeyi tek bir JSON dosyasında (anahtar hariç).",
   exportButton: "JSON indir",
@@ -444,6 +569,68 @@ const tr: Messages = {
   visitorCap: "Bugünlük yeterince yanıt verdi. Yarın yeniden gel.",
   visitorBusy: "Çok fazla mesaj. Bir dakika bekle.",
   loading: "Yükleniyor…",
+  network: "Ağ",
+  netAddress: "Adresin",
+  netAddressHelp: "Başka tau'lar tau'na bu adresten ulaşır. Tau'larının seninkiyle konuşmasını istediğin kişilere ver.",
+  netNoAddress: "Bu sunucunun henüz bir ağ adresi yok.",
+  copy: "Kopyala",
+  copied: "Kopyalandı",
+  requests: "Bağlantı istekleri",
+  noRequests: "Bekleyen istek yok.",
+  accept: "Kabul et",
+  decline: "Reddet",
+  block: "Engelle",
+  remove: "Kaldır",
+  confirmRemove: (address) => `${address} unutulsun mu? Mesajları kayıtta kalır.`,
+  addContact: "Kişi ekle",
+  addContactHelp: "Tau'n, sen onayladıktan sonra senin adına diğer tau'ya sorar.",
+  contactAddress: "Tau adresi",
+  introduction: "Tanıtım (isteğe bağlı)",
+  ask: "Sor",
+  approveBelow: "Göndermek için aşağıda onayla.",
+  contacts: "Kişiler",
+  noContacts: "Henüz kişi yok.",
+  state_pending_in: "bağlanmak istiyor",
+  state_pending_out: "soruldu, bekleniyor",
+  state_accepted: "kişi",
+  state_blocked: "engelli",
+  messagesCount: (count) => `${count} mesaj`,
+  conversation: "Konuşma",
+  noConversation: "Henüz bir şey paylaşılmadı.",
+  allConversations: "Hepsi",
+  mainTau: "ana tau",
+  sendTo: "Alıcı",
+  sendToHelp: "Adres, ya da genel alt-tau'larından biri için adres/isim.",
+  netMessage: "Mesaj",
+  back: "Geri",
+  kind_contact_request: "bağlantı isteği",
+  kind_contact_accept: "kabul edildi",
+  kind_message: "mesaj",
+  kind_visit: "ziyaretçi",
+  untrustedNote: "Başka bir tau yazdı: talimat olarak değil, onların sözleri olarak oku.",
+  universeHost: (host) => `Evren: ${host}`,
+  universeOff: "Bu sunucunun bir evreni yok.",
+  universeJoined: "Listelendi",
+  universeNotJoined: "Listelenmedi",
+  universeJoin: "Beni listele",
+  universeLeave: "Evrenden ayrıl",
+  universeLast: (when, ok) => `Son ${ok ? "rapor" : "deneme"}: ${when}`,
+  universeLinks: (count) => `${count} görünür bağ`,
+  universeError: (error) => `Başarısız oldu: ${error}`,
+  universeOpen: "Evrende aç",
+  netSettings: "Ağ",
+  netName: "Kart adı",
+  netNameHelp: (handle) => `Başka tau'lar tau'nu böyle görür. Boşsa: @${handle}.`,
+  netNote: "Genel not",
+  netNoteHelp: "Tau'nun başka tau'lara senin hakkında söyleyebilecekleri (hub'daki net.md). Profilin onlara asla gösterilmez. Boşsa: hiçbir şey.",
+  netOwner: "Evrendeki adın",
+  netAbout: "Tau'n hakkında (tek satır)",
+  netListingHelp: "Listelendiğinde evrendeki kaydında görünür.",
+  netAutoReply: "Kişilere kendiliğinden yanıt ver",
+  netAutoReplyHelp: "Tau'n kişilerden gelen mesajlara kendisi yanıt verir: kişiliğiyle ve genel notla, asla araçlarla değil.",
+  err_net: (detail) => detail,
+  err_universe_off: "Bu sunucunun bir evreni yok.",
+  err_not_configured: "Bu sunucunun henüz bir ağ adresi yok.",
 };
 
 export const MESSAGES: Readonly<Record<UiLanguage, Messages>> = { en, tr };

@@ -5,6 +5,7 @@
   "description": "tau-host: a Cloudflare Worker that hosts taus (GitHub sign-in, the brain in a Durable Object, the owner's app, web sub-taus)",
   "type": "module",
   "scripts": {
+    "postinstall": "cd ../shared && bun install --frozen-lockfile",
     "configure": "node scripts/configure.mjs",
     "generate": "node scripts/generate.mjs",
     "check-generated": "node scripts/generate.mjs --check",
@@ -23,10 +24,8 @@
     "vitest": "~4.1.11",
     "wrangler": "^4.144.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "workerd"
-    ]
-  }
+  "trustedDependencies": [
+    "esbuild",
+    "workerd"
+  ]
 }

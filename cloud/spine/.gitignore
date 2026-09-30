@@ -1,4 +1,4 @@
-# Your own configuration, written by `pnpm run configure`; Wrangler adds resource ids to it.
+# Your own configuration, written by `bun run configure`; Wrangler adds resource ids to it.
 wrangler.jsonc
 wrangler.jsonc.bak
 # Local secrets for `wrangler dev`.

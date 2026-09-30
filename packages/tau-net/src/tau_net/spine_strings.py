@@ -33,9 +33,10 @@ SPINE_MESSAGES: dict[str, dict[str, str]] = {
     },
     "net.spine.next": {"en": "Next steps:", "tr": "Sonraki adımlar:"},
     "net.spine.init.step_node": {
-        "en": "1. Install Node.js 22 or newer and log in to Cloudflare once: `npx wrangler login`.",
-        "tr": "1. Node.js 22 veya üstünü kur ve Cloudflare'e bir kez giriş yap: "
-        "`npx wrangler login`.",
+        "en": "1. Install Node.js 22 or newer (bun is optional) and log in to Cloudflare once: "
+        "`bunx wrangler login`, or `npx wrangler login` without bun.",
+        "tr": "1. Node.js 22 veya üstünü kur (bun isteğe bağlı) ve Cloudflare'e bir kez giriş "
+        "yap: `bunx wrangler login`, bun yoksa `npx wrangler login`.",
     },
     "net.spine.init.step_deploy": {
         "en": "2. Deploy it: `tau net spine deploy {path}`.",

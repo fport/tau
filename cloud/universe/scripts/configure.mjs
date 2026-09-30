@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// pnpm run configure [--route HOST] [--host-service NAME | --no-host-service]
+// bun run configure [--route HOST] [--host-service NAME | --no-host-service]
 //                    [--limit-namespaces N] [--force]
-// pnpm run configure --check-identity
+// bun run configure --check-identity
 //
 // Writes the gitignored `wrangler.jsonc` from wrangler.example.jsonc, and `.dev.vars` from
 // .dev.vars.example when it is missing, and says whether `.dev.vars` has a UNIVERSE_IDENTITY.
@@ -22,7 +22,7 @@
 //                       binding and rate-limit namespaces are carried over unless given
 //                       again, and the old file is kept as wrangler.jsonc.bak
 // --check-identity      only check whether the deployed Worker has the secret
-//                       UNIVERSE_IDENTITY (`npx wrangler secret list`, names only; needs
+//                       UNIVERSE_IDENTITY (`bunx wrangler secret list`, names only; needs
 //                       `wrangler login`), and write nothing
 
 import { spawnSync } from "node:child_process";
@@ -37,9 +37,9 @@ const HOST = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z
 const WORKER_NAME = /^[a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?$/;
 
 const usage =
-  "Usage: pnpm run configure [--route HOST] [--host-service NAME | --no-host-service]\n" +
+  "Usage: bun run configure [--route HOST] [--host-service NAME | --no-host-service]\n" +
   "                          [--limit-namespaces N] [--force]\n" +
-  "       pnpm run configure --check-identity";
+  "       bun run configure --check-identity";
 /** The Rate Limiting bindings, in the order --limit-namespaces numbers them. */
 const LIMITERS = ["CHAT_IP_LIMIT", "INBOX_IP_LIMIT", "INBOX_SENDER_LIMIT"];
 const DEFAULT_NAMESPACE = 10601;
@@ -104,7 +104,7 @@ if (checkIdentity) {
   if (listed.status !== 0 || !Array.isArray(names)) {
     console.error(
       "Could not list the Worker's secrets (not logged in, or not deployed yet?). " +
-        "Run `npx wrangler login` and `pnpm run deploy` first.",
+        "Run `bunx wrangler login` and `bun run deploy` first.",
     );
     process.exit(1);
   }
@@ -114,8 +114,8 @@ if (checkIdentity) {
   }
   console.log(
     `${IDENTITY} is not set: the universe has no card and relays visitors only to hosted ` +
-      "sub-taus. Make one with `pnpm run identity`, then " +
-      `\`npx wrangler secret put ${IDENTITY} < .universe-identity\`.`,
+      "sub-taus. Make one with `bun run identity`, then " +
+      `\`bunx wrangler secret put ${IDENTITY} < .universe-identity\`.`,
   );
   process.exit(1);
 }
@@ -269,19 +269,19 @@ const hasIdentity = readFileSync(devVars, "utf8")
   .some((line) => new RegExp(`^\\s*${IDENTITY}\\s*=\\s*\\S`).test(line));
 console.log(
   hasIdentity
-    ? `.dev.vars has a ${IDENTITY}: \`pnpm dev\` relays visitors to hub-run sub-taus.`
-    : `.dev.vars has no ${IDENTITY}: \`pnpm dev\` relays visitors only to hosted sub-taus ` +
-        "(`pnpm run identity --dev` adds one).",
+    ? `.dev.vars has a ${IDENTITY}: \`bun run dev\` relays visitors to hub-run sub-taus.`
+    : `.dev.vars has no ${IDENTITY}: \`bun run dev\` relays visitors only to hosted sub-taus ` +
+        "(`bun run identity --dev` adds one).",
 );
 
 // 3. Next steps
 const steps = [
-  "pnpm dev                        # the site and the API at http://127.0.0.1:8790",
-  "npx wrangler login              # once, to deploy",
-  "pnpm run deploy                 # builds the page script, deploys the Worker and its Durable Objects",
-  "pnpm run identity               # once: the universe's network identity, in .universe-identity",
-  `npx wrangler secret put ${IDENTITY} < .universe-identity`,
-  "pnpm run configure --check-identity   # the deployed Worker has the secret",
+  "bun run dev                        # the site and the API at http://127.0.0.1:8790",
+  "bunx wrangler login              # once, to deploy",
+  "bun run deploy                 # builds the page script, deploys the Worker and its Durable Objects",
+  "bun run identity               # once: the universe's network identity, in .universe-identity",
+  `bunx wrangler secret put ${IDENTITY} < .universe-identity`,
+  "bun run configure --check-identity   # the deployed Worker has the secret",
 ];
 console.log(`\nNext steps:\n${steps.map((step) => `  - ${step}`).join("\n")}`);
 process.exit(failed ? 1 : 0);

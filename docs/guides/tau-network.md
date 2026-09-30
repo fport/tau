@@ -15,40 +15,40 @@ The design is in [ADR 0007](../adr/0007-cloud-mode-and-tau-network.md) and [ADR 
 
 ## 1. Try it locally first (optional)
 
-[Try everything locally](../getting-started/try-locally.md) runs two taus and two spines on one machine, with no Cloudflare account and no model key. It uses the same spine kit as the deploy below, run with `npx wrangler dev`.
+[Try everything locally](../getting-started/try-locally.md) runs two taus and two spines on one machine, with no Cloudflare account and no model key. It uses the same spine kit as the deploy below, run with `bunx wrangler dev`.
 
 ## 2. Deploy your spine
 
-You need Node.js 22 or newer and a Cloudflare account; the Workers Free plan is enough. Contacts know your tau by its address, so choose it before you add any.
+You need Node.js 22 or newer and a Cloudflare account; the Workers Free plan is enough. [bun](https://bun.sh) is optional: tau uses `bun install` and `bunx wrangler` when bun is on `PATH`, else `npm install` and `npx wrangler`. Wrangler runs on Node.js either way. Contacts know your tau by its address, so choose it before you add any.
 
 === "With the spine kit"
 
     The spine ships inside `tau-net`, so this works without the repository:
 
     ```sh
-    npx wrangler login                                        # once, in a browser
+    bunx wrangler login                                       # once, in a browser (npx without bun)
     tau net spine init ~/tau-spine --address tau.example.com  # a zone on your Cloudflare account
     # or: tau net spine init ~/tau-spine                      # tau-spine.<your-subdomain>.workers.dev
     tau net spine deploy ~/tau-spine
     ```
 
     - `tau net spine init DIR` writes a Wrangler project into a new or empty directory: `wrangler.jsonc` (local mode), the bundled `worker.js`, a `package.json` with Wrangler pinned, `.gitignore` and a `README.md`. `--address` sets the `ADDRESS` variable and a custom-domain route.
-    - `tau net spine deploy DIR` checks the Wrangler login, runs `npm install` and `npx wrangler deploy`, creates `TAU_SPINE_TOKEN` in `<TAU_HOME>/.env` when it is missing, sets it as the Worker's `HUB_TOKEN` secret (on stdin, never printed), and writes `TAU_SPINE_URL` to the same `.env`.
+    - `tau net spine deploy DIR` checks the Wrangler login, runs `bun install` and `bunx wrangler deploy` (`npm install` and `npx wrangler deploy` without bun), creates `TAU_SPINE_TOKEN` in `<TAU_HOME>/.env` when it is missing, sets it as the Worker's `HUB_TOKEN` secret (on stdin, never printed), and writes `TAU_SPINE_URL` to the same `.env`.
     - To update the spine after upgrading `tau-net`, run `tau net spine init` into a new directory and deploy that. The Worker keeps its name and its storage.
 
     The `tau-net` README and [the universe reference, §4](../reference/tau-universe.md#4-the-spine-kit-tau-net-spine) describe the kit in full.
 
 === "From source"
 
-    Contributors deploy from `cloud/spine` in the repository, with Node.js 24 and pnpm 10:
+    Contributors deploy from `cloud/spine` in the repository, with bun (and Node.js 24, which Wrangler runs on):
 
     ```sh
     cd cloud/spine
-    pnpm install
-    pnpm run configure                       # writes the gitignored wrangler.jsonc and .dev.vars
-    pnpm exec wrangler login
-    pnpm run deploy                          # creates the Worker and its storage (no D1 needed)
-    pnpm exec wrangler secret put HUB_TOKEN  # paste a long random value; your hub needs the same
+    bun install
+    bun run configure                        # writes the gitignored wrangler.jsonc and .dev.vars
+    bunx wrangler login
+    bun run deploy                           # creates the Worker and its storage (no D1 needed)
+    bunx wrangler secret put HUB_TOKEN       # paste a long random value; your hub needs the same
     ```
 
     The deploy prints the Worker's URL; its host is your address. For your own domain, add a route to `cloud/spine/wrangler.jsonc` and deploy again:
@@ -65,7 +65,7 @@ You need Node.js 22 or newer and a Cloudflare account; the Workers Free plan is 
     TAU_SPINE_TOKEN=<the same value as HUB_TOKEN>
     ```
 
-    `pnpm dev` runs the same spine locally on `http://127.0.0.1:8787`; [`cloud/spine/README.md`](https://github.com/fport/tau/blob/main/cloud/spine/README.md) shows it, a second spine for two local taus, and the cloud-mode deploy.
+    `bun run dev` runs the same spine locally on `http://127.0.0.1:8787`; [`cloud/spine/README.md`](https://github.com/fport/tau/blob/main/cloud/spine/README.md) shows it, a second spine for two local taus, and the cloud-mode deploy.
 
 Local mode stays within the Workers Free plan.
 

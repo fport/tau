@@ -5,7 +5,7 @@
   "description": "tau's public site and the tau universe: an opt-in directory of taus and their mutual links",
   "type": "module",
   "scripts": {
-    "postinstall": "pnpm --dir ../shared install --frozen-lockfile",
+    "postinstall": "cd ../shared && bun install --frozen-lockfile",
     "configure": "node scripts/configure.mjs",
     "identity": "node scripts/identity.mjs",
     "build": "node scripts/build.mjs",
@@ -29,10 +29,8 @@
     "vitest": "~4.1.11",
     "wrangler": "^4.144.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "workerd"
-    ]
-  }
+  "trustedDependencies": [
+    "esbuild",
+    "workerd"
+  ]
 }

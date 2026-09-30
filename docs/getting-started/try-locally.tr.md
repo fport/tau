@@ -16,7 +16,7 @@ Hiçbir şeyi deploy etmeden (buluta yayına almadan) önce bütün tau ağını
 ## Başlamadan önce
 
 - `tau-net` ile birlikte kurulmuş tau; [Kurulum](build-your-own-tau.md#3-install) bölümündeki gibi. `tau-net` PyPI'a çıkana kadar bu **From source** (kaynaktan) yoludur; `tau` her dizinde çalışsın diye 1. terminalde `source /path/to/tau/.venv/bin/activate` çalıştır.
-- Node.js 22 veya daha yenisi (`npx`) ve token'lar için `openssl`.
+- Node.js 22 veya daha yenisi ve [bun](https://bun.sh) (ya da Node.js ile gelen `npm` ve `npx`), bir de token'lar için `openssl`.
 - Boş portlar: spine'lar için 8821 ve 8822, onların inspector'ları için 9361 ve 9362, iki hub için 7921 ve 7922. Bunlar doluysa başkalarını seç ve geçtikleri her yeri değiştir.
 
 ## 1. Bir lab dizini ve iki kısayol
@@ -130,22 +130,22 @@ printf 'TAU_SPINE_URL=http://127.0.0.1:8822\nTAU_SPINE_TOKEN=%s\nTAU_NET_ALLOW_I
 
 ## 4. Spine'ları başlat
 
-Her spine ön planda çalışır, o yüzden iki terminal daha aç. `npm install`, sabitlenmiş Wrangler sürümünü bir kez indirir.
+Her spine ön planda çalışır, o yüzden iki terminal daha aç. `bun install`, sabitlenmiş Wrangler sürümünü bir kez indirir; `bunx` onu Node.js üzerinde başlatır. bun yoksa aynı bayraklarla `npm install --no-audit --no-fund` ve `npx wrangler dev` çalıştır.
 
 ```sh
 # terminal 2: Alice's spine
 export LAB=~/tau-lab
 cd "$LAB/alice/spine"
-npm install --no-audit --no-fund
-npx wrangler dev --port 8821 --inspector-port 9361 --persist-to .wrangler/state
+bun install
+bunx wrangler dev --port 8821 --inspector-port 9361 --persist-to .wrangler/state
 ```
 
 ```sh
 # terminal 3: Bob's spine
 export LAB=~/tau-lab
 cd "$LAB/bob/spine"
-npm install --no-audit --no-fund
-npx wrangler dev --port 8822 --inspector-port 9362 --persist-to .wrangler/state
+bun install
+bunx wrangler dev --port 8822 --inspector-port 9362 --persist-to .wrangler/state
 ```
 
 ```text
@@ -270,7 +270,7 @@ bob hub stop
 
 <!-- verified: help/code. The universe Worker is in the source tree only; tau.toml accepting a host:port and the http rule were checked with an address where nothing listens. -->
 
-Evren (universe) Worker'ı kit'te değil, depoda: `cloud/universe`. Onun [README](https://github.com/fport/tau/blob/main/cloud/universe/README.md) dosyası Worker'ı `pnpm dev` ile yerelde, varsayılan olarak `http://127.0.0.1:8790` adresinde çalıştırır; lab'ın kartlarını `http` üzerinden alabilmesi için `ALLOW_INSECURE_PEERS=1` ile. İki tau'yu da ona yönlendir:
+Evren (universe) Worker'ı kit'te değil, depoda: `cloud/universe`. Onun [README](https://github.com/fport/tau/blob/main/cloud/universe/README.md) dosyası Worker'ı `bun run dev` ile yerelde, varsayılan olarak `http://127.0.0.1:8790` adresinde çalıştırır; lab'ın kartlarını `http` üzerinden alabilmesi için `ALLOW_INSECURE_PEERS=1` ile. İki tau'yu da ona yönlendir:
 
 ```sh
 printf '\n[component.net]\nuniverse = "127.0.0.1:8790"\n' >> "$LAB/alice/config/tau.toml"
@@ -291,4 +291,4 @@ rm -rf "$LAB"
 unset -f alice bob
 ```
 
-Başka hiçbir yerde tau durumu kalmaz: hiçbir şey bir Cloudflare hesabına, `~/.tau` ya da `~/.local/share/tau` dizinine gitmedi. Yalnızca npm ve Wrangler, ev dizininde her zamanki önbelleklerini ve ayarlarını tutar. Sıradaki: gerçeği için [Kendi tau'nu kur](build-your-own-tau.md).
+Başka hiçbir yerde tau durumu kalmaz: hiçbir şey bir Cloudflare hesabına, `~/.tau` ya da `~/.local/share/tau` dizinine gitmedi. Yalnızca bun (ya da npm) ve Wrangler, ev dizininde her zamanki önbelleklerini ve ayarlarını tutar. Sıradaki: gerçeği için [Kendi tau'nu kur](build-your-own-tau.md).

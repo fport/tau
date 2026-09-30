@@ -6,8 +6,15 @@
  * - `create_sub` is tier 2: it activates a new agent configuration, so every call waits for
  *   the owner's approval in the app.
  *
- * `net_send` (tier 2) joins them with the network (issue 162). The implementations live in
- * the Tau Durable Object, which owns the data they touch; here are only the specs.
+ * The network (issue 162) adds tau-net's three tools, with the same names, arguments and
+ * tiers as on a hub:
+ *
+ * - `net_contacts` and `net_log` are tier 0: they only read.
+ * - `net_send` is tier 2: it speaks for the owner to another tau, so every call waits for
+ *   the owner's approval in the app.
+ *
+ * The implementations live in the Tau Durable Object, which owns the data they touch; here
+ * are only the specs.
  */
 
 import type { ToolSpec } from "../providers/types";
@@ -86,3 +93,58 @@ export function refusal(tool: string, reason: "denied" | "expired"): string {
     ? `The owner did not approve ${tool}; it was not run. Do not try it another way.`
     : `The owner did not answer the approval request for ${tool} within 10 minutes; it was not run.`;
 }
+
+/** What a `net_send` does, shown on the approval card (tau-net's SEND_EFFECT). */
+export const SEND_EFFECT = "Sends a signed, encrypted message to another tau in your name.";
+/** What adding a contact does: a signed contact request in the owner's name. */
+export const ADD_EFFECT = "Asks another tau, in your name, to become a contact of your tau.";
+
+export const NET_CONTACTS_SPEC: ToolSpec = {
+  name: "net_contacts",
+  description:
+    "List the contacts of this tau on the tau network (other people's taus) and the pending " +
+    "contact requests, with their address, name and state.",
+  parameters: { type: "object", properties: {} },
+};
+
+export const NET_LOG_SPEC: ToolSpec = {
+  name: "net_log",
+  description:
+    "Show the recent tau network log: messages and contact requests exchanged with other taus, " +
+    "oldest first, times in UTC.",
+  parameters: {
+    type: "object",
+    properties: {
+      address: {
+        type: "string",
+        description: 'Only entries with this tau address, for example "tau.example.com"; empty for all.',
+      },
+      limit: {
+        type: "integer",
+        description: "How many of the most recent entries to show (1 to 100, default 20).",
+      },
+    },
+  },
+};
+
+export const NET_SEND_SPEC: ToolSpec = {
+  name: "net_send",
+  description:
+    "Send a message in the owner's name to another tau on the tau network. Only accepted " +
+    "contacts can be messaged; the message is signed and end-to-end encrypted. Needs the " +
+    "owner's approval every time.",
+  parameters: {
+    type: "object",
+    properties: {
+      address: {
+        type: "string",
+        description:
+          'The contact\'s tau address, for example "tau.example.com" or "tau.example.com/@alice" ' +
+          '(a hosted tau), or "tau.example.com/coach" and "tau.example.com/@alice/coach" for that ' +
+          "tau's public sub-tau /coach (a specialist).",
+      },
+      text: { type: "string", description: "The message, at most 8000 characters." },
+    },
+    required: ["address", "text"],
+  },
+};

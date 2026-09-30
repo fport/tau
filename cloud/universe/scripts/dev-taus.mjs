@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fills a LOCAL universe with a small cast of development taus, so the universe page has
-// something to draw under `pnpm dev`. A development tool; it refuses any universe that is
+// something to draw under `bun run dev`. A development tool; it refuses any universe that is
 // not on 127.0.0.1 or localhost.
 //
 //   node scripts/dev-taus.mjs [--universe 127.0.0.1:8790] [--port 18790] [--count N] [--leave]

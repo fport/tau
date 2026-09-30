@@ -5,7 +5,7 @@ description = "tau's cloud mode: the spine session backend, config and persona s
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = ["click>=8.1", "tau-core>=0.3.1", "tau-net>=0.1.0", "tomlkit>=0.13"]
+dependencies = ["click>=8.1", "tau-core>=0.4.0", "tau-net>=0.1.0", "tomlkit>=0.13"]
 keywords = ["tau", "agent", "assistant", "cloudflare", "containers", "d1", "sessions"]
 classifiers = [
     "Development Status :: 3 - Alpha",

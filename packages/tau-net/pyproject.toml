@@ -5,7 +5,7 @@ description = "The tau network: identity keys, signed and sealed envelopes, cont
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = ["click>=8.1", "cryptography>=44", "tau-core>=0.3.1"]
+dependencies = ["click>=8.1", "cryptography>=44", "tau-core>=0.4.0"]
 keywords = ["tau", "agent", "assistant", "federation", "ed25519", "x25519", "cloudflare"]
 classifiers = [
     "Development Status :: 3 - Alpha",

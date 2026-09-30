@@ -2005,7 +2005,7 @@ requires-dist = [
 
 [[package]]
 name = "tau-core"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "packages/tau-core" }
 dependencies = [
     { name = "click" },
@@ -2059,7 +2059,7 @@ requires-dist = [{ name = "tau-core" }]
 
 [[package]]
 name = "tau-guard"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "packages/tau-guard" }
 dependencies = [
     { name = "click" },
@@ -2124,7 +2124,7 @@ requires-dist = [
 
 [[package]]
 name = "tau-tui"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "packages/tau-tui" }
 dependencies = [
     { name = "click" },

@@ -1,6 +1,6 @@
 [project]
 name = "tau-guard"
-version = "0.3.1"
+version = "0.4.0"
 description = "The owner guard for tau: the hub's guard service with reflex locks, a worker subprocess per check, protected /guard routes, an audit log and the tau guard command."
 readme = "README.md"
 license = "MIT"
@@ -10,7 +10,7 @@ dependencies = [
     "cryptography>=44",
     "numpy>=2",
     "opencv-python-headless>=4.14,<5",
-    "tau-core>=0.3.1",
+    "tau-core>=0.4.0",
     "keyring>=25; sys_platform == 'darwin'",
     "pyobjc-framework-AVFoundation>=12; sys_platform == 'darwin'",
     "pyobjc-framework-Cocoa>=12; sys_platform == 'darwin'",

@@ -5,7 +5,7 @@ description = "Sub-taus: small named specialists of your tau, each with its own 
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = ["click>=8.1", "strands-agents>=1.57", "tau-core>=0.3.1"]
+dependencies = ["click>=8.1", "strands-agents>=1.57", "tau-core>=0.4.0"]
 keywords = ["tau", "agent", "assistant", "specialist", "sub-agent", "strands", "cli"]
 classifiers = [
     "Development Status :: 3 - Alpha",

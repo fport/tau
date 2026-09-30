@@ -76,28 +76,37 @@ never saved.
   step-up: turn left or right past `max(0.20, 0.6 x your calibrated turn)` in the yaw proxy
   `(nose_x - eye_mid_x) / eye distance`, hold for a random 0.4-0.8 s, come back within 0.10.
   Each prompt follows a random 0.3-0.9 s pause and has 3.5 s. An overshoot of more than 0.15
-  the other way aborts with `spoof`, and so does a step not done in time; a flat photo turned
-  about the vertical axis cannot change the proxy. Exactly one face stays in view, with box IoU
-  above 0.3 from frame to frame, and a second frontal match closes the check. A presence
-  recheck is a passive strict match, and so is a step-up within
+  the other way aborts with `spoof`, and so does moving more than that during a pause, or a
+  step not done in time; a flat photo turned about the vertical axis cannot change the proxy.
+  Exactly one face stays in view (box IoU above 0.3 from frame to frame, never gone for more
+  than 0.2 s), the frames near the centre between the turns must match you too, and a second
+  frontal match closes the check. Cancelling or locking while a turn prompt is up counts like a
+  failed step. A prompt is shown only when its step can end before the camera's 20 s limit. A
+  presence recheck is a passive strict match, and so is a step-up within
   `step_up_challenge_fresh_seconds` of a passed challenge.
 - **Enrollment.** Guided, 15-20 s at most: look, turn left, turn right, up, down, with live
   hints. 10-20 samples, none closer than 0.97 to another, each at least 0.55 to the mean of the
   others (leave-one-out); the template is their renormalised mean, stored with the turn
-  calibration. It always runs behind LocalAuthentication (Touch ID or the Mac password), is
-  refused over SSH, and runs through the hub when a hub with an active guard runs
-  (`POST /guard/enroll`), else in a local worker.
+  calibration. It always runs behind LocalAuthentication (Touch ID or the Mac password, asked
+  only once the camera permission is granted), is refused over SSH, and runs through the hub
+  when a hub with an active guard runs (`POST /guard/enroll`), else in a local worker. On a
+  first `tau guard setup` the hub's guard is not active yet, so the app that runs the hub asks
+  for its own camera permission at the first unlock.
 - **Storage.** `TAU_DATA_DIR/guard/owner.face.v1.bin` (0600, atomic) is
   `b"TAUG1" | nonce | AES-GCM(payload)` with the model's sha256 as associated data; the 256-bit
-  key is in the macOS Keychain (service `tau-guard`, account `template-key-v1`) and is read only
-  in the worker, with a timeout. A copy of the data dir or a backup cannot decrypt it. The
-  public marker `guard/enrolled` holds `{v, enrollment, model, created}` and nothing
-  biometric. The template is read again for every check, so `tau guard forget` works at once.
+  key is in the macOS Keychain (service `tau-guard`, account `template-key-v1`; always keyring's
+  macOS backend, whatever `PYTHON_KEYRING_BACKEND` says) and is read only in the worker, with a
+  timeout. A copy of the data dir or a backup cannot decrypt it. The public marker
+  `guard/enrolled` holds `{v, enrollment, model, created}` and nothing biometric; a template
+  file must carry the marker's enrollment id. The template is read again for every check, so
+  `tau guard forget` works at once.
 
-A 2D webcam check keeps a housemate out of tau's own surfaces and stops a printed photo or a
-phone held up to the camera; it does not stop a real-time deepfake, a good 3D mask or anyone
-with a shell in your account. That is why it is only ever required in addition to the human
-approval.
+**Honest limits.** Without an infrared camera, a 2D webcam check is a presence and convenience
+factor. It keeps a housemate out of tau's own surfaces and stops low-effort photo and screen
+attacks. It does not stop a real-time deepfake, a determined attacker with a good video, or
+anyone with a shell in your account: a synthetic looping clip of natural head turns passes a
+few percent of the unlock challenges (see issue 112). That is why it is only ever required in
+addition to the human approval.
 
 ### Models and credits
 
@@ -140,7 +149,7 @@ max_unlock_hours = 8                # 1-24, on the wall clock
 idle_lock_minutes = 10              # 1-240; also the cap while the screen state is unknown
 recheck_after_idle_minutes = 3      # 1-240
 presence_recheck_minutes = 30       # 1-1440
-verify_timeout_seconds = 15         # 5-60; the worker gets 15 s more
+verify_timeout_seconds = 15         # 5-60 for the frontal match; the camera stops at 20 s anyway
 unlock_threshold = 0.50             # 0.45-0.95
 step_up_threshold = 0.55            # 0.45-0.95; step-ups and presence rechecks
 step_up_challenge_fresh_seconds = 120  # 0-600; a step-up this soon after a challenge is passive
@@ -160,6 +169,7 @@ tau guard setup [--model-file PATH] # model, enrollment, one check, [component.g
 tau guard enroll [--add]            # enroll again, or add samples under other light
 tau guard verify [--explain]        # one check; --explain prints each frame's numbers
 tau guard forget                    # remove template, marker and key; the guard is off
+                                    # (exit 1 if the Keychain kept the key; run it again)
 tau guard doctor                    # everything the face guard depends on
 tau guard status [--json]           # the state as the running hub reports it
 tau guard lock                      # lock every guarded channel now

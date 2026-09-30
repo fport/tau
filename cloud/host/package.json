@@ -1,0 +1,32 @@
+{
+  "name": "tau-host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "tau-host: a Cloudflare Worker that hosts taus (GitHub sign-in, the brain in a Durable Object, the owner's app, web sub-taus)",
+  "type": "module",
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "generate": "node scripts/generate.mjs",
+    "check-generated": "node scripts/generate.mjs --check",
+    "build": "node scripts/build.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p client",
+    "types": "wrangler types --config wrangler.example.jsonc --env-file .dev.vars.example --include-runtime=false --strict-vars=false"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "~0.22.0",
+    "@cloudflare/workers-types": "^5.20260930.1",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3",
+    "vitest": "~4.1.11",
+    "wrangler": "^4.144.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ]
+  }
+}

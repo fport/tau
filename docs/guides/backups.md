@@ -17,6 +17,7 @@ Everything tau knows lives on the hub. That is the point of the design, and it m
 │   ├── events.jsonl          agent events: tool calls, approvals, limits, errors
 │   └── agents/tau/           agent state and one file per message
 ├── hub/                      hub state: lock, heartbeat, crash reports, launchd logs
+├── net/                      tau network: identity.json (your tau's keys), profile, contacts, log
 └── logs/tau.log              the log file
 ```
 
@@ -69,13 +70,13 @@ export TAU_BACKUP_PUBKEY='age1...'           # from age-keygen
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 tar -C / -czf - \
-  "${TAU_DATA_DIR#/}/sessions" "${TAU_DATA_DIR#/}/hub" \
+  "${TAU_DATA_DIR#/}/sessions" "${TAU_DATA_DIR#/}/hub" "${TAU_DATA_DIR#/}/net" \
   "${TAU_HOME#/}/persona/user.md" "${TAU_HOME#/}/tau.toml" \
   | age -r "$TAU_BACKUP_PUBKEY" -o "/tmp/tau-$stamp.tar.gz.age"
 ls -l "/tmp/tau-$stamp.tar.gz.age"
 ```
 
-`hub/hub.lock` is included and harmless. `logs/` is left out on purpose; add it if you want it.
+`hub/hub.lock` is included and harmless. `logs/` is left out on purpose; add it if you want it. Without the [tau network](tau-network.md) there is no `net` directory; `tar` then prints `Cannot stat: No such file or directory` and archives the rest, so drop it from the list to keep the output clean. With the network set up, `net/identity.json` is the one file you cannot recreate: it holds your tau's keys, and your contacts refuse new ones.
 
 ## Upload to a private R2 bucket
 

@@ -36,6 +36,9 @@ Documentation = "https://docs.tau.getporti.com"
 Issues = "https://github.com/fport/tau/issues"
 Changelog = "https://github.com/fport/tau/releases"
 
+[project.entry-points."tau.hub_services"]
+guard = "tau_guard.service:make_service"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -89,7 +89,11 @@ def test_defaults() -> None:
     assert parse_settings(
         {"enabled": True, "unlock_fallback": "none"}
     ).limits().unlock_fallback == ("none")
-    assert settings.policy() == {"step_up": "face", "unlock_liveness": "challenge"}
+    assert settings.policy() == {
+        "step_up": "face",
+        "unlock_liveness": "challenge",
+        "unlock_fallback": "touch_id",
+    }
     assert settings.worker()["unlock_threshold"] == 0.5
     assert settings.camera == DEFAULTS["camera"] == "builtin"
 
@@ -138,27 +142,38 @@ def test_edges_of_the_ranges_are_accepted() -> None:
 
 
 def test_a_client_policy_can_only_make_the_check_stricter() -> None:
-    hub = {"step_up": "face_or_touch_id", "unlock_liveness": "none"}
-    assert stricter_policy(hub, {"step_up": "face", "unlock_liveness": "challenge"}) == {
+    hub = {"step_up": "face_or_touch_id", "unlock_liveness": "none", "unlock_fallback": "none"}
+    client = {"step_up": "face", "unlock_liveness": "challenge", "unlock_fallback": "touch_id"}
+    assert stricter_policy(hub, client) == {
         "step_up": "face",
         "unlock_liveness": "challenge",
+        "unlock_fallback": "none",  # the hub offers no fallback at all
     }
-    strict = {"step_up": "face", "unlock_liveness": "challenge"}
-    assert stricter_policy(strict, {"step_up": "none", "unlock_liveness": "none"}) == strict
+    strict = {"step_up": "face", "unlock_liveness": "challenge", "unlock_fallback": "touch_id"}
+    weak = {"step_up": "none", "unlock_liveness": "none", "unlock_fallback": "touch_id_or_password"}
+    assert stricter_policy(strict, weak) == strict
     assert stricter_policy(strict, {"step_up": "touch_id"}) == strict  # same rank: the hub's
     assert stricter_policy(strict, {"step_up": "bogus"}) == strict
     assert stricter_policy(strict, None) == strict
-    both_none = {"step_up": "none", "unlock_liveness": "none"}
-    assert stricter_policy(both_none, both_none) == both_none  # none only when both agree
+    assert stricter_policy(weak, weak) == weak  # the weak values only when both agree
+    assert stricter_policy(weak, {**weak, "unlock_fallback": "none"})["unlock_fallback"] == "none"
 
 
 @pytest.mark.parametrize(
     "client",
-    [{}, {"step_up": "bogus", "unlock_liveness": "x"}, {"unlock_liveness": "challenge"}],
+    [
+        {},
+        {"step_up": "bogus", "unlock_liveness": "x", "unlock_fallback": "pin"},
+        {"unlock_liveness": "challenge"},
+    ],
 )
 def test_a_knob_the_client_leaves_out_is_its_default_never_agreement(
     client: dict[str, str],
 ) -> None:
-    both_none = {"step_up": "none", "unlock_liveness": "none"}
-    assert stricter_policy(both_none, client) == {"step_up": "face", "unlock_liveness": "challenge"}
-    assert stricter_policy(both_none, None) == both_none  # an in-hub caller: the hub's alone
+    weak = {"step_up": "none", "unlock_liveness": "none", "unlock_fallback": "touch_id_or_password"}
+    assert stricter_policy(weak, client) == {
+        "step_up": "face",
+        "unlock_liveness": "challenge",
+        "unlock_fallback": "touch_id",
+    }
+    assert stricter_policy(weak, None) == weak  # an in-hub caller: the hub's alone

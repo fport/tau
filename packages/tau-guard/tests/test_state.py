@@ -722,7 +722,7 @@ def run_kind(m: GuardMachine, kind: str, outcome: Outcome, **policy: str) -> dic
     return record
 
 
-TOUCH_ID = Outcome(True, "match", "touch_id")
+TOUCH_ID = Outcome(True, "match", "touch_id", local_auth=("biometrics", "ok", 900))
 PASSIVE = Outcome(True, "match", "face", 0.8, "passive")
 
 

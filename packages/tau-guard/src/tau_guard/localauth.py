@@ -11,10 +11,11 @@ Two policies:
   nothing from Touch ID here, and removing every finger does not bring the password back:
   a pinned enrollment is only ever authorised by Touch ID with its pin
   (:func:`tau_guard.worker.admin_policy`).
-- :data:`DEVICE_OWNER` (``LAPolicyDeviceOwnerAuthentication``, policy 2): Touch ID or the Mac
-  password. It authorises a first enrollment, re-enrollment and ``forget`` on a Mac without
-  Touch ID, and the ``touch_id_or_password`` unlock fallback (the opt-in for a closed lid). The
-  pin does not apply to it: whoever could change the fingerprint set knows the password.
+- :data:`DEVICE_OWNER` (``LAPolicyDeviceOwnerAuthentication``, policy 2): Touch ID, the Mac
+  password or a paired Apple Watch, as macOS offers them. It authorises a first enrollment,
+  re-enrollment and ``forget`` on a Mac without Touch ID, and the ``touch_id_or_password``
+  unlock fallback (the opt-in for a closed lid). The pin does not apply to it: whoever could
+  change the fingerprint set knows the password.
 
 **Availability** (:meth:`LocalAuthFactor.biometry`, which never shows a prompt): ``available``;
 ``unavailable`` when the Mac has Touch ID that cannot be used now (the lid is closed, so the

@@ -138,6 +138,9 @@ TOUCH_ID_AFTER = frozenset(
 not work. A counted failure (``no_match``, ``spoof``, ``multiple_faces``) never does."""
 FALLBACK_POLICIES = {"touch_id": "biometrics", "touch_id_or_password": "device_owner"}
 """``unlock_fallback`` → the LocalAuthentication policy of the Touch ID unlock and recheck."""
+FALLBACK_RANK = {"touch_id_or_password": 0, "touch_id": 1, "none": 2}
+"""How strict an ``unlock_fallback`` is; of the hub's setting and the merged policy's, the
+stricter one picks the policy."""
 Emit = Callable[[dict[str, Any]], None]
 
 
@@ -708,10 +711,16 @@ def _factor_policy(request: dict[str, Any]) -> str | None:
     from tau_guard.localauth import BIOMETRICS
 
     kind = request.get("kind")
-    if kind in ("unlock", "recheck"):
-        return FALLBACK_POLICIES.get(str(_settings(request).get("unlock_fallback")))
     policy = request.get("policy")
-    mode = policy.get("step_up") if isinstance(policy, dict) else None
+    policy = policy if isinstance(policy, dict) else {}
+    if kind in ("unlock", "recheck"):
+        hub = _settings(request).get("unlock_fallback")
+        if hub not in FALLBACK_RANK:
+            return None  # the hub always sends its settings
+        theirs = policy.get("unlock_fallback", hub)  # the merged value; the stricter applies
+        mode = max(hub, theirs, key=lambda value: FALLBACK_RANK.get(value, FALLBACK_RANK["none"]))
+        return FALLBACK_POLICIES.get(str(mode))
+    mode = policy.get("step_up")
     if kind == "step_up" and mode in ("touch_id", "face_or_touch_id"):
         return BIOMETRICS
     return None

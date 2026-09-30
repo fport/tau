@@ -94,7 +94,11 @@ async def test_admit_unlock_step_up_and_lock_through_hub_guard(tmp_path: Path) -
         requests = read_requests(running.script)
         assert [r["request"]["kind"] for r in requests] == ["unlock", "step_up"]
         step_up = requests[1]["request"]
-        assert step_up["policy"] == {"step_up": "face", "unlock_liveness": "challenge"}
+        assert step_up["policy"] == {
+            "step_up": "face",
+            "unlock_liveness": "challenge",
+            "unlock_fallback": "touch_id",
+        }
         assert step_up["challenge_fresh"] is True  # the unlock passed the challenge just now
         assert step_up["data_dir"] == str(running.config.data_dir)
 
@@ -413,7 +417,7 @@ def test_every_route_is_listed_and_no_field_takes_a_verdict(tmp_path: Path) -> N
                 )
                 assert spec.kind != "number" or name == "wait", (route, name)
                 assert spec.kind != "bool" or (route, name) == (("POST", "/guard/enroll"), "add")
-        assert set(POLICY_FIELDS) == {"step_up", "unlock_liveness"}
+        assert set(POLICY_FIELDS) == {"step_up", "unlock_liveness", "unlock_fallback"}
         assert all(spec.kind == "choice" for spec in POLICY_FIELDS.values())
 
 

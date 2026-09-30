@@ -47,6 +47,7 @@ OPTIONAL_TEXT = FieldSpec("text", nullable=True)
 POLICY_FIELDS: dict[str, FieldSpec] = {
     "step_up": FieldSpec("choice", choices=CHOICES["step_up"]),
     "unlock_liveness": FieldSpec("choice", choices=CHOICES["unlock_liveness"]),
+    "unlock_fallback": FieldSpec("choice", choices=CHOICES["unlock_fallback"]),
 }
 """The only knobs a client may send; each can only make the check stricter."""
 VERIFY_KINDS = ("unlock", "recheck", "step_up")

@@ -30,11 +30,12 @@ Rules the table in the ADR leaves to the implementation:
   An unlock from ``locked`` that fails goes back to ``locked``.
 - **Policy.** A worker success the attempt's merged policy excludes (a Touch ID step-up when
   ``step_up`` is ``face``, Touch ID for an attempt that did not ask for it or when
-  ``unlock_fallback`` is ``none``, a face success for a Touch ID attempt, a face unlock without
-  ``liveness: "challenge"`` when ``unlock_liveness`` is ``challenge``, a face step-up without
-  the challenge outside the freshness window, a face step-up when ``step_up`` is
-  ``touch_id``, any worker success for a ``none`` step-up) finishes as ``error``. The worker
-  enforces the policy first; this is the hub's second line.
+  ``unlock_fallback`` is ``none``, a Touch ID success through the password policy for a
+  step-up or for ``unlock_fallback = "touch_id"``, a face success for a Touch ID attempt, a
+  face unlock without ``liveness: "challenge"`` when ``unlock_liveness`` is ``challenge``, a
+  face step-up without the challenge outside the freshness window, a face step-up when
+  ``step_up`` is ``touch_id``, any worker success for a ``none`` step-up) finishes as
+  ``error``. The worker enforces the policy first; this is the hub's second line.
 - **Challenge freshness.** Only an unlock or a step-up that passed the challenge starts the
   ``challenge_fresh`` window, and every lock ends it.
 - **Abandoned challenges count.** A check dropped while its record shows a head-turn prompt
@@ -52,10 +53,12 @@ Rules the table in the ADR leaves to the implementation:
 - **Touch ID (issue 114).** An attempt has a ``factor``: ``face`` or ``touch_id``.
 
   - *The unlock fallback* (``request("unlock", method="touch_id")``) is offered only while
-    ``locked`` and ``unlock_fallback`` is not ``none``, after :data:`FALLBACK_AFTER` failed face
-    unlocks within :data:`FAILURE_WINDOW` (``FACE_FAILURES``) or a ``camera_*`` verdict of any
-    face check in that window (:meth:`GuardMachine.fallback_offer`, the status field
-    ``fallback``); otherwise it is refused with ``touch_id_unavailable``. The face cooldown
+    ``locked`` and the hub's ``unlock_fallback`` is not ``none``, after :data:`FALLBACK_AFTER`
+    failed face unlocks within :data:`FAILURE_WINDOW` (``FACE_FAILURES``) or a ``camera_*``
+    verdict of any face check in that window (:meth:`GuardMachine.fallback_offer`, the status field
+    ``fallback``); otherwise, or when the request's merged ``unlock_fallback`` (the stricter
+    of the hub's and the client's) is ``none``, it is refused with ``touch_id_unavailable``. A
+    Touch ID only request never joins one that takes the password. The face cooldown
     does not hold it back (Touch ID has its own rate limit in macOS), a successful unlock of
     either method ends a running cooldown and clears the offer, and Touch ID failures never
     count.
@@ -141,8 +144,10 @@ _JOINS = {"unlock": frozenset({"unlock"}), "recheck": frozenset({"unlock", "rech
 STRICTNESS: dict[str, dict[str, int]] = {
     "step_up": {"none": 0, "face_or_touch_id": 1, "face": 2, "touch_id": 2},
     "unlock_liveness": {"none": 0, "challenge": 1},
+    "unlock_fallback": {"touch_id_or_password": 0, "touch_id": 1, "none": 2},
 }
 """Higher is stricter; two different values of the same rank keep the hub's."""
+_FALLBACK_RANK = STRICTNESS["unlock_fallback"]
 _STEP_UP_METHODS = {
     "face": frozenset({"face"}),
     "touch_id": frozenset({"touch_id"}),
@@ -529,7 +534,11 @@ class GuardMachine:
         self._prune()
         if self.screen == "locked":
             return Refusal("locked")  # neither the camera nor a prompt on a locked Mac
-        if method == "touch_id" and self.fallback_offer() is None and not self._touch_id_unlock():
+        merged = dict(policy or {})
+        fallback = self._fallback_mode(merged)
+        if method == "touch_id" and (
+            fallback == "none" or (self.fallback_offer() is None and not self._touch_id_unlock())
+        ):
             return Refusal("touch_id_unavailable")
         if kind != "enroll" and method != "touch_id":
             left = self.cooldown_left()
@@ -537,9 +546,8 @@ class GuardMachine:
                 return Refusal("cooldown", left)
         if kind in ("step_up", "recheck") and self.state != "unlocked":
             return Refusal("locked")
-        merged = dict(policy or {})
         factor = method
-        if kind == "recheck" and self.method == "touch_id":
+        if kind == "recheck" and self.method == "touch_id" and fallback != "none":
             factor = "touch_id"  # a Touch ID session rechecks with Touch ID
         if kind == "step_up" and merged.get("step_up") == "touch_id":
             factor = "touch_id"
@@ -551,6 +559,11 @@ class GuardMachine:
                 continue
             if candidate.factor != factor:
                 continue  # a face verdict never answers a Touch ID request, nor the reverse
+            if (
+                factor == "touch_id"
+                and _FALLBACK_RANK[fallback] > _FALLBACK_RANK[self._fallback_mode(candidate.policy)]
+            ):
+                continue  # Touch ID only never takes a verdict the password could give: it queues
             if kind == "unlock" and _rank("unlock_liveness", merged) > _rank(
                 "unlock_liveness", candidate.policy
             ):
@@ -581,6 +594,15 @@ class GuardMachine:
             self.queue.append(attempt)
             attempt.seq = self._bump()
         return attempt
+
+    def _fallback_mode(self, policy: Mapping[str, str]) -> str:
+        """The stricter of the hub's ``unlock_fallback`` and ``policy``'s (an unknown value
+        counts as ``none``)."""
+        modes = [self.limits.unlock_fallback]
+        if "unlock_fallback" in policy:
+            modes.append(policy["unlock_fallback"])
+        known = [mode if mode in _FALLBACK_RANK else "none" for mode in modes]
+        return max(known, key=_FALLBACK_RANK.__getitem__)
 
     def _touch_id_unlock(self) -> bool:
         """A Touch ID unlock runs or waits (another client may join it)."""
@@ -960,6 +982,7 @@ class GuardMachine:
         """Whether a worker success fits the attempt's merged policy (the worker checks it
         first; this is the hub's second line)."""
         method, liveness, policy = outcome.method, outcome.liveness, attempt.policy
+        biometric = outcome.local_auth is not None and outcome.local_auth[0] == "biometrics"
         if attempt.kind == "enroll":
             return True
         if attempt.kind == "step_up":
@@ -972,9 +995,12 @@ class GuardMachine:
                 return liveness == "challenge" or (
                     attempt.challenge_fresh and liveness == "passive"
                 )
-            return True
+            return biometric  # a Touch ID step-up is Touch ID only, never the password
         if method == "touch_id":
-            return attempt.factor == "touch_id" and self.limits.unlock_fallback != "none"
+            fallback = self._fallback_mode(policy)
+            if attempt.factor != "touch_id" or fallback == "none":
+                return False
+            return biometric or fallback == "touch_id_or_password"
         if method != "face" or attempt.factor != "face":
             return False
         if attempt.kind == "unlock" and _rank("unlock_liveness", policy) > 0:

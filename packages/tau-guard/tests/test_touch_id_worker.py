@@ -289,6 +289,31 @@ def test_touch_id_or_password_uses_the_device_owner_policy(session: Session) -> 
 
 
 @pytest.mark.parametrize(
+    ("hub", "merged", "policy"),
+    [
+        ("touch_id_or_password", "touch_id_or_password", DEVICE_OWNER),
+        ("touch_id_or_password", "touch_id", BIOMETRICS),  # the client refuses the password
+        ("touch_id", "touch_id_or_password", BIOMETRICS),  # a weaker policy never widens it
+        ("touch_id_or_password", "none", None),
+        ("touch_id_or_password", "bogus", None),
+    ],
+)
+def test_the_stricter_of_the_settings_and_the_merged_policy_picks_the_prompt(
+    session: Session, hub: str, merged: str, policy: str | None
+) -> None:
+    session.enroll()
+    auth = FakeLocalAuth()
+    request = touch_request(
+        session, settings={"unlock_fallback": hub}, policy={"unlock_fallback": merged}
+    )
+    answer = session.run("touch_id", request, local_auth=auth)
+    if policy is None:
+        assert answer["reason"] == "touch_id_unavailable" and auth.calls == []
+    else:
+        assert answer["ok"] is True and auth.calls == [(policy, "unlock tau")]
+
+
+@pytest.mark.parametrize(
     ("auth", "reason", "prompts"),
     [
         (FakeLocalAuth(biometry=ADDED_A_FINGER), "touch_id_failed", 0),

@@ -58,7 +58,8 @@ face check it can only narrow: it never produces an approval.
   `domainState` (as a sha256) is stored in the encrypted template at enrollment, and a
   different set (someone who knows the Mac password added a finger) is refused with
   `touch_id_failed`, before the prompt and again after it. *Touch ID or the password* (the
-  device-owner policy) has no pin: whoever could change the fingerprints knows the password.
+  device-owner policy, which macOS also lets a paired Apple Watch answer) has no pin: whoever
+  could change the fingerprints knows the password.
 - **Every prompt ends.** Each `LAContext` is used once and invalidated after 30 s, after an
   answer and at once when the attempt is cancelled.
 - **Unavailable.** A closed lid (the built-in sensor is off), a Mac without a sensor or with no
@@ -76,7 +77,13 @@ face check it can only narrow: it never produces an approval.
   within 10 minutes, or any `camera_*` verdict, the locked status carries `fallback`, and a
   channel may ask for it (`POST /guard/verify {..., fallback: "touch_id"}`,
   `Guard.unlock(method="touch_id")`). `touch_id` is Touch ID only; `touch_id_or_password` takes
-  the password too, the opt-in for a closed lid. A pass unlocks with `method = "touch_id"`
+  the password (or an approval from a paired Apple Watch, which macOS's device-owner policy
+  also accepts) too, the opt-in for a closed lid. The stricter of the hub's and the client's
+  `unlock_fallback` applies: a client that says `touch_id` gets Touch ID only from a hub that
+  says `touch_id_or_password`, and one that says `none` gets no offer at all (`HubGuard`
+  narrows the status the same way). The hub does not probe Touch ID for the offer: on a Mac
+  without Touch ID the default still offers it, the attempt answers `touch_id_unavailable`,
+  and the doctor warns about the setting. A pass unlocks with `method = "touch_id"`
   (status and audit), ends a face cooldown and clears the offer; a Touch ID failure never
   counts. A Touch ID unlock is presence but not a face: rechecks follow it (and are Touch ID
   checks in a Touch ID session, so a covered camera does not fail every later turn), while
@@ -201,14 +208,15 @@ step_up_threshold = 0.55            # 0.45-0.95; step-ups and presence rechecks
 step_up_challenge_fresh_seconds = 120  # 0-600; a step-up this soon after a challenge is passive
 unlock_liveness = "challenge"       # or "none" (the doctor warns: a photo could unlock)
 step_up = "face"                    # face | face_or_touch_id | touch_id | none (both configs)
-unlock_fallback = "touch_id"        # touch_id | touch_id_or_password | none
+unlock_fallback = "touch_id"        # touch_id | touch_id_or_password | none (both configs)
 camera = "builtin"                  # or a camera's AVFoundation uniqueID
 ```
 
-A client sends its own `step_up` and `unlock_liveness` values with every check (the defaults,
-`face` and `challenge`, for a key its `tau.toml` leaves out), and the hub applies the stricter
-of its own value and the client's; it reads a key missing from a client's request as that
-default, never as agreement. The hub's own channels follow the hub's `tau.toml` alone.
+A client sends its own `step_up`, `unlock_liveness` and `unlock_fallback` values with every
+check (the defaults, `face`, `challenge` and `touch_id`, for a key its `tau.toml` leaves out),
+and the hub applies the stricter of its own value and the client's; it reads a key missing from
+a client's request as that default, never as agreement. The hub's own channels follow the hub's
+`tau.toml` alone.
 
 ## Commands
 

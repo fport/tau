@@ -225,6 +225,76 @@ def test_touch_id_unlocks_join_each_other_but_never_a_face_attempt(clock: FakeCl
     assert face is not touch and face in m.queue
 
 
+PASSWORD = Outcome(True, "match", "touch_id", local_auth=("device_owner", "ok", 700))
+
+
+def test_a_client_whose_unlock_fallback_is_none_gets_no_touch_id(clock: FakeClock) -> None:
+    m = machine(clock)
+    fail_face(m)
+    assert m.fallback_offer() == "touch_id"  # the hub offers it
+    m.drain()
+    refused = m.request(
+        "unlock",
+        channel="tui",
+        client_id="c1",
+        method="touch_id",
+        policy={"unlock_fallback": "none"},
+    )
+    assert refused == Refusal("touch_id_unavailable") and m.drain().spawn == []
+
+
+@pytest.mark.parametrize(
+    ("hub", "client", "outcome", "ok"),
+    [
+        ("touch_id", None, PASSWORD, False),  # Touch ID only: a password success is an error
+        ("touch_id_or_password", None, PASSWORD, True),
+        ("touch_id_or_password", "touch_id", PASSWORD, False),  # the client refuses the password
+        ("touch_id_or_password", "touch_id", TOUCH_ID, True),
+    ],
+)
+def test_a_touch_id_unlock_through_the_password_needs_the_opt_in(
+    clock: FakeClock, hub: str, client: str | None, outcome: Outcome, ok: bool
+) -> None:
+    m = machine(clock, unlock_fallback=hub)
+    fail_face(m)
+    policy = {"unlock_fallback": client} if client else {}
+    touch = attempt(m, method="touch_id", policy=policy)
+    assert m.finish(touch.id, outcome)
+    record = m.record(touch.id)
+    assert record is not None
+    assert (record["ok"], record["reason"]) == ((True, "match") if ok else (False, "error"))
+
+
+@pytest.mark.parametrize("mode", ["touch_id", "face_or_touch_id"])
+def test_a_touch_id_step_up_through_the_password_is_an_error(clock: FakeClock, mode: str) -> None:
+    m = unlocked(clock)
+    step_up = attempt(m, "step_up", policy={"step_up": mode})
+    assert m.finish(step_up.id, PASSWORD)
+    record = m.record(step_up.id)
+    assert record is not None and (record["ok"], record["reason"]) == (False, "error")
+
+
+def test_touch_id_only_never_joins_an_unlock_that_takes_the_password(clock: FakeClock) -> None:
+    m = machine(clock, unlock_fallback="touch_id_or_password")
+    fail_face(m)
+    loose = attempt(m, method="touch_id", policy={"unlock_fallback": "touch_id_or_password"})
+    strict = attempt(m, method="touch_id", client_id="c2", policy={"unlock_fallback": "touch_id"})
+    assert strict is not loose and strict in m.queue
+    again = attempt(m, method="touch_id", client_id="c3", policy={"unlock_fallback": "touch_id"})
+    assert again is strict  # two Touch ID only requests share one prompt
+
+
+def test_a_client_without_touch_id_rechecks_a_touch_id_session_with_the_face(
+    clock: FakeClock,
+) -> None:
+    m = machine(clock, recheck_after_idle=180.0)
+    fail_face(m)
+    touch_unlock(m)
+    clock.advance(200)
+    m.observe(Reading(idle_seconds=200.0, screen_locked=False), tick=True)
+    assert attempt(m, "recheck", policy={"unlock_fallback": "none"}).factor == "face"
+
+
 # -- presence after a Touch ID unlock ------------------------------------------------------------
 
 
@@ -466,6 +536,20 @@ async def test_a_route_caller_without_a_policy_gets_the_client_defaults(
         attempt = running.service.machine.attempt(started["attempt"])
         assert attempt is not None and attempt.policy["step_up"] == "face"
         assert attempt.policy["unlock_liveness"] == liveness
+
+
+async def test_the_touch_id_worker_gets_the_stricter_unlock_fallback(tmp_path: Path) -> None:
+    config = guard_config(tmp_path, unlock_fallback="touch_id_or_password")
+    runs = [NO_FACE_RUN, NO_FACE_RUN, [TOUCH_MATCH]]
+    with running_hub(tmp_path, config=config, runs=runs) as running:
+        mine = running.config.with_overrides(component_tables={"guard": {"enabled": True}})
+        guard = HubGuard(mine)  # the client's tau.toml leaves unlock_fallback at touch_id
+        for _ in range(2):
+            await guard.unlock(channel="tui", client_id="c1")
+        assert (await guard.unlock(channel="tui", client_id="c1", method="touch_id")).ok
+        touch = read_requests(running.script)[-1]["request"]
+        assert touch["policy"]["unlock_fallback"] == "touch_id"  # Touch ID only, no password
+        assert touch["settings"]["unlock_fallback"] == "touch_id_or_password"
 
 
 async def test_an_in_hub_caller_follows_the_hubs_policy_alone(tmp_path: Path) -> None:

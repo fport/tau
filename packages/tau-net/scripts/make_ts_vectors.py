@@ -27,7 +27,7 @@ Run from the repository root::
     uv run python packages/tau-net/scripts/make_ts_vectors.py --check   # exit 1 when stale
 
 ``packages/tau-net/tests/test_ts_vectors.py`` fails when the file is stale, and checks the
-vectors TypeScript wrote (``ts-vectors.json``, ``pnpm run vectors`` in ``cloud/shared``).
+vectors TypeScript wrote (``ts-vectors.json``, ``bun run vectors`` in ``cloud/shared``).
 """
 
 from __future__ import annotations

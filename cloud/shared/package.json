@@ -20,10 +20,8 @@
     "vitest": "~4.1.11",
     "wrangler": "^4.144.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "workerd"
-    ]
-  }
+  "trustedDependencies": [
+    "esbuild",
+    "workerd"
+  ]
 }

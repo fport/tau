@@ -2,7 +2,7 @@
 
 - ``cloud/shared/net/vectors.json`` is what ``scripts/make_ts_vectors.py`` writes today; vitest
   in ``cloud/shared`` checks the TypeScript against it.
-- ``cloud/shared/net/ts-vectors.json`` was written by the TypeScript (``pnpm run vectors``):
+- ``cloud/shared/net/ts-vectors.json`` was written by the TypeScript (``bun run vectors``):
   tau-net must load its keys, verify and open its envelopes and verify its universe requests,
   and must itself encode, sign and seal the same bytes from the same inputs.
 

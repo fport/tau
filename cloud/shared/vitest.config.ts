@@ -3,7 +3,7 @@
  *
  * - `workerd`: the Workers runtime (Miniflare), where tau-host and the universe import them.
  *   It proves the modules use nothing but Web APIs (WebCrypto, TextEncoder, atob/btoa).
- * - `node`: Node's WebCrypto, where `pnpm run vectors` runs them to write the TypeScript
+ * - `node`: Node's WebCrypto, where `bun run vectors` runs them to write the TypeScript
  *   vectors that tau-net checks (net/ts-vectors.json).
  *
  * The compatibility date is the newest the test runtime supports, the same as the Workers.

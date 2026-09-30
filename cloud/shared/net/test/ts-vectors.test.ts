@@ -18,7 +18,7 @@ import recorded from "../ts-vectors.json";
 import { buildTsVectors, type TsVectorInputs } from "./ts-vectors.ts";
 
 describe("ts-vectors.json", () => {
-  it("is what the TypeScript builds from its inputs (else: pnpm run vectors)", async () => {
+  it("is what the TypeScript builds from its inputs (else: bun run vectors)", async () => {
     const rebuilt = await buildTsVectors(recorded.inputs as TsVectorInputs);
     expect(JSON.parse(JSON.stringify(rebuilt))).toEqual(recorded);
   });

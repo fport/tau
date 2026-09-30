@@ -1,4 +1,4 @@
-# Dependencies: `pnpm install` here. A Worker that imports cloud/shared needs them too (README).
+# Dependencies: `bun install` here. A Worker that imports cloud/shared needs them too (README).
 node_modules/
-# Local state and the output of `pnpm run bundle-check`.
+# Local state and the output of `bun run bundle-check`.
 .wrangler/

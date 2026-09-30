@@ -1,5 +1,5 @@
 /**
- * A Worker that only exists to be bundled: `pnpm run bundle-check` runs `wrangler deploy
+ * A Worker that only exists to be bundled: `bun run bundle-check` runs `wrangler deploy
  * --dry-run` on it, so esbuild must resolve the shared modules by relative path and
  * `@noble/ciphers` from cloud/shared/node_modules, the way tau-host and the universe do.
  * Nothing deploys it.

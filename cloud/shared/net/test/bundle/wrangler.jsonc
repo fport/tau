@@ -1,4 +1,4 @@
-// Only for `pnpm run bundle-check` (wrangler deploy --dry-run): proves that a Worker bundles
+// Only for `bun run bundle-check` (wrangler deploy --dry-run): proves that a Worker bundles
 // the shared modules and @noble/ciphers. It is never deployed and has no bindings.
 {
   "$schema": "../../../node_modules/wrangler/config-schema.json",

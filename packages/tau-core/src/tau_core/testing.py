@@ -522,9 +522,10 @@ class FakeGuard:
     - ``set_state`` flips the state and bumps ``seq`` for ``watch``.
     - ``fallback`` (``touch_id`` or ``touch_id_or_password``) plays the hub's Touch ID fallback
       (issue 114): after :data:`~tau_core.guard.FALLBACK_AFTER` failed face unlocks, or one
-      ``camera_*`` verdict, the locked status offers it (``GuardStatus.fallback``), and
-      ``unlock(method="touch_id")`` pops the next verdict; while it is not offered that call
-      answers ``touch_id_unavailable`` and pops nothing. An unlock clears the offer.
+      :data:`~tau_core.guard.FALLBACK_NOW` verdict, the locked status offers it
+      (``GuardStatus.fallback``), and ``unlock(method="touch_id")`` pops the next verdict;
+      while it is not offered that call answers ``touch_id_unavailable`` and pops nothing. An
+      unlock clears the offer.
 
     Every call is recorded in ``calls`` as ``(method, detail)``, and the ``method`` of every
     ``unlock`` in ``unlock_methods``.

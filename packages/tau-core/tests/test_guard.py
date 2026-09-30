@@ -908,7 +908,10 @@ def test_fake_guard_offers_the_fallback_after_two_face_failures() -> None:
     assert guard.calls.count(("unlock", "unlock")) == 5
 
 
-@pytest.mark.parametrize("reason", ["camera_busy", "camera_unavailable", "camera_denied"])
+@pytest.mark.parametrize(
+    "reason",
+    ["camera_busy", "camera_unavailable", "camera_denied", "unavailable", "model_changed"],
+)
 def test_fake_guard_offers_the_fallback_at_once_after_a_camera_verdict(reason: str) -> None:
     guard = FakeGuard("locked", verdicts=[GuardVerdict(False, reason)], fallback="touch_id")
     asyncio.run(guard.unlock(channel="tui", client_id="c1"))

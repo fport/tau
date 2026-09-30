@@ -660,8 +660,9 @@ returns `None`.
 - **Touch ID fallback (issue 114).** While the hub offers it, a locked `GuardStatus` carries
   `fallback` (`touch_id` or `touch_id_or_password`, the stricter of the hub's and this client's
   `[component.guard] unlock_fallback`; a client's `none` hides it): after `FALLBACK_AFTER` (2)
-  failed face unlocks in one attempt window (`FACE_FAILURES`) or any `camera_*` verdict
-  (`FALLBACK_NOW`). A channel then offers it (`guard.fallback.<mode>`, with
+  failed face unlocks in one attempt window (`FACE_FAILURES`) or any verdict that says the face
+  check cannot work (`FALLBACK_NOW`: `camera_*`, `unavailable`, `model_changed`). A channel then
+  offers it (`guard.fallback.<mode>`, with
   its own key hint as `{how}`) and calls `unlock(method="touch_id")`; `HubGuard` sends
   `fallback: "touch_id"` with `/guard/verify`, and the hub runs LocalAuthentication itself, so the
   sheet appears on the Mac's screen and no route accepts a Touch ID result. A passing fallback

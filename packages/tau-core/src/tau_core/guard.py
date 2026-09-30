@@ -253,8 +253,13 @@ FALLBACK_MODES = ("touch_id", "touch_id_or_password")
 ``touch_id_or_password`` also takes the Mac password (the opt-in for a closed lid)."""
 FALLBACK_AFTER = 2
 """Failed face unlocks in one attempt window before the lock screen offers the fallback."""
-FALLBACK_NOW = frozenset({"camera_busy", "camera_unavailable", "camera_denied"})
-"""Verdicts after which the fallback is offered at once (the face check cannot work)."""
+FALLBACK_NOW = frozenset(
+    {"camera_busy", "camera_unavailable", "camera_denied", "unavailable", "model_changed"}
+)
+"""Verdicts after which the fallback is offered at once, because the face check cannot work:
+the camera cannot be used (``camera_*``), or the face model is missing or changed
+(``unavailable``, ``model_changed``; Touch ID reads the enrollment with the model it was made
+with, so it still works)."""
 FACE_FAILURES = frozenset(
     {"no_match", "no_face", "multiple_faces", "spoof", "timeout", "too_dark", "face_too_small"}
 )

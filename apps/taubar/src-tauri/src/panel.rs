@@ -3,6 +3,7 @@
 //! loses focus, as a menu does. The native menu stays on the right click (`tray.rs`), so every
 //! action is still reachable when the panel is not.
 
+use crate::webview;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tauri::window::{Effect, EffectState, EffectsBuilder};
@@ -87,6 +88,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     .accept_first_mouse(true)
     .focused(false)
     .visible(false)
+    // TauBar holds the camera grant for its hub; the panel may not use it (ADR 0008).
+    .on_permission_request(|_, kind| webview::permission(kind))
     .build()?;
     let handle = app.clone();
     window.on_window_event(move |event| match event {

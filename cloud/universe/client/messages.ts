@@ -45,6 +45,10 @@ export interface Messages {
   matching: (shown: string, total: string) => string;
   nobodyYet: string;
   noMatch: (query: string) => string;
+  /** The heading of a tau's public sub-taus, in its card and in the list. */
+  subTaus: string;
+  /** Before the tau a sub-tau belongs to, which follows as a link. */
+  subOf: string;
   copy: string;
   copied: string;
   selected: string;
@@ -81,6 +85,8 @@ const en: Messages = {
   matching: (shown, total) => `${shown} of ${total} match`,
   nobodyYet: "Nobody has joined yet.",
   noMatch: (query) => `No owner or tau matches “${query}”.`,
+  subTaus: "Sub-taus",
+  subOf: "A sub-tau of",
   copy: "Copy",
   copied: "Copied",
   selected: "Selected",
@@ -120,6 +126,8 @@ const tr: Messages = {
   matching: (shown, total) => `${total} tau içinde ${shown} eşleşme`,
   nobodyYet: "Henüz katılan yok.",
   noMatch: (query) => `“${query}” ile eşleşen sahip ya da tau yok.`,
+  subTaus: "Sub-tau’lar",
+  subOf: "Bağlı olduğu tau:",
   copy: "Kopyala",
   copied: "Kopyalandı",
   selected: "Seçildi",

@@ -764,6 +764,17 @@ code {
   border-top: 2px dashed var(--ember);
 }
 
+/* A small disc: a sub-tau circling its tau. */
+.moon {
+  display: inline-block;
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--flare);
+  background: #1b1024;
+}
+
 /* Graph marks. Sizes are in the graph's own units; the viewBox fits the drawing. */
 
 .hull path {
@@ -867,7 +878,76 @@ code {
   stroke-dasharray: 3 4;
 }
 
+/* Sub-taus: small discs on a short tether around their tau, inside the owner's hull. */
+
+.sub {
+  cursor: pointer;
+  transition: opacity 0.25s;
+}
+
+.sub-tether {
+  stroke: rgb(255 244 224 / 0.22);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.sub-hit {
+  fill: transparent;
+}
+
+.sub-ring {
+  fill: none;
+  stroke: none;
+}
+
+.sub-disc {
+  fill: #0d0f2b;
+  stroke: rgb(255 244 224 / 0.3);
+  stroke-width: 1.2;
+}
+
+.sub.online .sub-disc {
+  fill: #1b1024;
+  stroke: var(--flare);
+}
+
+.sub.online .sub-tether {
+  stroke: rgb(255 178 92 / 0.45);
+}
+
+.sub-name {
+  fill: rgb(255 244 224 / 0.55);
+  font-family: var(--mono);
+  font-size: 8.5px;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: #090b22;
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
+.sub.online .sub-name {
+  fill: rgb(255 244 224 / 0.78);
+}
+
+.sub.hovered .sub-disc,
+.sub.selected .sub-disc {
+  stroke: var(--core);
+}
+
+.sub.hovered .sub-name,
+.sub.selected .sub-name {
+  fill: var(--core);
+}
+
+.sub.selected .sub-ring {
+  stroke: var(--flare);
+  stroke-width: 1.2;
+  stroke-dasharray: 2 3;
+}
+
 .node.dimmed,
+.sub.dimmed,
 .link.dimmed,
 .hull.dimmed {
   opacity: 0.16;
@@ -1036,6 +1116,42 @@ code {
   font-size: 0.92rem;
 }
 
+.detail-parent {
+  margin-top: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.detail-subs {
+  list-style: none;
+  padding: 0;
+  margin-top: 0.45rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* A sub-tau as a chip: `/coach`. Its about line is the chip's title. */
+.sub-chip {
+  display: inline-block;
+  padding: 0.12rem 0.55rem;
+  border: 1px solid rgb(255 178 92 / 0.35);
+  border-radius: 999px;
+  background: rgb(255 178 92 / 0.06);
+  color: var(--flare);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.sub-chip:hover {
+  color: var(--core);
+  border-color: var(--flare);
+}
+
 /* The roster: every tau as a link, the keyboard way into the graph. */
 
 .roster {
@@ -1122,6 +1238,19 @@ code {
 
 .tau-card.is-offline .tau-card-name {
   color: var(--text-muted);
+}
+
+.tau-card-subs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+}
+
+.tau-card.is-offline .sub-chip {
+  color: var(--text-muted);
+  border-color: var(--line-strong);
+  background: none;
 }
 
 /* Join. */

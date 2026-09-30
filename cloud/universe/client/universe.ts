@@ -2,9 +2,11 @@
  * The universe page: reads /api/universe and draws the taus as a force-directed graph.
  *
  * - Taus of the same owner share a soft hull; a tau without an owner is a group of its own.
+ * - A tau's public sub-taus circle it as small nodes inside the hull (client/layout.ts).
  * - A mutual link is a dashed line, wider for more messages.
  * - Online taus glow (Flare), offline ones are dim.
- * - Hover or tap shows a tau's card; `#<address>` in the URL pins it.
+ * - Hover or tap shows a tau's card; `#<address>` in the URL pins it, and
+ *   `#<address>/<name>` pins the card of one of its sub-taus.
  * - The list under the graph is the keyboard path: every tau is a link to `#<address>`.
  * - Under `prefers-reduced-motion` the layout is computed up front and drawn once.
  *
@@ -25,11 +27,25 @@ import {
 } from "d3-force";
 import { polygonHull } from "d3-polygon";
 import type { PublicLink, PublicTau, Snapshot } from "../src/snapshot";
+import {
+  groupKey,
+  hash01,
+  matches,
+  NODE_RADIUS,
+  nameOffset,
+  parseTarget,
+  reach,
+  SUB_RADIUS,
+  type SubNodeData,
+  subsOf,
+  tauSubNodes,
+} from "./layout";
 import { MESSAGES, pageLanguage } from "./messages";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const NODE_RADIUS = 15;
 const HULL_PADDING = 16;
+/** Sub-taus sit closer to the hull's edge than taus do. */
+const SUB_HULL_PADDING = 10;
 /** The graph never draws larger than this many pixels per unit (a small universe). */
 const MAX_SCALE = 1.8;
 const NAME_LABEL_LIMIT = 40;
@@ -41,6 +57,17 @@ interface GraphNode extends SimulationNodeDatum {
   group: string;
   element: SVGGElement;
   label: SVGTextElement | null;
+  /** Its public sub-taus, drawn at fixed offsets around it. */
+  subs: SubNode[];
+  /** How far its drawing reaches from its centre (its disc or its sub-taus). */
+  reach: number;
+}
+
+/** A public sub-tau: a small node that follows its tau. */
+interface SubNode {
+  data: SubNodeData;
+  parent: GraphNode;
+  element: SVGGElement;
 }
 
 interface GraphLink extends SimulationLinkDatum<GraphNode> {
@@ -65,10 +92,15 @@ interface State {
   links: GraphLink[];
   groups: Group[];
   byAddress: Map<string, GraphNode>;
+  subsById: Map<string, SubNode>;
   cards: Map<string, HTMLLIElement>;
   query: string;
+  /** The selected tau, also when one of its sub-taus is selected. */
   selected: string | null;
+  /** The selected sub-tau's id (`<address>/<name>`). */
+  selectedSub: string | null;
   hovered: string | null;
+  hoveredSub: string | null;
   simulation: Simulation<GraphNode, GraphLink> | null;
   view: { x: number; y: number; w: number; h: number } | null;
 }
@@ -131,26 +163,6 @@ function initial(name: string): string {
   return "·";
 }
 
-function groupKey(tau: PublicTau): string {
-  const owner = tau.owner.trim().replace(/\s+/g, " ").toLowerCase();
-  return owner === "" ? `tau:${tau.address}` : `owner:${owner}`;
-}
-
-function matches(tau: PublicTau, query: string): boolean {
-  if (query === "") return true;
-  return [tau.name, tau.owner, tau.address].some((field) => field.toLowerCase().includes(query));
-}
-
-/** A deterministic number in [0, 1) from a string, for stable starting positions. */
-function hash01(text: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0) / 4294967296;
-}
-
 // ---------------------------------------------------------------------------------------
 // Page elements
 
@@ -178,6 +190,7 @@ function layer(name: string): SVGGElement {
 const layers = {
   hulls: layer("hulls"),
   links: layer("links"),
+  subs: layer("subs"),
   nodes: layer("nodes"),
 };
 
@@ -239,10 +252,13 @@ function render(snapshot: Snapshot): void {
     links: [],
     groups: [],
     byAddress: new Map(),
+    subsById: new Map(),
     cards: new Map(),
     query: page.search.value.trim().toLowerCase(),
     selected: null,
+    selectedSub: null,
     hovered: null,
+    hoveredSub: null,
     simulation: null,
     view: null,
   };
@@ -274,6 +290,7 @@ function render(snapshot: Snapshot): void {
 function buildGraph(s: State): void {
   layers.hulls.replaceChildren();
   layers.links.replaceChildren();
+  layers.subs.replaceChildren();
   layers.nodes.replaceChildren();
 
   const showNames = s.snapshot.taus.length <= NAME_LABEL_LIMIT;
@@ -304,15 +321,29 @@ function buildGraph(s: State): void {
     const letter = svg("text", { class: "initial", "text-anchor": "middle", dy: "0.35em" });
     letter.textContent = initial(tau.name);
     element.append(letter);
+    const subData = tauSubNodes(tau);
     let label: SVGTextElement | null = null;
     if (showNames) {
-      label = svg("text", { class: "node-name", "text-anchor": "middle", y: NODE_RADIUS + 16 });
+      label = svg("text", { class: "node-name", "text-anchor": "middle", y: nameOffset(subData) });
       label.textContent = tau.name;
       element.append(label);
     }
     layers.nodes.append(element);
 
-    const node: GraphNode = { tau, group: key, element, label };
+    const node: GraphNode = {
+      tau,
+      group: key,
+      element,
+      label,
+      subs: [],
+      reach: reach(subData.length),
+    };
+    for (const data of subData) {
+      const sub = buildSub(node, data, showNames);
+      node.subs.push(sub);
+      s.subsById.set(data.id, sub);
+      wireSub(s, sub);
+    }
     group.members.push(node);
     s.nodes.push(node);
     s.byAddress.set(tau.address, node);
@@ -355,11 +386,11 @@ function buildGraph(s: State): void {
     .force(
       "link",
       forceLink<GraphNode, GraphLink>(s.links)
-        .distance((link) => (sameGroup(link) ? 56 : 150))
+        .distance((link) => (sameGroup(link) ? 56 : 150) + extra(link))
         .strength((link) => (sameGroup(link) ? 0.6 : 0.12)),
     )
     .force("charge", forceManyBody<GraphNode>().strength(-240).distanceMax(520))
-    .force("collide", forceCollide<GraphNode>(NODE_RADIUS + 12))
+    .force("collide", forceCollide<GraphNode>((node) => node.reach + 12))
     .force("cluster", clusterForce(s))
     .force("x", forceX<GraphNode>(0).strength(tall ? 0.1 : 0.035))
     .force("y", forceY<GraphNode>(0).strength(tall ? 0.025 : 0.06));
@@ -380,6 +411,50 @@ function sameGroup(link: GraphLink): boolean {
   const source = link.source as GraphNode;
   const target = link.target as GraphNode;
   return source.group === target.group;
+}
+
+/** A link between taus with sub-taus is longer by the room their sub-taus take. */
+function extra(link: GraphLink): number {
+  const source = link.source as GraphNode;
+  const target = link.target as GraphNode;
+  return source.reach + target.reach - 2 * NODE_RADIUS;
+}
+
+/**
+ * A sub-tau's small node, drawn in its own layer under the taus: a short tether to its tau,
+ * its disc and, when names are shown, its `/name` outside the orbit. Its position is set
+ * from its tau's in draw().
+ */
+function buildSub(parent: GraphNode, data: SubNodeData, showNames: boolean): SubNode {
+  const element = svg("g", { class: `sub ${parent.tau.online ? "online" : "offline"}` });
+  const distance = Math.hypot(data.dx, data.dy) || 1;
+  const ux = data.dx / distance;
+  const uy = data.dy / distance;
+  // In the sub-tau's own coordinates its tau's centre is at (-dx, -dy).
+  element.append(
+    svg("line", {
+      class: "sub-tether",
+      x1: (-data.dx + ux * (NODE_RADIUS + 2)).toFixed(1),
+      y1: (-data.dy + uy * (NODE_RADIUS + 2)).toFixed(1),
+      x2: (-ux * (SUB_RADIUS + 1.5)).toFixed(1),
+      y2: (-uy * (SUB_RADIUS + 1.5)).toFixed(1),
+    }),
+  );
+  element.append(svg("circle", { class: "sub-hit", r: SUB_RADIUS + 5 }));
+  element.append(svg("circle", { class: "sub-ring", r: SUB_RADIUS + 3.5 }));
+  element.append(svg("circle", { class: "sub-disc", r: SUB_RADIUS }));
+  if (showNames) {
+    const label = svg("text", {
+      class: "sub-name",
+      x: data.labelX,
+      y: data.labelY,
+      "text-anchor": data.anchor,
+    });
+    label.textContent = data.label;
+    element.append(label);
+  }
+  layers.subs.append(element);
+  return { data, parent, element };
 }
 
 /** Groups start on a circle, members close to their group's point. */
@@ -418,14 +493,24 @@ function clusterForce(s: State) {
   };
 }
 
-/** A closed, smoothed path through the hull of the circles around a group's members. */
+/**
+ * A closed, smoothed path through the hull of the circles around a group's members and
+ * their sub-taus, so the sub-taus are inside their owner's hull.
+ */
 function hullPath(members: GraphNode[]): { d: string; top: number; cx: number } {
   const points: [number, number][] = [];
-  const r = NODE_RADIUS + HULL_PADDING;
-  for (const node of members) {
+  const circle = (x: number, y: number, r: number) => {
     for (let i = 0; i < 16; i++) {
       const angle = (i / 16) * Math.PI * 2;
-      points.push([(node.x ?? 0) + Math.cos(angle) * r, (node.y ?? 0) + Math.sin(angle) * r]);
+      points.push([x + Math.cos(angle) * r, y + Math.sin(angle) * r]);
+    }
+  };
+  for (const node of members) {
+    const x = node.x ?? 0;
+    const y = node.y ?? 0;
+    circle(x, y, NODE_RADIUS + HULL_PADDING);
+    for (const sub of node.subs) {
+      circle(x + sub.data.dx, y + sub.data.dy, SUB_RADIUS + SUB_HULL_PADDING);
     }
   }
   const hull = polygonHull(points) ?? points;
@@ -451,10 +536,15 @@ function hullPath(members: GraphNode[]): { d: string; top: number; cx: number } 
 
 function draw(s: State, settled: boolean): void {
   for (const node of s.nodes) {
-    node.element.setAttribute(
-      "transform",
-      `translate(${(node.x ?? 0).toFixed(1)},${(node.y ?? 0).toFixed(1)})`,
-    );
+    const x = node.x ?? 0;
+    const y = node.y ?? 0;
+    node.element.setAttribute("transform", `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+    for (const sub of node.subs) {
+      sub.element.setAttribute(
+        "transform",
+        `translate(${(x + sub.data.dx).toFixed(1)},${(y + sub.data.dy).toFixed(1)})`,
+      );
+    }
   }
   for (const link of s.links) {
     const source = link.source as GraphNode;
@@ -490,10 +580,12 @@ function fit(s: State, immediate: boolean): void {
   for (const node of s.nodes) {
     const x = node.x ?? 0;
     const y = node.y ?? 0;
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
+    // A tau with sub-taus reaches further than its disc.
+    const around = node.reach - NODE_RADIUS;
+    minX = Math.min(minX, x - around);
+    maxX = Math.max(maxX, x + around);
+    minY = Math.min(minY, y - around);
+    maxY = Math.max(maxY, y + around);
   }
   const pad = NODE_RADIUS + HULL_PADDING + 24;
   minX -= pad;
@@ -613,6 +705,26 @@ function wireNode(s: State, node: GraphNode): void {
   });
 }
 
+/** Hovering a sub-tau shows its card; a click pins it (`#<address>/<name>`). */
+function wireSub(s: State, sub: SubNode): void {
+  const id = sub.data.id;
+  const parent = sub.parent.tau.address;
+  sub.element.addEventListener("pointerenter", () => {
+    s.hoveredSub = id;
+    s.hovered = parent;
+    highlight(s);
+    if (s.selected === null) showSubDetail(s, sub, false);
+  });
+  sub.element.addEventListener("pointerleave", () => {
+    if (s.hoveredSub === id) s.hoveredSub = null;
+    if (s.hovered === parent) s.hovered = null;
+    highlight(s);
+    if (s.selected === null) hideDetail();
+  });
+  sub.element.addEventListener("pointerdown", (event) => event.stopPropagation());
+  sub.element.addEventListener("click", () => select(id));
+}
+
 function toGraph(clientX: number, clientY: number): { x: number; y: number } {
   const matrix = page.graph.getScreenCTM();
   if (matrix === null) return { x: 0, y: 0 };
@@ -620,16 +732,19 @@ function toGraph(clientX: number, clientY: number): { x: number; y: number } {
   return { x: point.x, y: point.y };
 }
 
-/** Selecting goes through the URL, so a pinned tau can be shared and the back button works. */
-function select(address: string | null): void {
-  if (address === null) {
+/**
+ * Selecting goes through the URL, so a pinned tau can be shared and the back button works.
+ * `target` is a tau's address or a sub-tau's id (`<address>/<name>`).
+ */
+function select(target: string | null): void {
+  if (target === null) {
     if (window.location.hash !== "") {
       history.pushState(null, "", window.location.pathname + window.location.search);
     }
     applyHash();
     return;
   }
-  const hash = `#${address}`;
+  const hash = `#${target}`;
   if (window.location.hash !== hash) window.location.hash = hash;
   else applyHash();
 }
@@ -637,20 +752,24 @@ function select(address: string | null): void {
 function applyHash(): void {
   const s = state;
   if (s === null) return;
-  let address: string | null = null;
+  let hash = "";
   try {
-    address = decodeURIComponent(window.location.hash.slice(1)) || null;
+    hash = decodeURIComponent(window.location.hash.slice(1));
   } catch {
-    address = null;
+    hash = "";
   }
-  s.selected = address !== null && s.byAddress.has(address) ? address : null;
+  const target = parseTarget(s.snapshot, hash);
+  s.selected = target?.address ?? null;
+  s.selectedSub = target?.sub != null ? `${target.address}/${target.sub}` : null;
   for (const [key, card] of s.cards) {
     const link = card.querySelector("a");
     if (key === s.selected) link?.setAttribute("aria-current", "true");
     else link?.removeAttribute("aria-current");
   }
   highlight(s);
-  if (s.selected !== null) showDetail(s, s.selected, true);
+  const sub = s.selectedSub !== null ? s.subsById.get(s.selectedSub) : undefined;
+  if (sub !== undefined) showSubDetail(s, sub, true);
+  else if (s.selected !== null) showDetail(s, s.selected, true);
   else hideDetail();
   refit(s);
 }
@@ -674,7 +793,8 @@ function highlight(s: State): void {
   for (const node of s.nodes) {
     const on = lit(node);
     node.element.classList.toggle("dimmed", !on);
-    node.element.classList.toggle("selected", node.tau.address === focus);
+    // A selected sub-tau carries the selection mark, not its tau.
+    node.element.classList.toggle("selected", node.tau.address === focus && s.selectedSub === null);
     node.element.classList.toggle("hovered", node.tau.address === s.hovered);
     node.element.classList.toggle("named", on && (s.query !== "" || focus !== null));
   }
@@ -691,6 +811,15 @@ function highlight(s: State): void {
       s.hovered !== null && (source.tau.address === s.hovered || target.tau.address === s.hovered),
     );
   }
+  for (const node of s.nodes) {
+    const on = lit(node);
+    for (const sub of node.subs) {
+      sub.element.classList.toggle("dimmed", !on);
+      sub.element.classList.toggle("selected", sub.data.id === s.selectedSub);
+      sub.element.classList.toggle("hovered", sub.data.id === s.hoveredSub);
+      sub.element.classList.toggle("named", on && (s.query !== "" || focus !== null));
+    }
+  }
   for (const group of s.groups) {
     group.element.classList.toggle("dimmed", !group.members.some(lit));
   }
@@ -704,11 +833,8 @@ function hideDetail(): void {
   page.detail.replaceChildren();
 }
 
-function showDetail(s: State, address: string, pinned: boolean): void {
-  const node = s.byAddress.get(address);
-  if (node === undefined) return;
-  const { tau } = node;
-  const now = s.snapshot.generated_at;
+/** Empties the detail card and places it for `element`, with a close button when pinned. */
+function openCard(element: SVGGElement, pinned: boolean): HTMLElement {
   const card = page.detail;
   card.replaceChildren();
   card.classList.toggle("pinned", pinned);
@@ -717,7 +843,7 @@ function showDetail(s: State, address: string, pinned: boolean): void {
   let onLeft = false;
   if (!pinned) {
     const box = page.box.getBoundingClientRect();
-    const spot = node.element.getBoundingClientRect();
+    const spot = element.getBoundingClientRect();
     onLeft = spot.left + spot.width / 2 > box.left + box.width / 2;
   }
   card.classList.toggle("on-left", onLeft);
@@ -729,12 +855,42 @@ function showDetail(s: State, address: string, pinned: boolean): void {
     close.addEventListener("click", () => select(null));
     card.append(close);
   }
+  return card;
+}
 
+function statusLine(tau: PublicTau, now: number): HTMLParagraphElement {
   const status = html("p", `detail-status ${tau.online ? "is-online" : "is-offline"}`);
   status.append(
     html("span", `dot ${tau.online ? "dot-online" : "dot-offline"}`),
     tau.online ? t.online : t.lastSeen(ago(tau.last_seen, now)),
   );
+  return status;
+}
+
+/** The card of one sub-tau: its name, the tau it belongs to, its address and about line. */
+function showSubDetail(s: State, sub: SubNode, pinned: boolean): void {
+  const { data } = sub;
+  const tau = sub.parent.tau;
+  const card = openCard(sub.element, pinned);
+  const name = html("h3", "detail-name", data.label);
+  const parent = html("p", "detail-parent");
+  const link = html("a", undefined, tau.name);
+  link.href = `#${tau.address}`;
+  parent.append(`${t.subOf} `, link);
+  const addressLine = html("p", "detail-address");
+  addressLine.append(html("code", undefined, data.id));
+  card.append(statusLine(tau, s.snapshot.generated_at), name, parent, addressLine);
+  if (data.about.trim() !== "") card.append(html("p", "detail-about", data.about));
+  card.hidden = false;
+}
+
+function showDetail(s: State, address: string, pinned: boolean): void {
+  const node = s.byAddress.get(address);
+  if (node === undefined) return;
+  const { tau } = node;
+  const now = s.snapshot.generated_at;
+  const card = openCard(node.element, pinned);
+  const status = statusLine(tau, now);
   const name = html("h3", "detail-name", tau.name);
   const addressLine = html("p", "detail-address");
   addressLine.append(html("code", undefined, tau.address));
@@ -752,6 +908,21 @@ function showDetail(s: State, address: string, pinned: boolean): void {
   fact(t.joined, dateFormat.format(new Date(tau.joined_at * 1000)));
   if (tau.online) fact(t.lastReport, ago(tau.last_seen, now));
   card.append(facts);
+
+  const subs = subsOf(tau);
+  if (subs.length > 0) {
+    card.append(html("h4", "detail-heading", t.subTaus));
+    const list = html("ul", "detail-subs");
+    for (const sub of subs) {
+      const chip = html("a", "sub-chip", `/${sub.name}`);
+      chip.href = `#${tau.address}/${sub.name}`;
+      if (sub.about.trim() !== "") chip.title = sub.about;
+      const item = html("li");
+      item.append(chip);
+      list.append(item);
+    }
+    card.append(list);
+  }
 
   const links = s.snapshot.links
     .filter((link) => link.a === address || link.b === address)
@@ -804,6 +975,17 @@ function renderList(s: State): void {
       card.append(html("span", "tau-card-owner", t.ownerLine(tau.owner)));
     }
     if (tau.about.trim() !== "") card.append(html("span", "tau-card-about", tau.about));
+    const subs = subsOf(tau);
+    if (subs.length > 0) {
+      const row = html("span", "tau-card-subs");
+      row.append(html("span", "visually-hidden", `${t.subTaus}: `));
+      for (const sub of subs) {
+        const chip = html("span", "sub-chip", `/${sub.name}`);
+        if (sub.about.trim() !== "") chip.title = sub.about;
+        row.append(chip, " ");
+      }
+      card.append(row);
+    }
     const meta = html("span", "tau-card-meta");
     const links = degree.get(tau.address) ?? 0;
     meta.textContent = [

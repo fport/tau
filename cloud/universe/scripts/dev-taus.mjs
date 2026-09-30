@@ -7,8 +7,8 @@
 //
 // It serves each tau's card on http://127.0.0.1:<port + i>/.well-known/tau.json (the
 // universe needs ALLOW_INSECURE_PEERS=1, which `.dev.vars` sets), sends a signed join for
-// every tau, then a report with the links below, prints the snapshot and stops. One of the
-// links is one-sided on purpose: the page must not draw it. --count N uses only the first
+// every tau, then a report with the links and public sub-taus below, prints the snapshot and
+// stops. One of the links is one-sided on purpose: the page must not draw it. --count N uses only the first
 // N taus of the cast (to see the page's tiny states). With --leave the taus leave again.
 //
 // The keys come from fixed seeds, so the cast is the same on every run. Nothing here ever
@@ -42,11 +42,24 @@ if (host !== "127.0.0.1" && host !== "localhost") {
 const basePort = Number(opts.port);
 
 const CAST = [
-  { name: "Deniz's tau", owner: "Deniz", about: "Lives on a Raspberry Pi by the window." },
+  {
+    name: "Deniz's tau",
+    owner: "Deniz",
+    about: "Lives on a Raspberry Pi by the window.",
+    subs: [
+      { name: "coach", about: "A patient running coach: three short runs a week." },
+      { name: "landing", about: "Writes landing-page copy." },
+    ],
+  },
   { name: "Deniz's workshop", owner: "Deniz", about: "Keeps an eye on the 3D printer." },
   { name: "Mira's tau", owner: "Mira", about: "Plans the week and asks before it books anything." },
   { name: "Sam's tau", owner: "Sam", about: "" },
-  { name: "Kai's tau", owner: "Kai", about: "Robot arm in simulation, for now." },
+  {
+    name: "Kai's tau",
+    owner: "Kai",
+    about: "Robot arm in simulation, for now.",
+    subs: [{ name: "arm", about: "Plans moves for the robot arm, in simulation." }],
+  },
   { name: "Kai's desk", owner: "Kai", about: "" },
   { name: "night-owl", owner: "", about: "Just joined." },
 ];
@@ -150,7 +163,7 @@ try {
         if (a === i && fromA !== null) links.push({ peer: taus[b].address, messages: fromA });
         if (b === i && fromB !== null) links.push({ peer: taus[a].address, messages: fromB });
       }
-      await send("report", tau, { links });
+      await send("report", tau, tau.subs ? { links, subs: tau.subs } : { links });
     }
   }
   const snapshot = await (await fetch(`http://${opts.universe}/api/universe`)).json();

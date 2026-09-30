@@ -1,6 +1,6 @@
 # 159 · tau-host: accounts, the brain in a Durable Object and the owner's app
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L9 · Cloud mode and the tau network
 Packages: cloud/host

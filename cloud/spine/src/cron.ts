@@ -3,19 +3,10 @@
 import { brainHealth } from "./brain";
 import { modeOf, type SpineEnv } from "./env";
 import { nowSeconds } from "./http";
-
-export const MAILBOX_RETENTION_SECONDS = 7 * 86_400;
-export const SEEN_RETENTION_SECONDS = 86_400;
+import { mailboxOf } from "./mailbox";
 
 export async function runCron(env: SpineEnv): Promise<void> {
-  const now = nowSeconds();
-  const [mailbox, seen] = await env.DB.batch([
-    env.DB.prepare("DELETE FROM mailbox WHERE received_at < ?1").bind(
-      now - MAILBOX_RETENTION_SECONDS,
-    ),
-    env.DB.prepare("DELETE FROM seen WHERE ts < ?1").bind(now - SEEN_RETENTION_SECONDS),
-  ]);
-  const pruned = { mailbox: mailbox?.meta.changes ?? 0, seen: seen?.meta.changes ?? 0 };
+  const pruned = await mailboxOf(env).prune(nowSeconds());
   if (pruned.mailbox > 0 || pruned.seen > 0) {
     console.log(JSON.stringify({ event: "pruned", ...pruned }));
   }

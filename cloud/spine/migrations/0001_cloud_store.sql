@@ -1,9 +1,16 @@
 -- Cloud mode: the store behind /hub/state and /hub/sessions.
--- The tables exist in both modes; a local-mode spine never writes them (its routes answer
--- 404 cloud_mode_off), so they stay empty there.
+-- Only the cloud configuration (wrangler.cloud.example.jsonc) binds a D1 database; local
+-- mode has none. The mailbox and the replay guard are not here: they live in the Mailbox
+-- Durable Object's own SQLite storage (src/mailbox.ts) in both modes.
+--
+-- Development databases created before the Mailbox existed ran this file as 0002 and kept
+-- the mailbox in D1, so every statement below is safe to run on them again, and the old
+-- tables go.
+DROP TABLE IF EXISTS mailbox;
+DROP TABLE IF EXISTS seen;
 
 -- Small JSON documents (for example the network store: net.contacts, net.cursor).
-CREATE TABLE state (
+CREATE TABLE IF NOT EXISTS state (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   -- Unix seconds.
@@ -11,7 +18,7 @@ CREATE TABLE state (
 );
 
 -- One row per session. `data` and `meta` are JSON text the spine never interprets.
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
   session_id TEXT PRIMARY KEY,
   data TEXT NOT NULL,
   meta TEXT NOT NULL DEFAULT '{}',
@@ -22,16 +29,16 @@ CREATE TABLE sessions (
   rev INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX sessions_rev ON sessions (rev);
+CREATE INDEX IF NOT EXISTS sessions_rev ON sessions (rev);
 
-CREATE TABLE agents (
+CREATE TABLE IF NOT EXISTS agents (
   session_id TEXT NOT NULL,
   agent_id TEXT NOT NULL,
   data TEXT NOT NULL,
   PRIMARY KEY (session_id, agent_id)
 );
 
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
   session_id TEXT NOT NULL,
   agent_id TEXT NOT NULL,
   message_id INTEGER NOT NULL,
@@ -40,10 +47,10 @@ CREATE TABLE messages (
 );
 
 -- Agent events, in insertion order.
-CREATE TABLE events (
+CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT NOT NULL,
   data TEXT NOT NULL
 );
 
-CREATE INDEX events_session ON events (session_id, seq);
+CREATE INDEX IF NOT EXISTS events_session ON events (session_id, seq);

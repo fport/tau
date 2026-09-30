@@ -1,15 +1,16 @@
 // tau spine, cloud mode (opt-in, ADR 0007).
 //
-// Everything local mode has, plus the brain: the Python hub (`tau cloud run`) as a
-// Cloudflare Container this Worker manages. Life data then lives in your own Cloudflare
-// account: sessions and small state in D1, `tau.toml` and persona files in KV.
+// Everything local mode has (KV, the Mailbox Durable Object, the cron), plus the brain: the
+// Python hub (`tau cloud run`) as a Cloudflare Container this Worker manages. Life data then
+// lives in your own Cloudflare account: sessions and small state in D1 (the cloud store;
+// only this mode has a D1 database), `tau.toml` and persona files in KV.
 // Needs the Workers Paid plan (Containers) and a running Docker to build the image.
 //
 // `pnpm run configure --cloud` copies this file to the gitignored `wrangler.jsonc`.
 // No resource ids or personal hostnames belong here.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // Same Worker name and D1 database as local mode: switching keeps the address and data.
+  // Same Worker name as local mode: switching keeps the address, the card and the mailbox.
   "name": "tau-spine",
   "main": "src/index.ts",
   // The newest date the test runtime (@cloudflare/vitest-pool-workers) supports.
@@ -35,6 +36,9 @@
     "SPINE_URL": ""
   },
   "kv_namespaces": [{ "binding": "TAU" }],
+  // The cloud store: state and sessions. No database_id: provisioned (or looked up by this
+  // name) on the first deploy. `pnpm run deploy:cloud` and `pnpm run dev:cloud` apply the
+  // migrations.
   "d1_databases": [
     {
       "binding": "DB",
@@ -47,13 +51,14 @@
   "r2_buckets": [{ "binding": "MEDIA" }],
   "durable_objects": {
     "bindings": [
-      { "name": "SIGNAL", "class_name": "HubSignal" },
+      // The mailbox, as in local mode (one instance, "hub").
+      { "name": "MAILBOX", "class_name": "Mailbox" },
       // The brain container is driven through its Durable Object (one instance).
       { "name": "BRAIN", "class_name": "TauBrain" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["HubSignal"] },
+    { "tag": "v1", "new_sqlite_classes": ["Mailbox"] },
     // A separate tag, so a spine deployed in local mode first can switch to cloud mode.
     { "tag": "v2", "new_sqlite_classes": ["TauBrain"] }
   ],

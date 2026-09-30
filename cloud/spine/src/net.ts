@@ -2,14 +2,15 @@
  * The public side of the spine: the card and the inbox (§2–§4 of
  * docs/reference/tau-network.md).
  *
- * The inbox checks every envelope in the order the reference prescribes, stores the ones
- * that pass as they are (the spine never opens a box), and wakes the hub's long poll.
- * It answers every sender the same way, whether or not the owner knows them.
+ * The inbox checks every envelope in the order the reference prescribes and hands the ones
+ * with a valid signature to the Mailbox Durable Object, which judges duplicates, the rate
+ * limit and the mailbox cap, stores the envelope as it is (the spine never opens a box) and
+ * wakes the hub's long poll. It answers every sender the same way, whether or not the owner
+ * knows them.
  */
 
 import { baseUrl, insecurePeersAllowed, isAddress, ownAddress } from "./address";
 import { b64uDecode, b64uKey, signedMessage, verifyEd25519 } from "./crypto";
-import { isUniqueViolation } from "./d1";
 import type { SpineEnv } from "./env";
 import {
   badRequest,
@@ -21,7 +22,7 @@ import {
   readLimited,
   utf8,
 } from "./http";
-import { SIGNAL_NAME } from "./signal";
+import { mailboxOf } from "./mailbox";
 import { SOFTWARE } from "./version";
 
 export const MAX_ENVELOPE_BYTES = 65_536;
@@ -29,8 +30,6 @@ export const MAX_CARD_BYTES = 8_192;
 export const MAX_CLOCK_SKEW_SECONDS = 300;
 export const CARD_FETCH_TIMEOUT_MS = 5_000;
 export const PEER_CACHE_TTL_SECONDS = 3_600;
-export const RATE_LIMIT_PER_HOUR = 60;
-export const MAILBOX_LIMIT = 1_000;
 
 const CARD_KEY = "card";
 const ENVELOPE_ID = /^[A-Za-z0-9_-]{16,64}$/;
@@ -247,52 +246,19 @@ export async function receiveEnvelope(
     return error(403, "bad_signature");
   }
 
-  // 7–9. Duplicate, rate limit, mailbox capacity (read together, judged in order).
-  const counts = await env.DB.batch<{ n: number }>([
-    env.DB.prepare("SELECT COUNT(*) AS n FROM seen WHERE sender = ?1 AND id = ?2").bind(
-      payload.from,
-      payload.id,
-    ),
-    env.DB.prepare("SELECT COUNT(*) AS n FROM seen WHERE sender = ?1 AND ts > ?2").bind(
-      payload.from,
-      now - 3_600,
-    ),
-    env.DB.prepare("SELECT COUNT(*) AS n FROM mailbox"),
-  ]);
-  const [dup, recent, queued] = counts.map((result) => result.results[0]?.n ?? 0);
-  const duplicate = { status: "duplicate", id: payload.id };
-  if ((dup ?? 0) > 0) return json(duplicate);
-  if ((recent ?? 0) >= RATE_LIMIT_PER_HOUR) return error(429, "rate_limited");
-  if ((queued ?? 0) >= MAILBOX_LIMIT) return error(503, "mailbox_full");
-
-  // Store: the replay guard and the mailbox row in one transaction.
-  let seq: number;
-  try {
-    const results = await env.DB.batch<{ seq: number }>([
-      env.DB.prepare("INSERT INTO seen (sender, id, ts) VALUES (?1, ?2, ?3)").bind(
-        payload.from,
-        payload.id,
-        now,
-      ),
-      env.DB.prepare(
-        "INSERT INTO mailbox (sender, envelope, received_at) VALUES (?1, ?2, ?3) RETURNING seq",
-      ).bind(payload.from, JSON.stringify({ payload: envelope.payload, sig: envelope.sig }), now),
-    ]);
-    seq = results[1]?.results[0]?.seq ?? 0;
-  } catch (err) {
-    // A concurrent copy of the same envelope won the race.
-    if (isUniqueViolation(err)) return json(duplicate);
-    throw err;
+  // 7–9. Duplicate, rate limit, mailbox capacity, judged in that order by the Mailbox,
+  // which then stores the envelope and wakes a waiting long poll in one step.
+  const stored = JSON.stringify({ payload: envelope.payload, sig: envelope.sig });
+  const delivery = await mailboxOf(env).deliver(payload.from, payload.id, now, stored);
+  switch (delivery.status) {
+    case "duplicate":
+      return json({ status: "duplicate", id: payload.id });
+    case "rate_limited":
+      return error(429, "rate_limited");
+    case "mailbox_full":
+      return error(503, "mailbox_full");
   }
 
-  // Wake a waiting long poll. The envelope is stored either way, so a failure here only
-  // delays delivery until the hub's next poll.
-  try {
-    await env.SIGNAL.getByName(SIGNAL_NAME).notify(seq);
-  } catch (err) {
-    console.error(JSON.stringify({ event: "signal_notify_failed", error: String(err) }));
-  }
-
-  console.log(JSON.stringify({ event: "envelope_queued", seq, kind: payload.kind }));
+  console.log(JSON.stringify({ event: "envelope_queued", seq: delivery.seq, kind: payload.kind }));
   return json({ status: "queued", id: payload.id }, 202);
 }

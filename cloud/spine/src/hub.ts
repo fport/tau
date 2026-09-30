@@ -1,7 +1,7 @@
 /**
  * The hub API (§5 of docs/reference/tau-network.md): bearer-token routes the owner's hub
- * uses to publish the card, long-poll the mailbox and acknowledge envelopes. Cloud-mode
- * routes are dispatched to store.ts.
+ * uses to publish the card, long-poll the mailbox and acknowledge envelopes. The mailbox is
+ * the Mailbox Durable Object (mailbox.ts); cloud-mode routes are dispatched to store.ts.
  */
 
 import { ownAddress } from "./address";
@@ -17,8 +17,8 @@ import {
   rawJson,
   readJsonObject,
 } from "./http";
+import { mailboxOf } from "./mailbox";
 import { publicCard, readStoredCard, writeStoredCard } from "./net";
-import { SIGNAL_NAME } from "./signal";
 import { handleStore, isCloudRoute } from "./store";
 import { VERSION } from "./version";
 
@@ -66,14 +66,14 @@ export async function handleHub(request: Request, env: SpineEnv, url: URL): Prom
 async function health(env: SpineEnv, url: URL): Promise<Response> {
   const [card, mailbox] = await Promise.all([
     readStoredCard(env),
-    env.DB.prepare("SELECT COUNT(*) AS n FROM mailbox").first<number>("n"),
+    mailboxOf(env).depth(),
   ]);
   return json({
     ok: true,
     address: ownAddress(env, url),
     mode: modeOf(env),
     card: card !== null,
-    mailbox: mailbox ?? 0,
+    mailbox,
     version: VERSION,
   });
 }
@@ -94,25 +94,10 @@ async function putCard(request: Request, env: SpineEnv, url: URL): Promise<Respo
   return json(publicCard(env, ownAddress(env, url), stored));
 }
 
-interface MailboxRow {
-  seq: number;
-  received_at: number;
-  envelope: string;
-}
-
-async function queued(env: SpineEnv, after: number, limit: number): Promise<MailboxRow[]> {
-  const { results } = await env.DB.prepare(
-    "SELECT seq, received_at, envelope FROM mailbox WHERE seq > ?1 ORDER BY seq LIMIT ?2",
-  )
-    .bind(after, limit)
-    .all<MailboxRow>();
-  return results;
-}
-
 /**
  * GET /hub/updates?after=&timeout=&limit=
  *
- * With nothing queued and `timeout > 0`, the call waits on the HubSignal object until an
+ * With nothing queued and `timeout > 0`, the call waits inside the Mailbox until an
  * envelope arrives or the timeout passes, then queries once more and answers (possibly
  * with an empty list).
  */
@@ -128,20 +113,7 @@ async function updates(env: SpineEnv, url: URL): Promise<Response> {
     return badRequest(`limit must be an integer from 1 to ${MAX_UPDATES_LIMIT}`);
   }
 
-  let rows = await queued(env, after, limit);
-  if (rows.length === 0 && timeout > 0) {
-    const ms = timeout * 1000;
-    const started = Date.now();
-    try {
-      await env.SIGNAL.getByName(SIGNAL_NAME).wait(ms, after);
-    } catch (err) {
-      // Without the signal the poll still honours its timeout instead of spinning.
-      console.error(JSON.stringify({ event: "signal_wait_failed", error: String(err) }));
-      const left = ms - (Date.now() - started);
-      if (left > 0) await new Promise((resolve) => setTimeout(resolve, left));
-    }
-    rows = await queued(env, after, limit);
-  }
+  const rows = await mailboxOf(env).updates(after, limit, timeout * 1000);
 
   // Envelopes are stored as serialized JSON; splice them in without re-parsing.
   const items = rows.map(
@@ -164,17 +136,6 @@ async function ack(request: Request, env: SpineEnv): Promise<Response> {
   }
   const unique = [...new Set(seqs as number[])];
   if (unique.length === 0) return json({ deleted: 0 });
-  // D1 allows 100 bound parameters per statement.
-  const statements = [];
-  for (let i = 0; i < unique.length; i += 100) {
-    const chunk = unique.slice(i, i + 100);
-    statements.push(
-      env.DB.prepare(`DELETE FROM mailbox WHERE seq IN (${chunk.map(() => "?").join(",")})`).bind(
-        ...chunk,
-      ),
-    );
-  }
-  const results = await env.DB.batch(statements);
-  const deleted = results.reduce((sum, result) => sum + (result.meta.changes ?? 0), 0);
+  const deleted = await mailboxOf(env).ack(unique);
   return json({ deleted });
 }

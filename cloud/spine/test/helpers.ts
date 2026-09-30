@@ -1,9 +1,11 @@
 /** Shared fixtures: the §3 test vector, signing, requests to the spine, store resets. */
 
-import { abortAllDurableObjects } from "cloudflare:test";
+import { abortAllDurableObjects, runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { vi } from "vitest";
 import { b64uDecode, b64uEncode } from "../src/crypto";
+import type { SpineEnv } from "../src/env";
+import { type Mailbox, mailboxOf } from "../src/mailbox";
 
 export const TOKEN = "test-hub-token";
 
@@ -162,13 +164,30 @@ export function mockCards(cards: Record<string, CardAnswer>) {
   });
 }
 
-/** Empties every table and KV key, and resets Durable Object instances. */
+/** The spine's Mailbox Durable Object. */
+export function mailboxStub(): DurableObjectStub<Mailbox> {
+  return mailboxOf(env);
+}
+
+/** Runs `fn` on the Mailbox's own SQLite storage (to seed or inspect rows). */
+export async function inMailbox<T>(fn: (sql: SqlStorage) => T): Promise<T> {
+  return runInDurableObject(mailboxStub(), (_instance, state) => fn(state.storage.sql));
+}
+
+/**
+ * Empties the Mailbox's storage, every D1 table (cloud project only) and every KV key, and
+ * resets Durable Object instances (the Mailbox creates its tables again on its next call).
+ */
 export async function resetStore(): Promise<void> {
-  await env.DB.batch(
-    ["mailbox", "seen", "state", "sessions", "agents", "messages", "events"].map((table) =>
-      env.DB.prepare(`DELETE FROM ${table}`),
-    ),
-  );
+  await runInDurableObject(mailboxStub(), (_instance, state) => state.storage.deleteAll());
+  const db = (env as SpineEnv).DB;
+  if (db !== undefined) {
+    await db.batch(
+      ["state", "sessions", "agents", "messages", "events"].map((table) =>
+        db.prepare(`DELETE FROM ${table}`),
+      ),
+    );
+  }
   let cursor: string | undefined;
   do {
     const page = await env.TAU.list(cursor === undefined ? {} : { cursor });
@@ -187,5 +206,5 @@ export async function publishCard(name = "Bob's tau"): Promise<Response> {
 }
 
 export async function mailboxCount(): Promise<number> {
-  return (await env.DB.prepare("SELECT COUNT(*) AS n FROM mailbox").first<number>("n")) ?? 0;
+  return mailboxStub().depth();
 }

@@ -67,6 +67,8 @@ exclude_docs: |
 nav:
   - Home: index.md
   - Getting started:
+      - Build your own tau: getting-started/build-your-own-tau.md
+      - Try everything locally: getting-started/try-locally.md
       - Install: getting-started/install.md
       - First run: getting-started/first-run.md
       - Configure: getting-started/configure.md

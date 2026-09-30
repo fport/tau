@@ -12,9 +12,11 @@ How it waits is ``[component.net] link``:
   :mod:`tau_net.doorbell`) open and fetches with ``GET /hub/updates?timeout=0`` on every ring,
   on every (re)connect and at least every 5 minutes; otherwise it waits without any HTTP
   request. The spine's ``Mailbox`` hibernates meanwhile, which keeps a spine on the Workers
-  Free plan far inside its daily Durable Object budget. When the doorbell cannot be used (a
-  spine without it answers ``404``/``426``, or three attempts in a row fail) it long-polls
-  instead and tries the doorbell again every 30 minutes.
+  Free plan far inside its daily Durable Object budget. After a failed doorbell attempt it
+  backs off and fetches over HTTP before the next one, so mail keeps flowing and an outage of
+  the hub's own network never counts against the doorbell. When the doorbell cannot be used
+  (a spine without it answers ``404``/``426``, or three attempts in a row fail while HTTP
+  works) it long-polls instead and tries the doorbell again every 30 minutes.
 - ``websocket``: the doorbell only; failures back off and retry, never falling back.
 - ``poll``: the long poll of ``GET /hub/updates?timeout=25``, as before the doorbell.
 
@@ -83,7 +85,8 @@ SAFETY_FETCH_SECONDS = 300.0
 DOORBELL_RETRY_SECONDS = 1800.0
 """``link = "auto"``: after falling back to the long poll, try the doorbell again this late."""
 DOORBELL_MAX_FAILURES = 3
-"""``link = "auto"``: failed doorbell attempts in a row before falling back."""
+"""``link = "auto"``: failed doorbell attempts in a row before falling back. Each failure is
+followed by a fetch over HTTP, so an unreachable spine does not count."""
 DOORBELL_STABLE_SECONDS = 60.0
 """A doorbell connection that lasted this long and then dropped is reconnected at once; one
 that dropped sooner counts as a failed attempt (so a flapping link backs off)."""
@@ -335,7 +338,7 @@ class NetService:
                 logger.info("net: reached the spine after %d failed attempts", failures)
             if published:
                 logger.info("net: published the card of %s", self.address)
-            logger.info("net: polling the spine of %s", self.address)
+            logger.info("net: reached the spine of %s", self.address)
             return True
 
     async def _run(self) -> None:
@@ -428,7 +431,8 @@ class NetService:
                 ):
                     self._fall_back(exc, failures)
                     return "fallback"
-                await self._backoff(failures, f"doorbell: {exc}")
+                if not await self._recover(failures, exc):
+                    return "failed"
                 continue
             self.doorbell_connects += 1
             if self.doorbell_connects > 1:
@@ -451,7 +455,8 @@ class NetService:
                 if setting == "auto" and failures >= DOORBELL_MAX_FAILURES:
                     self._fall_back(exc, failures)
                     return "fallback"
-                await self._backoff(failures, f"doorbell: {exc}")
+                if not await self._recover(failures, exc):
+                    return "failed"
                 continue
             except BaseException:  # cancelled: stop() must not wait for the closing handshake
                 _close_quietly(doorbell)
@@ -459,6 +464,15 @@ class NetService:
             await self._close(doorbell)
             if not token_ok:
                 return "failed"
+
+    async def _recover(self, failures: int, error: BaseException) -> bool:
+        """After a failed doorbell: back off, then fetch over HTTP before the next attempt.
+        Mail keeps flowing while the doorbell is down, and while the spine cannot be reached
+        at all (the hub's network is gone) the fetch retries on its own, so no doorbell
+        attempt fails and counts toward the fallback. ``False`` when the token was
+        rejected."""
+        await self._backoff(failures, f"doorbell: {error}")
+        return await self._fetch()
 
     async def _close(self, doorbell: Doorbell) -> None:
         with suppress(Exception):
@@ -501,6 +515,8 @@ class NetService:
                 failures += 1
                 await self._backoff(failures, f"{type(exc).__name__}: {exc}")
                 continue
+            if failures:
+                logger.info("net: reached the spine again after %d failed fetches", failures)
             failures = 0
             self.state, self.last_error, self.retry_in_s = "polling", None, None
             self.last_poll_at = _now_iso()

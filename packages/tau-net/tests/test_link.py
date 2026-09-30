@@ -259,6 +259,35 @@ def test_repeated_failures_fall_back_to_the_long_poll(tmp_path: Path, network) -
     assert run.service.doorbell_fallbacks == 1 and bell.connects == 0
 
 
+def test_an_unreachable_spine_does_not_count_against_the_doorbell(tmp_path: Path, network):
+    tau = make_tau(tmp_path, network, ALICE)
+
+    class NetworkBell(FakeDoorbell):
+        """Cannot connect while the network cannot reach the spine."""
+
+        def connect(self) -> None:
+            if ALICE in network.down:
+                raise DoorbellError("cannot connect (ConnectionRefusedError)")
+            super().connect()
+
+    bell = NetworkBell()
+    clock = Clock()
+
+    async def body(run: Run) -> None:
+        await run.until(lambda: run.service.link == "websocket")
+        clock.now += DOORBELL_STABLE_SECONDS
+        network.down.add(ALICE)  # the hub's network is gone, e.g. the laptop slept
+        bell.drop()
+        await run.until(lambda: len(run.sleeps) >= 6)  # a long outage
+        network.down.clear()
+        await run.until(lambda: bell.connects == 2)
+
+    run = serve(tau, body, doorbell=bell, monotonic=clock)
+    # One failed attempt, then the HTTP fetch waited for the network: no fallback.
+    assert run.service.doorbell_fallbacks == 0 and run.service.link == "websocket"
+    assert run.sleeps[:6] == [1, 1, 2, 4, 8, 16]
+
+
 def test_link_websocket_never_falls_back(tmp_path: Path, network) -> None:
     tau = make_tau(tmp_path, network, ALICE, component={"link": "websocket"})
     bell = FakeDoorbell()

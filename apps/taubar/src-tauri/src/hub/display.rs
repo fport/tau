@@ -1,7 +1,33 @@
-//! The hub lines of the menu (and the window), from a [`HubView`].
+//! The hub lines of the menu (and the window) and the hub rows of the panel, from a
+//! [`HubView`].
 
 use super::supervisor::{HubState, HubView};
+use serde::Serialize;
 use serde_json::Value;
+
+/// The panel's hub rows: the status as a title and a detail, the Telegram poller and the last
+/// crash, without the menu's `Label:` prefixes (the panel shows the labels itself).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct HubPanel {
+    pub title: String,
+    pub detail: String,
+    pub telegram: String,
+    pub crash: String,
+}
+
+pub fn panel(view: &HubView) -> HubPanel {
+    let (title, detail) = status_parts(view);
+    HubPanel {
+        title,
+        detail,
+        telegram: view
+            .telegram
+            .as_ref()
+            .map(telegram_text)
+            .unwrap_or_else(|| "–".into()),
+        crash: crash_text(view),
+    }
+}
 
 /// `45 s`, `12 min`, `2 h 5 min`, `3 d 4 h`.
 pub fn duration(seconds: f64) -> String {
@@ -53,6 +79,51 @@ pub fn status_line(view: &HubView) -> String {
     }
 }
 
+/// The panel's status row: `("Up 2 h 5 min", "pid 1234 · started by TauBar")`.
+pub fn status_parts(view: &HubView) -> (String, String) {
+    let pid = view.pid.map(|p| format!("pid {p}"));
+    let up = |fallback: &str| {
+        view.uptime_s
+            .map(|s| format!("Up {}", duration(s)))
+            .unwrap_or_else(|| fallback.into())
+    };
+    let with_pid = |rest: &str| match &pid {
+        Some(pid) => format!("{pid} · {rest}"),
+        None => rest.to_string(),
+    };
+    match view.state {
+        HubState::NotConfigured => (
+            "Not set up".into(),
+            "Pick the tau checkout in Settings".into(),
+        ),
+        HubState::Off => ("Off".into(), "Switch it on to start the hub".into()),
+        HubState::Starting => (
+            "Starting…".into(),
+            pid.unwrap_or_else(|| "waiting for the hub".into()),
+        ),
+        HubState::Up => (up("Up"), with_pid("started by TauBar")),
+        HubState::Stopping => ("Stopping…".into(), pid.unwrap_or_default()),
+        HubState::Restarting => (
+            format!("Restarting in {} s", view.restart_in_s.unwrap_or(0).max(1)),
+            match view.restarts {
+                0 | 1 => "after an unexpected exit".into(),
+                n => format!("after {n} unexpected exits"),
+            },
+        ),
+        HubState::Stopped => ("Stopped".into(), "It exited cleanly (tau hub stop)".into()),
+        HubState::Elsewhere => (
+            up("Running"),
+            with_pid(if view.launchd {
+                "run by launchd"
+            } else {
+                "started outside TauBar"
+            }),
+        ),
+        HubState::LaunchdIdle => ("Left to launchd".into(), "com.tau.hub is loaded".into()),
+        HubState::Error => ("Configuration error".into(), "See Settings".into()),
+    }
+}
+
 /// Second line: the Telegram poller, or what is wrong.
 pub fn detail_line(view: &HubView) -> String {
     if let Some(problem) = &view.problem {
@@ -66,17 +137,22 @@ pub fn detail_line(view: &HubView) -> String {
 
 /// `telegram` from `/status`: `{configured, state, bot, last_error, retry_in_s, reason}`.
 pub fn telegram_line(telegram: &Value) -> String {
+    shorten(&format!("Telegram: {}", telegram_text(telegram)), 72)
+}
+
+/// The poller's state without the label: `polling as @tau_bot`, `off (reason)`.
+pub fn telegram_text(telegram: &Value) -> String {
     let text = |key: &str| telegram.get(key).and_then(Value::as_str);
     if telegram.get("configured").and_then(Value::as_bool) == Some(false) {
         return match text("reason") {
-            Some(reason) => shorten(&format!("Telegram: off ({reason})"), 72),
-            None => "Telegram: off".into(),
+            Some(reason) => format!("off ({reason})"),
+            None => "off".into(),
         };
     }
-    let line = match text("state") {
+    match text("state") {
         Some("polling") => match text("bot") {
-            Some(bot) => format!("Telegram: polling as {bot}"),
-            None => "Telegram: polling".into(),
+            Some(bot) => format!("polling as {bot}"),
+            None => "polling".into(),
         },
         Some("retrying") => {
             let retry = telegram
@@ -85,22 +161,23 @@ pub fn telegram_line(telegram: &Value) -> String {
                 .map(|s| format!(" in {} s", s.ceil() as u64))
                 .unwrap_or_default();
             format!(
-                "Telegram: retrying{retry} ({})",
+                "retrying{retry} ({})",
                 text("last_error").unwrap_or("error")
             )
         }
-        Some("failed") => format!(
-            "Telegram: stopped ({})",
-            text("last_error").unwrap_or("error")
-        ),
-        Some(state) => format!("Telegram: {state}"),
-        None => "Telegram: unknown".into(),
-    };
-    shorten(&line, 72)
+        Some("failed") => format!("stopped ({})", text("last_error").unwrap_or("error")),
+        Some(state) => state.into(),
+        None => "unknown".into(),
+    }
 }
 
 /// Third line: the last crash, the hub's own report first, else TauBar's record.
 pub fn crash_line(view: &HubView) -> String {
+    shorten(&format!("Last crash: {}", crash_text(view)), 72)
+}
+
+/// The last crash without the label: `unexpected exit (no clean shutdown), pid 99`, `none`.
+pub fn crash_text(view: &HubView) -> String {
     if let Some(crash) = &view.last_crash {
         let reason = crash
             .get("reason")
@@ -111,7 +188,7 @@ pub fn crash_line(view: &HubView) -> String {
             .and_then(Value::as_u64)
             .map(|p| format!(", pid {p}"))
             .unwrap_or_default();
-        return shorten(&format!("Last crash: {reason}{pid}"), 72);
+        return format!("{reason}{pid}");
     }
     if let Some(exit) = &view.last_exit {
         let restarts = if view.restarts > 1 {
@@ -119,12 +196,9 @@ pub fn crash_line(view: &HubView) -> String {
         } else {
             String::new()
         };
-        return shorten(
-            &format!("Last crash: {} ({}){restarts}", exit.reason, exit.at),
-            72,
-        );
+        return format!("{} ({}){restarts}", exit.reason, exit.at);
     }
-    "Last crash: none".into()
+    "none".into()
 }
 
 fn shorten(text: &str, max: usize) -> String {
@@ -224,6 +298,51 @@ mod tests {
         v.problem = Some("x".repeat(200));
         assert_eq!(detail_line(&v).chars().count(), 72);
         assert_eq!(detail_line(&view(HubState::Off)), "Telegram: –");
+    }
+
+    #[test]
+    fn panel_status_parts() {
+        let mut up = view(HubState::Up);
+        up.uptime_s = Some(7_500.0);
+        assert_eq!(
+            status_parts(&up),
+            ("Up 2 h 5 min".into(), "pid 1234 · started by TauBar".into())
+        );
+        assert_eq!(status_parts(&view(HubState::Off)).0, "Off");
+        let mut elsewhere = view(HubState::Elsewhere);
+        elsewhere.launchd = true;
+        assert_eq!(
+            status_parts(&elsewhere),
+            ("Running".into(), "pid 1234 · run by launchd".into())
+        );
+        let mut restarting = view(HubState::Restarting);
+        restarting.restart_in_s = Some(4);
+        restarting.restarts = 3;
+        assert_eq!(
+            status_parts(&restarting),
+            (
+                "Restarting in 4 s".into(),
+                "after 3 unexpected exits".into()
+            )
+        );
+        let mut starting = view(HubState::Starting);
+        starting.pid = None;
+        assert_eq!(status_parts(&starting).1, "waiting for the hub");
+    }
+
+    #[test]
+    fn panel_rows_drop_the_labels() {
+        let mut v = view(HubState::Up);
+        assert_eq!(panel(&v).telegram, "–");
+        assert_eq!(panel(&v).crash, "none");
+        v.telegram = Some(json!({"configured": true, "state": "polling", "bot": "@tau_bot"}));
+        v.last_crash = Some(json!({"pid": 99, "reason": "unexpected exit (no clean shutdown)"}));
+        let rows = panel(&v);
+        assert_eq!(rows.telegram, "polling as @tau_bot");
+        assert_eq!(rows.crash, "unexpected exit (no clean shutdown), pid 99");
+        // The menu keeps its labelled lines.
+        assert_eq!(detail_line(&v), "Telegram: polling as @tau_bot");
+        assert_eq!(crash_line(&v), format!("Last crash: {}", rows.crash));
     }
 
     #[test]

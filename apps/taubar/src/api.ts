@@ -1,5 +1,6 @@
 // Typed wrappers around TauBar's Rust commands (src-tauri/src/commands.rs) and its snapshot
-// event. The types mirror the Rust `Snapshot` (serde, snake_case).
+// event, for the settings window and the panel. The types mirror the Rust `Snapshot` (serde,
+// snake_case).
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -43,6 +44,14 @@ export interface HubSettings {
   env: Record<string, string>;
 }
 
+/** The panel's hub rows (Rust `HubPanel`): `Up 2 h 5 min` / `pid 1234 · started by TauBar`. */
+export interface HubPanel {
+  title: string;
+  detail: string;
+  telegram: string;
+  crash: string;
+}
+
 export interface HubSnapshot {
   switch_on: boolean;
   state: HubState;
@@ -59,6 +68,8 @@ export interface HubSnapshot {
   problem: string | null;
   /** The menu's hub lines: status, Telegram (or a problem), last crash. */
   lines: [string, string, string];
+  /** The panel's hub rows, without the menu's labels. */
+  panel: HubPanel;
   /** The saved switch: what TauBar does at its next start. */
   run_at_start: boolean;
   settings: HubSettings;
@@ -87,6 +98,10 @@ export const api = {
     invoke<{ snapshot: Snapshot; message: string | null }>("set_run_hub", { on }),
   saveHubSettings: (hub: HubSettings) => invoke<Snapshot>("save_hub_settings", { hub }),
   openHubLog: () => invoke<void>("open_hub_log"),
+  openSettings: () => invoke<void>("open_settings"),
+  /** The panel's content height, so its window fits it. */
+  panelFit: (height: number) => invoke<void>("panel_fit", { height }),
+  panelHide: () => invoke<void>("panel_hide"),
 };
 
 export function onSnapshot(handler: (snapshot: Snapshot) => void): Promise<UnlistenFn> {

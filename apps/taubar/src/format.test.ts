@@ -7,10 +7,12 @@ import {
   formatEnv,
   hubTone,
   lastLines,
+  loginChecked,
   loginNote,
   parseEnv,
   settingsFromForm,
   sleepChoiceEnabled,
+  sleepNote,
 } from "./format";
 
 const hubSettings: HubSettings = {
@@ -101,5 +103,30 @@ describe("lastLines", () => {
   it("keeps the newest lines", () => {
     expect(lastLines(["a", "b", "c"], 2)).toEqual(["b", "c"]);
     expect(lastLines(["a"], 2)).toEqual(["a"]);
+  });
+});
+
+describe("panel", () => {
+  const sleep: SleepStatus = {
+    wanted: "keep_awake_on_ac",
+    effective: "keep_awake_on_ac",
+    lid_available: false,
+    disabled_elsewhere: false,
+    problem: null,
+  };
+
+  it("explains the sleep mode only when it needs explaining", () => {
+    expect(sleepNote(sleep)).toBeNull();
+    expect(sleepNote({ ...sleep, problem: "pmset failed" })).toBe("pmset failed");
+    expect(
+      sleepNote({ ...sleep, wanted: "keep_awake_lid_closed", problem: "needs the rule" }),
+    ).toBe('"Keep awake with the lid closed" is unavailable, so "Keep awake on AC power" is in force.');
+    expect(sleepNote({ ...sleep, disabled_elsewhere: true })).toContain("outside TauBar");
+  });
+
+  it("shows launch at login as on while macOS waits for approval", () => {
+    expect(loginChecked("enabled")).toBe(true);
+    expect(loginChecked("requires_approval")).toBe(true);
+    expect(loginChecked("not_registered")).toBe(false);
   });
 });

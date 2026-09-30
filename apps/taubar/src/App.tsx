@@ -8,11 +8,13 @@ import {
   formFromSettings,
   hubTone,
   lastLines,
+  loginChecked,
   loginNote,
   settingsFromForm,
   sleepChoiceEnabled,
   type HubForm,
 } from "./format";
+import "./styles.css";
 
 const LOG_LINES = 30;
 
@@ -82,7 +84,7 @@ export default function App() {
         <label className="check">
           <input
             type="checkbox"
-            checked={snapshot.login.status === "enabled" || snapshot.login.status === "requires_approval"}
+            checked={loginChecked(snapshot.login.status)}
             onChange={(e) => run(() => api.setLaunchAtLogin(e.currentTarget.checked))}
           />
           <span>Open TauBar when I log in</span>

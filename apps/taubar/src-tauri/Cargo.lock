@@ -3555,6 +3555,7 @@ dependencies = [
  "keepawake",
  "libc",
  "objc2",
+ "objc2-app-kit",
  "objc2-foundation",
  "objc2-service-management",
  "plist",

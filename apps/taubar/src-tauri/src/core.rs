@@ -54,6 +54,8 @@ pub struct HubSnapshot {
     pub view: HubView,
     /// The menu's three hub lines: status, Telegram (or a problem), last crash.
     pub lines: [String; 3],
+    /// The same for the panel, without the labels.
+    pub panel: display::HubPanel,
     /// The saved switch (what TauBar does at its next start).
     pub run_at_start: bool,
     pub settings: HubSettings,
@@ -210,6 +212,7 @@ impl<P: Power, H: Probe> Core<P, H> {
                     display::detail_line(&view),
                     display::crash_line(&view),
                 ],
+                panel: display::panel(&view),
                 view,
                 run_at_start: settings.run_hub,
                 settings: settings.hub,

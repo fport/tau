@@ -1,7 +1,8 @@
 //! TauBar: tau's macOS menu bar app.
 //!
-//! Tray only (no Dock icon): a native menu with the hub switch and its status, the sleep modes
-//! and "Launch at login", plus a small settings window (React) opened from the menu. See
+//! Tray only (no Dock icon): a left click on the icon opens the panel (React, `panel.rs`) with
+//! the hub switch and its status, the sleep modes and "Launch at login"; the right click shows
+//! the same as a native menu. A settings window (React) opens from either. See
 //! `apps/taubar/README.md`.
 
 mod commands;
@@ -9,6 +10,7 @@ pub mod core;
 pub mod eventlog;
 pub mod hub;
 pub mod login;
+pub mod panel;
 pub mod settings;
 mod signals;
 pub mod sleep;
@@ -57,6 +59,9 @@ pub fn run() {
             commands::set_run_hub,
             commands::save_hub_settings,
             commands::open_hub_log,
+            commands::open_settings,
+            commands::panel_fit,
+            commands::panel_hide,
         ])
         .setup(|app| {
             // Tray only: no Dock icon, no app menu (Info.plist also sets LSUIElement).
@@ -68,8 +73,18 @@ pub fn run() {
                 user_home: user_home.clone(),
             };
             app.manage(AppCore::start(dirs, SystemPower::new(), probe, user_home));
-            let menu = TrayMenu::build(app.handle(), on_menu)?;
+            let menu = TrayMenu::build(app.handle(), on_menu, panel::toggle)?;
             app.manage(menu);
+            app.manage(panel::PanelState::default());
+            if let Err(err) = panel::build(app.handle()) {
+                // The menu still has everything; let the left click show it too.
+                app.state::<AppCore>()
+                    .log
+                    .write(format!("the panel could not be created: {err}"));
+                if let Some(tray) = app.tray_by_id(tray::TRAY_ID) {
+                    let _ = tray.set_show_menu_on_left_click(true);
+                }
+            }
             refresh(app.handle());
             signals::install(app.handle().clone());
             spawn_ticker(app.handle().clone());
@@ -229,6 +244,7 @@ fn spawn_hub_thread(app: AppHandle) {
 }
 
 pub fn open_settings(app: &AppHandle) {
+    panel::hide(app);
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW) {
         let _ = window.unminimize();
         let _ = window.show();

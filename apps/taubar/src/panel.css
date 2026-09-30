@@ -1,0 +1,325 @@
+/* The panel under the menu bar icon. The window is transparent with macOS's popover material
+   behind it (panel.rs), so the page draws no background of its own. Brand palette from
+   docs/brand/README.md: Ember for what is on, Flare for attention, Signal for errors; text is
+   Core on dark and Ink on light. */
+
+:root {
+  color-scheme: light dark;
+  --text: #14060d;
+  --muted: rgba(20, 6, 13, 0.56);
+  --chip: rgba(20, 6, 13, 0.08);
+  --hover: rgba(20, 6, 13, 0.07);
+  --rule: rgba(20, 6, 13, 0.1);
+  --track-off: rgba(20, 6, 13, 0.16);
+  --pending: rgba(20, 6, 13, 0.32);
+  --on-accent: #14060d;
+  --ember: #ff7a3d;
+  --flare: #ffb25c;
+  --signal: #ff2e63;
+  /* Only without the material (a browser during `pnpm dev`). */
+  --plain-panel: #f6f3ee;
+  --plain-desk: #d9d3cb;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #fff4e0;
+    --muted: rgba(255, 244, 224, 0.55);
+    --chip: rgba(255, 244, 224, 0.1);
+    --hover: rgba(255, 244, 224, 0.09);
+    --rule: rgba(255, 244, 224, 0.1);
+    --track-off: rgba(255, 244, 224, 0.2);
+    --pending: rgba(255, 244, 224, 0.4);
+    --plain-panel: #1e1b26;
+    --plain-desk: #221d28;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+html:not(.material) body {
+  background: var(--plain-desk);
+  padding: 36px 0 0 36px;
+}
+
+html:not(.material) .panel {
+  width: 320px;
+  background: var(--plain-panel);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 14px 7px;
+  font-weight: 650;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 5px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 4px 9px;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.title {
+  font-weight: 550;
+}
+
+.sub {
+  font-size: 11px;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.icon,
+.coin {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 999px;
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--chip);
+}
+
+.icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.icon.selected {
+  background: var(--ember);
+  color: var(--on-accent);
+}
+
+.icon.attention {
+  background: var(--flare);
+  color: var(--on-accent);
+}
+
+/* The coin is the status: Ember when up, Flare when it needs attention, Signal on errors. */
+.coin {
+  color: var(--pending);
+}
+
+.coin svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.coin.ok {
+  color: var(--ember);
+}
+
+.coin.attention {
+  color: var(--flare);
+}
+
+.coin.error {
+  color: var(--signal);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  cursor: default;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 6px;
+}
+
+.item:hover:not(:disabled),
+.item:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+
+.item:disabled .icon,
+.item:disabled .label {
+  opacity: 0.45;
+}
+
+.item.sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.label {
+  flex: 1;
+}
+
+kbd {
+  font: inherit;
+  color: var(--muted);
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+}
+
+.link {
+  flex: none;
+  margin-right: 4px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.link:hover,
+.link:focus-visible {
+  background: var(--hover);
+  color: var(--text);
+  outline: none;
+}
+
+.rule {
+  height: 1px;
+  margin: 5px 14px;
+  border: 0;
+  background: var(--rule);
+}
+
+.section {
+  padding: 2px 14px 3px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.note {
+  margin: 4px 14px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  background: var(--chip);
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.note.error {
+  box-shadow: inset 0 0 0 1px var(--signal);
+}
+
+.switch {
+  flex: none;
+  display: flex;
+  width: 32px;
+  height: 19px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--track-off);
+  transition: background 0.15s;
+}
+
+.switch .knob {
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s;
+}
+
+[aria-checked="true"] > .switch,
+.switch[aria-checked="true"] {
+  background: var(--ember);
+}
+
+.switch[aria-checked="true"] .knob {
+  transform: translateX(13px);
+}
+
+.switch.small {
+  width: 26px;
+  height: 15px;
+}
+
+.switch.small .knob {
+  width: 11px;
+  height: 11px;
+}
+
+[aria-checked="true"] > .switch.small .knob {
+  transform: translateX(11px);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch .knob {
+    transition: none;
+  }
+}

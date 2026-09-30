@@ -1,8 +1,10 @@
 //! The menu bar icon and its native menu.
 //!
-//! The menu has a fixed structure; refreshing only changes texts, check marks and enabled
-//! states, so it can be updated while it is open. Check items for the sleep modes behave like
-//! radio items: after every click the marks are set again from what is in force.
+//! A left click on the icon opens the panel (`panel.rs`); the right click shows this menu, so
+//! every action stays reachable without the panel. The menu has a fixed structure; refreshing
+//! only changes texts, check marks and enabled states, so it can be updated while it is open.
+//! Check items for the sleep modes behave like radio items: after every click the marks are set
+//! again from what is in force.
 
 use crate::core::Snapshot;
 use crate::login::LoginItemStatus;
@@ -10,8 +12,8 @@ use crate::settings::SleepMode;
 use crate::sleep::SleepStatus;
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Runtime};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Rect, Runtime};
 
 pub const TRAY_ID: &str = "taubar";
 
@@ -38,10 +40,12 @@ pub struct TrayMenu<R: Runtime> {
 }
 
 impl<R: Runtime> TrayMenu<R> {
-    /// Create the tray icon and its menu. `on_menu` receives the id of the clicked item.
-    pub fn build<F>(app: &AppHandle<R>, on_menu: F) -> tauri::Result<Self>
+    /// Create the tray icon and its menu. `on_menu` receives the id of the clicked item,
+    /// `on_left_click` the icon's position and size when a left click ends.
+    pub fn build<F, G>(app: &AppHandle<R>, on_menu: F, on_left_click: G) -> tauri::Result<Self>
     where
         F: Fn(&AppHandle<R>, &str) + Send + Sync + 'static,
+        G: Fn(&AppHandle<R>, Rect) + Send + Sync + 'static,
     {
         let none = None::<&str>;
         let hub_lines = [
@@ -105,8 +109,19 @@ impl<R: Runtime> TrayMenu<R> {
             .icon_as_template(true)
             .tooltip("TauBar")
             .menu(&menu)
-            .show_menu_on_left_click(true)
+            .show_menu_on_left_click(false)
             .on_menu_event(move |app, event| on_menu(app, event.id().as_ref()))
+            .on_tray_icon_event(move |tray, event| {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    rect,
+                    ..
+                } = event
+                {
+                    on_left_click(tray.app_handle(), rect);
+                }
+            })
             .build(app)?;
 
         Ok(Self {

@@ -1,5 +1,5 @@
-//! Commands the settings window calls (`invoke` from `src/api.ts`). The hub commands are
-//! `async` so they run off the main thread (they can wait on the hub supervisor).
+//! Commands the settings window and the panel call (`invoke` from `src/api.ts`). The hub
+//! commands are `async` so they run off the main thread (they can wait on the hub supervisor).
 
 use crate::core::Snapshot;
 use crate::settings::{HubSettings, SleepMode};
@@ -74,4 +74,20 @@ pub fn open_log(app: AppHandle) {
 #[tauri::command]
 pub fn quit(app: AppHandle) {
     crate::quit(&app);
+}
+
+#[tauri::command]
+pub fn open_settings(app: AppHandle) {
+    crate::open_settings(&app);
+}
+
+/// The panel's content height, so its window fits it.
+#[tauri::command]
+pub fn panel_fit(app: AppHandle, height: f64) {
+    crate::panel::fit(&app, height);
+}
+
+#[tauri::command]
+pub fn panel_hide(app: AppHandle) {
+    crate::panel::hide(&app);
 }

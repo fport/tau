@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
+from tau_core.cli import help_option
 from tau_core.config import Config, ConfigError
 
 if TYPE_CHECKING:
@@ -190,6 +191,8 @@ class RoleSpend:
     cap: float | None = None
     degrade_to: str | None = None
     unpriced_calls: int = 0
+    metered: bool = True
+    """Are this role's calls recorded (it has a budget or a failover)?"""
 
     @property
     def exhausted(self) -> bool:
@@ -207,6 +210,7 @@ class RoleSpend:
             "exhausted": self.exhausted,
             "degrade_to": self.degrade_to,
             "unpriced_calls": self.unpriced_calls,
+            "metered": self.metered,
         }
 
 
@@ -230,6 +234,7 @@ def spend_report(
             cap=role.budget.usd if role.budget else None,
             degrade_to=role.budget.degrade_to if role.budget else None,
             unpriced_calls=ledger.unpriced(name, since),
+            metered=role.budget is not None or role.failover is not None,
         )
     return report
 
@@ -310,11 +315,14 @@ def spend_line(spend: RoleSpend) -> str:
     """One ``tau spend`` line."""
     from tau_core.persona import TIMEZONE
 
-    if spend.cap is None and spend.spent <= 0:
+    if not spend.metered:
         return f"  {spend.role:<8} {spend.provider:<9} no budget (its calls are not counted)"
-    cap = f"${spend.cap:.2f}" if spend.cap is not None else "no budget"
-    line = f"  {spend.role:<8} {spend.provider:<9} ${spend.spent:.2f} of {cap} "
-    line += _PERIOD_WORDS.get(spend.period, spend.period)
+    line = f"  {spend.role:<8} {spend.provider:<9} ${spend.spent:.2f}"
+    if spend.cap is not None:
+        line += f" of ${spend.cap:.2f}"
+    line += f" {_PERIOD_WORDS.get(spend.period, spend.period)}"
+    if spend.cap is None:
+        line += ", no budget"
     if spend.cap is not None:
         line += f", resets {spend.reset_at.astimezone(TIMEZONE):%d.%m.%Y %H:%M}"
     if spend.exhausted:
@@ -329,8 +337,8 @@ def spend_line(spend: RoleSpend) -> str:
     help="Show what every model role spent in its budget period (from the ledger under "
     "TAU_DATA_DIR) next to its budget in tau.toml.",
     short_help="Show the spend per model role.",
-    context_settings={"help_option_names": ["-h", "--help"]},
 )
+@help_option()
 @click.option("--json", "as_json", is_flag=True, help="Print the spend as JSON.")
 @click.pass_context
 def spend_command(ctx: click.Context, as_json: bool) -> None:

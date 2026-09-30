@@ -416,7 +416,7 @@ def _check_degrade_targets(roles: Mapping[str, RoleConfig]) -> None:
         if name in path:
             raise ConfigError(
                 f"tau.toml: [models.roles.{path[0]}] stand-ins loop: "
-                f"{' → '.join([*path, name])} (budget.degrade_to and failover together)."
+                f"{' → '.join([*path, name])} (through budget.degrade_to or failover)."
             )
         for _, target in _stand_ins(roles[name]):
             visit(target, [*path, name])

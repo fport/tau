@@ -141,6 +141,7 @@ def test_spend_report_and_describe(tmp_path: Path) -> None:
         "exhausted": False,
         "degrade_to": "fast",
         "unpriced_calls": 0,
+        "metered": True,
     }
     spent_brain = RoleSpend("brain", "anthropic", "m", 16.0, "month", NOW, NOW, 15.0, "fast")
     assert describe({"brain": spent_brain}).startswith(

@@ -158,6 +158,7 @@ class BudgetDegraded:
     role: str
     degrade_to: str
     reset_at: datetime | None = None
+    reason = "budget"
 
     def notice(self, language: str = DEFAULT_LANGUAGE) -> str:
         return t(
@@ -175,6 +176,7 @@ class FailedOver:
 
     role: str
     failover: str
+    reason = "failover"
 
     def notice(self, language: str = DEFAULT_LANGUAGE) -> str:
         return t("notice.failover", language, role=self.role, failover=self.failover)

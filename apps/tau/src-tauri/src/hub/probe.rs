@@ -50,7 +50,7 @@ pub fn probe_lock(path: &Path) -> LockProbe {
     LockProbe { held: true, pid }
 }
 
-/// The most TauBar reads of one answer from the control API.
+/// The most the app reads of one answer from the control API.
 const MAX_ANSWER: usize = 1024 * 1024;
 
 /// Send `request` to `127.0.0.1:<port>` and read the whole answer (until the server closes,
@@ -243,10 +243,10 @@ impl Resolved {
         self.data_dir.join("logs").join("tau.log")
     }
 
-    /// Where TauBar sends the hub's stdout and stderr (next to launchd's).
+    /// Where the app sends the hub's stdout and stderr (next to launchd's).
     pub fn output_logs(&self) -> (PathBuf, PathBuf) {
         let dir = self.hub_dir.join("logs");
-        (dir.join("taubar.out.log"), dir.join("taubar.err.log"))
+        (dir.join("app.out.log"), dir.join("app.err.log"))
     }
 }
 
@@ -326,7 +326,7 @@ pub fn resolve(status: &Launch, timeout: Duration) -> Result<Resolved, String> {
 }
 
 /// Whether an installed, loaded `com.tau.hub` launchd agent runs a hub for `data_dir`.
-/// Then launchd is that hub's supervisor and TauBar must not become a second one.
+/// Then launchd is that hub's supervisor and the app must not become a second one.
 pub fn launchd_manages(user_home: &Path, data_dir: &Path) -> bool {
     let Some(agent) = LaunchdAgent::read(&LaunchdAgent::plist_path(user_home)) else {
         return false;
@@ -354,7 +354,7 @@ fn same_path(a: &Path, b: &Path) -> bool {
     canon(a) == canon(b)
 }
 
-/// For a hub TauBar adopted (no exit status): did it write `stopped_at` on its way out?
+/// For a hub the app adopted (no exit status): did it write `stopped_at` on its way out?
 pub fn stopped_cleanly(hub_dir: &Path, pid: u32) -> bool {
     let Ok(text) = std::fs::read_to_string(hub_dir.join("state.json")) else {
         return false;
@@ -372,7 +372,7 @@ mod tests {
     use std::net::TcpListener;
 
     fn tmpdir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("taubar-probe-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tau-app-probe-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir

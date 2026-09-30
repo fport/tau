@@ -1,6 +1,6 @@
-// Typed wrappers around TauBar's Rust commands (src-tauri/src/commands.rs) and its snapshot
+// Typed wrappers around the app's Rust commands (src-tauri/src/commands.rs) and its snapshot
 // event, for the settings window and the panel. The types mirror the Rust `Snapshot` (serde,
-// snake_case).
+// snake_case). The chat windows have their own, in chat/api.ts.
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -53,7 +53,7 @@ export interface GuardMenu {
   grant_camera: boolean;
 }
 
-/** How TauBar starts the hub (Rust `HubSettings`). */
+/** How the app starts the hub (Rust `HubSettings`). */
 export interface HubSettings {
   python: string | null;
   tau_home: string | null;
@@ -63,7 +63,7 @@ export interface HubSettings {
   env: Record<string, string>;
 }
 
-/** The panel's hub rows (Rust `HubPanel`): `Up 2 h 5 min` / `pid 1234 · started by TauBar`. */
+/** The panel's hub rows (Rust `HubPanel`): `Up 2 h 5 min` / `pid 1234 · started by the app`. */
 export interface HubPanel {
   title: string;
   detail: string;
@@ -77,7 +77,7 @@ export interface HubSnapshot {
   switch_on: boolean;
   state: HubState;
   pid: number | null;
-  by_taubar: boolean;
+  by_app: boolean;
   launchd: boolean;
   uptime_s: number | null;
   restart_in_s: number | null;
@@ -95,7 +95,7 @@ export interface HubSnapshot {
   panel: HubPanel;
   /** The guard line and its actions, as the native menu shows them. */
   guard_menu: GuardMenu;
-  /** The saved switch: what TauBar does at its next start. */
+  /** The saved switch: what the app does at its next start. */
   run_at_start: boolean;
   settings: HubSettings;
 }
@@ -106,10 +106,12 @@ export interface Snapshot {
   sleep: SleepStatus;
   sleep_summary: string;
   login: { status: LoginItemStatus; problem: string | null };
+  /** The daily update check (release builds only) and whether this is a release build. */
+  updates: { check: boolean; release_build: boolean };
   files: { settings: string; log: string };
 }
 
-export const SNAPSHOT_EVENT = "taubar://snapshot";
+export const SNAPSHOT_EVENT = "tau-app://snapshot";
 
 export const api = {
   snapshot: () => invoke<Snapshot>("snapshot"),
@@ -127,6 +129,11 @@ export const api = {
   lockGuard: () => invoke<Snapshot>("lock_guard"),
   openCameraSettings: () => invoke<void>("open_camera_settings"),
   openSettings: () => invoke<void>("open_settings"),
+  /** A new chat window running `tau tui`. */
+  newChat: () => invoke<void>("new_chat"),
+  /** "Check for Updates…": Rust answers with a dialog. */
+  checkUpdates: () => invoke<void>("check_updates"),
+  setCheckUpdates: (on: boolean) => invoke<Snapshot>("set_check_updates", { on }),
   /** The panel's content height, so its window fits it. */
   panelFit: (height: number) => invoke<void>("panel_fit", { height }),
   panelHide: () => invoke<void>("panel_hide"),

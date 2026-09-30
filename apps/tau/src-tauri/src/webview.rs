@@ -1,15 +1,16 @@
 //! Webview permissions: every request is denied.
 //!
-//! TauBar holds the camera (and later the microphone) grant for the hub it runs (ADR 0008
+//! The app holds the camera (and later the microphone) grant for the hub it runs (ADR 0008
 //! decision 16). wry answers a page's `getUserMedia` with "grant" when no handler is set
 //! (`requestMediaCapturePermissionForOrigin` in its WKWebView UI delegate), so without this any
-//! page in a TauBar webview could open the camera or the microphone without a prompt. The
-//! window needs no permission at all: the guard runs in the hub, never in a webview.
+//! page in one of the app's webviews could open the camera or the microphone without a prompt.
+//! No window needs a permission at all: the guard runs in the hub, never in a webview, and a
+//! chat window's `tau tui` runs in a PTY, not in the page.
 //!
 //! [`permission`] is installed twice: on the app builder, for every webview, and on each
-//! `WebviewWindowBuilder`, so a webview's own handler never falls back to `Default` (which wry
-//! turns into WebKit's prompt). With both, `navigator.mediaDevices.getUserMedia(...)` in the
-//! window rejects with `NotAllowedError`.
+//! `WebviewWindowBuilder` (the settings window, the panel, every chat window), so a webview's
+//! own handler never falls back to `Default` (which wry turns into WebKit's prompt). With both,
+//! `navigator.mediaDevices.getUserMedia(...)` in any window rejects with `NotAllowedError`.
 
 use tauri::webview::{PermissionKind, PermissionResponse};
 
@@ -47,8 +48,8 @@ mod tests {
         }
     }
 
-    /// Every webview TauBar builds gets the handler: the app builder once, and each
-    /// `WebviewWindowBuilder::new` (a future window must not forget it).
+    /// Every webview the app builds gets the handler: the app builder once, and each
+    /// `WebviewWindowBuilder::new` (a future window, such as 171's wizard, must not forget it).
     #[test]
     fn every_webview_builder_installs_the_deny_handler() {
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -78,7 +79,10 @@ mod tests {
             }
         }
         assert!(app_handler, "the app builder installs webview::permission");
-        assert!(builders >= 1, "the settings window is built somewhere");
+        assert!(
+            builders >= 3,
+            "the settings window, the panel and the chat windows are built somewhere"
+        );
         assert_eq!(
             handlers,
             builders + 1,

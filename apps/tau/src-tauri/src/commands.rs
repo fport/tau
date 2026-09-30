@@ -1,5 +1,7 @@
-//! Commands the settings window and the panel call (`invoke` from `src/api.ts`). The hub
-//! commands are `async` so they run off the main thread (they can wait on the hub supervisor).
+//! Commands the settings window and the panel call (`invoke` from `src/api.ts`; which window
+//! may call which is in `capabilities/`). The hub commands are `async` so they run off the main
+//! thread (they can wait on the hub supervisor). The chat windows' commands are in
+//! `chat/commands.rs`.
 
 use crate::core::Snapshot;
 use crate::settings::{HubSettings, SleepMode};
@@ -10,7 +12,7 @@ use tauri::{AppHandle, Manager, State};
 #[derive(Serialize)]
 pub struct HubSwitchResult {
     pub snapshot: Snapshot,
-    /// Why the switch could not do what it says (a hub TauBar did not start).
+    /// Why the switch could not do what it says (a hub the app did not start).
     pub message: Option<String>,
 }
 
@@ -98,6 +100,26 @@ pub fn quit(app: AppHandle) {
 #[tauri::command]
 pub fn open_settings(app: AppHandle) {
     crate::open_settings(&app);
+}
+
+/// A new chat window running `tau tui`.
+#[tauri::command]
+pub fn new_chat(app: AppHandle) {
+    crate::chat::open_window(&app);
+}
+
+/// "Check for Updates…": the answer comes as a dialog.
+#[tauri::command]
+pub fn check_updates(app: AppHandle) {
+    crate::update::check(&app, true);
+}
+
+/// The daily update check of a release build, on or off.
+#[tauri::command]
+pub fn set_check_updates(app: AppHandle, on: bool) -> Snapshot {
+    app.state::<AppCore>().set_check_updates(on);
+    refresh(&app);
+    app.state::<AppCore>().snapshot()
 }
 
 /// The panel's content height, so its window fits it.

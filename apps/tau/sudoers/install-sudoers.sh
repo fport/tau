@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Install the one sudoers rule TauBar's "Keep awake with the lid closed" mode needs: your user
+# Install the one sudoers rule the tau app's "Keep awake with the lid closed" mode needs: your user
 # may run exactly `/usr/bin/pmset -a disablesleep 0` and `... 1` as root without a password.
 # Nothing else. Run it in your own terminal; sudo asks for your password.
 #
-#   apps/taubar/sudoers/install-sudoers.sh           # render, check and install
-#   apps/taubar/sudoers/install-sudoers.sh --print   # only render and check (no sudo)
+#   apps/tau/sudoers/install-sudoers.sh           # render, check and install
+#   apps/tau/sudoers/install-sudoers.sh --print   # only render and check (no sudo)
 #
-# Undo: apps/taubar/sudoers/uninstall-sudoers.sh
+# Undo: apps/tau/sudoers/uninstall-sudoers.sh
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -14,7 +14,7 @@ target=/etc/sudoers.d/tau-taubar
 user="$(id -un)"
 
 if [[ "$user" == root ]]; then
-  echo "Run this as your own user, not as root: the rule is for the user who runs TauBar." >&2
+  echo "Run this as your own user, not as root: the rule is for the user who runs tau." >&2
   exit 1
 fi
 if [[ ! "$user" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -52,7 +52,7 @@ if ! sudo /usr/sbin/visudo -c -q; then
   exit 1
 fi
 if sudo -n -l /usr/bin/pmset -a disablesleep 1 >/dev/null 2>&1; then
-  echo "Done. TauBar offers \"Keep awake with the lid closed\" within a few seconds."
+  echo "Done. tau offers \"Keep awake with the lid closed\" within a few seconds."
 else
   echo "Installed, but sudo does not allow the command yet: check that /etc/sudoers" >&2
   echo "includes /private/etc/sudoers.d (macOS does by default)." >&2

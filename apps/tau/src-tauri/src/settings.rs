@@ -1,5 +1,6 @@
-//! What the user chose in TauBar, kept as JSON in TauBar's directory
-//! (`~/Library/Application Support/com.tau.taubar/settings.json`, or `$TAUBAR_HOME`).
+//! What the owner chose in the tau app, kept as JSON in the app's config directory
+//! (`~/Library/Application Support/com.tau.app/settings.json`, or `$TAU_APP_HOME`). The chat
+//! windows keep their folder choice next to it, in `chat.json` (`chat/home.rs`).
 //!
 //! "Launch at login" is not stored here: the login item registration (SMAppService) is the
 //! source of truth and the system keeps it across restarts.
@@ -29,10 +30,13 @@ pub enum SleepMode {
 #[serde(default)]
 pub struct Settings {
     pub sleep_mode: SleepMode,
-    /// "Run the hub": TauBar starts and supervises the hub whenever TauBar runs.
+    /// "Run the hub": the app starts and supervises the hub whenever it runs.
     pub run_hub: bool,
-    /// How TauBar starts the hub.
+    /// How the app starts the hub.
     pub hub: HubSettings,
+    /// A release build looks for an update once a day (`update.rs`); "Check for Updates…"
+    /// works either way.
+    pub check_updates: bool,
 }
 
 impl Default for Settings {
@@ -41,11 +45,12 @@ impl Default for Settings {
             sleep_mode: SleepMode::KeepAwakeOnAc,
             run_hub: false,
             hub: HubSettings::default(),
+            check_updates: true,
         }
     }
 }
 
-/// How TauBar starts the hub: `<python> -m tau_core hub run` in `tau_home` with
+/// How the app starts the hub: `<python> -m tau_core hub run` in `tau_home` with
 /// `TAU_HOME=<tau_home>`, like the launchd plist `tau hub install` renders. Nothing here has a
 /// built-in personal default: the first start imports these values from an installed
 /// `com.tau.hub` launchd agent, or the user picks a checkout in the window.
@@ -66,15 +71,15 @@ pub struct HubSettings {
     pub env: BTreeMap<String, String>,
 }
 
-/// What TauBar changed on the system and must undo, kept across a crash of TauBar itself.
+/// What the app changed on the system and must undo, kept across a crash of the app itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RuntimeState {
-    /// TauBar ran `pmset -a disablesleep 1` and has not reset it yet.
+    /// The app ran `pmset -a disablesleep 1` and has not reset it yet.
     pub lid_engaged: bool,
-    /// The pid of the hub TauBar started and has not seen exit. If TauBar itself dies, the
-    /// next TauBar adopts that hub (when it still holds the hub lock) instead of calling it
-    /// a stranger.
+    /// The pid of the hub the app started and has not seen exit. If the app itself dies, its
+    /// next start adopts that hub (when it still holds the hub lock) instead of calling it a
+    /// stranger.
     pub hub_pid: Option<u32>,
 }
 
@@ -95,7 +100,7 @@ impl JsonFile {
     }
 
     /// The stored value, or the default. A file that cannot be parsed is moved aside
-    /// (`<name>.bad`) and reported, so one bad edit never keeps TauBar from starting.
+    /// (`<name>.bad`) and reported, so one bad edit never keeps the app from starting.
     pub fn load<T: Default + for<'de> Deserialize<'de>>(&self) -> (T, Option<String>) {
         let text = match fs::read_to_string(&self.path) {
             Ok(text) => text,
@@ -149,7 +154,7 @@ mod tests {
 
     fn tmpdir(name: &str) -> PathBuf {
         let dir =
-            std::env::temp_dir().join(format!("taubar-settings-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("tau-app-settings-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -161,12 +166,15 @@ mod tests {
         assert_eq!(settings.sleep_mode, SleepMode::KeepAwakeOnAc);
         assert!(!settings.run_hub);
         assert_eq!(settings.hub, HubSettings::default());
+        assert!(settings.check_updates);
         let parsed: Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(parsed, settings);
         // A 024-era file (sleep mode only) still loads.
         let old: Settings = serde_json::from_str(r#"{"sleep_mode": "normal"}"#).unwrap();
         assert_eq!(old.sleep_mode, SleepMode::Normal);
         assert!(!old.run_hub);
+        // A TauBar file (no update switch) checks for updates.
+        assert!(old.check_updates);
     }
 
     #[test]
@@ -207,6 +215,7 @@ mod tests {
                 env: [("TELEGRAM_BOT_TOKEN".to_string(), String::new())].into(),
                 ..HubSettings::default()
             },
+            check_updates: false,
         };
         file.save(&chosen).unwrap();
         let (loaded, warning) = file.load::<Settings>();

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-run-hub"
+description = "Enables the set_run_hub command without any pre-configured scope."
+commands.allow = ["set_run_hub"]
+
+[[permission]]
+identifier = "deny-set-run-hub"
+description = "Denies the set_run_hub command without any pre-configured scope."
+commands.deny = ["set_run_hub"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-hub-settings"
+description = "Enables the save_hub_settings command without any pre-configured scope."
+commands.allow = ["save_hub_settings"]
+
+[[permission]]
+identifier = "deny-save-hub-settings"
+description = "Denies the save_hub_settings command without any pre-configured scope."
+commands.deny = ["save_hub_settings"]

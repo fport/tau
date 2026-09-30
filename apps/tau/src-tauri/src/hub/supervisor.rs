@@ -1,11 +1,11 @@
-//! TauBar's hub supervisor.
+//! The app's hub supervisor.
 //!
-//! With the switch on, TauBar starts `tau hub run` as its child and keeps it running: a crash
+//! With the switch on, the app starts `tau hub run` as its child and keeps it running: a crash
 //! or `kill -9` is restarted after a short backoff ([`RestartPolicy`]), a clean exit
 //! (`tau hub stop`) leaves the hub stopped and the switch off, and turning the switch off or
-//! quitting TauBar stops it with SIGTERM (SIGKILL after a timeout).
+//! quitting the app stops it with SIGTERM (SIGKILL after a timeout).
 //!
-//! TauBar never runs a second hub: before every start it probes the hub lock of the data dir
+//! The app never runs a second hub: before every start it probes the hub lock of the data dir
 //! the configuration resolves to, and it leaves a data dir alone while a loaded `com.tau.hub`
 //! launchd agent owns it. A hub it did not start is shown, never stopped.
 //!
@@ -86,9 +86,9 @@ impl Default for Timings {
 }
 
 enum Handle {
-    /// Started by this TauBar: exit status known.
+    /// Started by this run of the app: exit status known.
     Child(Child),
-    /// Started by an earlier TauBar that died; watched through the hub lock.
+    /// Started by an earlier run of the app that died; watched through the hub lock.
     Adopted,
 }
 
@@ -100,7 +100,7 @@ struct OwnHub {
     up_logged: bool,
 }
 
-/// An unexpected exit TauBar saw (TauBar's own record, local time).
+/// An unexpected exit the app saw (the app's own record, local time).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ExitRecord {
     pub at: String,
@@ -114,16 +114,16 @@ pub enum HubState {
     /// No Python / TAU_HOME, or they do not exist.
     NotConfigured,
     Off,
-    /// TauBar's hub is running, `/health` has not answered yet.
+    /// the app's hub is running, `/health` has not answered yet.
     Starting,
-    /// TauBar's hub answers `/health`.
+    /// the app's hub answers `/health`.
     Up,
     Stopping,
     /// Waiting out the backoff after a crash.
     Restarting,
-    /// TauBar's hub exited cleanly by itself (`tau hub stop`).
+    /// the app's hub exited cleanly by itself (`tau hub stop`).
     Stopped,
-    /// A hub TauBar did not start holds the lock or answers on the port.
+    /// A hub the app did not start holds the lock or answers on the port.
     Elsewhere,
     /// The switch is on, but a loaded launchd agent owns this data dir and its hub is down.
     LaunchdIdle,
@@ -137,13 +137,13 @@ pub struct HubView {
     pub switch_on: bool,
     pub state: HubState,
     pub pid: Option<u32>,
-    /// The hub was started by TauBar (now or by an earlier TauBar that it adopted).
-    pub by_taubar: bool,
+    /// The hub was started by the app (now or by an earlier run that it adopted).
+    pub by_app: bool,
     /// A loaded launchd agent owns this data dir.
     pub launchd: bool,
     pub uptime_s: Option<f64>,
     pub restart_in_s: Option<u64>,
-    /// Unexpected exits TauBar saw since it started.
+    /// Unexpected exits the app saw since it started.
     pub restarts: u32,
     pub last_exit: Option<ExitRecord>,
     /// The hub's own `last_crash` from `/status`.
@@ -172,7 +172,7 @@ pub struct Supervisor<P: Probe> {
     own: Option<OwnHub>,
     restart_at: Option<Instant>,
     stopped_clean: bool,
-    /// `Some(pid)` while a hub TauBar did not start holds the lock.
+    /// `Some(pid)` while a hub the app did not start holds the lock.
     external: Option<Option<u32>>,
     launchd: Option<(Instant, bool)>,
     launchd_idle: bool,
@@ -181,7 +181,7 @@ pub struct Supervisor<P: Probe> {
     spawn_error: Option<String>,
     health: Option<Value>,
     status: Option<Value>,
-    /// With no hub of TauBar's own: the pid `/health` reported and whether that pid held the
+    /// With no hub of the app's own: the pid `/health` reported and whether that pid held the
     /// hub lock when it was checked (once per pid; cleared when `/health` stops answering).
     lock_holder: Option<(u32, bool)>,
     next_poll: Option<Instant>,
@@ -241,7 +241,7 @@ impl<P: Probe> Supervisor<P> {
         self.desired
     }
 
-    /// The pid of the hub TauBar started (or adopted) while it runs.
+    /// The pid of the hub the app started (or adopted) while it runs.
     pub fn own_pid(&self) -> Option<u32> {
         self.own.as_ref().map(|own| own.pid)
     }
@@ -257,7 +257,7 @@ impl<P: Probe> Supervisor<P> {
     }
 
     /// Turn the switch on or off. Returns a message for the user when the switch cannot do
-    /// what it says: turning it off with a hub TauBar did not start.
+    /// what it says: turning it off with a hub the app did not start.
     pub fn set_desired(&mut self, on: bool, now: Instant) -> Option<String> {
         if on {
             self.desired = true;
@@ -279,7 +279,7 @@ impl<P: Probe> Supervisor<P> {
         pid.map(|pid| self.not_ours_message(pid))
     }
 
-    /// Take over the hub an earlier TauBar started (pid from its state file), if that hub
+    /// Take over the hub an earlier run of the app started (pid from its state file), if that hub
     /// still holds the lock. Returns whether it did.
     pub fn adopt(&mut self, pid: u32, now: Instant) -> bool {
         if self.own.is_some() {
@@ -300,7 +300,7 @@ impl<P: Probe> Supervisor<P> {
             up_logged: true,
         });
         self.log.write(format!(
-            "hub: took over the hub an earlier TauBar started (pid {pid})"
+            "hub: took over the hub an earlier run of the app started (pid {pid})"
         ));
         true
     }
@@ -317,7 +317,7 @@ impl<P: Probe> Supervisor<P> {
         self.poll(now);
     }
 
-    /// Stop the hub TauBar started and wait for it (quit). SIGKILL after `timeout`.
+    /// Stop the hub the app started and wait for it (quit). SIGKILL after `timeout`.
     pub fn shutdown(&mut self, timeout: Duration) {
         self.desired = false;
         self.restart_at = None;
@@ -332,7 +332,7 @@ impl<P: Probe> Supervisor<P> {
                 return;
             }
             if start.elapsed() >= timeout {
-                self.kill_own("it did not stop in time while TauBar quit");
+                self.kill_own("it did not stop in time while the app quit");
                 std::thread::sleep(Duration::from_millis(100));
                 self.reap(Instant::now());
                 return;
@@ -369,8 +369,8 @@ impl<P: Probe> Supervisor<P> {
         };
         let answering = matches!(state, HubState::Up | HubState::Elsewhere);
         // Any local process that holds the port can answer the open /status. Its guard block
-        // reaches the menu only when the hub itself answers: TauBar's own hub (Up), or a hub
-        // elsewhere whose pid holds the hub lock. Not while TauBar's hub is still starting.
+        // reaches the menu only when the hub itself answers: the app's own hub (Up), or a hub
+        // elsewhere whose pid holds the hub lock. Not while the app's hub is still starting.
         let hub_answers = match state {
             HubState::Up => true,
             HubState::Elsewhere => {
@@ -383,7 +383,7 @@ impl<P: Probe> Supervisor<P> {
             switch_on: self.desired,
             state,
             pid: own_pid.or(health_pid).or(self.external.flatten()),
-            by_taubar: own_pid.is_some(),
+            by_app: own_pid.is_some(),
             launchd: self.launchd.is_some_and(|(_, managed)| managed),
             uptime_s: answering
                 .then(|| {
@@ -439,13 +439,13 @@ impl<P: Probe> Supervisor<P> {
     fn not_ours_message(&self, pid: u32) -> String {
         let launchd = self.launchd.is_some_and(|(_, managed)| managed);
         let mut message = format!(
-            "The running hub (pid {pid}) was not started by TauBar, so TauBar leaves it \
+            "The running hub (pid {pid}) was not started by the app, so the app leaves it \
              alone. To stop it, run `uv run tau hub stop` in the tau checkout."
         );
         if launchd {
             message.push_str(
                 " It runs under launchd (com.tau.hub): `uv run tau hub uninstall` stops it and \
-                 removes the agent, after which TauBar can run the hub.",
+                 removes the agent, after which the app can run the hub.",
             );
         }
         message
@@ -506,7 +506,7 @@ impl<P: Probe> Supervisor<P> {
                 };
                 let pid = lock.pid.map_or("?".to_string(), |p| p.to_string());
                 self.log.write(format!(
-                    "hub: a hub TauBar did not start is running (pid {pid}{by}); \
+                    "hub: a hub the app did not start is running (pid {pid}{by}); \
                      not starting a second one"
                 ));
             }
@@ -520,8 +520,8 @@ impl<P: Probe> Supervisor<P> {
         if self.launchd_cached(&resolved.data_dir, now) {
             if !self.launchd_idle {
                 self.log.write(
-                    "hub: the launchd agent com.tau.hub is loaded for this data dir; TauBar \
-                     leaves the hub to launchd (`uv run tau hub uninstall` hands it to TauBar)",
+                    "hub: the launchd agent com.tau.hub is loaded for this data dir; the app \
+                     leaves the hub to launchd (`uv run tau hub uninstall` hands it to the app)",
                 );
             }
             self.launchd_idle = true;
@@ -542,8 +542,8 @@ impl<P: Probe> Supervisor<P> {
                 command.stdout(Stdio::null()).stderr(Stdio::null());
             }
         }
-        // Its own process group: a Ctrl-C meant for TauBar in a terminal does not hit the hub;
-        // TauBar stops it with SIGTERM itself.
+        // Its own process group: a Ctrl-C meant for the app in a terminal does not hit the hub;
+        // the app stops it with SIGTERM itself.
         command.process_group(0);
         match command.spawn() {
             Ok(child) => {
@@ -631,7 +631,7 @@ impl<P: Probe> Supervisor<P> {
                 self.desired = false;
                 self.stopped_clean = true;
                 self.log.write(format!(
-                    "hub: pid {pid} exited cleanly without TauBar asking (tau hub stop?); \
+                    "hub: pid {pid} exited cleanly without the app asking (tau hub stop?); \
                      leaving it stopped and the switch off"
                 ));
             }
@@ -668,7 +668,7 @@ impl<P: Probe> Supervisor<P> {
         }
         own.stop_sent = Some(now);
         let pid = own.pid;
-        // SAFETY: signalling a pid TauBar started (or adopted after checking the hub lock).
+        // SAFETY: signalling a pid the app started (or adopted after checking the hub lock).
         unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
         self.log.write(format!("hub: stopping pid {pid} (SIGTERM)"));
     }
@@ -809,7 +809,7 @@ mod tests {
     impl Rig {
         fn new(name: &str, script: &str) -> Self {
             let dir =
-                std::env::temp_dir().join(format!("taubar-sup-{name}-{}", std::process::id()));
+                std::env::temp_dir().join(format!("tau-app-sup-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(dir.join("data/hub")).unwrap();
             let resolved = Resolved {
@@ -923,7 +923,7 @@ mod tests {
         let view = rig.sup.view(Instant::now());
         assert_eq!(view.state, HubState::Up);
         assert_eq!(view.pid, Some(pid));
-        assert!(view.by_taubar);
+        assert!(view.by_app);
         assert!(view.telegram.is_some());
         assert_eq!(view.guard, None, "no guard block, no guard");
         assert!(rig.log_text().contains(&format!("pid {pid} is up")));
@@ -997,11 +997,11 @@ mod tests {
     }
 
     #[test]
-    fn a_guard_block_is_not_shown_while_taubars_hub_is_starting() {
+    fn a_guard_block_is_not_shown_while_the_apps_hub_is_starting() {
         let mut rig = Rig::new("starting", LONG);
         rig.sup.set_desired(true, Instant::now());
         let pid = rig.sup.own_pid().expect("started");
-        // Another process answers on the port before TauBar's hub does.
+        // Another process answers on the port before the app's hub does.
         answer_guard(&rig, pid + 1);
         rig.run_until(Duration::from_millis(200), |_| false);
         let view = rig.sup.view(Instant::now());
@@ -1063,7 +1063,7 @@ mod tests {
         assert_eq!(rig.sup.restarts, 0);
         assert!(rig
             .log_text()
-            .contains("exited cleanly without TauBar asking"));
+            .contains("exited cleanly without the app asking"));
     }
 
     #[test]
@@ -1104,11 +1104,11 @@ mod tests {
         let view = rig.sup.view(Instant::now());
         assert_eq!(view.state, HubState::Elsewhere);
         assert_eq!(view.pid, Some(4242));
-        assert!(!view.by_taubar);
+        assert!(!view.by_app);
         // Switching off does not touch it; the user is told how to stop it.
         let message = rig.sup.set_desired(false, Instant::now()).unwrap();
         assert!(message.contains("pid 4242") && message.contains("tau hub stop"));
-        // With the switch on again, TauBar starts its own once the other one is gone.
+        // With the switch on again, the app starts its own once the other one is gone.
         rig.sup.set_desired(true, Instant::now());
         assert_eq!(rig.sup.own_pid(), None);
         drop(holder);
@@ -1146,7 +1146,7 @@ mod tests {
     }
 
     #[test]
-    fn an_orphaned_hub_from_an_earlier_taubar_is_adopted_and_supervised() {
+    fn an_orphaned_hub_from_an_earlier_run_is_adopted_and_supervised() {
         let mut rig = Rig::new("adopt", LONG);
         // The orphan: a process whose pid sits in the hub lock, as `tau hub run` writes it.
         let mut orphan = std::process::Command::new("/bin/sh")
@@ -1158,8 +1158,8 @@ mod tests {
         assert!(rig.sup.adopt(orphan.id(), Instant::now()));
         rig.sup.set_desired(true, Instant::now());
         assert_eq!(rig.sup.own_pid(), Some(orphan.id()));
-        assert!(rig.sup.view(Instant::now()).by_taubar);
-        // It dies without a clean stop (no state.json): TauBar restarts a hub of its own.
+        assert!(rig.sup.view(Instant::now()).by_app);
+        // It dies without a clean stop (no state.json): the app restarts a hub of its own.
         let _ = orphan.kill();
         let _ = orphan.wait();
         drop(holder);

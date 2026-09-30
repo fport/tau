@@ -19,6 +19,17 @@ import "./styles.css";
 
 const LOG_LINES = 30;
 
+// The app menu has no Select All (⌘A must reach xterm.js in a chat window), so the fields here
+// handle ⌘A themselves.
+function selectAllInFields(event: KeyboardEvent) {
+  if (!event.metaKey || event.key.toLowerCase() !== "a") return;
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    event.preventDefault();
+    target.select();
+  }
+}
+
 export default function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [log, setLog] = useState<string[]>([]);
@@ -29,6 +40,11 @@ export default function App() {
       .logTail(LOG_LINES)
       .then((lines) => setLog(lastLines(lines, LOG_LINES)))
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("keydown", selectAllInFields);
+    return () => window.removeEventListener("keydown", selectAllInFields);
   }, []);
 
   useEffect(() => {
@@ -66,14 +82,27 @@ export default function App() {
       <header className="top">
         <span className="mark" aria-hidden dangerouslySetInnerHTML={{ __html: coin }} />
         <div>
-          <h1>TauBar</h1>
-          <p className="muted">tau's menu bar app · v{snapshot.version}</p>
+          <h1>tau</h1>
+          <p className="muted">The menu bar, the hub and chat windows · v{snapshot.version}</p>
         </div>
       </header>
 
       {error && <p className="banner error">✗ {error}</p>}
 
       <HubSection snapshot={snapshot} onSnapshot={setSnapshot} />
+
+      <section>
+        <div className="row">
+          <h2>Chat</h2>
+          <button type="button" onClick={() => api.newChat()}>
+            New Chat Window
+          </button>
+        </div>
+        <p className="muted small">
+          A chat window runs <code>tau tui</code> from your tau checkout, as in Terminal. ⌘N opens
+          one from anywhere in tau; closing it quits its TUI.
+        </p>
+      </section>
 
       <SleepSection
         snapshot={snapshot}
@@ -88,7 +117,7 @@ export default function App() {
             checked={loginChecked(snapshot.login.status)}
             onChange={(e) => run(() => api.setLaunchAtLogin(e.currentTarget.checked))}
           />
-          <span>Open TauBar when I log in</span>
+          <span>Open tau when I log in</span>
         </label>
         <p className="muted small">{loginNote(snapshot.login.status)}</p>
         {snapshot.login.problem && <p className="banner error">✗ {snapshot.login.problem}</p>}
@@ -99,9 +128,11 @@ export default function App() {
         )}
       </section>
 
+      <UpdatesSection snapshot={snapshot} onSnapshot={setSnapshot} />
+
       <section>
         <div className="row">
-          <h2>TauBar log</h2>
+          <h2>App log</h2>
           <button type="button" onClick={() => api.openLog()}>
             Open log
           </button>
@@ -111,16 +142,16 @@ export default function App() {
 
       <section>
         <div className="row">
-          <h2>TauBar</h2>
+          <h2>Quit</h2>
           <button type="button" onClick={() => api.quit()}>
-            Quit TauBar
+            Quit tau
           </button>
         </div>
         <p className="muted small">
           No τ in the menu bar? On a display with a notch macOS hides menu bar icons that do not
-          fit. Open TauBar again (Spotlight or Applications) to get this window, or make room in
-          System Settings → Menu Bar. Quitting restores normal sleep and stops a hub TauBar
-          started.
+          fit. Open tau again (Spotlight or Applications) to get a window, or make room in System
+          Settings → Menu Bar. Quitting closes the chat windows, restores normal sleep and stops
+          a hub tau started.
         </p>
       </section>
 
@@ -197,7 +228,7 @@ function HubSection({
     try {
       onSnapshot(await api.saveHubSettings(settings));
       setDirty(false);
-      setNote({ tone: "ok", text: "Saved. They apply the next time TauBar starts the hub." });
+      setNote({ tone: "ok", text: "Saved. They apply the next time tau starts the hub." });
     } catch (e) {
       setDirty(false);
       setNote({ tone: "error", text: `Saved, but: ${String(e)}` });
@@ -234,16 +265,16 @@ function HubSection({
         <span>Run the hub</span>
       </label>
       <p className="muted small">
-        TauBar starts the hub, restarts it within seconds after a crash or a kill, leaves it
-        stopped after <code>tau hub stop</code>, and stops it when TauBar quits. It never starts a
-        second hub next to one that is already running.
+        tau starts the hub, restarts it within seconds after a crash or a kill, leaves it stopped
+        after <code>tau hub stop</code>, and stops it when tau quits. It never starts a second hub
+        next to one that is already running.
         {pausedByCleanExit &&
-          " The hub exited cleanly, so the switch is off for now; TauBar starts it again at its next start."}
+          " The hub exited cleanly, so the switch is off for now; tau starts it again at its next start."}
       </p>
       {note && <p className={`banner ${note.tone === "error" ? "error" : ""}`}>{note.text}</p>}
 
       <details open={hub.state === "not_configured"}>
-        <summary>How TauBar starts the hub</summary>
+        <summary>How tau starts the hub</summary>
         <div className="buttons">
           <button type="button" onClick={pickCheckout}>
             Use a tau checkout…
@@ -352,8 +383,8 @@ function GuardLine({
       </p>
       {guard_menu.grant_camera && (
         <p className="muted small">
-          The hub TauBar runs cannot use the camera. Allow TauBar under System Settings → Privacy
-          &amp; Security → Camera.
+          The hub tau runs cannot use the camera. Allow tau under System Settings → Privacy &amp;
+          Security → Camera.
         </p>
       )}
       <div className="buttons">
@@ -369,6 +400,41 @@ function GuardLine({
         )}
       </div>
     </>
+  );
+}
+
+function UpdatesSection({
+  snapshot,
+  onSnapshot,
+}: {
+  snapshot: Snapshot;
+  onSnapshot: (next: Snapshot) => void;
+}) {
+  const { updates } = snapshot;
+  return (
+    <section>
+      <div className="row">
+        <h2>Updates</h2>
+        <button type="button" onClick={() => api.checkUpdates()}>
+          Check for Updates…
+        </button>
+      </div>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={updates.check}
+          onChange={(e) => {
+            api.setCheckUpdates(e.currentTarget.checked).then(onSnapshot, () => undefined);
+          }}
+        />
+        <span>Look for an update once a day</span>
+      </label>
+      <p className="muted small">
+        {updates.release_build
+          ? "tau asks GitHub for its latest release a minute after it starts and then once a day, and offers a newer one; nothing is installed without your click."
+          : "This build does not look by itself: release builds from GitHub do. Check for Updates… still asks."}
+      </p>
+    </section>
   );
 }
 
@@ -419,10 +485,10 @@ function SleepSection({
             It needs one sudoers rule that allows only <code>pmset -a disablesleep 0|1</code>.
             Run this once in a terminal from the tau checkout (sudo asks for your password):
           </p>
-          <pre className="code">apps/taubar/sudoers/install-sudoers.sh</pre>
+          <pre className="code">apps/tau/sudoers/install-sudoers.sh</pre>
           <p className="small muted">
-            Remove it with <code>apps/taubar/sudoers/uninstall-sudoers.sh</code>. TauBar picks
-            the change up within a few seconds.
+            Remove it with <code>apps/tau/sudoers/uninstall-sudoers.sh</code>. tau picks the
+            change up within a few seconds.
           </p>
         </details>
       )}

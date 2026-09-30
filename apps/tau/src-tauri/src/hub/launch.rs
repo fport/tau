@@ -1,7 +1,7 @@
-//! How TauBar starts the hub: `<python> -m tau_core hub run` in `TAU_HOME` with a small,
+//! How the app starts the hub: `<python> -m tau_core hub run` in `TAU_HOME` with a small,
 //! explicit environment, the same command the launchd plist from `tau hub install` runs.
 //!
-//! The hub is always the direct child (never `uv run …`), so the pid TauBar watches is the
+//! The hub is always the direct child (never `uv run …`), so the pid the app watches is the
 //! pid in the hub lock, signals reach the hub itself, and `pkill -f "tau_core hub run"` finds
 //! it.
 
@@ -13,8 +13,8 @@ use std::process::{Command, Stdio};
 /// `PATH` for the hub when the settings leave it empty: Homebrew and the system directories.
 pub const DEFAULT_PATH: &str = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 
-/// The only variables a hub inherits from TauBar; the rest comes from the settings, so the
-/// hub behaves the same whether TauBar was opened from Finder, at login or from a terminal.
+/// The only variables a hub inherits from the app; the rest comes from the settings, so the
+/// hub behaves the same whether the app was opened from Finder, at login or from a terminal.
 const INHERITED: &[&str] = &[
     "HOME",
     "USER",
@@ -59,7 +59,7 @@ impl Launch {
     }
 }
 
-/// The two commands TauBar runs: the hub itself and `tau hub status --json` (to learn the
+/// The two commands the app runs: the hub itself and `tau hub status --json` (to learn the
 /// lock, port and data dir the configuration resolves to).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HubCommands {
@@ -68,7 +68,7 @@ pub struct HubCommands {
 }
 
 impl HubCommands {
-    /// `inherited` looks up TauBar's own environment (tests pass a closure).
+    /// `inherited` looks up the app's own environment (tests pass a closure).
     pub fn from_settings(
         settings: &HubSettings,
         inherited: impl Fn(&str) -> Option<String>,
@@ -77,12 +77,12 @@ impl HubCommands {
             .python
             .clone()
             .filter(|p| !p.as_os_str().is_empty())
-            .ok_or("the hub's Python is not set; pick the tau checkout in TauBar's window")?;
+            .ok_or("the hub's Python is not set; pick the tau checkout in tau's settings window")?;
         let tau_home = settings
             .tau_home
             .clone()
             .filter(|p| !p.as_os_str().is_empty())
-            .ok_or("TAU_HOME is not set; pick the tau checkout in TauBar's window")?;
+            .ok_or("TAU_HOME is not set; pick the tau checkout in tau's settings window")?;
 
         let mut env = BTreeMap::new();
         for name in INHERITED {
@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn reads_the_launchd_plist_tau_hub_install_writes() {
-        let dir = std::env::temp_dir().join(format!("taubar-plist-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tau-app-plist-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("com.tau.hub.plist");
         // The committed example in infra/services, as `tau hub install` renders it.

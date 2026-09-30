@@ -1,4 +1,5 @@
-//! TauBar's state and the actions the tray menu and the settings window share.
+//! The app's state and the actions the tray menu, the panel and the settings window share
+//! (the chat windows have their own, `chat/mod.rs`).
 
 use crate::eventlog::EventLog;
 use crate::hub::control::ControlClient;
@@ -17,12 +18,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-/// How long quitting TauBar waits for its hub to stop before SIGKILL.
+/// How long quitting the app waits for its hub to stop before SIGKILL.
 const HUB_STOP_ON_QUIT: Duration = Duration::from_secs(10);
 
-/// Where TauBar keeps its files: `$TAUBAR_HOME` (settings and `logs/` inside it) when set,
-/// else the app config dir (`~/Library/Application Support/com.tau.taubar`) and the app log
-/// dir (`~/Library/Logs/com.tau.taubar`).
+/// Where the app keeps its files: `$TAU_APP_HOME` (settings and `logs/` inside it) when set,
+/// else the app config dir (`~/Library/Application Support/com.tau.app`) and the app log dir
+/// (`~/Library/Logs/com.tau.app`).
 #[derive(Clone, Debug)]
 pub struct Dirs {
     pub config: PathBuf,
@@ -60,27 +61,39 @@ pub struct HubSnapshot {
     pub panel: display::HubPanel,
     /// The guard line and its actions (all hidden without a guard).
     pub guard_menu: GuardMenu,
-    /// The saved switch (what TauBar does at its next start).
+    /// The saved switch (what the app does at its next start).
     pub run_at_start: bool,
     pub settings: HubSettings,
+}
+
+/// The update checks (`update.rs`).
+#[derive(Clone, Debug, Serialize)]
+pub struct UpdatesSnapshot {
+    /// The daily check is on (it runs in release builds only).
+    pub check: bool,
+    /// Built by CI for a release.
+    pub release_build: bool,
 }
 
 /// Everything the menu and the settings window show.
 #[derive(Clone, Debug, Serialize)]
 pub struct Snapshot {
-    pub version: &'static str,
+    pub version: String,
     pub hub: HubSnapshot,
     pub sleep: SleepStatus,
     /// The menu's sleep header line.
     pub sleep_summary: String,
     pub login: LoginSnapshot,
+    pub updates: UpdatesSnapshot,
     pub files: FilesSnapshot,
 }
 
 pub struct Core<P: Power, H: Probe> {
     pub dirs: Dirs,
     pub log: Arc<EventLog>,
-    /// No settings file existed: TauBar opens its window once so a first-time user sees it
+    /// The app's version (from `tauri.conf.json`, set from the tag in CI).
+    pub version: String,
+    /// No settings file existed: the app opens its window once so a first-time user sees it
     /// even when macOS hides the menu bar icon (a notched display with a full menu bar).
     pub first_run: bool,
     /// This process's guard client id: random, an audit label in `/guard/lock`, never a claim.
@@ -99,7 +112,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// The hub commands for `settings`, with TauBar's own environment to inherit from.
+/// The hub commands for `settings`, with the app's own environment to inherit from.
 fn hub_commands(settings: &HubSettings) -> Result<HubCommands, String> {
     HubCommands::from_settings(settings, |name| std::env::var(name).ok())
 }
@@ -108,7 +121,7 @@ impl<P: Power, H: Probe> Core<P, H> {
     /// Load the settings, put the saved sleep mode in force, read the login item state and
     /// start (or adopt) the hub when "Run the hub" is on. `user_home` is where an installed
     /// launchd agent is looked for.
-    pub fn start(dirs: Dirs, power: P, hub_probe: H, user_home: PathBuf) -> Self {
+    pub fn start(dirs: Dirs, version: String, power: P, hub_probe: H, user_home: PathBuf) -> Self {
         let log = Arc::new(EventLog::new(&dirs.logs));
         let settings_file = JsonFile::new(&dirs.config, SETTINGS_FILE);
         let state_file = JsonFile::new(&dirs.config, STATE_FILE);
@@ -116,8 +129,7 @@ impl<P: Power, H: Probe> Core<P, H> {
         let (mut settings, settings_problem) = settings_file.load::<Settings>();
         let (state, state_problem) = state_file.load::<RuntimeState>();
         log.write(format!(
-            "TauBar {} started (pid {})",
-            env!("CARGO_PKG_VERSION"),
+            "tau {version} started (pid {})",
             std::process::id()
         ));
         for problem in [settings_problem, state_problem].into_iter().flatten() {
@@ -156,6 +168,7 @@ impl<P: Power, H: Probe> Core<P, H> {
             state_file,
             log,
             dirs,
+            version,
             first_run,
             client_id: guard::new_client_id(),
             shut_down: AtomicBool::new(false),
@@ -212,7 +225,7 @@ impl<P: Power, H: Probe> Core<P, H> {
         let view = lock(&self.hub).view(Instant::now());
         let settings = self.settings();
         Snapshot {
-            version: env!("CARGO_PKG_VERSION"),
+            version: self.version.clone(),
             hub: HubSnapshot {
                 lines: [
                     display::status_line(&view),
@@ -228,6 +241,10 @@ impl<P: Power, H: Probe> Core<P, H> {
             sleep_summary: crate::tray::sleep_header(&sleep),
             sleep,
             login: lock(&self.login).clone(),
+            updates: UpdatesSnapshot {
+                check: settings.check_updates,
+                release_build: crate::update::release_build(),
+            },
             files: FilesSnapshot {
                 settings: self.settings_file.path().display().to_string(),
                 log: self.log.path().display().to_string(),
@@ -252,7 +269,7 @@ impl<P: Power, H: Probe> Core<P, H> {
     }
 
     /// "Run the hub" on or off: remembered for the next start, applied now. Returns a message
-    /// for the user when TauBar cannot do what the switch says (a hub it did not start).
+    /// for the user when the app cannot do what the switch says (a hub it did not start).
     pub fn set_run_hub(&self, on: bool) -> Option<String> {
         {
             let mut settings = lock(&self.settings);
@@ -315,7 +332,7 @@ impl<P: Power, H: Probe> Core<P, H> {
         );
         let result = guard::lock(&client, &self.client_id);
         match &result {
-            Ok(()) => self.log.write("guard: locked from TauBar (Lock now)"),
+            Ok(()) => self.log.write("guard: locked from the app (Lock now)"),
             Err(err) => self.log.write(format!("guard: Lock now failed: {err}")),
         }
         lock(&self.hub).poll_soon();
@@ -337,6 +354,19 @@ impl<P: Power, H: Probe> Core<P, H> {
         };
         if changed {
             self.save_state();
+        }
+    }
+
+    // -- updates -------------------------------------------------------------------------
+
+    /// The daily update check on or off (remembered; `update.rs` reads it before each check).
+    pub fn set_check_updates(&self, on: bool) {
+        let mut settings = lock(&self.settings);
+        if settings.check_updates != on {
+            settings.check_updates = on;
+            self.save_settings(&settings);
+            self.log
+                .write(format!("update check: {}", if on { "on" } else { "off" }));
         }
     }
 
@@ -438,7 +468,7 @@ impl<P: Power, H: Probe> Core<P, H> {
 
     // -- quit ------------------------------------------------------------------------------
 
-    /// Undo everything TauBar holds: stop the hub it started, then restore normal sleep.
+    /// Undo everything the app holds: stop the hub it started, then restore normal sleep.
     /// Idempotent: the Quit item, a signal and the app's exit event may all call it.
     pub fn shutdown(&self) {
         if self.shut_down.swap(true, Ordering::SeqCst) {
@@ -455,7 +485,7 @@ impl<P: Power, H: Probe> Core<P, H> {
         if let Some(problem) = problem {
             self.log.write(format!("sleep: {problem}"));
         }
-        self.log.write("TauBar quit; normal sleep restored");
+        self.log.write("tau quit; normal sleep restored");
     }
 }
 

@@ -1,6 +1,6 @@
 // The panel under the menu bar icon (src-tauri/src/panel.rs): the menu's switches and status
-// (the owner guard's state and "Lock now" too) in the order of the native menu, which stays on
-// the right click.
+// (the owner guard's state and "Lock now" too) and "New Chat Window", in the order of the native
+// menu, which stays on the right click.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import coin from "../../../docs/brand/tau-coin.svg?raw";
@@ -49,10 +49,12 @@ export default function Panel() {
     return () => observer.disconnect();
   }, []);
 
-  // Esc closes the panel, ⌘, opens the settings, ⌘Q quits; a note lasts one opening.
+  // Esc closes the panel, ⌘N opens a chat window, ⌘, the settings, ⌘Q quits; a note lasts one
+  // opening.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") api.panelHide();
+      else if (event.metaKey && event.key.toLowerCase() === "n") api.newChat();
       else if (event.metaKey && event.key === ",") api.openSettings();
       else if (event.metaKey && event.key.toLowerCase() === "q") api.quit();
       else return;
@@ -250,6 +252,15 @@ function Body({
       <hr className="rule" />
 
       <div className="group">
+        <button type="button" className="item" onClick={away(api.newChat)}>
+          <span className="label">New Chat Window</span>
+          <kbd>⌘N</kbd>
+        </button>
+      </div>
+
+      <hr className="rule" />
+
+      <div className="group">
         <button
           type="button"
           role="switch"
@@ -271,11 +282,14 @@ function Body({
           Open Hub Log
         </button>
         <button type="button" className="item" onClick={away(api.openLog)}>
-          Open TauBar Log
+          Open App Log
         </button>
         <button type="button" className="item" onClick={() => api.openSettings()}>
           <span className="label">Settings…</span>
           <kbd>⌘,</kbd>
+        </button>
+        <button type="button" className="item" onClick={away(api.checkUpdates)}>
+          Check for Updates…
         </button>
       </div>
 
@@ -283,7 +297,7 @@ function Body({
 
       <div className="group">
         <button type="button" className="item" onClick={() => api.quit()}>
-          <span className="label">Quit TauBar</span>
+          <span className="label">Quit tau</span>
           <kbd>⌘Q</kbd>
         </button>
       </div>

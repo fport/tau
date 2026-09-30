@@ -1,30 +1,31 @@
 //! The three sleep modes.
 //!
-//! - **Normal**: TauBar holds nothing; the Mac sleeps as usual.
+//! - **Normal**: the app holds nothing; the Mac sleeps as usual.
 //! - **Keep awake on AC power** (default): an IOKit `PreventSystemSleep` assertion, the same
 //!   thing `caffeinate -s` creates. No root needed. macOS honours it only on AC power, so on
 //!   battery and with the lid closed the Mac still sleeps.
 //! - **Keep awake with the lid closed**: the assertion plus `pmset -a disablesleep 1`, run as
 //!   `sudo -n` through a sudoers rule that allows only `pmset -a disablesleep 0` and `… 1`
-//!   (`apps/taubar/sudoers/`). Without the rule the mode is unavailable and TauBar never calls
+//!   (`apps/tau/sudoers/`). Without the rule the mode is unavailable and the app never calls
 //!   sudo.
 //!
 //! [`SleepController`] holds the mode logic; the system calls sit behind [`Power`] so tests
-//! use a fake. Quitting TauBar calls [`SleepController::restore`]: the assertion is released
-//! and `disablesleep` is reset if TauBar set it. (macOS also drops a process's assertions when
-//! it dies; `disablesleep` survives a crash, so TauBar remembers it set it and resets it at the
+//! use a fake. Quitting the app calls [`SleepController::restore`]: the assertion is released
+//! and `disablesleep` is reset if the app set it. (macOS also drops a process's assertions when
+//! it dies; `disablesleep` survives a crash, so the app remembers it set it and resets it at the
 //! next start.)
 
 use crate::settings::SleepMode;
 use serde::Serialize;
 
-/// Installed by `apps/taubar/sudoers/install-sudoers.sh`; its presence is how TauBar knows
+/// Installed by `apps/tau/sudoers/install-sudoers.sh` (the file name dates from TauBar, so a
+/// rule installed then keeps working); its presence is how the app knows
 /// the lid-closed mode is available without ever running sudo to find out.
 pub const SUDOERS_RULE_PATH: &str = "/etc/sudoers.d/tau-taubar";
 pub const PMSET: &str = "/usr/bin/pmset";
 pub const SUDO: &str = "/usr/bin/sudo";
-/// The name `pmset -g assertions` shows next to TauBar's assertion (`doctor.sh` looks for it).
-pub const ASSERTION_NAME: &str = "TauBar keeps the Mac awake for tau";
+/// The name `pmset -g assertions` shows next to the app's assertion (`doctor.sh` looks for it).
+pub const ASSERTION_NAME: &str = "tau keeps the Mac awake";
 
 /// The system calls behind the sleep modes.
 pub trait Power {
@@ -46,7 +47,7 @@ pub struct SleepStatus {
     pub effective: SleepMode,
     /// The sudoers rule is installed, so the lid-closed mode can be picked.
     pub lid_available: bool,
-    /// Sleep is disabled system-wide (`pmset disablesleep 1`) although TauBar did not do it.
+    /// Sleep is disabled system-wide (`pmset disablesleep 1`) although the app did not do it.
     pub disabled_elsewhere: bool,
     /// A problem worth showing (fallback, failed command).
     pub problem: Option<String>,
@@ -59,7 +60,7 @@ pub struct SleepController<P: Power> {
 }
 
 impl<P: Power> SleepController<P> {
-    /// `lid_engaged`: TauBar's previous run set `disablesleep 1` and never reset it (it was
+    /// `lid_engaged`: the app's previous run set `disablesleep 1` and never reset it (it was
     /// killed or crashed). The next [`apply`](Self::apply) resets it unless the lid mode is
     /// wanted again.
     pub fn new(power: P, lid_engaged: bool) -> Self {
@@ -80,7 +81,7 @@ impl<P: Power> SleepController<P> {
         &self.status
     }
 
-    /// TauBar set `disablesleep 1` and has not reset it; persisted so a crash can be undone.
+    /// The app set `disablesleep 1` and has not reset it; persisted so a crash can be undone.
     pub fn lid_engaged(&self) -> bool {
         self.lid_engaged
     }
@@ -100,7 +101,7 @@ impl<P: Power> SleepController<P> {
             if !lid_available {
                 effective = SleepMode::KeepAwakeOnAc;
                 problem = Some(
-                    "the lid-closed mode needs the sudoers rule (apps/taubar/sudoers); \
+                    "the lid-closed mode needs the sudoers rule (apps/tau/sudoers); \
                      keeping awake on AC power instead"
                         .to_string(),
                 );
@@ -141,7 +142,7 @@ impl<P: Power> SleepController<P> {
         &self.status
     }
 
-    /// Undo everything TauBar holds (quit): release the assertion, reset `disablesleep`.
+    /// Undo everything the app holds (quit): release the assertion, reset `disablesleep`.
     /// Returns a problem to log, if any.
     pub fn restore(&mut self) -> Option<String> {
         let mut problem = None;
@@ -208,8 +209,8 @@ impl Power for SystemPower {
             let awake = keepawake::Builder::default()
                 .sleep(true)
                 .reason(ASSERTION_NAME)
-                .app_name("TauBar")
-                .app_reverse_domain("com.tau.taubar")
+                .app_name("tau")
+                .app_reverse_domain("com.tau.app")
                 .create()
                 .map_err(|e| e.to_string())?;
             self.awake = Some(awake);

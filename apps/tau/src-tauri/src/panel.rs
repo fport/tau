@@ -67,7 +67,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         PANEL_WINDOW,
         WebviewUrl::App("index.html#panel".into()),
     )
-    .title("TauBar")
+    .title("tau")
     .inner_size(PANEL_WIDTH, INITIAL_HEIGHT)
     .decorations(false)
     .transparent(true)
@@ -88,7 +88,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     .accept_first_mouse(true)
     .focused(false)
     .visible(false)
-    // TauBar holds the camera grant for its hub; the panel may not use it (ADR 0008).
+    // The app holds the camera grant for its hub; the panel may not use it (ADR 0008).
     .on_permission_request(|_, kind| webview::permission(kind))
     .build()?;
     let handle = app.clone();

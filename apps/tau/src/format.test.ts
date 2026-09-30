@@ -132,7 +132,7 @@ describe("panel", () => {
     expect(
       sleepNote({ ...sleep, wanted: "keep_awake_lid_closed", problem: "needs the rule" }),
     ).toBe('"Keep awake with the lid closed" is unavailable, so "Keep awake on AC power" is in force.');
-    expect(sleepNote({ ...sleep, disabled_elsewhere: true })).toContain("outside TauBar");
+    expect(sleepNote({ ...sleep, disabled_elsewhere: true })).toContain("outside the app");
   });
 
   it("shows launch at login as on while macOS waits for approval", () => {

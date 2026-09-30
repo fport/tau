@@ -1,6 +1,7 @@
-//! The bundle metadata TauBar needs to hold the camera and microphone grant for the hub it
-//! runs (ADR 0008 decision 16, roadmap 115). The built app is checked by hand (see the README:
-//! `plutil` and `codesign -d --entitlements -`); these tests keep the sources right.
+//! The bundle metadata the app needs to hold the camera and microphone grant for the hub it
+//! runs (ADR 0008 decision 16, roadmap 115 and 170). The built app is checked by hand and in CI
+//! (the README and `.github/workflows/app.yml`: `plutil` and `codesign -d --entitlements -`);
+//! these tests keep the sources right.
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -33,7 +34,8 @@ fn info_plist_describes_camera_and_microphone_use_in_english() {
             .get(key)
             .and_then(|v| v.as_string())
             .unwrap_or_else(|| panic!("Info.plist has no {key}"));
-        assert!(text.contains("hub that TauBar runs"), "{key}: {text}");
+        assert!(text.starts_with("tau uses the "), "{key}: {text}");
+        assert!(text.contains("hub that this app runs"), "{key}: {text}");
         assert!(
             text.is_ascii(),
             "{key} is English until roadmap 086: {text}"
@@ -73,5 +75,18 @@ fn the_bundle_is_signed_with_the_entitlements_and_no_personal_identity() {
         Value::Bool(false),
         "the hardened runtime stays on"
     );
-    assert_eq!(config["identifier"], "com.tau.taubar");
+}
+
+/// One app, "tau", with its own bundle id: TauBar (`com.tau.taubar`) and tau Desktop
+/// (`com.tau.desktop`) are replaced, not updated in place (roadmap 170).
+#[test]
+fn the_app_is_tau_with_its_own_bundle_id() {
+    let config = config();
+    assert_eq!(config["productName"], "tau");
+    assert_eq!(config["identifier"], "com.tau.app");
+    let manifest = std::fs::read_to_string(file("Cargo.toml")).unwrap();
+    assert!(
+        manifest.contains("name = \"tau-app\""),
+        "the executable is tau-app (doctor.sh looks for it)"
+    );
 }

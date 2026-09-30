@@ -1,10 +1,10 @@
-//! When TauBar restarts the hub, as pure functions.
+//! When the app restarts the hub, as pure functions.
 //!
 //! The hub's contract (`tau hub run`): exit 0 after a clean stop (SIGTERM, `tau hub stop`),
-//! non-zero after a crash. TauBar mirrors launchd's `KeepAlive = {SuccessfulExit = false}`:
+//! non-zero after a crash. The app mirrors launchd's `KeepAlive = {SuccessfulExit = false}`:
 //!
-//! - an exit TauBar asked for (switch off, quit) is final;
-//! - exit 0 without TauBar asking (`tau hub stop`) leaves the hub stopped;
+//! - an exit the app asked for (switch off, quit) is final;
+//! - exit 0 without the app asking (`tau hub stop`) leaves the hub stopped;
 //! - anything else (a crash, `kill -9`, a failed start) is restarted after a backoff: 1 s, 2 s,
 //!   4 s … up to 60 s, back to 1 s once a run lasted a minute.
 
@@ -12,9 +12,9 @@ use std::time::Duration;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExitKind {
-    /// TauBar asked it to stop (switch off, quit).
+    /// The app asked it to stop (switch off, quit).
     Requested,
-    /// Exit code 0 without TauBar asking: `tau hub stop` or a SIGTERM from someone else.
+    /// Exit code 0 without the app asking: `tau hub stop` or a SIGTERM from someone else.
     Clean,
     /// Anything else, with a short reason (`exit code 1`, `killed by SIGKILL`).
     Crash(String),

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Remove TauBar's sudoers rule and make sure the Mac can sleep again (pmset disablesleep 0).
+# Remove the tau app's sudoers rule and make sure the Mac can sleep again (pmset disablesleep 0).
 # Run it in your own terminal; sudo asks for your password.
 #
-#   apps/taubar/sudoers/uninstall-sudoers.sh           # reset disablesleep, remove the rule
-#   apps/taubar/sudoers/uninstall-sudoers.sh --print   # only show what it would do (no sudo)
+#   apps/tau/sudoers/uninstall-sudoers.sh           # reset disablesleep, remove the rule
+#   apps/tau/sudoers/uninstall-sudoers.sh --print   # only show what it would do (no sudo)
 set -euo pipefail
 
 target=/etc/sudoers.d/tau-taubar
@@ -26,4 +26,4 @@ if [[ -e "$target" ]]; then
 else
   echo "$target was not installed."
 fi
-echo "Sleep is enabled again. TauBar shows the lid-closed mode as unavailable within a few seconds."
+echo "Sleep is enabled again. tau shows the lid-closed mode as unavailable within a few seconds."

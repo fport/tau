@@ -1,6 +1,6 @@
-//! TauBar's own short log: sleep mode and login item changes, and (from 084 on) every hub
-//! start, exit and restart. One line per event, local time first. The file is rotated once
-//! (`taubar.log` → `taubar.log.1`) when it passes `max_bytes`, so it stays short.
+//! The app's own short log: sleep mode and login item changes, every hub start, exit and
+//! restart, chat window and update trouble. One line per event, local time first. The file is
+//! rotated once (`app.log` → `app.log.1`) when it passes `max_bytes`, so it stays short.
 
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const LOG_FILE: &str = "taubar.log";
+pub const LOG_FILE: &str = "app.log";
 const MAX_BYTES: u64 = 256 * 1024;
 
 pub struct EventLog {
@@ -34,7 +34,7 @@ impl EventLog {
         &self.path
     }
 
-    /// Append one line. Never fails: a log that cannot be written must not stop TauBar.
+    /// Append one line. Never fails: a log that cannot be written must not stop the app.
     pub fn write(&self, message: impl AsRef<str>) {
         let _guard = self.guard.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(parent) = self.path.parent() {
@@ -54,8 +54,8 @@ impl EventLog {
         {
             let _ = file.write_all(line.as_bytes());
         }
-        // Visible in `bun run tauri dev` and when TauBar is started from a terminal.
-        eprint!("taubar: {line}");
+        // Visible in `bun run tauri dev` and when the app is started from a terminal.
+        eprint!("tau-app: {line}");
     }
 
     /// The last `n` lines of the current file, oldest first.
@@ -101,7 +101,7 @@ mod tests {
     use super::*;
 
     fn tmpdir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("taubar-log-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tau-app-log-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -128,7 +128,7 @@ mod tests {
         for i in 0..10 {
             log.write(format!("a fairly long event line number {i}"));
         }
-        assert!(dir.join("taubar.log.1").is_file());
+        assert!(dir.join("app.log.1").is_file());
         assert!(fs::metadata(dir.join(LOG_FILE)).unwrap().len() < 200);
         assert!(log.tail(1)[0].ends_with("number 9"));
     }

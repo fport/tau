@@ -1,4 +1,4 @@
-//! TauBar runs and supervises the hub (`tau hub run`) when "Run the hub" is on.
+//! The app runs and supervises the hub (`tau hub run`) when "Run the hub" is on.
 //!
 //! - [`control`]: signed requests to the hub's protected control routes (token, nonce, proof);
 //! - [`guard`]: the owner guard's `/status` block, its menu line and "Lock now";

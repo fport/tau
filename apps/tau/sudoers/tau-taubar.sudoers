@@ -1,5 +1,5 @@
-# tau TauBar: lets __USER__ switch "Keep awake with the lid closed" on and off, nothing else.
+# tau (the Mac app): lets __USER__ switch "Keep awake with the lid closed" on and off, nothing else.
 # Exactly two commands, no wildcards, no other arguments, no shell.
-# Installed as /etc/sudoers.d/tau-taubar by apps/taubar/sudoers/install-sudoers.sh;
-# removed by apps/taubar/sudoers/uninstall-sudoers.sh.
+# Installed as /etc/sudoers.d/tau-taubar by apps/tau/sudoers/install-sudoers.sh;
+# removed by apps/tau/sudoers/uninstall-sudoers.sh.
 __USER__ ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1

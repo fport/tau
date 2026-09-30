@@ -1,4 +1,4 @@
-//! The owner guard as TauBar shows it (ADR 0008, issue 115).
+//! The owner guard as the app shows it (ADR 0008, issue 115).
 //!
 //! - [`parse`] reads the `guard` block of the hub's open `/status`:
 //!   `{state, enrolled, available, reason}`. Nothing else about the guard is open.
@@ -8,10 +8,10 @@
 //!   [`panel_text`] is the same line without its label, for the panel's guard row.
 //! - [`lock`] sends `POST /guard/lock` through the signed [`ControlClient`].
 //!
-//! TauBar never unlocks: the check runs in the hub (under TauBar's camera grant), and no
+//! The app never unlocks: the check runs in the hub (under the app's camera grant), and no
 //! route takes a verdict. The open `/status` can come from any local process that holds the
 //! port, so the supervisor passes its guard block on only while the hub itself answers
-//! (TauBar's own hub is up, or the pid that answers holds the hub lock), the state must be
+//! (the app's own hub is up, or the pid that answers holds the hub lock), the state must be
 //! one of [`STATES`] and the reason must have tau-core's shape, and "Lock now" trusts only a
 //! proven answer.
 
@@ -27,8 +27,8 @@ pub const CAMERA_REASONS: [&str; 2] = ["camera_denied", "camera_unavailable"];
 /// System Settings → Privacy & Security → Camera.
 pub const CAMERA_SETTINGS_URL: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera";
-/// The audit label of TauBar's guard requests (`channel` in the route bodies).
-pub const CHANNEL: &str = "taubar";
+/// The audit label of the app's guard requests (`channel` in the route bodies).
+pub const CHANNEL: &str = "app";
 pub const LOCK_PATH: &str = "/guard/lock";
 /// tau-core's `REQUEST_TIMEOUT` for guard calls.
 pub const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -138,7 +138,7 @@ pub fn text(guard: &GuardStatus) -> String {
     }
 }
 
-/// The body of `POST /guard/lock` from TauBar.
+/// The body of `POST /guard/lock` from the app.
 pub fn lock_body(client_id: &str) -> Value {
     json!({"channel": CHANNEL, "client_id": client_id, "trigger": "command"})
 }
@@ -158,7 +158,7 @@ pub fn lock(client: &ControlClient, client_id: &str) -> Result<(), String> {
     ))
 }
 
-/// A random id for this TauBar process: an audit label, never a claim (like tau-core's
+/// A random id for this app process: an audit label, never a claim (like tau-core's
 /// `process_client_id`).
 pub fn new_client_id() -> String {
     super::control::random_hex(8).unwrap_or_else(|_| format!("pid{}", std::process::id()))
@@ -312,7 +312,7 @@ mod tests {
         assert_eq!(seen.len(), 1);
         assert_eq!(
             serde_json::from_slice::<Value>(&seen[0].body).unwrap(),
-            json!({"channel": "taubar", "client_id": "0123456789abcdef", "trigger": "command"})
+            json!({"channel": "app", "client_id": "0123456789abcdef", "trigger": "command"})
         );
 
         let mut hub = FakeHub::start(1, |_, seen| {

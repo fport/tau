@@ -68,7 +68,7 @@ pub fn status_line(view: &HubView) -> String {
             let who = if view.launchd {
                 "run by launchd"
             } else {
-                "started outside TauBar"
+                "started outside the app"
             };
             let pid = if pid.is_empty() {
                 String::new()
@@ -85,7 +85,7 @@ pub fn status_line(view: &HubView) -> String {
     }
 }
 
-/// The panel's status row: `("Up 2 h 5 min", "pid 1234 · started by TauBar")`.
+/// The panel's status row: `("Up 2 h 5 min", "pid 1234 · started by the app")`.
 pub fn status_parts(view: &HubView) -> (String, String) {
     let pid = view.pid.map(|p| format!("pid {p}"));
     let up = |fallback: &str| {
@@ -107,7 +107,7 @@ pub fn status_parts(view: &HubView) -> (String, String) {
             "Starting…".into(),
             pid.unwrap_or_else(|| "waiting for the hub".into()),
         ),
-        HubState::Up => (up("Up"), with_pid("started by TauBar")),
+        HubState::Up => (up("Up"), with_pid("started by the app")),
         HubState::Stopping => ("Stopping…".into(), pid.unwrap_or_default()),
         HubState::Restarting => (
             format!("Restarting in {} s", view.restart_in_s.unwrap_or(0).max(1)),
@@ -122,7 +122,7 @@ pub fn status_parts(view: &HubView) -> (String, String) {
             with_pid(if view.launchd {
                 "run by launchd"
             } else {
-                "started outside TauBar"
+                "started outside the app"
             }),
         ),
         HubState::LaunchdIdle => ("Left to launchd".into(), "com.tau.hub is loaded".into()),
@@ -177,7 +177,7 @@ pub fn telegram_text(telegram: &Value) -> String {
     }
 }
 
-/// Third line: the last crash, the hub's own report first, else TauBar's record.
+/// Third line: the last crash, the hub's own report first, else the app's record.
 pub fn crash_line(view: &HubView) -> String {
     shorten(&format!("Last crash: {}", crash_text(view)), 72)
 }
@@ -226,7 +226,7 @@ mod tests {
             switch_on: true,
             state,
             pid: Some(1234),
-            by_taubar: true,
+            by_app: true,
             launchd: false,
             uptime_s: None,
             restart_in_s: None,
@@ -267,7 +267,7 @@ mod tests {
         elsewhere.uptime_s = Some(30.0);
         assert_eq!(
             status_line(&elsewhere),
-            "Hub: up 30 s · pid 1234 · started outside TauBar"
+            "Hub: up 30 s · pid 1234 · started outside the app"
         );
         elsewhere.launchd = true;
         assert!(status_line(&elsewhere).ends_with("run by launchd"));
@@ -313,7 +313,10 @@ mod tests {
         up.uptime_s = Some(7_500.0);
         assert_eq!(
             status_parts(&up),
-            ("Up 2 h 5 min".into(), "pid 1234 · started by TauBar".into())
+            (
+                "Up 2 h 5 min".into(),
+                "pid 1234 · started by the app".into()
+            )
         );
         assert_eq!(status_parts(&view(HubState::Off)).0, "Off");
         let mut elsewhere = view(HubState::Elsewhere);

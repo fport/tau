@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Merged into TauBar.app's Info.plist by `tauri build`. LSUIElement: a menu bar app with no
-     Dock icon from the first moment (the app also sets ActivationPolicy::Accessory).
-     The usage descriptions are for the hub TauBar runs: macOS attributes the camera and
-     microphone use of TauBar's child processes to TauBar (ADR 0008 decision 16), and without
-     the keys it refuses them silently. English until TauBar's strings move to
-     InfoPlist.strings (roadmap 086). -->
+<!-- Merged into tau.app's Info.plist by `tauri build`. LSUIElement: the app starts in the menu
+     bar with no Dock icon (it also sets ActivationPolicy::Accessory); it becomes a regular app,
+     with a Dock icon and the menu bar, while a chat window is open (`src/chat/mod.rs`).
+     The usage descriptions are for the processes the app starts: macOS attributes the camera
+     and microphone use of the app's child processes to the app (ADR 0008 decision 16), the hub
+     it runs and the tau tui of a chat window alike, and without the keys it refuses them
+     silently. English until the app's strings move to InfoPlist.strings (roadmap 086). -->
 <plist version="1.0">
 <dict>
   <key>LSUIElement</key>
   <true/>
   <key>NSCameraUsageDescription</key>
-  <string>The tau hub that TauBar runs uses the camera to check that you, tau's owner, are at the Mac before tau works for you. The check runs on this Mac.</string>
+  <string>tau uses the camera to check that you, its owner, are at the Mac before it works for you. The check runs on this Mac, in the tau hub that this app runs.</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>The tau hub that TauBar runs uses the microphone to hear your voice commands.</string>
+  <string>tau uses the microphone to hear your voice commands, in the tau hub that this app runs.</string>
 </dict>
 </plist>

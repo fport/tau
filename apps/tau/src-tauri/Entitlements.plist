@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- TauBar's code-signing entitlements (bundle.macOS.entitlements in tauri.conf.json).
-     TauBar is signed with the hardened runtime (Tauri's default), which refuses camera and
-     microphone access without these, also for the hub TauBar runs as its child
-     (ADR 0008 decision 16). -->
+<!-- tau.app's code-signing entitlements (bundle.macOS.entitlements in tauri.conf.json; CI passes
+     the same file to codesign, .github/workflows/app.yml). The app is signed with the hardened
+     runtime, which refuses camera and microphone access without these, also for the hub the
+     app runs as its child (ADR 0008 decision 16). -->
 <plist version="1.0">
 <dict>
   <key>com.apple.security.device.camera</key>

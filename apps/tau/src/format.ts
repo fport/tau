@@ -138,7 +138,7 @@ export const SLEEP_CHOICES: SleepChoice[] = [
   {
     mode: "normal",
     title: "Normal",
-    detail: "TauBar holds nothing; the Mac sleeps as usual.",
+    detail: "tau holds nothing; the Mac sleeps as usual.",
   },
   {
     mode: "keep_awake_on_ac",
@@ -162,7 +162,7 @@ export function sleepChoiceEnabled(mode: SleepMode, status: SleepStatus): boolea
 /** The panel's line under "Sleep" when what is in force needs explaining, else null. */
 export function sleepNote(status: SleepStatus): string | null {
   if (status.disabled_elsewhere) {
-    return "Sleep is disabled outside TauBar (pmset disablesleep 1).";
+    return "Sleep is disabled outside the app (pmset disablesleep 1).";
   }
   if (status.wanted !== status.effective) {
     return `"${choiceTitle(status.wanted)}" is unavailable, so "${choiceTitle(status.effective)}" is in force.`;
@@ -183,13 +183,13 @@ export function loginChecked(status: LoginItemStatus): boolean {
 export function loginNote(status: LoginItemStatus): string {
   switch (status) {
     case "enabled":
-      return "TauBar opens when you log in (System Settings → General → Login Items).";
+      return "tau opens when you log in (System Settings → General → Login Items).";
     case "not_registered":
-      return "TauBar does not open at login.";
+      return "tau does not open at login.";
     case "requires_approval":
       return "Registered, but macOS is waiting for you to allow it in System Settings → Login Items.";
     case "not_found":
-      return "TauBar does not open at login (it has never been registered as a login item).";
+      return "tau does not open at login (it has never been registered as a login item).";
     case "unsupported":
       return "Launch at login is only available on macOS.";
   }

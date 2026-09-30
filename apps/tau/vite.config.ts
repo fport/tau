@@ -20,6 +20,9 @@ export default defineConfig(() => ({
     // The mark comes straight from docs/brand (never redrawn), two levels up.
     fs: { allow: [searchForWorkspaceRoot(process.cwd()), "../../docs/brand"] },
   },
+  // One bundle loaded from disk by the app (xterm.js is most of the chat chunk); no network, so
+  // no finer split.
+  build: { chunkSizeWarningLimit: 1024 },
   test: {
     include: ["src/**/*.test.ts"],
   },

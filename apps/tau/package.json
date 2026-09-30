@@ -1,8 +1,8 @@
 {
-  "name": "taubar",
+  "name": "tau-app",
   "private": true,
   "version": "0.1.0",
-  "description": "TauBar: tau's macOS menu bar app",
+  "description": "tau, the Mac app: the menu bar, the hub's supervisor and chat windows (tau tui in xterm.js)",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -15,6 +15,10 @@
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-unicode11": "^0.9.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/xterm": "^6.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -26,5 +30,6 @@
     "typescript": "~6.0.3",
     "vite": "^8.0.16",
     "vitest": "^4"
-  }
+  },
+  "trustedDependencies": []
 }

@@ -1,7 +1,7 @@
 [package]
-name = "taubar"
+name = "tau-app"
 version = "0.1.0"
-description = "TauBar: tau's macOS menu bar app (sleep modes, the hub switch, launch at login)"
+description = "tau, the Mac app: the menu bar, the hub's supervisor and chat windows running tau tui"
 license = "MIT"
 edition = "2021"
 rust-version = "1.90"
@@ -9,7 +9,7 @@ publish = false
 
 [lib]
 # The `_lib` suffix keeps the library name distinct from the binary name.
-name = "taubar_lib"
+name = "tau_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -20,12 +20,16 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["image-png", "macos-private-api", "tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+# Updates from the GitHub release: latest.json and the signed .app.tar.gz (`update.rs`).
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"
 plist = "1"
 signal-hook = "0.3"
-tauri-plugin-single-instance = "2"
+# Chat windows: `tau tui` in a PTY per window (`chat/pty.rs`).
+portable-pty = "0.9"
 # Signed control requests (ADR 0008): HMAC-SHA256 over the nonce, method and path.
 getrandom = "0.3"
 hex = "0.4"
@@ -49,7 +53,8 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
 objc2-service-management = "0.3"
 
 # Size guideline: https://tauri.app/concept/size/#cargo-configuration
-# No `panic = "abort"`: TauBar must still stop its hub and restore sleep when a thread panics.
+# No `panic = "abort"`: the app must still stop its hub, restore sleep and quit the TUIs of its
+# chat windows when a thread panics.
 [profile.release]
 codegen-units = 1
 lto = true

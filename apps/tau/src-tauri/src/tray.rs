@@ -1,7 +1,8 @@
 //! The menu bar icon and its native menu.
 //!
 //! A left click on the icon opens the panel (`panel.rs`); the right click shows this menu, so
-//! every action stays reachable without the panel. The menu has a fixed structure; refreshing
+//! every action stays reachable without the panel. Its clicks reach `crate::on_menu`, the one
+//! handler for this menu and the app menu (`app_menu.rs`), which share their ids. The menu has a fixed structure; refreshing
 //! only changes texts, check marks and enabled states, so it can be updated while it is open.
 //! Check items for the sleep modes behave like radio items: after every click the marks are set
 //! again from what is in force.
@@ -30,7 +31,7 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Rect, Runtime};
 
-pub const TRAY_ID: &str = "taubar";
+pub const TRAY_ID: &str = "tau";
 /// The guard section starts right after the three hub lines.
 pub const GUARD_POSITION: usize = 3;
 
@@ -43,9 +44,14 @@ pub mod ids {
     pub const SLEEP_AC: &str = "sleep.ac";
     pub const SLEEP_LID: &str = "sleep.lid";
     pub const LOGIN: &str = "login";
+    pub const NEW_CHAT: &str = "chat.new";
     pub const SETTINGS: &str = "settings";
+    pub const UPDATES: &str = "updates";
     pub const OPEN_LOG: &str = "log";
+    /// Quit at once (this menu, the panel).
     pub const QUIT: &str = "quit";
+    /// Quit from the app menu (⌘Q in a chat window): asks first while the app runs the hub.
+    pub const QUIT_ASK: &str = "quit.ask";
 }
 
 /// Which guard items the menu holds.
@@ -146,11 +152,10 @@ pub struct TrayMenu<R: Runtime> {
 }
 
 impl<R: Runtime> TrayMenu<R> {
-    /// Create the tray icon and its menu. `on_menu` receives the id of the clicked item,
-    /// `on_left_click` the icon's position and size when a left click ends.
-    pub fn build<F, G>(app: &AppHandle<R>, on_menu: F, on_left_click: G) -> tauri::Result<Self>
+    /// Create the tray icon and its menu. `on_left_click` receives the icon's position and
+    /// size when a left click ends; menu clicks go to the app's menu handler.
+    pub fn build<G>(app: &AppHandle<R>, on_left_click: G) -> tauri::Result<Self>
     where
-        F: Fn(&AppHandle<R>, &str) + Send + Sync + 'static,
         G: Fn(&AppHandle<R>, Rect) + Send + Sync + 'static,
     {
         let none = None::<&str>;
@@ -184,11 +189,13 @@ impl<R: Runtime> TrayMenu<R> {
         )?;
         let sleep_lid =
             CheckMenuItem::with_id(app, ids::SLEEP_LID, lid_label(false), false, false, none)?;
+        let new_chat = MenuItem::with_id(app, ids::NEW_CHAT, "New Chat Window", true, none)?;
         let login = CheckMenuItem::with_id(app, ids::LOGIN, "Launch at login", true, false, none)?;
         let settings =
             MenuItem::with_id(app, ids::SETTINGS, "Settings…", true, Some("CmdOrCtrl+,"))?;
-        let open_log = MenuItem::with_id(app, ids::OPEN_LOG, "Open TauBar Log", true, none)?;
-        let quit = MenuItem::with_id(app, ids::QUIT, "Quit TauBar", true, Some("CmdOrCtrl+Q"))?;
+        let updates = MenuItem::with_id(app, ids::UPDATES, "Check for Updates…", true, none)?;
+        let open_log = MenuItem::with_id(app, ids::OPEN_LOG, "Open App Log", true, none)?;
+        let quit = MenuItem::with_id(app, ids::QUIT, "Quit tau", true, Some("CmdOrCtrl+Q"))?;
 
         let menu = Menu::with_items(
             app,
@@ -204,8 +211,11 @@ impl<R: Runtime> TrayMenu<R> {
                 &sleep_ac,
                 &sleep_lid,
                 &PredefinedMenuItem::separator(app)?,
+                &new_chat,
+                &PredefinedMenuItem::separator(app)?,
                 &login,
                 &settings,
+                &updates,
                 &open_log,
                 &PredefinedMenuItem::separator(app)?,
                 &quit,
@@ -217,10 +227,9 @@ impl<R: Runtime> TrayMenu<R> {
                 "../icons/tray-template.png"
             ))?)
             .icon_as_template(true)
-            .tooltip("TauBar")
+            .tooltip("tau")
             .menu(&menu)
             .show_menu_on_left_click(false)
-            .on_menu_event(move |app, event| on_menu(app, event.id().as_ref()))
             .on_tray_icon_event(move |tray, event| {
                 if let TrayIconEvent::Click {
                     button: MouseButton::Left,
@@ -274,10 +283,7 @@ impl<R: Runtime> TrayMenu<R> {
         let _ = self.login.set_checked(snapshot.login.status.checked());
         let _ = self.login.set_text(login_label(snapshot.login.status));
         if let Some(tray) = app.tray_by_id(TRAY_ID) {
-            let _ = tray.set_tooltip(Some(format!(
-                "TauBar · {} · {header}",
-                snapshot.hub.lines[0]
-            )));
+            let _ = tray.set_tooltip(Some(format!("tau · {} · {header}", snapshot.hub.lines[0])));
         }
     }
 }
@@ -314,7 +320,7 @@ impl<R: Runtime> TrayMenu<R> {
 /// from the choice.
 pub fn sleep_header(status: &SleepStatus) -> String {
     if status.disabled_elsewhere {
-        return "Sleep: disabled outside TauBar (pmset disablesleep 1)".into();
+        return "Sleep: disabled outside the app (pmset disablesleep 1)".into();
     }
     let what = match status.effective {
         SleepMode::Normal => "Sleep: as usual",
@@ -324,7 +330,7 @@ pub fn sleep_header(status: &SleepStatus) -> String {
     if status.wanted != status.effective {
         format!("{what} (lid-closed mode unavailable)")
     } else if status.problem.is_some() {
-        format!("{what} (see the TauBar log)")
+        format!("{what} (see the app's log)")
     } else {
         what.into()
     }
@@ -381,13 +387,10 @@ mod tests {
         );
         let mut failed = status(SleepMode::Normal, SleepMode::Normal);
         failed.problem = Some("boom".into());
-        assert_eq!(
-            sleep_header(&failed),
-            "Sleep: as usual (see the TauBar log)"
-        );
+        assert_eq!(sleep_header(&failed), "Sleep: as usual (see the app's log)");
         let mut elsewhere = status(SleepMode::Normal, SleepMode::Normal);
         elsewhere.disabled_elsewhere = true;
-        assert!(sleep_header(&elsewhere).contains("outside TauBar"));
+        assert!(sleep_header(&elsewhere).contains("outside the app"));
     }
 
     #[test]

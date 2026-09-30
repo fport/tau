@@ -1,4 +1,4 @@
-// `bun run dev` in a plain browser: a stand-in for TauBar's Rust side, so the settings window
+// `bun run dev` in a plain browser: a stand-in for the app's Rust side, so the settings window
 // (http://localhost:1420/) and the panel (http://localhost:1420/#panel) can be looked at without
 // the app. main.tsx imports it only in development and outside Tauri, so no build contains it.
 
@@ -13,7 +13,7 @@ let snapshot: Snapshot = {
     switch_on: true,
     state: "up",
     pid: 79081,
-    by_taubar: true,
+    by_app: true,
     launchd: false,
     uptime_s: 9_540,
     restart_in_s: null,
@@ -31,7 +31,7 @@ let snapshot: Snapshot = {
     ],
     panel: {
       title: "Up 2 h 39 min",
-      detail: "pid 79081 · started by TauBar",
+      detail: "pid 79081 · started by the app",
       telegram: "polling as @tau_bot",
       crash,
       guard: "locked",
@@ -56,9 +56,10 @@ let snapshot: Snapshot = {
   },
   sleep_summary: "Sleep: kept awake on AC power",
   login: { status: "enabled", problem: null },
+  updates: { check: true, release_build: false },
   files: {
-    settings: "~/Library/Application Support/com.tau.taubar/settings.json",
-    log: "~/Library/Logs/com.tau.taubar/taubar.log",
+    settings: "~/Library/Application Support/com.tau.app/settings.json",
+    log: "~/Library/Logs/com.tau.app/app.log",
   },
 };
 
@@ -73,7 +74,7 @@ function runHub(on: boolean) {
           state: "up",
           pid: 79081,
           uptime_s: 1,
-          panel: { ...hub.panel, title: "Up 1 s", detail: "pid 79081 · started by TauBar", telegram: "polling as @tau_bot" },
+          panel: { ...hub.panel, title: "Up 1 s", detail: "pid 79081 · started by the app", telegram: "polling as @tau_bot" },
         }
       : {
           ...hub,
@@ -110,8 +111,11 @@ mockIPC(
         return snapshot;
       case "lock_guard":
         return snapshot;
+      case "set_check_updates":
+        snapshot = { ...snapshot, updates: { ...snapshot.updates, check: Boolean(payload.on) } };
+        return snapshot;
       case "log_tail":
-        return ["2026-09-30 12:00:00 TauBar 0.1.0 started (pid 1234)"];
+        return ["2026-09-30 12:00:00 tau 0.1.0 started (pid 1234)"];
       default:
         return undefined;
     }

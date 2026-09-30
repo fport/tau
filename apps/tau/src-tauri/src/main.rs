@@ -1,6 +1,6 @@
-// No console window on Windows release builds (TauBar targets macOS; kept for portability).
+// No console window on Windows release builds (the app targets macOS; kept for portability).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    taubar_lib::run()
+    tau_app_lib::run()
 }

@@ -32,10 +32,10 @@ The fields that depend on `kind`:
 | `kind` | Extra fields |
 |---|---|
 | `join` | `owner` (str, 0–60 characters: the owner's display name, may be empty), `about` (str, 0–200 characters). Clients always send both; a universe treats a missing one as `""` |
-| `report` | `links`: a list of at most 500 `{"peer": address, "messages": int ≥ 0}` items; `messages` is the number of `message` envelopes exchanged with that peer, both directions, as counted by the reporter |
+| `report` | `links`: a list of at most 500 `{"peer": address, "messages": int ≥ 0}` items; `messages` is the number of `message` envelopes exchanged with that peer, both directions, as counted by the reporter. Optional `subs`: a list of at most 20 `{"name": str, "about": str}` items, the tau's public sub-taus ([ADR 0012](../adr/0012-sub-taus.md)); `name` matches `^[a-z][a-z0-9-]{1,30}$`, `about` has 0–200 characters (a missing `about` is `""`). A report without `subs` lists none |
 | `leave` | nothing |
 
-`owner` and `about` are plain text: the universe strips control characters and the page escapes them.
+`owner`, `about` and a sub-tau's `about` are plain text: the universe strips control characters and the page escapes them.
 
 ## 2. Universe endpoints
 
@@ -58,7 +58,7 @@ The universe's own host is the `UNIVERSE` variable when it is set, otherwise the
 | Check | Failure |
 |---|---|
 | body ≤ 65 536 bytes | `413 {"error": "too_large"}` |
-| well-formed wire body and payload, `v == 1`, known `kind`, valid `address`, field types and lengths of §1 | `400 {"error": "bad_request", "detail": "..."}` |
+| well-formed wire body and payload, `v == 1`, known `kind`, valid `address`, field types and lengths of §1 (`subs` included) | `400 {"error": "bad_request", "detail": "..."}` |
 | `universe` equals the universe's host | `400 {"error": "wrong_universe"}` |
 | `abs(now - ts) ≤ 300` and `ts` greater than the last accepted `ts` of this address | `400 {"error": "stale"}` |
 | the path matches the payload's `kind` | `400 {"error": "bad_request"}` |
@@ -70,8 +70,8 @@ The universe's own host is the `UNIVERSE` variable when it is set, otherwise the
 Effects:
 
 - **`join`** creates or updates the tau: address, card name, `sign_key`, `owner`, `about`, `joined_at` (first join) and `last_seen = ts`. It answers `200 {"ok": true, "url": "https://<universe>/universe#<address>"}`.
-- **`report`** replaces the tau's reported links with the new list (only peers joined at that moment are kept), refreshes the card name and `last_seen`, and answers `200 {"ok": true, "visible_links": int}`. Peers that are not joined are ignored.
-- **`leave`** deletes the tau and its own reported links, and answers `200 {"ok": true}`. Other taus' reports stay; their links to it simply stop being mutual.
+- **`report`** replaces the tau's reported links with the new list (only peers joined at that moment are kept), replaces its public sub-taus with the report's `subs` (none when the report has no `subs`), refreshes the card name and `last_seen`, and answers `200 {"ok": true, "visible_links": int}`. Peers that are not joined are ignored.
+- **`leave`** deletes the tau, its sub-taus and its own reported links, and answers `200 {"ok": true}`. Other taus' reports stay; their links to it simply stop being mutual.
 
 The public snapshot:
 
@@ -82,18 +82,20 @@ The public snapshot:
   "stats": {"taus": 2, "online": 1, "messages": 14},
   "taus": [
     {"address": "furkan.tau.example.com", "name": "Furkan's tau", "owner": "Furkan", "about": "...",
-     "joined_at": 1790000000, "last_seen": 1790000000, "online": true}
+     "joined_at": 1790000000, "last_seen": 1790000000, "online": true,
+     "subs": [{"name": "coach", "about": "A patient running coach."}]}
   ],
   "links": [{"a": "alice.example.com", "b": "bob.example.com", "messages": 14}]
 }
 ```
 
 - **Taus** are ordered by `joined_at`.
+- **`subs`** are a tau's public sub-taus from its last report, ordered by name; `[]` when it reported none. `GET /api/taus/<address>` carries them too.
 - **`online`** means `last_seen` is within the last 2 hours; hubs report every hour.
 - **A link** between `a` and `b` (with `a < b`) is visible only when `a` reports `b` and `b` reports `a`, and both are joined. Its `messages` is the smaller of the two reported counts.
 - **`stats.messages`** is the sum over visible links.
 
-The directory lives in one SQLite-backed Durable Object (`Directory`, one instance by name). The Worker checks size, shape, universe, the clock window, the card and the signature. The Durable Object then runs the replay check, the joined check, the rate limit and the effect in one transaction. A card must carry a string `name`; the universe cleans it and cuts it to 80 characters, and uses the address when nothing is left. `universe` is compared without regard to case. In a report, a repeated peer keeps its last entry, and a link to the tau itself is ignored. A mutual link with 0 messages is shown. `joined_at` is the `ts` of the first join.
+The directory lives in one SQLite-backed Durable Object (`Directory`, one instance by name); schema version 2 added each tau's sub-taus (a JSON column of `taus`). The Worker checks size, shape, universe, the clock window, the card and the signature. The Durable Object then runs the replay check, the joined check, the rate limit and the effect in one transaction. A card must carry a string `name`; the universe cleans it and cuts it to 80 characters, and uses the address when nothing is left. `universe` is compared without regard to case. In a report, a repeated peer keeps its last entry, and a link to the tau itself is ignored; a repeated sub-tau name keeps its last entry too. A mutual link with 0 messages is shown. `joined_at` is the `ts` of the first join.
 
 A cron job runs every hour. It deletes taus whose `last_seen` is older than 30 days, together with their links, and prunes rate-limit rows older than one hour.
 
@@ -138,6 +140,7 @@ A report works like this:
 
 - It reads `GET /api/universe` first and lists only accepted contacts that appear in it. Unlisted contacts are never sent.
 - With `universe_links = false`, `links` is empty.
+- `subs` lists only the tau's **public** sub-taus (`public = true` in `persona/subs/<name>.md`), at most 20 by name, each `about` cut to 200 characters; a hub without public sub-taus leaves `subs` out. Private sub-taus never leave the hub, and the list does not depend on `universe_links`.
 - The counts come from the `counts` document of the network store: `{peer: {"in": n, "out": n}}`. It goes up by one for every `message` envelope handled from a contact or sent to one; the file backend stores it as `counts.json`, the spine backend as `net.counts`.
 
 ## 4. The spine kit (`tau net spine`)

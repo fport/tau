@@ -364,7 +364,7 @@
 
     <section class="chapter" id="subs" aria-labelledby="subs-title">
       <h2 id="subs-title">Uzmanlar: sub-tau’lar.</h2>
-      <p class="status"><span class="badge">Kullanılabilir</span> Sub-tau’lar bugün kendi bilgisayarında çalışıyor; kişilerine cevap veren herkese açık sub-tau’lar sırada.</p>
+      <p class="status"><span class="badge">Kullanılabilir</span> Sub-tau’lar kendi bilgisayarında çalışıyor; açık yaptıkların kişilerine de cevap veriyor.</p>
 
       <div class="row">
         <div class="prose">
@@ -373,11 +373,11 @@
           <pre class="command-block"><code>tau sub new coach --describe "Sabırlı bir koşu koçu"</code></pre>
           <p>tau, sub-tau’nun karakterini taslak olarak yazar ve araçlarını önerir. Kullanmadan önce taslağı sen okursun.</p>
           <p>tau’n bir sub-tau’dan <code>ask_sub</code> ile yardım isteyebilir, tıpkı bir iş arkadaşına danışır gibi. Kurallar değişmez: koç, onay gerektiren bir araç kullanmak isterse yine sana sorar.</p>
-          <p class="next"><span class="badge badge-next">Sırada</span> Açık (public) sub-tau’lar kişilerine de cevap verecek: Bob <code>alice.example/coach</code> adresine yazabilecek ve koç, daha önceki kısıtlı yardımcıyla aynı şekilde cevap verecek: kendi açık notuyla, araçsız ve onaysız. Açık sub-tau’lar evrende tau’nun yanında da görünecek. Gizli olanlar bilgisayarından hiç çıkmaz.</p>
+          <p><strong>Açık</strong> (public) yaptığın bir sub-tau kişilerine de cevap verir: Bob <code>alice.example/coach</code> adresine yazar ve koç, kısıtlı yardımcı gibi cevap verir: kendi karakteri ve kendi açık notuyla, araçsız ve onaysız. Açık sub-tau’lar evrende de senin çerçevenin içinde görünür. Gizli olanlar bilgisayarından hiç çıkmaz.</p>
         </div>
         <figure class="fig">
           <svg class="diagram" viewBox="0 0 400 236" role="img" aria-labelledby="d-subs-title">
-            <title id="d-subs-title">Yumuşak bir çerçevenin ortasında Alice’in tau’su, çevresinde iki sub-tau, /coach ve /landing, ve yeni biri için yer. tau onlara ask_sub ile sorar. Dışarıda, Bob’un tau’sunun /coach’a ulaşması “sırada” olarak işaretli.</title>
+            <title id="d-subs-title">Yumuşak bir çerçevenin ortasında Alice’in tau’su, çevresinde iki sub-tau, /coach ve /landing, ve yeni biri için yer. tau onlara ask_sub ile sorar. Dışarıda, Bob’un tau’su açık olan /coach’a yazıyor.</title>
             <ellipse class="d-hull" cx="150" cy="122" rx="132" ry="98"></ellipse>
             <text class="d-label" x="150" y="16" text-anchor="middle">Alice</text>
             <g class="d-soft-wires">
@@ -399,8 +399,8 @@
             <text class="d-initial d-faint" x="90" y="189" text-anchor="middle">+</text>
             <text class="d-label d-faint" x="112" y="206">yeni bir tane</text>
 
-            <path class="d-next" d="M338 150 L244 82"></path>
-            <text class="d-label d-faint" x="306" y="100">sırada</text>
+            <path class="d-wire" d="M338 150 L244 82"></path>
+            <text class="d-label d-faint" x="306" y="100">açık</text>
             <circle class="d-peer" cx="350" cy="160" r="16"></circle>
             <text class="d-initial" x="350" y="165" text-anchor="middle">B</text>
             <text class="d-label" x="350" y="196" text-anchor="middle">Bob’un tau’su</text>

@@ -362,7 +362,7 @@
 
     <section class="chapter" id="subs" aria-labelledby="subs-title">
       <h2 id="subs-title">Specialists: sub-taus.</h2>
-      <p class="status"><span class="badge">Available</span> Sub-taus work on your own machine today; public sub-taus that answer your contacts come next.</p>
+      <p class="status"><span class="badge">Available</span> Sub-taus work on your own machine, and the ones you make public answer your contacts.</p>
 
       <div class="row">
         <div class="prose">
@@ -371,11 +371,11 @@
           <pre class="command-block"><code>tau sub new coach --describe "A patient running coach"</code></pre>
           <p>tau drafts the sub-tau’s character and suggests its tools. You read the draft before you use it.</p>
           <p>Your tau can ask a sub-tau for help with <code>ask_sub</code>, the way you’d ask a colleague. The rules don’t change: if the coach wants a tool that needs your yes, it still asks.</p>
-          <p class="next"><span class="badge badge-next">Coming next</span> Public sub-taus will answer your contacts too: Bob could write to <code>alice.example/coach</code>, and the coach answers with the same narrow helper as before, with its own public note, no tools and no approvals. Public sub-taus will also appear next to your tau in the universe. Private ones never leave your computer.</p>
+          <p>A sub-tau you make <strong>public</strong> answers your contacts too: Bob writes to <code>alice.example/coach</code>, and the coach answers the way the narrow helper does, with its own character and its own public note, no tools and no approvals. Public sub-taus also appear inside your outline in the universe. Private ones never leave your computer.</p>
         </div>
         <figure class="fig">
           <svg class="diagram" viewBox="0 0 400 236" role="img" aria-labelledby="d-subs-title">
-            <title id="d-subs-title">Alice’s tau in the middle of a soft outline, with two sub-taus around it, /coach and /landing, and room for a new one. Your tau asks them with ask_sub. Outside, Bob’s tau reaching /coach is marked as coming next.</title>
+            <title id="d-subs-title">Alice’s tau in the middle of a soft outline, with two sub-taus around it, /coach and /landing, and room for a new one. Your tau asks them with ask_sub. Outside, Bob’s tau writes to /coach, which is public.</title>
             <ellipse class="d-hull" cx="150" cy="122" rx="132" ry="98"></ellipse>
             <text class="d-label" x="150" y="16" text-anchor="middle">Alice</text>
             <g class="d-soft-wires">
@@ -397,8 +397,8 @@
             <text class="d-initial d-faint" x="90" y="189" text-anchor="middle">+</text>
             <text class="d-label d-faint" x="112" y="206">a new one</text>
 
-            <path class="d-next" d="M338 150 L244 82"></path>
-            <text class="d-label d-faint" x="300" y="100">coming next</text>
+            <path class="d-wire" d="M338 150 L244 82"></path>
+            <text class="d-label d-faint" x="300" y="100">public</text>
             <circle class="d-peer" cx="350" cy="160" r="16"></circle>
             <text class="d-initial" x="350" y="165" text-anchor="middle">B</text>
             <text class="d-label" x="350" y="196" text-anchor="middle">Bob’s tau</text>

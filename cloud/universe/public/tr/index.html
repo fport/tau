@@ -6,7 +6,7 @@
   <title>tau: kendi makinende yaşayan kişisel bir ajan</title>
   <meta name="description" content="tau, kendi makinende, tarayıcında ya da kendi Cloudflare hesabında yaşayan kişisel bir yapay zekâ ajanı. Her yol için yalnızca kendi model anahtarın yeter. Herkese açık yüzü, tau’ların ve küçük uzmanlarının canlı bir evreni.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#07080a">
+  <meta name="theme-color" content="#05071a">
   <meta property="og:type" content="website">
   <meta property="og:title" content="tau">
   <meta property="og:description" content="Kendi makinende yaşayan kişisel bir yapay zekâ ajanı.">
@@ -15,8 +15,9 @@
   <link rel="alternate" hreflang="tr" href="https://tau.getporti.com/tr/">
   <link rel="alternate" hreflang="x-default" href="https://tau.getporti.com/">
   <link rel="icon" href="/brand/tau-coin-red.svg" type="image/svg+xml">
-  <link rel="preload" href="/static/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/static/fonts/jost-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/chakra-petch-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/styles/site.css">
   <script type="module" src="/static/universe.js"></script>
@@ -39,68 +40,87 @@
   </header>
 
   <main id="main">
-    <section class="hero grid-bg" aria-labelledby="hero-title">
-      <div class="hero-texture code-bg" aria-hidden="true"></div>
-      <div class="hero-sky sky" id="sky">
-        <svg class="hud" viewBox="-300 -300 600 600" aria-hidden="true" focusable="false">
-          <g class="hud-spin">
-            <circle class="hud-ticks" r="286"></circle>
-            <path class="hud-arc" d="M0 -250 A250 250 0 0 1 216.5 -125"></path>
-            <rect class="hud-frag" x="244" y="-6" width="10" height="4"></rect>
-            <rect class="hud-frag" x="-262" y="40" width="6" height="6"></rect>
-          </g>
-          <g class="hud-spin-back">
-            <circle class="hud-ring" r="232"></circle>
-            <path class="hud-arc" d="M-160 168 A232 232 0 0 1 -226 -52"></path>
-            <rect class="hud-frag" x="150" y="170" width="8" height="8"></rect>
-            <rect class="hud-frag" x="-40" y="-236" width="14" height="3"></rect>
-          </g>
-          <circle class="hud-ring" r="160"></circle>
-        </svg>
-        <div class="graph-box" id="graph-box">
-          <svg class="graph" id="graph" role="img" aria-label="Listelenen tau’ların ve bağlantılarının haritası" hidden>
-            <defs>
-              <filter id="halo" x="-100%" y="-100%" width="300%" height="300%">
-                <feGaussianBlur stdDeviation="5"></feGaussianBlur>
-              </filter>
-            </defs>
-            <g class="layer-hulls"></g>
-            <g class="layer-links"></g>
-            <g class="layer-subs"></g>
-            <g class="layer-nodes"></g>
-          </svg>
-          <div class="stage-message" id="stage-message">
-            <p>Evren yükleniyor…</p>
-          </div>
-          <p class="stage-note" id="stage-note" hidden></p>
-        </div>
-        <aside class="detail" id="detail" aria-live="polite" aria-label="Seçili tau" hidden></aside>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-bg" aria-hidden="true">
+        <div class="hero-grid"></div>
+        <div class="hero-texture code-bg"></div>
+        <div class="hero-beams beams"></div>
       </div>
+      <div class="hero-inner">
+        <div class="hero-copy" id="hero-copy">
+          <p class="kicker hero-live"><span class="pip pip-live" aria-hidden="true"></span><span>Canlı evren</span><span class="kicker-sep" aria-hidden="true">·</span><span id="sky-count" aria-live="polite">Yükleniyor…</span></p>
+          <h1 id="hero-title" class="chrome">Kendi makinende yaşayan kişisel bir ajan.</h1>
+          <p class="lead">Ya da tarayıcında, ya da kendi Cloudflare hesabında. Her yol için yalnızca kendi model anahtarın yeter.</p>
 
-      <div class="hero-copy" id="hero-copy">
-        <p class="kicker hero-live"><span class="pip pip-live" aria-hidden="true"></span><span>Canlı evren</span><span class="kicker-sep" aria-hidden="true">·</span><span id="sky-count" aria-live="polite">Yükleniyor…</span></p>
-        <h1 id="hero-title" class="chrome">Kendi makinende yaşayan kişisel bir ajan.</h1>
-        <p class="lead">Ya da tarayıcında, ya da kendi Cloudflare hesabında. Her yol için yalnızca kendi model anahtarın yeter.</p>
+          <h2 class="visually-hidden" id="ways-title">Başlamanın üç yolu</h2>
+          <ol class="ways" aria-labelledby="ways-title">
+            <li class="way way-hosted">
+              <p class="way-tag kicker"><span class="kicker-accent">01</span> Barındırılan</p>
+              <a class="button button-primary" href="/auth/login"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>GitHub ile giriş yap</a>
+              <p class="way-note">Burada, tarayıcıda sohbet et. Onu biz çalıştırıyoruz, yani biz de okuyabiliriz.</p>
+            </li>
+            <li class="way way-local">
+              <p class="way-tag kicker"><span class="kicker-accent">02</span> Yerel</p>
+              <a class="button" href="https://docs.tau.getporti.com/tr/getting-started/install/">Kendi makinende çalıştır</a>
+              <p class="way-note"><code>tau init</code> Varsayılan olarak gizli: her şey sende kalır.</p>
+            </li>
+            <li class="way way-own">
+              <p class="way-tag kicker"><span class="kicker-accent">03</span> Kendi kurulumun</p>
+              <a class="button" href="https://docs.tau.getporti.com/tr/guides/own-host/">Kendi kopyanı kur</a>
+              <p class="way-note">Barındırılan uygulama, kendi Cloudflare hesabında. Yalnızca sen okuyabilirsin.</p>
+            </li>
+          </ol>
+          <p class="hero-more">Yeni misin? <a href="/tr/how-it-works">tau’nun nasıl çalıştığını oku</a> ya da <a href="/tr/universe">evrenin tamamını aç</a>.</p>
+        </div>
 
-        <h2 class="visually-hidden" id="ways-title">Başlamanın üç yolu</h2>
-        <ol class="ways" aria-labelledby="ways-title">
-          <li class="way way-hosted">
-            <p class="way-tag kicker"><span class="kicker-accent">01</span> Barındırılan</p>
-            <a class="button button-primary" href="/auth/login"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>GitHub ile giriş yap</a>
-            <p class="way-note">Burada, tarayıcıda sohbet et. Onu biz çalıştırıyoruz, yani biz de okuyabiliriz.</p>
-          </li>
-          <li class="way way-local">
-            <p class="way-tag kicker"><span class="kicker-accent">02</span> Yerel</p>
-            <a class="button" href="https://docs.tau.getporti.com/tr/getting-started/install/">Kendi makinende çalıştır</a>
-            <p class="way-note"><code>tau init</code> Varsayılan olarak gizli: her şey sende kalır.</p>
-          </li>
-          <li class="way way-own">
-            <p class="way-tag kicker"><span class="kicker-accent">03</span> Kendi kurulumun</p>
-            <a class="button" href="https://docs.tau.getporti.com/tr/guides/own-host/">Kendi kopyanı kur</a>
-            <p class="way-note">Barındırılan uygulama, kendi Cloudflare hesabında. Yalnızca sen okuyabilirsin.</p>
-          </li>
-        </ol>
-        <p class="hero-more">Yeni misin? <a href="/tr/how-it-works">tau’nun nasıl çalıştığını oku</a> ya da <a href="/tr/universe">evrenin tamamını aç</a>.</p>
+        <div class="hero-sky sky" id="sky">
+          <div class="graph-box" id="graph-box">
+            <svg class="hud" viewBox="-300 -300 600 600" aria-hidden="true" focusable="false">
+              <defs>
+                <linearGradient id="hud-floor" gradientUnits="userSpaceOnUse" x1="-300" y1="0" x2="300" y2="0">
+                  <stop offset="0" stop-color="#ff2e63" stop-opacity="0"></stop>
+                  <stop offset="0.5" stop-color="#ffb25c"></stop>
+                  <stop offset="1" stop-color="#ff2e63" stop-opacity="0"></stop>
+                </linearGradient>
+              </defs>
+              <path class="hud-tri" d="M0 -262L262 192H-262Z"></path>
+              <path class="hud-tri hud-tri-inner" d="M0 -120L180 192H-180Z"></path>
+              <path class="hud-tri hud-reflect" d="M-262 192L-138 300M262 192L138 300"></path>
+              <line class="hud-floor" x1="-300" y1="192" x2="300" y2="192"></line>
+              <g class="hud-spin">
+                <circle class="hud-ticks" r="286"></circle>
+                <rect class="hud-frag" x="244" y="-6" width="10" height="4"></rect>
+                <rect class="hud-frag" x="-262" y="40" width="6" height="6"></rect>
+              </g>
+              <g class="hud-spin-back">
+                <circle class="hud-ring" r="236"></circle>
+                <path class="hud-arc" d="M-160 173A236 236 0 0 1 -230 -52"></path>
+                <rect class="hud-frag" x="150" y="170" width="8" height="8"></rect>
+                <rect class="hud-frag" x="-40" y="-240" width="14" height="3"></rect>
+              </g>
+              <g class="hud-think">
+                <path class="hud-tail" d="M-90.7 -236.2A253 253 0 0 1 0 -253"></path>
+                <path class="hud-comet" d="M-30.8 -251.1A253 253 0 0 1 0 -253"></path>
+                <rect class="hud-head" x="-3" y="-256" width="6" height="6"></rect>
+              </g>
+            </svg>
+            <div class="hero-floor floor-line" aria-hidden="true"></div>
+            <svg class="graph" id="graph" role="img" aria-label="Listelenen tau’ların ve bağlantılarının haritası" hidden>
+              <defs></defs>
+              <g class="layer-hulls"></g>
+              <g class="layer-links"></g>
+              <g class="layer-subs"></g>
+              <g class="layer-nodes"></g>
+            </svg>
+            <div class="stage-message" id="stage-message">
+              <p>Evren yükleniyor…</p>
+            </div>
+            <p class="stage-note" id="stage-note" hidden></p>
+          </div>
+          <p class="readout readout-tl hud-label" aria-hidden="true">Sinyal haritası</p>
+          <p class="readout readout-br hud-label" aria-hidden="true">Yalnızca karşılıklı bağlar</p>
+          <aside class="detail" id="detail" aria-live="polite" aria-label="Seçili tau" hidden></aside>
+        </div>
       </div>
     </section>
 

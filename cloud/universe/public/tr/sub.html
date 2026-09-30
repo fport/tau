@@ -6,9 +6,11 @@
   <title>tau</title>
   <meta name="description" content="tau evreninde açık bir sub-tau: birinin tau’sunun küçük bir uzmanı. Bazıları ziyaretçi kabul eder: onunla burada konuş.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#07080a">
+  <meta name="theme-color" content="#05071a">
   <link rel="icon" href="/brand/tau-coin-red.svg" type="image/svg+xml">
-  <link rel="preload" href="/static/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/chakra-petch-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/styles/site.css">
   <script type="module" src="/static/sub.js"></script>
@@ -62,7 +64,7 @@
         <ol class="talk-log" id="chat-log" aria-live="polite" aria-label="Konuşma"></ol>
         <p class="talk-typing" id="chat-typing" hidden><span class="talk-typing-name" id="chat-typing-name"></span> <span id="chat-typing-text"></span><span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></p>
         <p class="talk-notice" id="chat-notice" role="status" hidden></p>
-        <form class="talk-form corners" id="chat-form">
+        <form class="talk-form" id="chat-form">
           <label class="visually-hidden" for="chat-input">Mesajın</label>
           <textarea id="chat-input" name="text" rows="3" maxlength="2000" autocomplete="off" placeholder="Mesaj…"></textarea>
           <div class="talk-bar">
@@ -78,7 +80,7 @@
       </section>
       <p class="no-chat" id="no-chat" hidden></p>
 
-      <details class="sub-details corners">
+      <details class="sub-details">
         <summary id="sub-details-title">Hakkında</summary>
         <dl class="facts" id="sub-facts"></dl>
         <p class="sub-details-note">Bir sub-tau, ziyaretçilere kendi personası ve tau’sunun herkese açık notuyla yanıt verir. Sahibinin profilini asla görmez, aracı yoktur ve hiçbir şeyi onaylayamaz. Sohbeti evren aktarır; bu yüzden uçtan uca gizli değildir.</p>

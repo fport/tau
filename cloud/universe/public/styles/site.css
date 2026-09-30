@@ -1,12 +1,63 @@
 /* tau public site: the layout of each page, on top of the hard theme (/static/theme.css,
    built from cloud/shared/theme.css, which holds the tokens, fonts, base styles, buttons,
-   chips, HUD rings and the characters' motion).
+   chips, chamfers, HUD rings and the sigils' motion).
 
-   One accent (neon red) against near-black, chrome-white type, thin lines, square corners.
-   State is never colour alone: online is a lit square, offline a hollow one.
+   The brand hero's language on Void: Signal as the one accent with Ember and Flare for heat,
+   Core white type, 1 px lines, square or chamfered corners, neon triangles, vertical beams,
+   a reflecting floor and instrument rings. State is never colour alone: online is a lit
+   square, offline a hollow one.
 
-   Careful with `.corners`: it draws with background-image, so an element that carries it
-   sets `background-color` here, never the `background` shorthand. */
+   Two ways to cut a corner. `.cut` (theme.css) draws a chamfered box with two pseudo-elements,
+   so a focus outline stays visible: use it on links and buttons. `.chamfer` below clips the
+   box itself and draws the cut edges with gradients: use it on panels, which may scroll.
+   Careful with `.corners` and `.chamfer`: both draw with background-image, so an element
+   that carries one sets `background-color` here, never the `background` shorthand. */
+
+/* A clipped chamfer: top-left and bottom-right corners cut, the cut edges drawn in `--edge`. */
+.chamfer,
+.way,
+.detail,
+.claim-panel,
+.sub-details,
+.talk-form,
+.msg-text,
+.avatar-frame,
+.stage-note,
+.command {
+  --cut: 12px;
+  --edge: var(--line-2);
+  border: 1px solid var(--edge);
+  background-origin: border-box;
+  background-position: 0 0;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(
+      135deg,
+      transparent calc(var(--cut) * 0.7071),
+      var(--edge) calc(var(--cut) * 0.7071) calc(var(--cut) * 0.7071 + 1px),
+      transparent calc(var(--cut) * 0.7071 + 1px)
+    ),
+    linear-gradient(
+      -45deg,
+      transparent calc(var(--cut) * 0.7071),
+      var(--edge) calc(var(--cut) * 0.7071) calc(var(--cut) * 0.7071 + 1px),
+      transparent calc(var(--cut) * 0.7071 + 1px)
+    );
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+}
+
+/* The index of a section, HUD style: `01 //`. */
+main {
+  counter-reset: band;
+}
 
 /* ---- header and footer ------------------------------------------------------------ */
 
@@ -19,14 +70,14 @@
   gap: 0.5rem 1.25rem;
   padding: 0.8rem max(var(--gutter), calc((100% - var(--page)) / 2 + var(--gutter)));
   border-bottom: 1px solid var(--line);
-  background-color: rgba(7, 8, 10, 0.86);
+  background-color: rgba(5, 7, 26, 0.88);
 }
 
 .brand {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.6rem;
   color: var(--text);
   text-decoration: none;
 }
@@ -38,19 +89,16 @@
 }
 
 .brand-name {
-  background: var(--chrome);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  font-size: 1.45rem;
-  font-weight: 260;
-  letter-spacing: 0.08em;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   line-height: 1;
 }
 
 .brand:hover .brand-name {
-  filter: brightness(1.2);
+  color: var(--core);
 }
 
 /* The breadcrumb after the mark: `tau / @alice / coach`. */
@@ -59,11 +107,11 @@
   flex: 0 1 auto;
   align-items: center;
   min-width: 0;
-  margin-left: -0.65rem;
+  margin-left: -0.5rem;
   overflow: hidden;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   white-space: nowrap;
 }
 
@@ -74,7 +122,7 @@
 .crumb-sep {
   flex: none;
   margin: 0 0.5rem;
-  color: var(--muted);
+  color: var(--accent);
 }
 
 /* The page itself keeps its name longest; the crumbs before it give way first. */
@@ -99,15 +147,19 @@ a.crumb:hover {
 .site-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem clamp(1rem, 2.5vw, 1.75rem);
+  gap: 0.25rem clamp(1rem, 2.4vw, 1.9rem);
   margin-left: auto;
 }
 
 .site-nav a {
   padding: 0.35rem 0;
   color: var(--muted);
-  font-size: 0.95rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   text-decoration: none;
+  text-transform: uppercase;
 }
 
 .site-nav a:hover,
@@ -127,22 +179,49 @@ a.crumb:hover {
 }
 
 .signin {
+  --cut: 7px;
+  --edge: var(--line-2);
+  --fill: rgba(10, 13, 36, 0.8);
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   flex: none;
   align-items: center;
   gap: 0.5rem;
   min-height: 2.25rem;
-  padding: 0.3rem 0.8rem;
-  border: 1px solid var(--line-2);
+  padding: 0.3rem 0.85rem;
   color: var(--text);
+  font-family: var(--font-display);
   font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   text-decoration: none;
 }
 
+.signin::before,
+.signin::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.signin::before {
+  inset: 0;
+  background-color: var(--edge);
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+}
+
+.signin::after {
+  inset: 1px;
+  background-color: var(--fill);
+  clip-path: polygon(calc(var(--cut) - 0.4px) 0, 100% 0, 100% calc(100% - var(--cut) + 0.4px), calc(100% - var(--cut) + 0.4px) 100%, 0 100%, 0 calc(var(--cut) - 0.4px));
+}
+
 .signin:hover {
+  --edge: var(--accent);
+  --fill: rgba(255, 46, 99, 0.14);
   color: var(--text);
-  border-color: var(--accent);
-  background-color: var(--accent-soft);
 }
 
 /* The language switcher: the current language lit, the other a link to the same page in
@@ -152,8 +231,9 @@ a.crumb:hover {
   flex: none;
   border: 1px solid var(--line-2);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
   line-height: 1;
 }
 
@@ -170,7 +250,7 @@ a.crumb:hover {
 .lang-current {
   background-color: var(--bg-3);
   color: var(--text);
-  box-shadow: inset 0 -1px 0 var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .lang-switch a {
@@ -190,8 +270,8 @@ a.crumb:hover {
   gap: 0.75rem 1.75rem;
   padding: 2rem max(var(--gutter), calc((100% - var(--page)) / 2 + var(--gutter))) 2.5rem;
   border-top: 1px solid var(--line);
-  color: var(--faint);
-  font-size: 0.9rem;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .site-footer nav {
@@ -202,7 +282,12 @@ a.crumb:hover {
 
 .site-footer a {
   color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
   text-decoration: none;
+  text-transform: uppercase;
 }
 
 .site-footer a:hover {
@@ -237,13 +322,14 @@ a.crumb:hover {
 
 .tag {
   display: inline-block;
-  padding: 0 0.4rem;
+  padding: 0 0.45rem;
   border: 1px solid var(--accent-line);
-  color: var(--accent-hot);
+  color: var(--accent);
   font-family: var(--font-mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.12em;
-  line-height: 1.6;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.7;
   text-transform: uppercase;
 }
 
@@ -260,6 +346,11 @@ a.crumb:hover {
 
 .facts dt {
   color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  line-height: 2.1;
+  text-transform: uppercase;
 }
 
 .facts dd {
@@ -275,8 +366,9 @@ a.crumb:hover {
 .back-link {
   margin-top: clamp(2.5rem, 6vw, 4rem);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
-  letter-spacing: 0.04em;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .back-link a {
@@ -300,39 +392,151 @@ a.crumb:hover {
 
 .page-state-title {
   color: var(--text);
+  font-family: var(--font-display);
   font-size: 1.5rem;
-  font-weight: 300;
+  font-weight: 600;
+}
+
+/* The HUD behind a graph or a sigil: neon triangles on a floor, instrument rings and the
+   thinking comet (an inline SVG, viewBox -300 -300 600 600). */
+.hud {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.hud-floor {
+  stroke: url("#hud-floor");
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.hud-reflect {
+  stroke-opacity: 0.1;
+  stroke-dasharray: 2 6;
+}
+
+/* HUD readouts at the corners of a graph. */
+.readout {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  pointer-events: none;
+}
+
+.readout::before {
+  content: "";
+  width: 1.4rem;
+  height: 1px;
+  background: var(--accent);
+}
+
+.readout-tl {
+  top: 0.9rem;
+  left: 1rem;
+}
+
+.readout-br {
+  right: 1rem;
+  bottom: 0.9rem;
 }
 
 /* ---- landing: the universe as the hero -------------------------------------------- */
+
+/* The landing page runs wider than the reading pages: the hero is a graph. */
+.page-home {
+  --page: var(--page-wide);
+}
 
 .page-home .site-header {
   position: absolute;
   inset: 0 0 auto;
   border-bottom-color: transparent;
-  background: linear-gradient(180deg, rgba(7, 8, 10, 0.95), rgba(7, 8, 10, 0));
+  background: linear-gradient(180deg, rgba(5, 7, 26, 0.95), rgba(5, 7, 26, 0));
 }
 
 .hero {
   position: relative;
   isolation: isolate;
-  min-height: max(40rem, 100svh);
+  display: grid;
+  min-height: max(42rem, 100svh);
   overflow: hidden;
   border-bottom: 1px solid var(--line);
+  background-image:
+    radial-gradient(ellipse 60% 55% at 70% 62%, rgba(255, 90, 31, 0.12), transparent 70%),
+    radial-gradient(ellipse 80% 70% at 60% 70%, rgba(194, 24, 60, 0.1), transparent 75%),
+    linear-gradient(180deg, var(--void) 0%, #0b0a1f 65%, #12061a 100%);
 }
 
-.hero-texture {
+.hero-bg {
   position: absolute;
   inset: 0;
   z-index: -2;
-  opacity: 0.7;
-  -webkit-mask-image: radial-gradient(ellipse 70% 75% at 68% 45%, #000 15%, transparent 72%);
-  mask-image: radial-gradient(ellipse 70% 75% at 68% 45%, #000 15%, transparent 72%);
+  pointer-events: none;
+}
+
+.hero-texture,
+.hero-beams,
+.hero-grid {
+  position: absolute;
+  inset: 0;
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+  -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 95%);
+  mask-image: linear-gradient(180deg, #000 30%, transparent 95%);
+}
+
+.hero-texture {
+  opacity: 0.55;
+  -webkit-mask-image: radial-gradient(ellipse 60% 70% at 70% 45%, #000 10%, transparent 70%);
+  mask-image: radial-gradient(ellipse 60% 70% at 70% 45%, #000 10%, transparent 70%);
+}
+
+.hero-beams {
+  opacity: 0.75;
+  -webkit-mask-image:
+    linear-gradient(0deg, #000 0%, rgba(0, 0, 0, 0.5) 40%, transparent 85%),
+    linear-gradient(90deg, transparent 20%, #000 60%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(0deg, #000 0%, rgba(0, 0, 0, 0.5) 40%, transparent 85%),
+    linear-gradient(90deg, transparent 20%, #000 60%);
+  mask-composite: intersect;
+}
+
+/* Two columns that never collapse: the text between a floor and a ceiling of widths, the
+   graph taking the rest. (The old layout sized the text column as a share of the viewport
+   and padded it by half the free width, so at ~2000 px the padding ate the column.) */
+.hero-inner {
+  display: grid;
+  grid-template-columns: minmax(25rem, min(34rem, 38vw)) minmax(0, 1fr);
+  gap: clamp(1.5rem, 3vw, 3.5rem);
+  width: 100%;
+  max-width: calc(var(--page) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 6rem var(--gutter) 2.5rem;
+}
+
+.hero-copy {
+  position: relative;
+  z-index: 2;
+  align-self: center;
+  min-width: 0;
 }
 
 .hero-sky {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  min-height: 30rem;
 }
 
 .hero-sky .graph-box {
@@ -340,55 +544,30 @@ a.crumb:hover {
   inset: 0;
 }
 
-.hud {
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-}
-
-.hero .hud {
-  top: 50%;
-  left: 68%;
-  width: min(96vh, 62vw);
-  height: auto;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-}
-
-.hero-copy {
-  position: absolute;
-  inset: 0 auto 0 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  width: min(40rem, 46%);
-  padding: 7rem var(--gutter) 2.5rem max(var(--gutter), calc((100vw - var(--page)) / 2 + var(--gutter)));
-  background: linear-gradient(
-    90deg,
-    rgba(7, 8, 10, 0.97) 0%,
-    rgba(7, 8, 10, 0.9) 72%,
-    rgba(7, 8, 10, 0) 100%
-  );
+/* The floor the hero stands on runs out to the page's right edge. */
+.hero-floor {
+  right: -50vw;
+  left: -2rem;
+  background: linear-gradient(90deg, transparent, var(--signal) 12%, var(--flare) 35%, var(--signal) 65%, transparent);
 }
 
 .hero-live {
-  margin-bottom: 1.1rem;
+  margin-bottom: 1.2rem;
 }
 
 .hero h1 {
-  font-size: clamp(2.3rem, 1rem + 3.2vw, 4.1rem);
-  font-weight: 220;
+  max-width: 15ch;
+  font-size: clamp(2.3rem, 1.3rem + 2.5vw, 3.9rem);
+  font-weight: 600;
   line-height: 1.02;
-  letter-spacing: -0.02em;
-  max-width: 14ch;
+  letter-spacing: -0.015em;
 }
 
 .lead {
   max-width: 32rem;
   margin-top: 1.1rem;
   color: var(--muted);
-  font-size: clamp(1.05rem, 1rem + 0.25vw, 1.2rem);
+  font-size: clamp(1.05rem, 1rem + 0.25vw, 1.18rem);
   text-wrap: pretty;
 }
 
@@ -401,23 +580,24 @@ a.crumb:hover {
 }
 
 .way {
+  --cut: 12px;
   display: grid;
-  grid-template-columns: 8.75rem minmax(0, 1fr);
+  grid-template-columns: 7rem minmax(0, 1fr);
   align-items: center;
-  gap: 0.35rem 1rem;
-  padding: 0.8rem 1rem;
-  border: 1px solid var(--line-2);
-  background-color: rgba(13, 15, 19, 0.82);
+  gap: 0.4rem 1rem;
+  padding: 0.85rem 1rem;
+  background-color: rgba(10, 13, 36, 0.86);
 }
 
 .way-hosted {
-  border-left: 2px solid var(--accent);
+  --edge: var(--accent-line);
+  background-color: rgba(26, 10, 34, 0.9);
 }
 
 .way-tag {
   grid-row: span 2;
   align-self: start;
-  padding-top: 0.7rem;
+  padding-top: 0.75rem;
 }
 
 .way .button {
@@ -440,21 +620,17 @@ a.crumb:hover {
   font-size: 0.95rem;
 }
 
-/* The graph's messages sit in the free part of the hero, clear of the text. */
-.hero .stage-message {
-  left: 46%;
-}
-
 /* ---- landing: below the fold ------------------------------------------------------ */
 
 .band {
   display: grid;
-  grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr);
+  grid-template-columns: minmax(9rem, 16rem) minmax(0, 1fr);
   gap: 1.5rem clamp(2rem, 6vw, 5rem);
-  max-width: var(--page);
+  max-width: calc(var(--page) + 2 * var(--gutter));
   margin: 0 auto;
-  padding: clamp(3rem, 7vw, 5rem) var(--gutter);
+  padding: clamp(3rem, 7vw, 5.5rem) var(--gutter);
   border-top: 1px solid var(--line);
+  counter-increment: band;
 }
 
 .band:first-of-type {
@@ -465,8 +641,18 @@ a.crumb:hover {
   align-self: start;
   position: sticky;
   top: 1.5rem;
-  font-size: clamp(1.5rem, 1.2rem + 1vw, 1.9rem);
-  font-weight: 260;
+  font-size: clamp(1.45rem, 1.2rem + 0.9vw, 1.85rem);
+}
+
+.band > h2::before {
+  content: counter(band, decimal-leading-zero) " //";
+  display: block;
+  margin-bottom: 0.6rem;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
 }
 
 .band-body {
@@ -474,13 +660,13 @@ a.crumb:hover {
 }
 
 .band-intro {
-  max-width: 38rem;
+  max-width: 40rem;
   color: var(--muted);
   font-size: 1.12rem;
 }
 
 .band-outro {
-  max-width: 44rem;
+  max-width: 46rem;
   margin-top: 2rem;
   color: var(--muted);
 }
@@ -491,19 +677,33 @@ a.crumb:hover {
   gap: 2.25rem clamp(2rem, 5vw, 4rem);
 }
 
-.trait {
-  padding-top: 0.9rem;
+.trait,
+.ledger-col {
+  padding-top: 1rem;
   border-top: 1px solid var(--line-2);
+  background: linear-gradient(var(--accent), var(--accent)) left -1px / 2.5rem 1px no-repeat;
 }
 
 .trait h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   margin-bottom: 0.5rem;
   font-size: 1.2rem;
-  font-weight: 400;
+}
+
+/* A small neon triangle before each trait. */
+.trait h3::before {
+  content: "";
+  flex: none;
+  width: 0.7rem;
+  height: 0.6rem;
+  background: var(--fire);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
 .trait p {
-  max-width: 30rem;
+  max-width: 32rem;
   color: var(--muted);
 }
 
@@ -517,13 +717,8 @@ a.crumb:hover {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.ledger-col {
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--line-2);
-}
-
 .ledger-public {
-  border-top-color: var(--accent);
+  border-top-color: var(--accent-line);
 }
 
 .ledger h3 {
@@ -532,7 +727,6 @@ a.crumb:hover {
   gap: 0.6rem;
   margin-bottom: 0.6rem;
   font-size: 1.15rem;
-  font-weight: 400;
 }
 
 .ledger p {
@@ -545,8 +739,12 @@ a.crumb:hover {
 
 /* ---- the universe page ------------------------------------------------------------ */
 
+.page-universe {
+  --page: 96rem;
+}
+
 .universe {
-  max-width: var(--page);
+  max-width: calc(var(--page) + 2 * var(--gutter));
   margin: 0 auto;
   padding: 1.5rem var(--gutter) 4rem;
 }
@@ -556,20 +754,27 @@ a.crumb:hover {
   isolation: isolate;
   padding: clamp(1rem, 2.5vw, 1.5rem);
   border: 1px solid var(--line);
-  background-color: var(--bg-2);
+  background-color: var(--bg);
   overflow: hidden;
 }
 
-/* The grid under the graph: a layer of its own, since `.corners` owns the background. */
+/* The grid, the beams and the warm light under the graph: a layer of its own, since
+   `.corners` owns the background. */
 .universe .sky::before {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: -2;
   background-image:
+    radial-gradient(ellipse 55% 50% at 50% 72%, rgba(255, 90, 31, 0.09), transparent 70%),
     linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 48px 48px;
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    linear-gradient(180deg, var(--void) 0%, #0b0a1f 70%, #12061a 100%);
+  background-size:
+    auto,
+    48px 48px,
+    48px 48px,
+    auto;
   pointer-events: none;
 }
 
@@ -581,15 +786,16 @@ a.crumb:hover {
 }
 
 .sky-titles h1 {
-  margin-top: 0.35rem;
+  margin-top: 0.45rem;
   font-size: clamp(1.8rem, 1.3rem + 1.6vw, 2.6rem);
-  font-weight: 220;
 }
 
 .sky-count {
-  margin-top: 0.3rem;
+  margin-top: 0.35rem;
   color: var(--muted);
-  font-size: 0.95rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -605,7 +811,7 @@ a.crumb:hover {
   border: 1px solid var(--line-2);
   border-radius: 0;
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='8.5' cy='8.5' r='5.5' fill='none' stroke='%238a93a3' stroke-width='1.5'/%3E%3Cpath d='M13 13l4 4' stroke='%238a93a3' stroke-width='1.5'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M8.5 3l5 8.7H3.5z' fill='none' stroke='%23979bb9' stroke-width='1.4'/%3E%3Cpath d='M12.5 13.5l4 4' stroke='%23979bb9' stroke-width='1.4'/%3E%3C/svg%3E")
       0.85rem 50% / 1.05rem no-repeat,
     var(--bg);
   color: var(--text);
@@ -628,12 +834,58 @@ a.crumb:hover {
 
 .sky-stage {
   position: relative;
+  isolation: isolate;
   margin-top: 1.25rem;
+}
+
+
+.sky-beams {
+  position: absolute;
+  inset: 8% 0;
+  z-index: -1;
+  opacity: 0.5;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(0deg, transparent 0%, #000 20%, rgba(0, 0, 0, 0.4) 60%, transparent 95%);
+  mask-image: linear-gradient(0deg, transparent 0%, #000 20%, rgba(0, 0, 0, 0.4) 60%, transparent 95%);
 }
 
 .graph-box {
   position: relative;
   width: 100%;
+  /* The HUD below is sized from the box itself (cqw, cqh). */
+  container-type: size;
+}
+
+/* The HUD stands on the graph's floor, the bottom edge of the box: the SVG's floor line is
+   18 % above its own bottom, so it hangs that far below the box and fades out there. */
+.graph-box .hud {
+  bottom: calc(min(100cqw, 84cqh) * -0.18);
+  left: 50%;
+  width: min(100cqw, 84cqh);
+  height: auto;
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  -webkit-mask-image: linear-gradient(180deg, #000 82%, rgba(0, 0, 0, 0.35) 84%, transparent 96%);
+  mask-image: linear-gradient(180deg, #000 82%, rgba(0, 0, 0, 0.35) 84%, transparent 96%);
+}
+
+/* The floor, with its reflection under it. */
+.graph-box .floor-line {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+}
+
+.graph-box .floor-line::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 25%;
+  left: 5%;
+  height: 2.5rem;
+  background: linear-gradient(180deg, rgba(255, 122, 61, 0.1), transparent);
 }
 
 .universe .graph-box {
@@ -646,6 +898,7 @@ a.crumb:hover {
   display: block;
   width: 100%;
   height: 100%;
+  font-family: var(--font-mono);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -664,11 +917,13 @@ a.crumb:hover {
 
 .stage-message p:first-child {
   color: var(--text);
+  font-family: var(--font-display);
   font-size: 1.2rem;
-  font-weight: 300;
+  font-weight: 600;
 }
 
 .stage-note {
+  --cut: 8px;
   position: absolute;
   left: 50%;
   bottom: 0.9rem;
@@ -676,8 +931,7 @@ a.crumb:hover {
   width: max-content;
   max-width: calc(100% - 2rem);
   padding: 0.45rem 1rem;
-  border: 1px solid var(--line-2);
-  background-color: rgba(7, 8, 10, 0.85);
+  background-color: rgba(5, 7, 26, 0.9);
   color: var(--muted);
   font-size: 0.9rem;
   text-align: center;
@@ -689,7 +943,7 @@ a.crumb:hover {
   gap: 0.4rem 1.6rem;
   margin-top: 1rem;
   color: var(--muted);
-  font-size: 0.86rem;
+  font-size: 0.84rem;
 }
 
 .legend-item {
@@ -698,30 +952,32 @@ a.crumb:hover {
   gap: 0.5rem;
 }
 
+/* A beam: a mutual link between two taus. */
 .dash {
   display: inline-block;
   width: 1.8rem;
-  border-top: 1px dashed var(--accent);
+  height: 1px;
+  background: var(--fire);
+  box-shadow: 0 0 6px rgba(255, 122, 61, 0.6);
 }
 
 /* A small triangle: a sub-tau circling its tau. */
 .moon {
   display: inline-block;
   flex: none;
-  width: 0;
-  height: 0;
-  border-right: 0.3rem solid transparent;
-  border-bottom: 0.55rem solid var(--accent);
-  border-left: 0.3rem solid transparent;
+  width: 0.62rem;
+  height: 0.55rem;
+  background: var(--fire);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
 /* Graph marks. Sizes are in the graph's own units; the viewBox fits the drawing. */
 
 .hull path {
-  fill: rgba(255, 46, 62, 0.035);
-  stroke: rgba(255, 46, 62, 0.4);
+  fill: rgba(255, 46, 99, 0.03);
+  stroke: rgba(255, 46, 99, 0.34);
   stroke-width: 1;
-  stroke-dasharray: 6 4;
+  stroke-linejoin: miter;
   vector-effect: non-scaling-stroke;
   transition: opacity 0.25s;
 }
@@ -731,27 +987,73 @@ a.crumb:hover {
 .sub-name {
   paint-order: stroke;
   stroke: var(--bg);
-  stroke-linejoin: round;
+  stroke-linejoin: miter;
 }
 
 /* Owner names keep their own case: an upper-case transform would follow the page's language
    (a Turkish page writes i as İ), not the name's. */
 .hull-label {
-  fill: var(--muted);
+  fill: var(--accent);
+  fill-opacity: 0.85;
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   stroke-width: 3px;
 }
 
-.link-line {
+/* A mutual link: an energy beam, a faint wide glow under a thin line that runs from one tau's
+   hue to the other's (a gradient per link, client/universe.ts), with a pulse travelling it. */
+.beam-glow {
   stroke: var(--accent);
-  stroke-opacity: 0.5;
-  stroke-dasharray: 4 5;
+  stroke-opacity: 0.1;
+  stroke-linecap: butt;
 }
 
-.link.active .link-line {
-  stroke-opacity: 0.95;
+.beam-line {
+  stroke-linecap: butt;
+}
+
+.beam-pulse {
+  fill: none;
+  stroke: var(--core);
+  stroke-width: 1.4;
+  stroke-dasharray: 2.5 97.5;
+  stroke-linecap: butt;
+  animation: beam-run 3.6s linear infinite;
+}
+
+.beam-d1 .beam-pulse {
+  animation-delay: -0.6s;
+}
+.beam-d2 .beam-pulse {
+  animation-delay: -1.2s;
+}
+.beam-d3 .beam-pulse {
+  animation-delay: -1.8s;
+}
+.beam-d4 .beam-pulse {
+  animation-delay: -2.4s;
+}
+.beam-d5 .beam-pulse {
+  animation-delay: -3s;
+}
+
+.beam-back .beam-pulse {
+  animation-direction: reverse;
+}
+
+@keyframes beam-run {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.link.active .beam-glow {
+  stroke-opacity: 0.28;
 }
 
 .link-hit {
@@ -774,27 +1076,46 @@ a.crumb:hover {
   fill: transparent;
 }
 
-.node .ring,
-.sub-ring {
+/* A square reticle: shown on hover and on the selected tau or sub-tau. */
+.reticle {
   fill: none;
   stroke: none;
+  vector-effect: non-scaling-stroke;
 }
 
-.node .halo {
-  fill: var(--accent);
-  opacity: 0.3;
-  filter: url(#halo);
-  animation: breathe 5s ease-in-out infinite;
+.node.hovered .reticle,
+.node.selected .reticle,
+.sub.hovered .reticle,
+.sub.selected .reticle {
+  stroke: var(--accent);
+  stroke-width: 1;
 }
 
+.node.selected .reticle,
+.sub.selected .reticle {
+  stroke: var(--flare);
+}
+
+/* Offline: the fire is out. The sigil goes cold and still. */
 .node.offline .node-character,
 .sub.offline .node-character {
-  opacity: 0.45;
+  opacity: 0.5;
+  filter: saturate(0.25);
+}
+
+.graph .offline .ch-anim .ch-flame,
+.graph .offline .ch-anim .ch-flame-in,
+.graph .offline .ch-anim .ch-core,
+.graph .offline .ch-anim .ch-spark {
+  animation-play-state: paused;
 }
 
 .node-name {
   fill: var(--muted);
+  font-family: var(--font-display);
   font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   stroke-width: 3px;
   pointer-events: none;
 }
@@ -803,39 +1124,25 @@ a.crumb:hover {
   fill: var(--text);
 }
 
-.node.hovered .ring,
-.node.selected .ring,
-.sub.hovered .sub-ring,
-.sub.selected .sub-ring {
-  stroke: var(--accent);
-  stroke-width: 1;
-  stroke-dasharray: 2 3;
-  vector-effect: non-scaling-stroke;
-}
-
-.node.selected .ring {
-  stroke-dasharray: none;
-}
-
 .sub {
   cursor: pointer;
   transition: opacity 0.25s;
 }
 
 .sub-tether {
-  stroke: rgba(232, 236, 241, 0.2);
+  stroke: rgba(243, 238, 230, 0.16);
   stroke-width: 1;
-  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
 }
 
 .sub.online .sub-tether {
-  stroke: rgba(255, 46, 62, 0.45);
+  stroke: rgba(255, 46, 99, 0.42);
 }
 
 .sub-name {
   fill: var(--muted);
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 7.5px;
   stroke-width: 2.5px;
   pointer-events: none;
 }
@@ -846,12 +1153,6 @@ a.crumb:hover {
   fill: var(--text);
 }
 
-/* The characters float on their pages; in the graph they only blink. */
-.graph .ch-anim .ch-body,
-.graph .ch-anim .ch-shadow {
-  animation: none;
-}
-
 .node.dimmed,
 .sub.dimmed,
 .link.dimmed,
@@ -859,19 +1160,10 @@ a.crumb:hover {
   opacity: 0.15;
 }
 
-@keyframes breathe {
-  0%,
-  100% {
-    opacity: 0.2;
-  }
-  50% {
-    opacity: 0.45;
-  }
-}
-
 /* The detail card: floats over the graph on wide screens, sits under it on phones. */
 
 .detail {
+  --cut: 14px;
   position: absolute;
   top: 0.9rem;
   right: 0.9rem;
@@ -880,14 +1172,12 @@ a.crumb:hover {
   max-height: calc(100% - 1.8rem);
   overflow: auto;
   padding: 1rem 1.1rem 1.1rem;
-  border: 1px solid var(--line-2);
-  background-color: rgba(13, 15, 19, 0.96);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  background-color: rgba(10, 13, 36, 0.97);
 }
 
 .page-home .detail {
-  top: 5.5rem;
-  right: var(--gutter);
+  top: 1rem;
+  right: 0;
 }
 
 /* A card shown on hover never catches the pointer, so it cannot steal the hover. */
@@ -941,8 +1231,7 @@ a.crumb:hover {
 
 .detail-name {
   margin-top: 0.3rem;
-  font-size: 1.25rem;
-  font-weight: 400;
+  font-size: 1.2rem;
   overflow-wrap: anywhere;
 }
 
@@ -959,7 +1248,7 @@ a.crumb:hover {
   background: none;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -968,7 +1257,7 @@ a.crumb:hover {
   display: inline-block;
   margin-top: 0.35rem;
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .detail-about {
@@ -1004,9 +1293,9 @@ a.crumb:hover {
   margin-top: 1rem;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 400;
-  letter-spacing: 0.14em;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
@@ -1032,6 +1321,8 @@ a.crumb:hover {
 .detail-count {
   flex: none;
   color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1061,8 +1352,9 @@ a.crumb:hover {
   display: inline-block;
   margin-top: 1rem;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
-  letter-spacing: 0.04em;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 /* A sub-tau as a chip: `/coach`. Its about line is the chip's title. */
@@ -1070,10 +1362,11 @@ a.crumb:hover {
   display: inline-block;
   padding: 0.05rem 0.5rem;
   border: 1px solid var(--accent-line);
+  border-left-width: 2px;
   background-color: var(--accent-soft);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   line-height: 1.6;
   text-decoration: none;
   white-space: nowrap;
@@ -1101,12 +1394,17 @@ a.sub-chip:hover {
 .roster-head h2,
 .join h2 {
   font-size: 1.6rem;
-  font-weight: 260;
 }
 
 .roster-count,
 .roster-empty {
   color: var(--muted);
+}
+
+.roster-count {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
 }
 
 .tau-list {
@@ -1117,30 +1415,73 @@ a.sub-chip:hover {
   list-style: none;
 }
 
+/* Cards that are links: chamfered with `.cut`'s layers, so their focus outline shows. */
+.tau-card,
+.sub-card,
+.tau-strip,
+.linked-tau {
+  --cut: 12px;
+  --edge: var(--line);
+  --fill: var(--bg-2);
+  position: relative;
+  isolation: isolate;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.tau-card::before,
+.sub-card::before,
+.tau-strip::before,
+.linked-tau::before,
+.tau-card::after,
+.sub-card::after,
+.tau-strip::after,
+.linked-tau::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  transition: background-color 0.15s;
+}
+
+.tau-card::before,
+.sub-card::before,
+.tau-strip::before,
+.linked-tau::before {
+  inset: 0;
+  background-color: var(--edge);
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+}
+
+.tau-card::after,
+.sub-card::after,
+.tau-strip::after,
+.linked-tau::after {
+  inset: 1px;
+  background-color: var(--fill);
+  clip-path: polygon(calc(var(--cut) - 0.4px) 0, 100% 0, 100% calc(100% - var(--cut) + 0.4px), calc(100% - var(--cut) + 0.4px) 100%, 0 100%, 0 calc(var(--cut) - 0.4px));
+}
+
+.tau-card:hover,
+.sub-card:hover,
+.tau-strip:hover,
+.linked-tau:hover {
+  --edge: var(--accent-line);
+  --fill: var(--bg-3);
+  color: var(--text);
+}
+
 .tau-card {
   display: grid;
   align-content: start;
   gap: 0.35rem;
   height: 100%;
   padding: 0.9rem 1rem 1rem;
-  border: 1px solid var(--line);
-  background-color: var(--bg-2);
-  color: var(--text);
-  text-decoration: none;
-  transition:
-    border-color 0.15s,
-    background-color 0.15s;
-}
-
-.tau-card:hover {
-  color: var(--text);
-  border-color: var(--line-2);
-  background-color: var(--bg-3);
 }
 
 .tau-card[aria-current="true"] {
-  border-color: var(--accent);
-  background-color: var(--accent-soft);
+  --edge: var(--accent);
+  --fill: #170a26;
 }
 
 .tau-card-head {
@@ -1158,15 +1499,16 @@ a.sub-chip:hover {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 1.08rem;
-  font-weight: 450;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .tau-card-handle {
   color: var(--accent-hot);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
 }
 
 .tau-card-owner,
@@ -1179,7 +1521,9 @@ a.sub-chip:hover {
 .tau-card-meta {
   margin-top: 0.2rem;
   color: var(--faint);
-  font-size: 0.84rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
 }
 
 .tau-card.is-offline .tau-card-name {
@@ -1218,13 +1562,13 @@ a.sub-chip:hover {
 }
 
 .command {
+  --cut: 9px;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   width: fit-content;
   max-width: 100%;
   padding: 0.4rem 0.4rem 0.4rem 1rem;
-  border: 1px solid var(--line-2);
   background-color: var(--bg-2);
 }
 
@@ -1233,9 +1577,14 @@ a.sub-chip:hover {
   border: 0;
   background: none;
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.command code::before {
+  content: "$ ";
+  color: var(--accent);
 }
 
 .copy {
@@ -1245,8 +1594,11 @@ a.sub-chip:hover {
   border: 1px solid var(--line-2);
   background: transparent;
   color: var(--muted);
-  font: inherit;
-  font-size: 0.88rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
@@ -1279,34 +1631,38 @@ a.sub-chip:hover {
 }
 
 .avatar-frame {
+  --cut: 18px;
   position: relative;
   display: grid;
   place-items: center;
   width: 11rem;
   aspect-ratio: 1;
-  border: 1px solid var(--line-2);
-  background-color: var(--bg-2);
+  background-color: var(--bg);
 }
 
-/* A HUD ring around the avatar, turning slowly. */
+/* A faint grid and a lit floor inside the frame: the sigil stands on its own stage. */
 .avatar-frame::before {
   content: "";
   position: absolute;
-  inset: 0.6rem;
-  border: 1px dashed var(--accent-line);
-  border-radius: 50%;
-  animation: hud-spin 60s linear infinite;
+  inset: 0;
+  background-image:
+    radial-gradient(ellipse 60% 45% at 50% 78%, rgba(255, 90, 31, 0.14), transparent 70%),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size:
+    auto,
+    16px 16px,
+    16px 16px;
 }
 
 .avatar-frame::after {
   content: "";
   position: absolute;
-  top: -1px;
-  left: -1px;
-  width: 0.9rem;
-  height: 0.9rem;
-  border-top: 2px solid var(--accent);
-  border-left: 2px solid var(--accent);
+  right: 12%;
+  bottom: 12%;
+  left: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent) 25%, var(--flare) 50%, var(--accent) 75%, transparent);
 }
 
 .avatar-frame .ch {
@@ -1319,8 +1675,7 @@ a.sub-chip:hover {
 
 .person-handle {
   margin-top: 0.4rem;
-  font-size: clamp(2.6rem, 1.4rem + 4.2vw, 4.8rem);
-  font-weight: 200;
+  font-size: clamp(2.5rem, 1.4rem + 3.8vw, 4.4rem);
   line-height: 1;
   overflow-wrap: anywhere;
 }
@@ -1339,6 +1694,8 @@ a.sub-chip:hover {
   align-items: center;
   gap: 0.45rem;
   color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
   text-decoration: none;
 }
 
@@ -1366,14 +1723,14 @@ a.sub-chip:hover {
   align-items: center;
   gap: 1rem;
   margin-bottom: 1rem;
-  font-size: 1.3rem;
-  font-weight: 300;
+  font-size: 1.25rem;
 }
 
 .section-title::after {
   content: "";
   flex: 1;
-  border-top: 1px solid var(--line);
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent-line), var(--line) 3rem);
 }
 
 .tau-strip {
@@ -1381,15 +1738,6 @@ a.sub-chip:hover {
   align-items: center;
   gap: 1rem;
   padding: 1rem 1.15rem;
-  border: 1px solid var(--line);
-  background-color: var(--bg-2);
-  color: var(--text);
-  text-decoration: none;
-}
-
-.tau-strip:hover {
-  color: var(--text);
-  background-color: var(--bg-3);
 }
 
 .strip-titles {
@@ -1403,8 +1751,9 @@ a.sub-chip:hover {
 }
 
 .strip-name {
+  font-family: var(--font-display);
   font-size: 1.15rem;
-  font-weight: 450;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -1423,27 +1772,14 @@ a.sub-chip:hover {
 }
 
 .sub-card {
+  --cut: 16px;
   display: grid;
   align-content: start;
   justify-items: center;
   gap: 0.45rem;
   height: 100%;
   padding: 1.25rem 1rem 1.1rem;
-  border: 1px solid var(--line);
-  background-color: var(--bg-2);
-  color: var(--text);
   text-align: center;
-  text-decoration: none;
-  transition:
-    border-color 0.15s,
-    background-color 0.15s;
-}
-
-.sub-card:hover {
-  --corner: var(--accent);
-  color: var(--text);
-  border-color: var(--line-2);
-  background-color: var(--bg-3);
 }
 
 .sub-card-head {
@@ -1456,7 +1792,8 @@ a.sub-chip:hover {
 
 .sub-card-name {
   font-family: var(--font-mono);
-  font-size: 1.05rem;
+  font-size: 1rem;
+  font-weight: 500;
 }
 
 .sub-card-about {
@@ -1468,8 +1805,9 @@ a.sub-chip:hover {
 .sub-card-meta {
   color: var(--faint);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .linked-list {
@@ -1481,20 +1819,13 @@ a.sub-chip:hover {
 }
 
 .linked-tau {
+  --cut: 10px;
+  --fill: var(--bg);
   display: flex;
   align-items: center;
   gap: 0.75rem;
   height: 100%;
   padding: 0.6rem 0.85rem;
-  border: 1px solid var(--line);
-  color: var(--text);
-  text-decoration: none;
-}
-
-.linked-tau:hover {
-  color: var(--text);
-  border-color: var(--line-2);
-  background-color: var(--bg-2);
 }
 
 .linked-titles {
@@ -1538,7 +1869,7 @@ a.sub-chip:hover {
   isolation: isolate;
   display: grid;
   place-items: center;
-  width: min(16rem, 70vw);
+  width: min(17rem, 72vw);
   aspect-ratio: 1;
 }
 
@@ -1552,12 +1883,11 @@ a.sub-chip:hover {
   position: relative;
   width: 70%;
   height: auto;
-  filter: drop-shadow(0 0 22px rgba(255, 46, 62, 0.18));
+  filter: drop-shadow(0 0 18px rgba(255, 90, 31, 0.22));
 }
 
 .sub-title {
-  font-size: clamp(3rem, 1.8rem + 5.5vw, 5.6rem);
-  font-weight: 200;
+  font-size: clamp(2.8rem, 1.8rem + 4.6vw, 5rem);
   line-height: 1;
   overflow-wrap: anywhere;
 }
@@ -1590,6 +1920,8 @@ a.sub-chip:hover {
   align-items: center;
   gap: 0.35rem;
   color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
   text-decoration: none;
 }
 
@@ -1641,8 +1973,9 @@ a.sub-chip:hover {
 .msg-who {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
@@ -1655,8 +1988,8 @@ a.sub-chip:hover {
 }
 
 .msg-text {
-  padding: 0.6rem 0.9rem;
-  border: 1px solid var(--line-2);
+  --cut: 9px;
+  padding: 0.6rem 0.95rem;
   background-color: var(--bg-2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1667,8 +2000,8 @@ a.sub-chip:hover {
 }
 
 .msg-visitor .msg-text {
-  border-color: var(--accent-line);
-  background-color: var(--accent-soft);
+  --edge: var(--accent-line);
+  background-color: #1a0a26;
 }
 
 .msg-pending {
@@ -1731,14 +2064,13 @@ a.sub-chip:hover {
 }
 
 .talk-form {
-  padding: 0.75rem 0.9rem 0.6rem;
-  border: 1px solid var(--line-2);
+  --cut: 14px;
+  padding: 0.75rem 0.95rem 0.6rem;
   background-color: var(--bg-2);
 }
 
 .talk-form:focus-within {
-  border-color: var(--accent-line);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  --edge: var(--accent-line);
 }
 
 .talk-form textarea {
@@ -1776,11 +2108,11 @@ a.sub-chip:hover {
   margin-right: auto;
   color: var(--faint);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 
 .talk-keys kbd {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
 }
 
 /* Touch screens have no Shift+Enter to explain. */
@@ -1793,7 +2125,7 @@ a.sub-chip:hover {
 .talk-count {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1820,12 +2152,11 @@ a.sub-chip:hover {
 .talk-privacy::before {
   content: "";
   flex: none;
-  width: 0;
-  height: 0;
-  margin-top: 0.3rem;
-  border-right: 0.32rem solid transparent;
-  border-bottom: 0.55rem solid var(--accent);
-  border-left: 0.32rem solid transparent;
+  width: 0.62rem;
+  height: 0.55rem;
+  margin-top: 0.35rem;
+  background: var(--fire);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
 .no-chat {
@@ -1835,9 +2166,9 @@ a.sub-chip:hover {
 }
 
 .sub-details {
+  --cut: 12px;
   margin-top: 2rem;
   padding: 0 1rem;
-  border: 1px solid var(--line);
   background-color: var(--bg-2);
 }
 
@@ -1847,6 +2178,8 @@ a.sub-chip:hover {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.8rem 0;
+  font-family: var(--font-display);
+  font-weight: 600;
   cursor: pointer;
   list-style: none;
 }
@@ -1878,12 +2211,13 @@ a.sub-chip:hover {
 /* ---- the claim page --------------------------------------------------------------- */
 
 .claim-panel {
+  --cut: 18px;
+  --edge: var(--line-2);
   display: grid;
   gap: 1.1rem;
   max-width: 44rem;
   margin: 0 auto;
   padding: clamp(1.25rem, 4vw, 2.25rem);
-  border: 1px solid var(--line-2);
   background-color: var(--bg-2);
 }
 
@@ -1894,8 +2228,7 @@ a.sub-chip:hover {
 }
 
 .claim-panel h1 {
-  font-size: clamp(2rem, 1.3rem + 2.6vw, 3.1rem);
-  font-weight: 220;
+  font-size: clamp(1.9rem, 1.3rem + 2.3vw, 2.9rem);
 }
 
 .claim-lead {
@@ -1918,7 +2251,7 @@ a.sub-chip:hover {
 }
 
 .claim-result-ok {
-  border-left-color: var(--accent);
+  border-left-color: var(--flare);
   color: var(--text);
 }
 
@@ -1929,7 +2262,7 @@ a.sub-chip:hover {
 
 .claim-result-ok p::before {
   content: "✓ ";
-  color: var(--accent);
+  color: var(--flare);
 }
 
 .claim-result-error p::before {
@@ -1937,7 +2270,7 @@ a.sub-chip:hover {
 }
 
 .claim-note {
-  color: var(--faint);
+  color: var(--muted);
   font-size: 0.88rem;
 }
 
@@ -1966,10 +2299,10 @@ a.sub-chip:hover {
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  font-size: clamp(2.6rem, 1.2rem + 5.2vw, 5.2rem);
-  font-weight: 200;
+  font-size: clamp(2.5rem, 1.2rem + 4.6vw, 4.8rem);
+  font-weight: 600;
   line-height: 1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.015em;
 }
 
 .intro-lead {
@@ -2060,10 +2393,10 @@ a.sub-chip:hover {
 
 .chapter > h2 {
   max-width: 22ch;
-  font-size: clamp(2rem, 1.3rem + 2.6vw, 3.1rem);
-  font-weight: 220;
+  font-size: clamp(1.9rem, 1.3rem + 2.3vw, 2.9rem);
+  font-weight: 600;
   line-height: 1.05;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.01em;
 }
 
 .part-name {
@@ -2139,8 +2472,8 @@ a.sub-chip:hover {
 .steps h3,
 .risks-title {
   color: var(--text);
-  font-size: 1.25rem;
-  font-weight: 400;
+  font-size: 1.2rem;
+  font-weight: 600;
 }
 
 .prose strong,
@@ -2213,7 +2546,7 @@ a.sub-chip:hover {
   padding: clamp(0.9rem, 2.5vw, 1.25rem);
   border: 1px solid var(--line);
   background:
-    radial-gradient(ellipse 80% 70% at 50% 45%, rgba(255, 46, 62, 0.06), transparent 70%),
+    radial-gradient(ellipse 80% 70% at 50% 45%, rgba(255, 46, 99, 0.06), transparent 70%),
     var(--bg-2);
 }
 
@@ -2271,20 +2604,20 @@ a.sub-chip:hover {
 .d-house path,
 .d-house rect {
   fill: none;
-  stroke: rgba(232, 236, 241, 0.38);
+  stroke: rgba(243, 238, 230, 0.38);
   stroke-width: 1.5;
   stroke-linejoin: miter;
 }
 
 .d-house rect {
-  fill: rgba(7, 8, 10, 0.75);
+  fill: rgba(5, 7, 26, 0.75);
 }
 
 .d-device rect,
 .d-device circle,
 .d-card rect {
-  fill: rgba(7, 8, 10, 0.85);
-  stroke: rgba(232, 236, 241, 0.3);
+  fill: rgba(5, 7, 26, 0.85);
+  stroke: rgba(243, 238, 230, 0.3);
   stroke-width: 1.5;
 }
 
@@ -2292,7 +2625,7 @@ a.sub-chip:hover {
 .d-card path,
 .d-card circle {
   fill: none;
-  stroke: rgba(232, 236, 241, 0.35);
+  stroke: rgba(243, 238, 230, 0.35);
   stroke-width: 1.5;
   stroke-linecap: square;
 }
@@ -2305,7 +2638,7 @@ a.sub-chip:hover {
 .d-hanger,
 .d-wire-soft {
   fill: none;
-  stroke: rgba(232, 236, 241, 0.22);
+  stroke: rgba(243, 238, 230, 0.22);
   stroke-width: 1.5;
   stroke-dasharray: 3 4;
 }
@@ -2349,7 +2682,7 @@ a.sub-chip:hover {
 }
 
 .d-head-soft {
-  fill: rgba(232, 236, 241, 0.35);
+  fill: rgba(243, 238, 230, 0.35);
 }
 
 .d-gate {
@@ -2376,18 +2709,18 @@ a.sub-chip:hover {
 .d-peer,
 .d-tau {
   fill: var(--bg-2);
-  stroke: rgba(232, 236, 241, 0.3);
+  stroke: rgba(243, 238, 230, 0.3);
   stroke-width: 1.5;
 }
 
 .d-tau-online {
-  fill: #1a0a0d;
+  fill: #1a0a22;
   stroke: var(--accent);
   stroke-width: 2;
 }
 
 .d-region {
-  fill: rgba(232, 236, 241, 0.02);
+  fill: rgba(243, 238, 230, 0.02);
   stroke: var(--line-2);
   stroke-width: 1;
   stroke-dasharray: 4 5;
@@ -2398,7 +2731,7 @@ a.sub-chip:hover {
 
 .s-box,
 .s-post {
-  fill: #1a0a0d;
+  fill: #1a0a22;
   stroke: var(--accent);
   stroke-width: 2;
   stroke-linejoin: miter;
@@ -2421,7 +2754,7 @@ a.sub-chip:hover {
 
 .s-fold {
   fill: none;
-  stroke: #7d8796;
+  stroke: #8d90ab;
   stroke-width: 1.5;
 }
 
@@ -2430,11 +2763,11 @@ a.sub-chip:hover {
 }
 
 .d-letter-ember {
-  --paper: #ffd6d9;
+  --paper: #ffd3dc;
 }
 
 .d-letter-flare {
-  --paper: #f4f6f9;
+  --paper: #fff4e0;
   --seal: var(--accent-hot);
 }
 
@@ -2449,7 +2782,7 @@ a.sub-chip:hover {
 }
 
 .d-helper {
-  fill: #1a0a0d;
+  fill: #1a0a22;
   stroke: var(--accent);
   stroke-width: 1.5;
   stroke-dasharray: 2.5 2.5;
@@ -2473,28 +2806,28 @@ a.sub-chip:hover {
 }
 
 .d-hull {
-  fill: rgba(255, 46, 62, 0.05);
-  stroke: rgba(255, 46, 62, 0.4);
+  fill: rgba(255, 46, 99, 0.05);
+  stroke: rgba(255, 46, 99, 0.4);
   stroke-width: 1;
   stroke-dasharray: 6 4;
 }
 
 .d-sub {
-  fill: #1a0a0d;
+  fill: #1a0a22;
   stroke: var(--accent);
   stroke-width: 1.5;
 }
 
 .d-sub-new {
   fill: none;
-  stroke: rgba(232, 236, 241, 0.3);
+  stroke: rgba(243, 238, 230, 0.3);
   stroke-width: 1.5;
   stroke-dasharray: 3 4;
 }
 
 .d-next {
   fill: none;
-  stroke: rgba(232, 236, 241, 0.3);
+  stroke: rgba(243, 238, 230, 0.3);
   stroke-width: 1.5;
   stroke-dasharray: 2 6;
   stroke-linecap: round;
@@ -2510,7 +2843,7 @@ a.sub-chip:hover {
 
 .d-ghost {
   fill: none;
-  stroke: rgba(232, 236, 241, 0.16);
+  stroke: rgba(243, 238, 230, 0.16);
   stroke-width: 1.5;
   stroke-dasharray: 1 6;
   stroke-linecap: round;
@@ -2613,6 +2946,7 @@ a.sub-chip:hover {
   max-width: 85%;
   padding: 0.55rem 0.85rem 0.45rem;
   line-height: 1.45;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
 }
 
 .bubble time {
@@ -2630,7 +2964,7 @@ a.sub-chip:hover {
 }
 
 .bubble-you time {
-  color: rgba(7, 8, 10, 0.7);
+  color: rgba(5, 7, 26, 0.7);
 }
 
 .bubble-tau {
@@ -2686,7 +3020,9 @@ a.sub-chip:hover {
   padding: 0 1.1rem;
   border: 1px solid var(--line-2);
   color: var(--muted);
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-weight: 600;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
 }
 
 .pill-yes {
@@ -2700,7 +3036,7 @@ a.sub-chip:hover {
 .idcard {
   border-color: var(--accent-line);
   background:
-    radial-gradient(circle at 12% 0%, rgba(255, 46, 62, 0.14), transparent 55%),
+    radial-gradient(circle at 12% 0%, rgba(255, 46, 99, 0.14), transparent 55%),
     var(--bg-2);
 }
 
@@ -2794,7 +3130,9 @@ a.sub-chip:hover {
 
 .threats tbody th {
   width: 34%;
+  font-family: var(--font-display);
   font-size: 1.1rem;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -2846,6 +3184,8 @@ a.sub-chip:hover {
 /* ---- 404 -------------------------------------------------------------------------- */
 
 .missing {
+  position: relative;
+  isolation: isolate;
   display: grid;
   justify-items: center;
   gap: 1rem;
@@ -2855,6 +3195,24 @@ a.sub-chip:hover {
   text-align: center;
 }
 
+/* The mark on a lit floor between two faint triangles. */
+.missing::before {
+  content: "";
+  position: absolute;
+  top: calc(clamp(3rem, 10vw, 7rem) - 3rem);
+  left: 50%;
+  z-index: -1;
+  width: 13rem;
+  height: 11.5rem;
+  transform: translateX(-50%);
+  background:
+    linear-gradient(90deg, transparent, var(--accent) 25%, var(--flare) 50%, var(--accent) 75%, transparent)
+      50% 100% / 100% 1px no-repeat,
+    radial-gradient(ellipse 50% 40% at 50% 100%, rgba(255, 90, 31, 0.18), transparent 70%);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  opacity: 0.9;
+}
+
 .missing-mark {
   width: 8rem;
   height: 8rem;
@@ -2862,8 +3220,7 @@ a.sub-chip:hover {
 }
 
 .missing h1 {
-  font-size: clamp(2rem, 1.3rem + 2.8vw, 3.2rem);
-  font-weight: 220;
+  font-size: clamp(1.9rem, 1.3rem + 2.5vw, 3rem);
 }
 
 .missing p:not(.kicker) {
@@ -2873,42 +3230,40 @@ a.sub-chip:hover {
 
 /* ---- narrow screens --------------------------------------------------------------- */
 
-/* Tablets: the hero's text runs along the bottom, the ways side by side, the graph above. */
-@media (max-width: 64rem) {
+/* Below 72rem the landing stacks: the graph on top, the text under it. */
+@media (max-width: 72rem) {
+  .hero {
+    min-height: 0;
+  }
+
+  .hero-inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding-top: 4.5rem;
+  }
+
+  .hero-sky {
+    order: -1;
+    min-height: 0;
+    height: clamp(20rem, 54svh, 36rem);
+  }
+
   .hero-copy {
-    inset: auto 0 0 0;
-    width: auto;
-    padding: 3rem var(--gutter) 2rem;
-    background: linear-gradient(0deg, rgba(7, 8, 10, 0.98) 72%, rgba(7, 8, 10, 0));
+    max-width: 46rem;
+    padding-top: 1rem;
   }
 
   .hero h1 {
-    max-width: 18ch;
+    max-width: 20ch;
   }
 
-  .ways {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .hero-beams {
+    bottom: auto;
+    height: calc(4.5rem + clamp(20rem, 54svh, 36rem));
   }
 
-  .way {
-    grid-template-columns: minmax(0, 1fr);
-    align-content: start;
-  }
-
-  .way-tag {
-    grid-row: auto;
-    padding-top: 0;
-  }
-
-  .hero .hud {
-    top: 34%;
-    left: 50%;
-    width: min(72vh, 88vw);
-  }
-
-  .hero .stage-message {
-    left: 0;
-    bottom: 50%;
+  .hero-floor {
+    right: -2rem;
   }
 
   .page-home .detail {
@@ -2955,29 +3310,21 @@ a.sub-chip:hover {
 
 /* Phones: the graph sits at the top of the hero, the text follows it. */
 @media (max-width: 44rem) {
-  .hero {
-    min-height: 0;
-  }
-
   .hero-sky {
-    position: relative;
     height: max(19rem, 46svh);
   }
 
-  .hero-copy {
-    position: relative;
-    inset: auto;
-    padding: 0.5rem var(--gutter) 2.5rem;
-    background: none;
+  .hero-beams {
+    height: calc(4.5rem + max(19rem, 46svh));
   }
 
-  .hero .hud {
-    top: 55%;
-    width: min(92vw, 40svh);
-  }
-
-  .ways {
+  .way {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .way-tag {
+    grid-row: auto;
+    padding-top: 0;
   }
 
   .way .button {
@@ -2988,6 +3335,10 @@ a.sub-chip:hover {
   .ledger,
   .risks {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .readout {
+    display: none;
   }
 
   /* Header: the mark, the breadcrumb, sign-in and the switcher on the first line, the menu
@@ -3036,7 +3387,6 @@ a.sub-chip:hover {
     width: auto;
     max-height: none;
     margin-top: 1rem;
-    box-shadow: none;
   }
 
   .stage-note {
@@ -3154,6 +3504,10 @@ a.sub-chip:hover {
   .site-header {
     gap: 0.5rem 0.9rem;
   }
+
+  .site-nav {
+    gap: 0.25rem 1rem;
+  }
 }
 
 /* ---- motion ----------------------------------------------------------------------- */
@@ -3165,5 +3519,10 @@ a.sub-chip:hover {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+
+  /* A still pulse would sit at the start of each beam: hide it. */
+  .beam-pulse {
+    display: none;
   }
 }

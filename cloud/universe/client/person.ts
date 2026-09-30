@@ -93,7 +93,7 @@ function renderSubs(view: PersonView, who: string): void {
   const address = text(view.address);
   for (const sub of subs) {
     const href = subPath(sub, who, language) ?? universePath(`${address}/${sub.name}`, language);
-    const card = link(href, "", "sub-card corners");
+    const card = link(href, "", "sub-card");
     const head = html("span", "sub-card-head");
     head.append(html("span", "sub-card-name", `/${sub.name}`));
     if (sub.web === true) head.append(html("span", "tag", t.chatTag));

@@ -306,6 +306,167 @@ async def test_esc_cancels_a_running_attempt(tmp_path: Path) -> None:
         assert isinstance(app.screen, GuardScreen) and app.locked
 
 
+# -- the Touch ID fallback (issue 114) ---------------------------------------------------------
+
+TOUCH_ID = GuardVerdict(True, "match", "touch_id")
+TOUCH_STEP = [GuardProgress("touch_id", 1, None)]
+CONFIRM = t("guard.fallback.confirm", "en")
+
+
+def offer(mode: str = "touch_id", language: str = "en") -> str:
+    return t(f"guard.fallback.{mode}", language, how=t("tui.guard.fallback_how", language, key="t"))
+
+
+def unlock_calls(guard: FakeGuard) -> list[tuple[str, Any]]:
+    return [call for call in guard.calls if call[0] == "unlock"]
+
+
+async def test_the_offer_appears_after_two_face_failures_only_with_a_fallback(
+    tmp_path: Path,
+) -> None:
+    guard = FakeGuard("locked", fallback="touch_id")
+    app = guard_app(tmp_path, guard)
+    async with app.run_test(size=(80, 24)) as pilot:
+        screen = await lock_screen(pilot)
+        entry = screen.query_one("#entry", Input)
+        await pilot.press("t")  # not offered yet: typed like any key
+        assert entry.value == "t" and unlock_calls(guard) == []
+        entry.value = ""
+        await pilot.press("enter")
+        await wait_until(pilot, lambda: len(unlock_calls(guard)) == 1 and not app.attempt_running)
+        await pilot.pause()
+        assert screen.offer is None and offer() not in screen.text
+        assert screen.query_one("#hint").content.plain == t("tui.guard.hint", "en")
+        await pilot.press("enter")
+        await wait_until(pilot, lambda: screen.offer == "touch_id")
+        assert offer() == "The face check is not working? Use Touch ID instead: press t."
+        assert offer() in screen.text
+        assert screen.query_one("#hint").content.plain == (
+            "enter unlock · t Touch ID · esc cancel · ctrl+q quit"
+        )
+        await type_entry(pilot, "/help")  # the lock screen's help names the key too
+        assert screen.message_lines[-1] == t("tui.guard.hint_fallback", "en", key="t")
+        assert guard.unlock_methods == ["face", "face"]
+
+    plain = FakeGuard("locked")  # no fallback configured: never offered
+    app = guard_app(tmp_path / "plain", plain)
+    async with app.run_test(size=(80, 24)) as pilot:
+        screen = await lock_screen(pilot)
+        for _ in range(2):
+            await pilot.press("enter")
+            await wait_until(pilot, lambda: not app.attempt_running)
+            await pilot.pause()
+        await wait_until(pilot, lambda: len(unlock_calls(plain)) == 2)
+        await pilot.pause(0.1)
+        assert screen.offer is None and "Touch ID" not in screen.text
+        await pilot.press("t")
+        assert screen.query_one("#entry", Input).value == "t"
+        assert plain.unlock_methods == ["face", "face"]
+
+
+async def test_t_runs_touch_id_and_a_pass_unlocks_with_touch_id(tmp_path: Path) -> None:
+    guard = FakeGuard(
+        "locked", verdicts=[GuardVerdict(False, "camera_busy"), TOUCH_ID], fallback="touch_id"
+    )
+    model = FakeModel(["Okay."])
+    app = guard_app(tmp_path, guard, model=model)
+    async with app.run_test(size=(80, 24)) as pilot:
+        screen = await lock_screen(pilot)
+        await pilot.press("enter")  # a camera_* verdict offers the fallback at once
+        await wait_until(pilot, lambda: screen.offer == "touch_id")
+        assert screen.message_lines == [
+            t("guard.verdict.camera_busy", "en"),
+            t("guard.prompt.retry", "en"),
+        ]
+        guard.progress = list(TOUCH_STEP)
+        await pilot.press("t")
+        await unlocked(pilot)
+        assert screen.shown[-2:] == [CONFIRM, "Touch the Touch ID sensor."]
+        assert notices(app)[-1] == (
+            "▸ Unlocked (Touch ID). Failed attempts since the last unlock: 0."
+        )
+        assert app.agent is not None and app.agent.guard is guard
+    assert guard.unlock_methods == ["face", "touch_id"]
+    assert guard.method == "touch_id"
+    assert model.calls == []  # the unlock made no model call
+
+
+async def test_a_failed_touch_id_keeps_the_lock_and_shows_the_reason(tmp_path: Path) -> None:
+    guard = FakeGuard(
+        "locked",
+        verdicts=[GuardVerdict(False, "camera_denied"), GuardVerdict(False, "touch_id_failed")],
+        fallback="touch_id_or_password",
+    )
+    app = guard_app(tmp_path, guard)
+    async with app.run_test(size=(80, 24)) as pilot:
+        screen = await lock_screen(pilot)
+        await pilot.press("enter")
+        await wait_until(pilot, lambda: screen.offer == "touch_id_or_password")
+        await type_entry(pilot, "T")  # t + Enter, any case, works too
+        failed = t("guard.verdict.touch_id_failed", "en")
+        await wait_until(pilot, lambda: failed in screen.message_lines)
+        await wait_until(pilot, lambda: screen.offer is not None)
+        assert CONFIRM in screen.shown
+        assert screen.message_lines == [failed, t("guard.prompt.retry", "en")]
+        assert offer("touch_id_or_password") in screen.text  # still offered
+        assert isinstance(app.screen, GuardScreen) and app.locked and app.agent is None
+    assert guard.unlock_methods == ["face", "touch_id"]
+
+
+class WaitingTouchId(FakeGuard):
+    """The Touch ID fallback is offered at once; its prompt waits until it is cancelled."""
+
+    def __init__(self) -> None:
+        super().__init__("locked", fallback="touch_id")
+        self.camera_trouble = True
+        self.cancelled = False
+
+    async def unlock(self, *, on_progress: Any = None, **kwargs: Any) -> GuardVerdict:
+        self.unlock_methods.append(kwargs.get("method", "face"))
+        if on_progress is not None:
+            on_progress(GuardProgress("touch_id", 1, None))
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        raise AssertionError("never reached")
+
+
+async def test_esc_cancels_a_touch_id_attempt(tmp_path: Path) -> None:
+    guard = WaitingTouchId()
+    app = guard_app(tmp_path, guard)
+    async with app.run_test(size=(80, 24)) as pilot:
+        screen = await lock_screen(pilot)
+        await wait_until(pilot, lambda: screen.offer == "touch_id")  # offered from the start
+        await pilot.press("t")
+        await wait_until(pilot, lambda: screen.progress_line == "Touch the Touch ID sensor.")
+        assert app.attempt_running and screen.offer is None  # no offer while it runs
+        await pilot.press("t")  # a second press while the sheet is up starts nothing
+        await pilot.press("escape")
+        await wait_until(pilot, lambda: ("cancel", process_client_id()) in guard.calls)
+        await wait_until(pilot, lambda: not app.attempt_running)
+        assert guard.cancelled and guard.unlock_methods == ["touch_id"]
+        assert screen.message_lines[0] == t("guard.verdict.cancelled", "en")
+        await wait_until(pilot, lambda: screen.offer == "touch_id")
+        assert isinstance(app.screen, GuardScreen) and app.locked
+
+
+async def test_the_offer_follows_the_ui_language(tmp_path: Path) -> None:
+    guard = FakeGuard("locked", fallback="touch_id")
+    guard.camera_trouble = True
+    app = guard_app(tmp_path, guard)
+    async with app.run_test(size=(80, 24)) as pilot:
+        screen = await lock_screen(pilot)
+        await wait_until(pilot, lambda: screen.offer == "touch_id")
+        await type_entry(pilot, "/lang tr")
+        assert offer(language="tr") in screen.text
+        assert "t tuşuna bas" in screen.text
+        assert screen.query_one("#hint").content.plain == t(
+            "tui.guard.hint_fallback", "tr", key="t"
+        )
+
+
 async def test_another_channel_unlocking_closes_the_lock_screen(tmp_path: Path) -> None:
     guard = FakeGuard("locked")
     app = guard_app(tmp_path, guard)

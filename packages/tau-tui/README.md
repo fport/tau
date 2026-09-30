@@ -180,6 +180,30 @@ one nothing below applies and nothing on screen changes except the `/guard` menu
   action but ctrl+q. After an unlock the transcript shows "Unlocked (face). Failed attempts
   since the last unlock: N."; no model call is made and a prompt kept in the composer stays
   there.
+- **The Touch ID fallback (issue 114).** While the guard's status carries `fallback` (after
+  two face failures, or a verdict that says the face check cannot work, such as a `camera_*`
+  one), the lock screen shows the offer and its hint line names the key:
+
+  ```text
+          │ Another app is using the camera.                             │
+          │ Press Enter to try again.                                    │
+          │                                                              │
+          │ The face check is not working? Use Touch ID instead: press   │
+          │ t.                                                           │
+          │                                                              │
+          │  Enter unlocks · /help /lang /guard /quit                    │
+          │                                                              │
+          │ enter unlock · t Touch ID · esc cancel · ctrl+q quit         │
+  ```
+
+  `t` in the empty field (`keys.TOUCH_ID_KEY`; `t` + Enter works too) runs
+  `guard.unlock(method="touch_id")`: "Confirm in the macOS prompt on the Mac's screen." shows
+  until the hub's `touch_id` step ("Touch the Touch ID sensor.") arrives, Esc cancels it, a
+  failure keeps the lock and says why (the offer stays), and a pass unlocks like a face
+  unlock with "Unlocked (Touch ID). …". `t` is a printable key, so it survives mosh; it acts
+  only in the empty field while the offer shows (the way `?` acts only in an empty composer)
+  and is typed otherwise. With `unlock_fallback = "touch_id_or_password"` the offer names the
+  Mac password too.
 - **Live locks.** A worker long-polls `guard.watch()` for the life of the app. When the guard
   reports anything but `unlocked` (idle, screen lock, sleep, max age, a hub restart, `/guard
   lock` from Telegram, ctrl+l), the app rejects an open approval dialog (`REJECTED`), cancels
@@ -382,7 +406,8 @@ card), busy, approval, menu (all fourteen rows) and picker at 80x24, wide 100x30
 ultra 160x45 (a fence and the last turn's cards expanded), the events view at 50x24, short 80x18,
 the settings screen on Model roles at 80x24 (`show_paths=False`), the setup screen at 80x24, and
 for the owner guard the lock screen at start, the lock screen over a chat (nothing of the chat
-may show through) and a tier-2 step-up in progress, all at 80x24.
+may show through), the lock screen offering the Touch ID fallback after a `camera_busy` verdict
+and a tier-2 step-up in progress, all at 80x24.
 Every snapshot uses the fixed session id `20260929-120000-abcd` (checked in every file except the
 setup screen, which has no session, and the lock screens, which must hide it), a fixed clock, UTC event times, no motion and no durations,
 and is taken after the streams stopped; review a regenerated file before committing it (it must

@@ -261,6 +261,12 @@ TUI_MESSAGES: dict[str, dict[str, str]] = {
         "en": "enter unlock · esc cancel · ctrl+q quit",
         "tr": "enter kilidi aç · esc iptal · ctrl+q çık",
     },
+    # the Touch ID fallback on the lock screen (issue 114); {key} is keys.TOUCH_ID_KEY
+    "tui.guard.hint_fallback": {
+        "en": "enter unlock · {key} Touch ID · esc cancel · ctrl+q quit",
+        "tr": "enter kilidi aç · {key} Touch ID · esc iptal · ctrl+q çık",
+    },
+    "tui.guard.fallback_how": {"en": "press {key}", "tr": "{key} tuşuna bas"},
     "tui.busy.step_up": {"en": "Identity check: {step}", "tr": "Kimlik kontrolü: {step}"},
     "tui.turn.stop.locked": {"en": "Locked", "tr": "Kilitli"},
     "tui.key.lock": {"en": "lock tau", "tr": "tau'yu kilitle"},

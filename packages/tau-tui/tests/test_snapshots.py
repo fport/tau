@@ -34,7 +34,7 @@ from helpers import (
     two_tool_replies,
     wait_until,
 )
-from tau_core import AgentEvent, GuardProgress, MemorySessionStore, Tier, tau_tool
+from tau_core import AgentEvent, GuardProgress, GuardVerdict, MemorySessionStore, Tier, tau_tool
 from tau_core.testing import FakeGuard, ToolCall, test_config
 from tau_tui import ApprovalScreen, SettingsScreen
 from tau_tui.guard import GuardScreen
@@ -322,6 +322,29 @@ def test_lock_over_chat_80x24(tmp_path: Path, snap_compare) -> None:
 
     assert snap_compare(app, terminal_size=(80, 24), run_before=chat_then_lock)
     _check_lock("test_lock_over_chat_80x24", "Salon", "set_light")
+
+
+def test_lock_fallback_80x24(tmp_path: Path, snap_compare) -> None:
+    """After a ``camera_*`` verdict (issue 114): the reason, the Touch ID offer and its key in
+    the hint; still no session."""
+    guard = FakeGuard("locked", verdicts=[GuardVerdict(False, "camera_busy")], fallback="touch_id")
+    app = make_app(tmp_path, [], tools=light_tools(), guard=guard)
+
+    async def fail_once(pilot: Pilot) -> None:
+        await _steady_lock(pilot)
+        await pilot.press("enter")
+        await wait_until(pilot, lambda: getattr(app.screen, "offer", None) == "touch_id")
+        await pilot.pause()
+
+    assert snap_compare(app, terminal_size=(80, 24), run_before=fail_once)
+    _check_lock("test_lock_fallback_80x24")
+    svg = (SNAPSHOT_DIR / f"test_lock_fallback_80x24{EXTENSION}").read_text(encoding="utf-8")
+    for text in (
+        "Another&#160;app&#160;is&#160;using",
+        "Use&#160;Touch&#160;ID",
+        "t&#160;Touch&#160;ID",
+    ):
+        assert text in svg, text
 
 
 class _StepUpGuard(FakeGuard):

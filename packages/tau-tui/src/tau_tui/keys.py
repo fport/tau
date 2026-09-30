@@ -5,6 +5,9 @@ area needs for editing (``ctrl+a/w/x/c/v/u/k/z/y/d/f/b``, ``home``/``end``), tmu
 flow control's ``ctrl+s`` and ``ctrl+z`` are never bound. ``ctrl+e`` is taken from the text
 area on purpose (``end`` still moves the cursor). F-keys mirror the ctrl keys for Termius'
 key bar.
+
+The lock screen (``tau_tui.guard``) has its own keys: Enter unlocks, Esc cancels an attempt,
+and :data:`TOUCH_ID_KEY` runs the Touch ID fallback while it is offered.
 """
 
 from __future__ import annotations
@@ -70,6 +73,13 @@ HELP_KEYS: tuple[tuple[str, str], ...] = (
     ("ctrl+q", "tui.key.quit"),
 )
 """What the help card lists, in this order (``?`` and ``/`` only in an empty composer)."""
+
+
+TOUCH_ID_KEY = "t"
+"""The lock screen's Touch ID fallback key. It is a printable key, so it survives mosh and
+Termius, and it acts only in the empty lock-screen field while the guard offers the fallback
+(the way ``?`` acts only in an empty composer); anywhere else it is typed. It is not an app
+binding: every app action is refused while the guard is locked."""
 
 
 def app_bindings() -> list[Binding]:

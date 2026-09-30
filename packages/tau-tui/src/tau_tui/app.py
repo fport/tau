@@ -1379,7 +1379,9 @@ class TauApp(App[None]):
         """``/help`` on the lock screen: only what works while locked."""
         lang = self.language
         lines = help_lines(lang, only=ALLOWED_WHILE_LOCKED)
-        return [t("chat.help_header", lang), *lines, "", t("tui.guard.hint", lang)]
+        screen = self.guard_screen
+        hint = screen.hint_text(lang) if screen is not None else t("tui.guard.hint", lang)
+        return [t("chat.help_header", lang), *lines, "", hint]
 
     def _guard_say(self, lines: list[str]) -> bool:
         """Show ``lines`` on the lock screen when it is up; ``False`` when it is not."""
@@ -1569,22 +1571,24 @@ class TauApp(App[None]):
         self.refresh_chrome()
         self.open_settings()
 
-    def start_unlock(self) -> None:
-        """Enter on the lock screen (or ``/guard unlock``): one unlock attempt in a worker."""
+    def start_unlock(self, method: str = "face") -> None:
+        """Enter on the lock screen (or ``/guard unlock``): one unlock attempt in a worker.
+        ``method="touch_id"`` is the lock screen's Touch ID fallback key while the guard offers
+        it (the hub refuses it otherwise)."""
         if self.guard is None or not self.locked or self.attempt_running:
             return
         self.attempt_running = True
         self._unlock_worker = self.run_worker(
-            self._unlock(), group="guard-unlock", exclusive=True, exit_on_error=False
+            self._unlock(method), group="guard-unlock", exclusive=True, exit_on_error=False
         )
 
-    async def _unlock(self) -> None:
+    async def _unlock(self, method: str = "face") -> None:
         guard = self.guard
         assert guard is not None
         lang = self.language
         screen = self.guard_screen
         if screen is not None:
-            screen.begin_attempt()
+            screen.begin_attempt(method)
 
         def on_progress(progress: GuardProgress) -> None:
             if self.guard_screen is not None:
@@ -1596,6 +1600,7 @@ class TauApp(App[None]):
                 client_id=process_client_id(),
                 kind="unlock",
                 on_progress=on_progress,
+                method=method,
             )
         except asyncio.CancelledError:
             if screen is not None:

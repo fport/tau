@@ -9,6 +9,11 @@ Public API::
     GuardSettings, parse_settings              ``[component.guard]`` (tau_guard.config)
     AuditLog                                   ``guard/audit.jsonl`` (tau_guard.audit)
     WorkerRun                                  one worker subprocess (tau_guard.runner)
+    FrameSource, AVFoundationCamera            the camera (tau_guard.camera)
+    FaceEngine, OpenCvFaceEngine, Face         YuNet and SFace (tau_guard.engine)
+    Calibration                                the head-turn calibration (tau_guard.liveness)
+    KeyStore, KeychainKeyStore, MemoryKeyStore the template key (tau_guard.store)
+    LocalAuthFactor                            LocalAuthentication (tau_guard.localauth)
 
 Test helpers live in :mod:`tau_guard.testing`; the worker itself is ``python -m
 tau_guard.worker``. Names load lazily, so importing the package (which the worker does at every
@@ -27,7 +32,17 @@ except PackageNotFoundError:  # running from a source tree without installation
     __version__ = "0.0.0"
 
 _EXPORTS = {
+    "AVFoundationCamera": "tau_guard.camera",
     "AuditLog": "tau_guard.audit",
+    "Calibration": "tau_guard.liveness",
+    "Face": "tau_guard.engine",
+    "FaceEngine": "tau_guard.engine",
+    "FrameSource": "tau_guard.camera",
+    "KeyStore": "tau_guard.store",
+    "KeychainKeyStore": "tau_guard.store",
+    "LocalAuthFactor": "tau_guard.localauth",
+    "MemoryKeyStore": "tau_guard.store",
+    "OpenCvFaceEngine": "tau_guard.engine",
     "Clock": "tau_guard.state",
     "GuardMachine": "tau_guard.state",
     "GuardService": "tau_guard.service",

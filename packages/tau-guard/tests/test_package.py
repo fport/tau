@@ -82,11 +82,37 @@ def test_importing_the_package_loads_no_camera_module() -> None:
     import subprocess
 
     code = (
-        "import sys, tau_guard, tau_guard.service, tau_guard.cli, tau_guard.worker; "
+        "import sys, tau_guard, tau_guard.service, tau_guard.cli, tau_guard.worker, "
+        "tau_guard.cli_face, tau_guard.local, tau_guard.store, tau_guard.verify; "
         f"print(sorted(m for m in {sorted(LAZY_ONLY)!r} if m in sys.modules))"
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert out.stdout.strip() == "[]", out.stderr
+
+
+def test_the_worker_side_never_loads_tau_core() -> None:
+    """The worker imports only what the face check needs: no tau-core, no strands."""
+    import subprocess
+
+    modules = "camera, engine, enroll, liveness, localauth, store, verify, worker"
+    code = (
+        f"import sys; from tau_guard import {modules}; "
+        "print(sorted(m for m in ('tau_core', 'strands', 'cv2', 'numpy') if m in sys.modules))"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert out.stdout.strip() == "[]", out.stderr
+
+
+def test_the_wheel_ships_the_vendored_detector() -> None:
+    project = tomllib.loads((PACKAGE / "pyproject.toml").read_text())
+    assert project["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"] == ["src/tau_guard"]
+    models = SOURCE / "models"
+    assert sorted(p.name for p in models.iterdir() if not p.name.startswith(".")) == [
+        "LICENSE-yunet",
+        "face_detection_yunet_2023mar.onnx",
+    ]
+    ignored = (ROOT / ".gitignore").read_text()
+    assert "*.onnx" not in ignored and "models" not in ignored
 
 
 def test_every_message_has_both_languages() -> None:

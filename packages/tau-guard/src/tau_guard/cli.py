@@ -1,7 +1,8 @@
 """``tau guard``: the owner's guard commands (``tau.commands`` entry point ``guard``).
 
-This slice has ``status``, ``lock`` and ``log``; issue 112 adds ``setup``, ``enroll``,
-``verify``, ``forget`` and ``doctor``. Output lines go through ``tau_core.i18n`` in the
+This module has ``status``, ``lock`` and ``log`` (issue 111); :mod:`tau_guard.cli_face` adds
+``setup``, ``enroll``, ``verify``, ``forget`` and ``doctor`` (issue 112). Output lines go
+through ``tau_core.i18n`` in the
 configured UI language (``[ui] language``, ``TAU_LANG``, ``tau --lang``); help texts and error
 lines are English. ``status`` and ``lock`` talk to the running hub through tau-core's
 ``HubClient`` (signed requests, proven answers); ``log`` reads ``guard/audit.jsonl`` directly.
@@ -101,8 +102,9 @@ def parse_since(value: str | None, *, now: datetime | None = None) -> datetime |
 
 @click.group(
     name="guard",
-    help="The owner guard: its state as the hub reports it, locking tau, the audit log.",
-    short_help="The owner guard (status, lock, log).",
+    help="The owner guard: face setup and checks, its state as the hub reports it, locking "
+    "tau, the audit log.",
+    short_help="The owner guard (setup, verify, status, lock, log).",
 )
 @help_option()
 def guard() -> None:
@@ -281,3 +283,8 @@ def log_command(ctx: click.Context, since: str | None, as_json: bool) -> None:
         return
     for entry in entries:
         click.echo(entry_line(entry, language))
+
+
+from tau_guard.cli_face import register as _register_face  # noqa: E402  (needs the group above)
+
+_register_face(guard)

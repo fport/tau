@@ -69,6 +69,8 @@ export interface HubPanel {
   detail: string;
   telegram: string;
   crash: string;
+  /** The owner guard's state without the label; null hides the row. */
+  guard: string | null;
 }
 
 export interface HubSnapshot {
@@ -91,7 +93,7 @@ export interface HubSnapshot {
   lines: [string, string, string];
   /** The panel's hub rows, without the menu's labels. */
   panel: HubPanel;
-  /** The guard line and its actions (all hidden without a guard). */
+  /** The guard line and its actions, as the native menu shows them. */
   guard_menu: GuardMenu;
   /** The saved switch: what TauBar does at its next start. */
   run_at_start: boolean;

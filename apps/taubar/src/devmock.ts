@@ -34,6 +34,7 @@ let snapshot: Snapshot = {
       detail: "pid 79081 · started by TauBar",
       telegram: "polling as @tau_bot",
       crash,
+      guard: "locked",
     },
     guard_menu: { line: "Guard: locked", lock_now: true, grant_camera: false },
     run_at_start: true,

@@ -1,18 +1,23 @@
 //! The hub lines of the menu (and the window) and the hub rows of the panel, from a
-//! [`HubView`].
+//! [`HubView`]. The guard's own line and actions come from [`super::guard`].
 
+use super::guard;
 use super::supervisor::{HubState, HubView};
 use serde::Serialize;
 use serde_json::Value;
 
-/// The panel's hub rows: the status as a title and a detail, the Telegram poller and the last
-/// crash, without the menu's `Label:` prefixes (the panel shows the labels itself).
+/// The panel's hub rows: the status as a title and a detail, the Telegram poller, the last
+/// crash and the owner guard, without the menu's `Label:` prefixes (the panel shows the labels
+/// itself).
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct HubPanel {
     pub title: String,
     pub detail: String,
     pub telegram: String,
     pub crash: String,
+    /// The guard's state (`locked`, `unavailable (camera denied)`); `None` hides the row, as
+    /// the menu hides its guard section.
+    pub guard: Option<String>,
 }
 
 pub fn panel(view: &HubView) -> HubPanel {
@@ -26,6 +31,7 @@ pub fn panel(view: &HubView) -> HubPanel {
             .map(telegram_text)
             .unwrap_or_else(|| "–".into()),
         crash: crash_text(view),
+        guard: guard::panel_text(view.guard.as_ref()),
     }
 }
 
@@ -341,6 +347,7 @@ mod tests {
         let rows = panel(&v);
         assert_eq!(rows.telegram, "polling as @tau_bot");
         assert_eq!(rows.crash, "unexpected exit (no clean shutdown), pid 99");
+        assert_eq!(rows.guard, None);
         // The menu keeps its labelled lines.
         assert_eq!(detail_line(&v), "Telegram: polling as @tau_bot");
         assert_eq!(crash_line(&v), format!("Last crash: {}", rows.crash));

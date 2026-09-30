@@ -1,17 +1,19 @@
 // The panel under the menu bar icon (src-tauri/src/panel.rs): the menu's switches and status
-// in the order of the native menu, which stays on the right click.
+// (the owner guard's state and "Lock now" too) in the order of the native menu, which stays on
+// the right click.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import coin from "../../../docs/brand/tau-coin.svg?raw";
 import { api, onSnapshot, type SleepMode, type Snapshot } from "./api";
 import {
   SLEEP_CHOICES,
+  guardTone,
   hubTone,
   loginChecked,
   sleepChoiceEnabled,
   sleepNote,
 } from "./format";
-import { AlertIcon, LaptopIcon, MoonIcon, PlugIcon, SendIcon } from "./icons";
+import { AlertIcon, LaptopIcon, LockIcon, MoonIcon, PlugIcon, SendIcon } from "./icons";
 import "./panel.css";
 
 const SLEEP_ICONS: Record<SleepMode, () => ReactNode> = {
@@ -87,6 +89,20 @@ export default function Panel() {
     }
   };
 
+  // "Lock now": a signed request from Rust; the owner must hear when tau may not be locked.
+  const lockGuard = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      setSnapshot(await api.lockGuard());
+      setNote({ tone: "info", text: "tau is locked." });
+    } catch (e) {
+      setNote({ tone: "error", text: `tau may not be locked: ${String(e)}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Something opens elsewhere: the panel goes, as a menu would.
   const away = (action: () => Promise<void>) => () => {
     api.panelHide();
@@ -101,6 +117,7 @@ export default function Panel() {
           busy={busy}
           note={note}
           onHub={toggleHub}
+          onLock={lockGuard}
           onSleep={(mode) => run(() => api.setSleepMode(mode))}
           onLogin={(on) => run(() => api.setLaunchAtLogin(on))}
           away={away}
@@ -117,6 +134,7 @@ function Body({
   busy,
   note,
   onHub,
+  onLock,
   onSleep,
   onLogin,
   away,
@@ -125,12 +143,14 @@ function Body({
   busy: boolean;
   note: Note | null;
   onHub: (on: boolean) => void;
+  onLock: () => void;
   onSleep: (mode: SleepMode) => void;
   onLogin: (on: boolean) => void;
   away: (action: () => Promise<void>) => () => void;
 }) {
   const { hub, sleep, login } = snapshot;
   const crashed = hub.panel.crash !== "none";
+  const guardAttention = guardTone(hub.guard?.state ?? "unknown").tone === "attention";
   const sleepExplained = sleepNote(sleep);
   const loginOn = loginChecked(login.status);
 
@@ -166,6 +186,24 @@ function Body({
           title="Last crash"
           detail={hub.panel.crash}
         />
+        {hub.panel.guard && (
+          <InfoRow
+            icon={<LockIcon />}
+            tone={guardAttention ? "attention" : undefined}
+            title="Guard"
+            detail={hub.panel.guard}
+          />
+        )}
+        {hub.panel.guard && hub.guard_menu.lock_now && (
+          <button type="button" className="item" disabled={busy} onClick={onLock}>
+            <span className="label">Lock now</span>
+          </button>
+        )}
+        {hub.panel.guard && hub.guard_menu.grant_camera && (
+          <button type="button" className="item sub" onClick={away(api.openCameraSettings)}>
+            Grant camera access…
+          </button>
+        )}
         {hub.state === "not_configured" && (
           <button type="button" className="item" onClick={() => api.openSettings()}>
             Set up the hub…

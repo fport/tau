@@ -5,6 +5,7 @@
 //! - [`menu`] turns it into what the menu and the window show: a guard line ("Guard: locked",
 //!   "Guard: unavailable (camera denied)"), "Lock now", and "Grant camera access…" when the
 //!   hub cannot use the camera. All of it is hidden without a guard block or with `off`.
+//!   [`panel_text`] is the same line without its label, for the panel's guard row.
 //! - [`lock`] sends `POST /guard/lock` through the signed [`ControlClient`].
 //!
 //! TauBar never unlocks: the check runs in the hub (under TauBar's camera grant), and no
@@ -106,6 +107,17 @@ pub fn menu(guard: Option<&GuardStatus>) -> GuardMenu {
 
 /// "Guard: locked", "Guard: unavailable (camera denied)", "Guard: locked (not enrolled)".
 pub fn line(guard: &GuardStatus) -> String {
+    format!("Guard: {}", text(guard))
+}
+
+/// The panel's guard row (the panel shows the label itself): `None` without a guard block or
+/// with `off`, like the menu's guard section.
+pub fn panel_text(guard: Option<&GuardStatus>) -> Option<String> {
+    guard.filter(|g| g.state != "off").map(text)
+}
+
+/// The guard's state without the label: "locked", "unavailable (camera denied)".
+pub fn text(guard: &GuardStatus) -> String {
     let state = match guard.state.as_str() {
         "locked" => "locked",
         "verifying" => "checking…",
@@ -121,8 +133,8 @@ pub fn line(guard: &GuardStatus) -> String {
         None => None,
     };
     match detail {
-        Some(detail) => format!("Guard: {state} ({detail})"),
-        None => format!("Guard: {state}"),
+        Some(detail) => format!("{state} ({detail})"),
+        None => state.to_string(),
     }
 }
 
@@ -259,6 +271,20 @@ mod tests {
                 .state,
             "unknown"
         );
+    }
+
+    #[test]
+    fn the_panel_row_is_the_line_without_its_label() {
+        assert_eq!(panel_text(None), None);
+        assert_eq!(panel_text(parse(&guard("off", None)).as_ref()), None);
+        let denied = parse(&guard("unavailable", Some("camera_denied")));
+        assert_eq!(
+            panel_text(denied.as_ref()).as_deref(),
+            Some("unavailable (camera denied)")
+        );
+        let locked = parse(&guard("locked", None)).unwrap();
+        assert_eq!(panel_text(Some(&locked)).as_deref(), Some("locked"));
+        assert_eq!(line(&locked), "Guard: locked");
     }
 
     #[test]

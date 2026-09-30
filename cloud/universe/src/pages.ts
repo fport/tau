@@ -6,6 +6,12 @@
  * add the headers of §2, to pick the start page's language and to remember the language
  * switcher's choice; every other static file gets the same headers from public/_headers.
  *
+ * The person, sub-tau and claim pages (ADR 0013 §6) are templates: `/@<handle>` serves
+ * public/person.html, `/<slug>` and `/@<handle>/<name>` serve public/sub.html, `/claim`
+ * serves public/claim.html (and the same under /tr/). The Worker looks the handle or slug up
+ * in the directory first, so an unknown one is the 404 page; the page's script reads the
+ * data from /api/people or /api/subs.
+ *
  * Language rules, kept small on purpose:
  * - A page link with `?lang=en` or `?lang=tr` (the switcher's links) stores that choice in
  *   the `lang` cookie and redirects to the same URL without the parameter. That click is the
@@ -15,7 +21,8 @@
  * - No other page redirects: `/how-it-works` is English and `/tr/how-it-works` Turkish.
  */
 
-import type { UniverseEnv } from "./env";
+import { directoryOf, type UniverseEnv } from "./env";
+import { type PageRoute, TEMPLATES } from "./routes";
 
 export const CONTENT_SECURITY_POLICY =
   "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; " +
@@ -122,6 +129,21 @@ function withoutParam(url: URL, name: string): string {
 }
 
 /**
+ * The switcher's `?lang=en|tr`: stores the choice in the cookie and redirects to the URL
+ * without the parameter. Null when the URL names no language the site has.
+ */
+function languageChoice(url: URL): Response | null {
+  const chosen = url.searchParams.get(LANGUAGE_COOKIE);
+  if (!isLanguage(chosen)) return null;
+  const secure = url.protocol === "https:" ? "; Secure" : "";
+  return redirect(withoutParam(url, LANGUAGE_COOKIE), {
+    "set-cookie":
+      `${LANGUAGE_COOKIE}=${chosen}; Path=/; Max-Age=${LANGUAGE_COOKIE_MAX_AGE}; ` +
+      `SameSite=Lax; HttpOnly${secure}`,
+  });
+}
+
+/**
  * A page (a path of PAGES, or `/tr`): the switcher's `?lang=`, the start page's language,
  * then the static file as the asset store serves it.
  */
@@ -129,15 +151,8 @@ export async function servePage(request: Request, env: UniverseEnv, url: URL): P
   const path = url.pathname;
   if (path === "/tr") return redirect(`/tr/${url.search}`);
 
-  const chosen = url.searchParams.get(LANGUAGE_COOKIE);
-  if (isLanguage(chosen)) {
-    const secure = url.protocol === "https:" ? "; Secure" : "";
-    return redirect(withoutParam(url, LANGUAGE_COOKIE), {
-      "set-cookie":
-        `${LANGUAGE_COOKIE}=${chosen}; Path=/; Max-Age=${LANGUAGE_COOKIE_MAX_AGE}; ` +
-        `SameSite=Lax; HttpOnly${secure}`,
-    });
-  }
+  const choice = languageChoice(url);
+  if (choice !== null) return choice;
 
   const start = path === "/";
   if (start) {
@@ -176,4 +191,50 @@ export async function notFoundPage(request: Request, env: UniverseEnv): Promise<
       "cache-control": "no-store",
     },
   });
+}
+
+/**
+ * A template page (`pageRoute` in src/routes.ts): the switcher's `?lang=`, then the lookup
+ * of its handle or slug, then public/<template>.html (public/tr/ in Turkish), or the 404
+ * page when the directory has no such person or sub-tau.
+ */
+export async function serveRoute(
+  request: Request,
+  env: UniverseEnv,
+  url: URL,
+  route: PageRoute,
+): Promise<Response> {
+  if (route.kind === "redirect") {
+    return new Response(null, {
+      status: 301,
+      headers: { location: `${route.location}${url.search}` },
+    });
+  }
+  if (route.kind === "template") return notFoundPage(request, env);
+
+  const choice = languageChoice(url);
+  if (choice !== null) return choice;
+
+  if (route.kind !== "claim") {
+    const exists = await directoryOf(env).pageExists(
+      route.kind === "person"
+        ? { handle: route.handle }
+        : route.kind === "sub"
+          ? { handle: route.handle, name: route.name }
+          : { slug: route.slug },
+    );
+    if (!exists) return notFoundPage(request, env);
+  }
+
+  const template = TEMPLATES[route.kind];
+  const file = route.lang === "tr" ? `/tr/${template}` : `/${template}`;
+  const page = await env.ASSETS.fetch(new Request(new URL(file, url), request));
+  if (page.status === 404) {
+    // The template is missing from this deployment: the page does not exist either.
+    await page.body?.cancel();
+    return notFoundPage(request, env);
+  }
+  const response = new Response(page.body, page);
+  if (page.status === 200) response.headers.set("content-language", route.lang);
+  return response;
 }

@@ -27,9 +27,12 @@
     "binding": "ASSETS",
     // The Worker answers the API and every page, in English and in Turkish (to add the
     // security headers and handle the language choice; src/pages.ts lists the pages, and a
-    // test keeps this list in step). Every other file (styles, scripts, brand SVGs, fonts)
-    // is served straight from the asset store with the headers in public/_headers. Paths
-    // that match no file reach the Worker, which answers the 404 page of their language.
+    // test keeps this list in step). It also answers the template pages: the person and
+    // sub-tau pages under /@ (it looks the handle up first) and /claim, and it keeps the bare
+    // templates /person and /sub to itself (src/routes.ts). Every other file (styles,
+    // scripts, brand SVGs, fonts) is served straight from the asset store with the headers
+    // in public/_headers. Paths that match no file reach the Worker: a sub-tau's short page
+    // /<slug>, tau-host's paths (/app, /auth/*) and the 404 page of their language.
     "run_worker_first": [
       "/api/*",
       "/",
@@ -38,7 +41,15 @@
       "/tr",
       "/tr/",
       "/tr/how-it-works",
-      "/tr/universe"
+      "/tr/universe",
+      "/@*",
+      "/tr/@*",
+      "/claim",
+      "/tr/claim",
+      "/person",
+      "/sub",
+      "/tr/person",
+      "/tr/sub"
     ]
   },
   "vars": {
@@ -66,4 +77,12 @@
   // A custom domain (optional; `pnpm run configure --route tau.example.com` does this):
   //   "routes": [{ "pattern": "tau.example.com", "custom_domain": true }]
   // and set UNIVERSE to "tau.example.com". The zone must be on your Cloudflare account.
+  //
+  // tau-host behind the universe (optional; ADR 0013 §6;
+  // `pnpm run configure --host-service tau-host` does this):
+  //   "services": [{ "binding": "HOST", "service": "tau-host" }]
+  // The universe then forwards /app, /app/*, /auth/*, /api/host/* and every hosted tau's
+  // card and inbox (/@<handle>/.well-known/tau.json, /@<handle>/net/*) to tau-host, and
+  // binds handles with POST /api/claim. Without it those paths are 404 and claims are 501.
+  // Deploy tau-host first: a service binding needs the Worker it names.
 }

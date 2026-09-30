@@ -1,14 +1,20 @@
 /**
  * tau universe: tau's public site and the opt-in directory of taus.
  *
- * Contract: docs/reference/tau-universe.md (§1–§2). Decision: docs/adr/0010.
+ * Contract: docs/reference/tau-universe.md (§1–§2). Decisions: docs/adr/0010, 0013.
  *
  *   GET  /                        the landing page (static, public/index.html)
  *   GET  /how-it-works            how tau works, for newcomers (static)
  *   GET  /universe                the universe page (static; its script reads /api/universe)
  *   GET  /tr/, /tr/how-it-works, /tr/universe
  *                                 the same pages in Turkish (public/tr/)
+ *   GET  /@<handle>               a person page (public/person.html)
+ *   GET  /<slug>, /@<handle>/<name>
+ *                                 a sub-tau page (public/sub.html)
+ *   GET  /claim                   the claim page (public/claim.html); all three under /tr/ too
  *   *    /api/*                   the directory API
+ *   *    /app, /app/*, /auth/*, /api/host/*, /@<handle>/.well-known/tau.json, /@<handle>/net/*
+ *                                 tau-host's, forwarded through the HOST binding when bound
  *
  * Everything else under public/ is served by the asset store before the Worker runs. The
  * hourly cron prunes the directory.
@@ -19,28 +25,38 @@
 
 import { handleApi } from "./api";
 import { directoryOf, type UniverseEnv } from "./env";
-import { error, methodNotAllowed, nowSeconds } from "./http";
-import { isPage, notFoundPage, servePage, withSecurityHeaders } from "./pages";
+import { forward } from "./host";
+import { error, methodNotAllowed, notFound, nowSeconds } from "./http";
+import { isPage, notFoundPage, servePage, serveRoute, withSecurityHeaders } from "./pages";
+import { isForwarded, pageRoute } from "./routes";
 
 export { Directory } from "./directory";
 
-async function route(request: Request, env: UniverseEnv): Promise<Response> {
-  const url = new URL(request.url);
+async function route(request: Request, env: UniverseEnv, url: URL): Promise<Response> {
   const path = url.pathname;
+  const read = request.method === "GET" || request.method === "HEAD";
+  // tau-host's paths on a universe without tau-host.
+  if (isForwarded(path)) {
+    return read && !path.startsWith("/api/") ? notFoundPage(request, env) : notFound();
+  }
   if (path === "/api" || path.startsWith("/api/")) return handleApi(request, env, url);
-  if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed(["GET"]);
+  if (!read) return methodNotAllowed(["GET"]);
   if (isPage(path) || path === "/tr") return servePage(request, env, url);
+  const page = pageRoute(path);
+  if (page !== null) return serveRoute(request, env, url, page);
   return notFoundPage(request, env);
 }
 
 export default {
   async fetch(request: Request, env: UniverseEnv): Promise<Response> {
+    const url = new URL(request.url);
+    // tau-host answers its own paths, with its own headers.
+    if (env.HOST !== undefined && isForwarded(url.pathname)) return forward(request, env.HOST);
     let response: Response;
     try {
-      response = await route(request, env);
+      response = await route(request, env, url);
     } catch (err) {
-      const path = new URL(request.url).pathname;
-      console.error(JSON.stringify({ event: "unhandled", path, error: String(err) }));
+      console.error(JSON.stringify({ event: "unhandled", path: url.pathname, error: String(err) }));
       response = error(500, "internal");
     }
     return withSecurityHeaders(response);

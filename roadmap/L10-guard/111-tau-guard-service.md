@@ -1,6 +1,6 @@
 # 111 · `tau-guard` service: state machine, reflex locks, worker subprocess, protected `/guard/*` routes, cooldown, audit log
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L10 · Guard
 Packages: tau-guard (new)

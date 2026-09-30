@@ -88,7 +88,7 @@ The decisions are in [ADR 0008](../../docs/adr/0008-owner-guard.md) (decisions 1
   3. enroll;
   4. run one verify;
   5. write `[component.guard] enabled = true` through `tau_core.settings.load_document/save_document`;
-  6. tell the owner to restart the hub.
+  6. tell the owner to restart the hub and any open `tau chat`, `tau tui` or tau Desktop window: an agent built before the marker existed stays unguarded until its next build (`resolve_guard` finds the marker at the next build, 110).
 
   It also warns that remote TUI, chat and `tau ask` are locked while the owner is away, until 117.
 - **`enroll [--add]`.** `--add` adds samples under other light.

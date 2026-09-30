@@ -124,3 +124,9 @@ The states are `off` / `locked` / `verifying` / `unlocked` / `unavailable`. Orth
 ## Comments
 
 - 2026-09-30: filed with ADR 0008.
+- 2026-09-30: notes from 110's verification fixes:
+  - Protected routes are signed (`X-Tau-Nonce`, `X-Tau-Auth`) and proven (`X-Tau-Proof`) by `ControlApi`; a route handler does nothing for it. Tests call the routes through `HubClient`/`HubGuard`, or sign with `tau_core.hub.control.auth_headers`.
+  - `/guard/status?attempt=<id>` returns that attempt's own record (queued, running or finished) and `null` once the id is unknown or expired; keep finished records for at least 60 s. A queued step-up shows `step: "starting"`, `done: false`. See "Reading a result" above.
+  - Never answer 403 from a `/guard/*` handler: 403 belongs to the token check, is never signed, and `HubGuard` reads it as `unavailable` whatever the body says. Refusals such as `cooldown` or `busy` use 409 or 429 with `{reason, retry_after?}`.
+  - `/guard/lock` must answer `{"state": "locked"}`; `HubGuard.lock` logs an error otherwise.
+  - 110 set mode 0700 on `hub/logs` only when `tau hub install` creates it (`mkdir(mode=)` does not change an existing directory). Chmod it explicitly at hub start and create new log files 0600.

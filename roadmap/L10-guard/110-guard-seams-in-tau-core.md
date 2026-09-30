@@ -175,7 +175,7 @@ It never approves anything.
 
 - [x] `tau_core` exports `Guard`, `GuardStatus`, `GuardVerdict`, `GuardProgress`, `GuardTurn`, `Admission`, `GuardLocked`, `LockedGuard`, `HubGuard`, `resolve_guard` and the reason lists exactly as above; `tau_core.hub` exports `HubClient`, `HubUnavailable` and `HubError`
 - [x] The guard never yields `APPROVED`: a parametrized test over approver decisions × step-up results (`True`, `False`, a non-bool truthy value, raising, `CancelledError`) × admissions shows the gate approves only when the approver said `APPROVED` and `step_up` returned exactly `True`; `step_up` is never called for tier 0/1, exempt calls or non-approved decisions
-- [x] A refused turn appends nothing to the history or the session store, makes no model call (`FakeModel` records no call), yields a `Notice` and `TurnEnd("locked")` and emits one `guard` agent event; the next admitted turn needs no repair turn
+- [x] A refused turn writes no message, title or repair to the history or the session store (its `guard` event goes to the session's event log like every agent event), makes no model call (`FakeModel` records no call), yields a `Notice` and `TurnEnd("locked")` and emits one `guard` agent event; the next admitted turn needs no repair turn
 - [x] An unknown admission reason is shown as `error` (no `KeyError`); a guard whose `admit` raises refuses with `error`
 - [x] `STOP_REASONS` contains `locked`; the `TurnEnd` docstring, `test_stream_contract.py` and the README stop-reason table agree
 - [x] `TauAgent.ask()` raises `GuardLocked`; `compaction.summarize` raises `GuardLocked` before any model call when the guard refuses
@@ -191,7 +191,7 @@ It never approves anything.
 - [x] Every verdict reason, admission reason, progress step and lock trigger has `en` and `tr` messages (test); `GUARD_MESSAGES` does not collide with `MESSAGES`; `i18n.py` is unchanged
 - [x] `FakeGuard` replays scripted progress, never approves, and `test_no_auto_approve` still passes
 - [x] `tau doctor` shows the guard check, and `/status` shows the guard line only when a guard is active
-- [x] With no guard configured the whole suite passes unchanged; `uv run pytest -q`, `ruff check` and `ruff format --check` are green
+- [x] With no guard configured the whole suite passes unchanged; `uv run pytest -q`, `ruff check` and `ruff format --check` are green (except `test_no_personal_paths_in_tracked_files`, which fails since before 110 and is issue 130)
 
 ## Blocked by
 
@@ -208,3 +208,12 @@ None - can start immediately.
   - **Doctor** lines stay English like the rest of `tau doctor`; `guard_doctor_check(..., language=)` can localize them later.
   - Only the `hub/logs` directory mode (0700) changed here; 0600 log files are left to 111.
   - The suite's only failure is the pre-existing `test_no_personal_paths_in_tracked_files` (issue 130).
+- 2026-09-30: fixes after two verification passes (commits aa0bf25, 3f34122, 3f9ad61, 3a81c49, e6135dd, dfbfd9b, 0366ef1):
+  - **Signed requests (major).** `HubClient` sent the raw token as `X-Tau-Token`, so a process that bound the port after a hard hub exit (stale `control.token`) read it off the first request and could prove every answer; only the public enrollment id stood in its way. The token never travels now: a protected request carries `X-Tau-Nonce` and `X-Tau-Auth = HMAC(token, "req"|nonce|method|path)`, the proof moved to its own domain (`"resp"|nonce|method|path|status|body`), the hub refuses a raw token, and `HubClient` refuses redirects. A regression test runs a squatter next to a stale token file: admit, unlock, step-up and status refuse, and the token never reaches it. The body, the ACs above, ADR 0008 decision 8, the README and 115 say `X-Tau-Auth`.
+  - **`resolve_guard` (major)** no longer memoizes `None`, which failed open for the life of a process started before `tau guard setup`; a found guard is still memoized, so every build gets the same object.
+  - **`HubGuard`.** An unsigned 403 to `/guard/verify` gives `unavailable` instead of letting any listener pick the reason and `retry_after`. `unlock`/`step_up` follow their own attempt with `/guard/status?attempt=<id>`, so a step-up queued behind another attempt waits instead of failing; the full attempt shape and the success rule are in the module docstring, ADR 0008 decision 3 and 111's route table. `lock` logs an error when the hub did not confirm it.
+  - **`TierGate`** asks for admission again after an approval: a lock while the dialog was open refuses with the locked note (`recheck` goes on to the step-up). **`admit_turn`** is a hard bound now (its own task, cancelled and ignored after the limit), so a guard that swallows the cancellation cannot admit late.
+  - **Repo rules** read scopes and aliases: constants and names bound to them, `**` splats, value-uses, `.guard` assignments, `setattr`, a hand-built `TauAgent` and aliased imports (each with a synthetic test).
+  - The start-the-hub hint's Turkish text sits only in the `tr` column; `FakeGuard` takes the documented positional signature again.
+  - Kept on purpose: the refused turn's `guard` event stays in the session's event log (an audit trail of attempts while locked); it bumps the session's `updated_at` like every event. The AC above now says so.
+  - Not done here: skipping the request when `state.json` shows no live hub pid (optional; the signed requests close the hole without it). `lock()` keeps the protocol's `-> None`; channels re-read `status()` (note on 113).

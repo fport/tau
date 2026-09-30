@@ -78,3 +78,9 @@ The channels show the guard. `tau tui` and `tau chat` start locked when a guard 
 ## Comments
 
 - 2026-09-30: filed with ADR 0008.
+- 2026-09-30: notes from 110's verification fixes:
+  - `resolve_guard` never memoizes `None` now. While the process-scoped guard is `None`, resolve it again before each build and each submit (one stat), so a window opened before `tau guard setup` shows the lock screen as soon as the marker appears instead of staying unguarded.
+  - `Guard.lock()` returns `None` and never raises; `HubGuard.lock` only logs an error when the hub did not confirm. After `/guard lock`, ctrl+l or Telegram `/guard lock`, re-read `status()` and show a "lock failed" notice (a new i18n key) unless the state is `locked`, so a channel never believes a lock that did not reach the hub.
+  - `TierGate` now refuses an approved tier-2 call when the guard locked while the approval dialog was open (approval `locked`); the TUI still dismisses the open dialog on a lock.
+  - The repo rules refuse `self.guard = None` and any other constant assigned to `.guard`; initialise the attribute from `resolve_guard(...)` or keep it in a dataclass field.
+  - Until this issue adds `tui.turn.stop.locked`, the TUI footer shows the raw word `locked` for a refused turn.

@@ -1,6 +1,6 @@
 # 176 · The whole site in the portal's language: black sky, a full-page universe
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L9 · Cloud mode and the tau network
 Packages: cloud/universe (public, client)
@@ -33,18 +33,42 @@ opening.
 
 ## Acceptance criteria
 
-- [ ] No Void-blue surface is left on the site; `theme-color` is black on every page.
-- [ ] The star field stands behind every page, drawn once per scroll or resize, still under
+- [x] No Void-blue surface is left on the site; `theme-color` is black on every page.
+- [x] The star field stands behind every page, drawn once per scroll or resize, still under
       `prefers-reduced-motion`, and the pages work without it.
-- [ ] The landing's sections below the hero follow the opening; checked at 360 to 2560 px in
+- [x] The landing's sections below the hero follow the opening; checked at 360 to 2560 px in
       both languages with no horizontal scroll.
-- [ ] `/universe` is the full-page universe on the shared canvas engine: turn, zoom, select,
+- [x] `/universe` is the full-page universe on the shared canvas engine: turn, zoom, select,
       search, `#<address>` and `#<address>/<name>`, the list as the keyboard path, the empty,
       few and failed states; d3 is no longer a dependency.
-- [ ] Reading pages keep their content and layout, on black.
-- [ ] `bun run typecheck`, `bun run test` and `bun run build` pass; screenshots of every page
+- [x] Reading pages keep their content and layout, on black.
+- [x] `bun run typecheck`, `bun run test` and `bun run build` pass; screenshots of every page
       in both languages checked.
 
 ## Comments
 
 - 2026-10-01: filed at the owner's request after the landing's opening landed.
+- 2026-10-01: done. As built:
+  - **Sky.** site.css's `:root` block puts the landing's black tokens on every page (plus
+    `--glass`, `--glass-2` for panels over the sky); tau-host keeps the theme's Void.
+    `client/starfield.ts` is a fixed canvas of grey stars in three depths with a little scroll
+    parallax, drawn on scroll and resize only; `client/sky.ts` (404, soon) and `client/how.ts`
+    (how it works, plus the storyline's scroll-spy) load it where no other script does.
+  - **Engine.** `client/painter.ts` holds the world and the painter the landing used, shared by
+    `landing.ts` and `universe.ts`, with a focus for the universe page (dim, reticle, sub-tau
+    names) and owner outlines (a dashed grey hull around an owner's taus when there are two or
+    more). `cosmos.ts` gained `fitBox`, `closeUp`, `ownerKey` and `hull`, all tested.
+  - **`/universe`.** Full viewport, no page scroll: fly-in with streaks, drift when idle, drag to
+    turn, wheel or pinch to zoom, arrow keys and +/- on the focused canvas, `#<address>` and
+    `#<address>/<name>` fly the camera and open the card. HUD: title, count and search at the
+    top left, legend and hint at the bottom left, tools (zoom, whole universe, Taus, Add your
+    tau) at the bottom right, one panel (list, card, join) at the right or as a bottom sheet
+    under 48rem. Its own `styles/universe.css`. d3-force and d3-polygon are gone, and with
+    them the layout helpers only the graph used.
+  - **Landing below the hero** (`client/fold.ts`): the traits as a constellation whose marks
+    light in view, readers as lit squares in glass panels, and the portal drawing itself over
+    the last section with the live count.
+  - **Reading pages:** no grid, grey kickers and rules, glass panels, the storyline lit only at
+    the chapter being read, sub-tau rings burning only when the sub-tau can answer.
+  - Checked in headless Chrome at 360 to 2560 px in both languages, the empty and failed
+    universe, reduced motion; no horizontal scroll. 310 tests pass.

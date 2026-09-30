@@ -547,10 +547,28 @@ def test_a_recheck_after_the_approval_goes_on_to_the_step_up() -> None:
     guard = FakeGuard("unlocked", admissions=[True, "recheck"], step_ups=[True])
     gate = make_gate(ScriptedApprover([Decision.APPROVED]), guard)
     assert check(gate) == (True, None, "approved")
-    assert [call[0] for call in guard.calls] == ["admit", "admit", "step_up"]
+    assert [call[0] for call in guard.calls] == ["admit", "admit", "step_up", "admit"]
     guard = FakeGuard("unlocked", admissions=[True, "cooldown"], step_ups=[True])
     gate = make_gate(ScriptedApprover([Decision.APPROVED]), guard)
     assert check(gate) == (False, refusal_text("lamp", LOCKED_NOTE), "locked")
+
+
+class LocksDuringStepUp(FakeGuard):
+    """The guard locks while the step-up runs, and the step-up still answers ``True``."""
+
+    async def step_up(self, request: ApprovalRequest, **kwargs: Any) -> Any:
+        self.set_state("locked", trigger="screen_lock")
+        return await super().step_up(request, **kwargs)
+
+
+def test_a_lock_while_the_step_up_runs_refuses_the_passed_call() -> None:
+    guard = LocksDuringStepUp("unlocked", step_ups=[True])
+    bus = EventBus()
+    events = record_events(bus, "approval")
+    gate = make_gate(ScriptedApprover([Decision.APPROVED]), guard, bus=bus)
+    assert check(gate) == (False, refusal_text("lamp", LOCKED_NOTE), "locked")
+    assert [call[0] for call in guard.calls] == ["admit", "admit", "step_up", "admit"]
+    assert events[-1].data["decision"] == "rejected" and events[-1].data["step_up"] == "passed"
 
 
 def test_without_a_guard_the_approval_record_has_no_step_up() -> None:

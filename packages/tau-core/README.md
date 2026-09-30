@@ -302,7 +302,9 @@ agent = build_agent(approver=ButtonApprover(), channel="telegram")
   while the dialog was open refuses the same way; `recheck` goes on), and an approved tier-2
   call then needs the guard's step-up (anything but a literal `True` turns it into `rejected`,
   note "The guard could not confirm the user's identity."; the `approval` event gains
-  `step_up: passed | failed`). The guard can only refuse; exempt calls reach no check. Every
+  `step_up: passed | failed`); after a passed step-up the guard must admit once more (a lock
+  while the step-up ran refuses with approval `locked`). The guard can only refuse; exempt
+  calls reach no check. Every
   `TierGate(...)` in the repo passes `guard=` explicitly (a repo rule).
 - **Exemptions** let registered routines (#037) skip per-call approval:
   `build_agent(exemptions=[fn])` or `agent.gate.add_exemption(fn)` (returns an undo function).

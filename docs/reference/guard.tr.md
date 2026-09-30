@@ -69,7 +69,7 @@ Bir istemci her kontrolde kendi `step_up` ve `unlock_liveness` değerlerini gön
 | `tau guard enroll [--add]` | Touch ID'nin arkasında (Touch ID yoksa Mac parolası) yeniden kaydeder ve parmak izi setini sabitler; `--add` şablona örnekler ekler (başka ışık) | yalnızca Mac'in başında |
 | `tau guard verify [--explain[=all]]` | baş çevirme sınamasıyla tek kontrol; `--explain` onu yerel bir worker'da çalıştırır, her istemi vurgulu bir satır olarak (`>>> TURN YOUR HEAD LEFT <<<`) ve her üç kareden birinin sayılarını yazar (`=all`: her kare): ekrandaki istem, baş yaw'ı, önden taban çizgisine göre dönüş ve eğim (derece), landmark'ların uyum hatası, göz mesafesi, dedektör puanı, parlaklık, netlik, benzerlik. Hiçbir kare kaydedilmez. Sınamayı geçemeyen yerel bir kontrol, geçilemeyen canlılık kuralını söyler. Başarısızsa 1 ile çıkar | macOS (başka yerde 2 ile çıkar); korumalı bir hub çalışıyorsa hub üzerinden, böylece geçen kontrol tau'nun kilidini açar, yoksa yerel bir worker'da |
 | `tau guard forget` | Touch ID'nin arkasında (Touch ID yoksa Mac parolası) şablonu, işareti ve Keychain anahtarını siler ve `enabled = false` yazar; Keychain anahtarı tuttuysa 1 ile çıkar (yeniden çalıştır) | yalnızca Mac'in başında, her zaman yerel bir worker'da |
-| `tau guard doctor` | platformu, worker'ı, OpenCV'yi, YuNet ve SFace dosyalarını, kaydı, şablonu, baş çevirme kalibrasyonunu (derece olarak ölçülmüş mü, yoksa derecelerden önceki bir kaydın varsayılanı mı), Keychain'i, modları, canlılığı, kamerayı, terminalin kamera iznini, başarısızlıkları ve hub'ın kamera iznini tutan uygulamayı denetler; `fail` varsa 1 ile çıkar | her yerde |
+| `tau guard doctor` | platformu, worker'ı, OpenCV'yi, YuNet ve SFace dosyalarını, kaydı, şablonu, baş çevirme kalibrasyonunu (derece olarak ölçülmüş mü, yoksa derecelerden önceki bir kaydın varsayılanı mı), Keychain'i, modları, canlılığı, kamerayı, terminalin kamera iznini, Touch ID'yi (kullanılabilir mi, değilse neden; kapak; parmak izleri sabitlenenler mi), başarısızlıkları ve hub'ın kamera iznini tutan uygulamayı denetler; `fail` varsa 1 ile çıkar | her yerde |
 | `tau guard status [--json]` | çalışan hub'ın bildirdiği durum (`GET /guard/status`); etkin koruma yoksa `off` yazar; hub çalışmıyorsa 0, hub hatasında 1 ile çıkar | her yerde |
 | `tau guard lock` | korunan her kanalı kilitler (`POST /guard/lock`, tetikleyici `command`) | her yerde; SSH üzerinden de |
 | `tau guard log [--since WHEN] [--json]` | denetim kaydı; `WHEN` bir süre (`30m`, `2h`, `7d`) ya da ISO tarih veya saattir | her yerde |
@@ -270,6 +270,8 @@ Bir **deneme** `{id, kind, step, seq, deadline, hint, done, ok, reason, method, 
 | `score` | hayır | benzerlik puanı, 2 ondalığa yuvarlanmış |
 | `liveness` | hayır | bir yüz eşleşmesinde `challenge` ya da `passive`; bir `spoof`'ta geçilemeyen canlılık kuralı |
 | `request_id`, `tool` | hayır | bir step-up'ın ait olduğu tier-2 çağrı |
+| `method` | hayır | `face` ya da `touch_id`: bir kontrolde geçen ya da denenen yöntem; bir `unlock`'ta sahibin kilidi nasıl açtığı |
+| `policy` | hayır | bir `touch_id` kaydında (tek bir LocalAuthentication istemi): `biometrics` (yalnızca Touch ID) ya da `device_owner` (Touch ID ya da parola); o kaydın `reason`'ı istemin sonucudur (`ok`, `failed`, `cancelled`, `unavailable`, `timeout`, `changed`), `trigger`'ı denemenin türü |
 
 Bir kayıt asla bir embedding, bir kare ya da başka bir insan hakkında bir şey tutmaz. Dizeler 128 karaktere kesilir ve yazdırılamayan karakterler `?` olur; böylece bir çağıranın etiketi kaydı yazdıran terminali yönlendiremez. Hub log'u hiçbir karar ve puan almaz.
 
@@ -280,7 +282,7 @@ Bir kayıt asla bir embedding, bir kare ya da başka bir insan hakkında bir şe
 | Dosya | Nedir |
 |---|---|
 | `enrolled` | herkese açık işaret, JSON `{"v": 1, "enrollment": "<id>", "model": "<sha256>", "created": "<iso>"}`; biyometrik hiçbir şey yok. Durduğu sürece koruma etkindir |
-| `owner.face.v1.bin` | şablon, `0600`, atomik yazılır: ilişkili veri olarak `b"tau-guard/v1\|" + model_sha256` ile `b"TAUG1" \| nonce(12) \| AES-GCM(payload)`. Yük, yeniden normalleştirilmiş ortalama embedding'i, örnekleri ve baş çevirme kalibrasyonunu tutar |
+| `owner.face.v1.bin` | şablon, `0600`, atomik yazılır: ilişkili veri olarak `b"tau-guard/v1\|" + model_sha256` ile `b"TAUG1" \| nonce(12) \| AES-GCM(payload)`. Yük, yeniden normalleştirilmiş ortalama embedding'i, örnekleri, baş çevirme kalibrasyonunu (derece olarak) ve kayıt sırasında Touch ID varsa sabitlenmiş parmak izi setini (LocalAuthentication'ın `domainState`'inin sha256'sı) tutar |
 | `models/face_recognition_sface_2021dec.onnx` | SFace; `tau guard setup` kurar, her yüklemede sha256 ile denetlenir |
 | `audit.jsonl` (+ `.1`, `.2`) | denetim kaydı |
 | `failures.json` | başarısızlık sayısı ve bekleme süresi, `0600` |

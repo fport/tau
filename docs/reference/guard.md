@@ -67,7 +67,7 @@ A client sends its own `step_up` and `unlock_liveness` with every check, and the
 | `tau guard enroll [--add]` | enrolls again behind Touch ID (the Mac password only without Touch ID) and pins the fingerprint set; `--add` adds samples to the template (other light) | at the Mac only |
 | `tau guard verify [--explain[=all]]` | one check with the head-turn challenge; `--explain` runs it in a local worker, prints each prompt as a highlighted line (`>>> TURN YOUR HEAD LEFT <<<`) and every 3rd frame's numbers (`=all`: every frame): the prompt on screen, head yaw, turn from the frontal baseline and pitch in degrees, the landmarks' fit error, eye distance, detector score, brightness, sharpness, similarity. No frame is saved. A local check that fails its challenge names the liveness rule. Exit 1 when it fails | macOS (exit 2 elsewhere); through the hub when a guarded hub runs, so a passed check unlocks tau, else a local worker |
 | `tau guard forget` | removes the template, the marker and the Keychain key behind Touch ID (the Mac password only without Touch ID), and writes `enabled = false`; exit 1 when the Keychain kept the key (run it again) | at the Mac only, always a local worker |
-| `tau guard doctor` | checks platform, worker, OpenCV, the YuNet and SFace files, enrollment, template, the head-turn calibration (measured in degrees, or the default of an enrollment from before degrees), Keychain, modes, liveness, camera, the terminal's camera permission, failures and the app holding the hub's camera grant; exit 1 on a `fail` | anywhere |
+| `tau guard doctor` | checks platform, worker, OpenCV, the YuNet and SFace files, enrollment, template, the head-turn calibration (measured in degrees, or the default of an enrollment from before degrees), Keychain, modes, liveness, camera, the terminal's camera permission, Touch ID (available or why not, the lid, whether the fingerprints are the pinned ones), failures and the app holding the hub's camera grant; exit 1 on a `fail` | anywhere |
 | `tau guard status [--json]` | the state as the running hub reports it (`GET /guard/status`); without an active guard prints `off`; exit 0 when no hub runs, 1 on a hub error | anywhere |
 | `tau guard lock` | locks every guarded channel (`POST /guard/lock`, trigger `command`) | anywhere; also over SSH |
 | `tau guard log [--since WHEN] [--json]` | the audit log; `WHEN` is a duration (`30m`, `2h`, `7d`) or an ISO date or time | anywhere |
@@ -268,6 +268,8 @@ An **attempt** is `{id, kind, step, seq, deadline, hint, done, ok, reason, metho
 | `score` | no | the similarity score, rounded to 2 decimals |
 | `liveness` | no | `challenge` or `passive` for a face match; for a `spoof`, the liveness rule that failed |
 | `request_id`, `tool` | no | the tier-2 call a step-up belonged to |
+| `method` | no | `face` or `touch_id`: on a check, the method that passed or the one that was tried; on an `unlock`, how the owner unlocked |
+| `policy` | no | on a `touch_id` record (one LocalAuthentication prompt): `biometrics` (Touch ID only) or `device_owner` (Touch ID or the password); that record's `reason` is the prompt's outcome (`ok`, `failed`, `cancelled`, `unavailable`, `timeout`, `changed`) and its `trigger` the attempt's kind |
 
 A record never holds an embedding, a frame or anything about another person. Strings are cut to 128 characters and non-printable characters become `?`, so a caller's label cannot drive the terminal that prints the log. The hub log gets no verdicts and no scores.
 
@@ -278,7 +280,7 @@ Under `TAU_DATA_DIR/guard/`, mode `0700`, left out of backups and never pushed b
 | File | What it is |
 |---|---|
 | `enrolled` | the public marker, JSON `{"v": 1, "enrollment": "<id>", "model": "<sha256>", "created": "<iso>"}`; nothing biometric. While it exists the guard is active |
-| `owner.face.v1.bin` | the template, `0600`, written atomically: `b"TAUG1" \| nonce(12) \| AES-GCM(payload)` with `b"tau-guard/v1\|" + model_sha256` as associated data. The payload holds the renormalised mean embedding, the samples and the head-turn calibration |
+| `owner.face.v1.bin` | the template, `0600`, written atomically: `b"TAUG1" \| nonce(12) \| AES-GCM(payload)` with `b"tau-guard/v1\|" + model_sha256` as associated data. The payload holds the renormalised mean embedding, the samples, the head-turn calibration (in degrees) and, when Touch ID was available at enrollment, the pinned fingerprint set (a sha256 of LocalAuthentication's `domainState`) |
 | `models/face_recognition_sface_2021dec.onnx` | SFace, installed by `tau guard setup`, sha256-checked at every load |
 | `audit.jsonl` (+ `.1`, `.2`) | the audit log |
 | `failures.json` | the failure count and cooldown, `0600` |

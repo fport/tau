@@ -30,6 +30,11 @@ Route contract (all protected control routes, JSON; the hub side is issue 111):
 - ``POST /guard/verify`` ``{channel, client_id, kind, request_id?, tool?, policy?,
   fallback?}`` → ``202 {attempt, seq}``; a refusal answers 4xx ``{reason, retry_after?}``
   (``cooldown``, ``busy``). The result is read through ``/guard/status?attempt=<id>``.
+  ``policy`` holds every :data:`POLICY_KEYS` knob with the value the client uses
+  (:func:`client_policy`: the strict default of :data:`POLICY_DEFAULTS` for a knob the client's
+  ``tau.toml`` leaves out); the hub applies the stricter of its own value and the client's, and
+  reads a knob missing from ``policy``, or a missing ``policy``, as that default, never as
+  agreement with a weaker hub value.
   ``fallback: "touch_id"`` (an ``unlock`` only; ``unlock(method="touch_id")``) asks for the
   Touch ID fallback: the hub runs it only while its status offers it (``fallback``), and runs
   LocalAuthentication itself, so the sheet appears on the Mac's screen. No route accepts a
@@ -76,6 +81,8 @@ __all__ = [
     "GUARD_MESSAGES",
     "LOCKED_NOTE",
     "LOCK_TRIGGERS",
+    "POLICY_DEFAULTS",
+    "POLICY_KEYS",
     "PROGRESS_STEPS",
     "STEP_UP_NOTE",
     "UNLOCK_METHODS",
@@ -205,6 +212,13 @@ such as ``enable = true`` must never mean "off"). An issue that adds a knob adds
 POLICY_KEYS = ("step_up", "unlock_liveness")
 """Weakening-sensitive knobs a client sends with every verification; the hub applies the
 stricter of its own value and the client's."""
+POLICY_DEFAULTS: dict[str, str] = {"step_up": "face", "unlock_liveness": "challenge"}
+"""What a client uses for a :data:`POLICY_KEYS` knob its ``[component.guard]`` leaves out or
+sets to something unknown; each default is also the knob's strictest value."""
+POLICY_VALUES: dict[str, tuple[str, ...]] = {
+    "step_up": ("face", "face_or_touch_id", "touch_id", "none"),
+    "unlock_liveness": ("challenge", "none"),
+}
 
 LOCKED_NOTE = "tau was locked before the user answered."
 """Fixed English note the model reads when a tier-1 or tier-2 call met a locked guard."""
@@ -597,8 +611,15 @@ def read_enrollment(config: Config) -> str | None:
 
 
 def client_policy(table: Mapping[str, Any]) -> dict[str, str]:
-    """The weakening-sensitive knobs of ``[component.guard]`` this client sends the hub."""
-    return {key: table[key] for key in POLICY_KEYS if isinstance(table.get(key), str)}
+    """The weakening-sensitive knobs of ``[component.guard]`` this client sends the hub: every
+    :data:`POLICY_KEYS` knob with the value this client uses, so a knob it leaves out (or sets
+    to an unknown value) goes as its strict default (:data:`POLICY_DEFAULTS`), never as a
+    silence the hub could read as agreeing with a weaker value of its own."""
+    policy: dict[str, str] = {}
+    for key in POLICY_KEYS:
+        value = table.get(key)
+        policy[key] = value if value in POLICY_VALUES[key] else POLICY_DEFAULTS[key]
+    return policy
 
 
 class HubGuard:

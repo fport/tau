@@ -21,7 +21,7 @@ import pytest
 from tau_core import Admission, Config, GuardStatus, GuardTurn, GuardVerdict, HubGuard, Tier
 from tau_core.approval import ApprovalRequest
 from tau_core.config import HubConfig
-from tau_core.guard import ENROLLED_MARKER
+from tau_core.guard import ENROLLED_MARKER, client_policy
 from tau_core.hub import ControlApi, ControlRequest, HubClient, HubError, HubUnavailable
 from tau_core.hub.control import TOKEN_FILE, response_proof
 from tau_core.testing import test_config
@@ -697,6 +697,33 @@ def test_step_up_sends_the_request_and_passes_only_a_verified_match(hub: FakeHub
     assert asyncio.run(hub.guard.step_up(REQUEST, client_id="c1")) is False
     hub.api.shutdown()
     assert asyncio.run(hub.guard.step_up(REQUEST, client_id="c1")) is False
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        ({}, {"step_up": "face", "unlock_liveness": "challenge"}),
+        ({"enabled": True}, {"step_up": "face", "unlock_liveness": "challenge"}),
+        ({"step_up": "none"}, {"step_up": "none", "unlock_liveness": "challenge"}),
+        (
+            {"step_up": "touch_id", "unlock_liveness": "none"},
+            {"step_up": "touch_id", "unlock_liveness": "none"},
+        ),
+        (
+            {"step_up": "nonee", "unlock_liveness": 0},
+            {"step_up": "face", "unlock_liveness": "challenge"},
+        ),
+    ],
+)
+def test_the_client_sends_every_policy_knob_with_the_value_it_uses(
+    hub: FakeHub, table: dict[str, Any], expected: dict[str, str]
+) -> None:
+    config = hub.config.with_overrides(component_tables={"guard": table})
+    assert client_policy(table) == expected
+    assert HubGuard(config).policy == expected  # a missing knob is never silence
+    hub.routes.statuses = progress_script()
+    asyncio.run(HubGuard(config).step_up(REQUEST, client_id="c1"))
+    assert hub.routes.requests[0][1]["policy"] == expected
 
 
 def test_cancelling_an_unlock_posts_cancel_and_reraises(hub: FakeHub) -> None:

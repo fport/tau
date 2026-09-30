@@ -32,7 +32,7 @@ The private default must survive both: a tau that runs at home keeps its life da
    - `net_send` (tier 2). It speaks for the owner to a third party, so it needs an approval like a physical action does.
 6. **Deploying stays reproducible and personal-data free.**
    - `cloud/spine` tracks example configurations without resource ids, and `pnpm run configure` writes the gitignored `wrangler.jsonc`.
-   - `pnpm dev` runs the spine locally (Miniflare keeps D1, KV and the Durable Object on disk). `pnpm run deploy` lets Wrangler provision KV and D1 on the first deploy.
+   - `pnpm dev` runs the spine locally (Miniflare keeps KV and the Durable Object on disk). `pnpm run deploy` lets Wrangler provision KV on the first deploy. In local mode the mailbox lives in the SQLite-backed `Mailbox` Durable Object and the spine needs no D1, because the Workers Free plan allows only 10 D1 databases per account (amended 2026-09-30); cloud mode adds D1 for its store.
    - Local mode fits the Workers Free plan. Cloud mode needs Workers Paid for Containers, and Docker to build the image.
 
 ## Consequences

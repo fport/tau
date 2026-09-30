@@ -8,7 +8,7 @@ Blocked by: 092, 093
 
 ## What to build
 
-The hub's long poll (`GET /hub/updates?timeout=25`) waits inside the `HubSignal` Durable Object. A hub that polls around the clock keeps that object active all day:
+The hub's long poll (`GET /hub/updates?timeout=25`) waits inside the `Mailbox` Durable Object (which also holds the mailbox since 2026-09-30). A hub that polls around the clock keeps that object active all day:
 
 - 128 MB × 86 400 s ≈ 10 800 GB-s per day;
 - the Workers Free plan includes 13 000 GB-s per day.
@@ -18,7 +18,7 @@ That fits, but with little headroom, and a second poller (a `tau net poll` next 
 Options:
 
 1. **WebSocket hibernation.** The hub keeps one WebSocket open to the Durable Object. The object hibernates between envelopes and is not billed while it hibernates. This needs a WebSocket client in tau-net (a small dependency such as `websockets`), with reconnect logic.
-2. **Worker-side D1 polling.** The Worker checks D1 about once a second inside the request and uses no Durable Object at all. This costs D1 reads (about 86 400 small queries a day) instead of Durable Object duration.
+2. **Worker-side polling of the Mailbox.** The Worker asks the object once a second without holding a request inside it. This trades duration for about 86 400 Durable Object requests a day, which is close to the Free plan's 100 000.
 3. **A lower duty cycle.** The hub waits between polls. This costs latency.
 
 Measure the real usage on a deployed spine (095) before choosing.

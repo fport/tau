@@ -1216,6 +1216,66 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
         "en": "active; the hub reports it {state}",
         "tr": "etkin; hub durumunu {state} olarak bildiriyor",
     },
+    # -- guarded channels (issue 113): /guard, the terminal lock prompt, Telegram -------------
+    "command.guard": {
+        "en": "show the guard state, or lock or unlock tau",
+        "tr": "koruma durumunu gösterir ya da tau'yu kilitler veya açar",
+    },
+    "guard.cmd.off": {"en": "The guard is off.", "tr": "Koruma kapalı."},
+    "guard.cmd.usage": {
+        "en": "Usage: /guard [lock|unlock]",
+        "tr": "Kullanım: /guard [lock|unlock]",
+    },
+    "guard.cmd.lock_done": {
+        "en": "tau is locked. Unlock it at the Mac.",
+        "tr": "tau kilitlendi. Kilidi Mac'in başında aç.",
+    },
+    "guard.cmd.lock_failed": {
+        "en": "The lock did not reach the guard; check that the hub runs (`tau doctor`).",
+        "tr": "Kilit korumaya ulaşmadı; hub'ın çalıştığını denetle (`tau doctor`).",
+    },
+    "guard.cmd.unlock_at_mac": {
+        "en": "Unlocking happens only at the Mac: press Enter on the lock screen of tau tui or "
+        "tau chat.",
+        "tr": "Kilit yalnızca Mac'in başında açılır: tau tui ya da tau chat kilit ekranında "
+        "Enter'a bas.",
+    },
+    "guard.cmd.already_unlocked": {
+        "en": "tau is already unlocked.",
+        "tr": "tau'nun kilidi zaten açık.",
+    },
+    "guard.cmd.no_service": {
+        "en": "The guard is on, but this hub runs no guard service; guarded channels stay locked.",
+        "tr": "Koruma açık ama bu hub'da koruma servisi çalışmıyor; korunan kanallar kilitli "
+        "kalır.",
+    },
+    "guard.cmd.refused": {
+        "en": "/{command} is not available while tau is locked.",
+        "tr": "tau kilitliyken /{command} kullanılamaz.",
+    },
+    "guard.prompt.prompt": {"en": "locked> ", "tr": "kilitli> "},
+    "guard.prompt.banner": {
+        "en": "Press Enter to unlock. While tau is locked only /help, /lang, /guard and /quit "
+        "work.",
+        "tr": "Kilidi açmak için Enter'a bas. tau kilitliyken yalnızca /help, /lang, /guard ve "
+        "/quit çalışır.",
+    },
+    "guard.prompt.not_sent": {
+        "en": "tau is locked; that was not sent. Press Enter on an empty line to unlock.",
+        "tr": "tau kilitli; bu gönderilmedi. Kilidi açmak için boş satırda Enter'a bas.",
+    },
+    "guard.prompt.retry": {
+        "en": "Press Enter to try again.",
+        "tr": "Yeniden denemek için Enter'a bas.",
+    },
+    "guard.retry_after": {
+        "en": "Try again in {seconds} s.",
+        "tr": "{seconds} sn sonra yeniden dene.",
+    },
+    "guard.recheck": {
+        "en": "Checking that it is still you…",
+        "tr": "Hâlâ sen olduğun kontrol ediliyor…",
+    },
 }
 
 _collisions = set(GUARD_MESSAGES) & set(MESSAGES)

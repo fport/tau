@@ -139,6 +139,15 @@ When every check passes, the spine:
 
 The spine never decrypts, never stores contacts, and answers every envelope the same way whether or not the owner knows the sender.
 
+Implementation details, as shipped in `tau-spine` 0.1.0:
+
+- `id` must match the id pattern of §1 and `hops` must be an integer ≥ 0; otherwise the spine answers `400`.
+- A signature of the wrong length that is still valid b64u gets `403 bad_signature`.
+- Unknown top-level keys of the wire envelope are dropped before storing.
+- Card fetches never follow redirects; a redirect counts as `sender_card_unavailable`.
+- An envelope addressed from the spine's own address is checked against its own stored card.
+- The rate limit counts arrivals per sender in the last hour.
+
 ## 5. Spine: hub API
 
 Every `/hub/*` request carries `Authorization: Bearer <HUB_TOKEN>`:
@@ -158,6 +167,16 @@ The hub reads the token from `TAU_SPINE_TOKEN` and the spine URL from `TAU_SPINE
 | `POST /hub/ack` | `{"seqs": [int, ...]}` | `200 {"deleted": int}`; acknowledged envelopes are deleted, since the spine only stores and forwards |
 
 The mode is the `TAU_MODE` variable (`local` by default, `cloud` in the cloud configuration).
+
+The long poll waits up to `timeout` seconds and wakes as soon as an envelope arrives. It always queries again before answering, so the answer may be an empty list, and an empty answer comes back after about `timeout` plus a few milliseconds. Clients therefore set their HTTP timeout above 25 s (tau-net uses 35 s).
+
+Query values that are out of range or not integers get `400`; they are never clamped. `seq` only increases and is never reused after an ack. An ack takes at most 1 000 seqs; duplicates are ignored and `deleted` counts real deletions.
+
+Unless a table says otherwise:
+
+- A `200` or `201` without a specified body is `{"ok": true}`.
+- Errors carry `{"error": <code>}`, where the code is one of `exists` (409), `not_found` (404), `too_large` (413), `method_not_allowed` (405, with an `Allow` header), `bad_request` (400, with `detail`) or `internal` (500).
+- The Bearer scheme is matched case-insensitively.
 
 ### Cloud mode only
 
@@ -179,11 +198,16 @@ When `TAU_MODE` is not `cloud`, every route below answers `404 {"error": "cloud_
 | `GET /hub/files/<name>` | | `200` `text/plain; charset=utf-8` body, or `404` |
 | `PUT /hub/files/<name>` | UTF-8 text body (≤ 512 KiB) | `200 {"name", "size", "updated_at"}` |
 
+Times: state and file `updated_at` values are integer Unix seconds.
+
 **Sessions** (the `spine` session backend of `tau-cloud`):
 
 - Bodies are opaque JSON produced by Strands' `to_dict()`; the spine stores them as text and never interprets them.
 - `sid` and `aid` match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`; `mid` is an integer ≥ 0.
 - Every write refreshes the session's `updated_at` column. A single body may not exceed 1 MiB (`413`).
+- Session `created_at` and `updated_at` are ISO 8601 strings (`2026-09-30T10:13:04.698Z`), because the session summaries parse them with `fromisoformat`.
+- Meta `PATCH` is a shallow merge, like `dict.update`; a `null` value is stored, not deleted.
+- `GET` of the events of a missing session returns `{"events": []}`. An invalid id gets `400`.
 
 | Method and path | Request | Response |
 |---|---|---|
@@ -207,6 +231,16 @@ When `TAU_MODE` is not `cloud`, every route below answers `404 {"error": "cloud_
 | Method and path | Response |
 |---|---|
 | `GET /hub/brain` | `200` the container's `GET /health` JSON, or `503 {"error": "brain_unavailable"}` |
+
+The brain container listens on `0.0.0.0:8080`, and `GET /health` answers `200` with a JSON object. `/hub/brain` starts the container when needed and waits up to 90 s.
+
+The container's environment:
+
+- `TAU_SPINE_URL`: `SPINE_URL`, or `https://<ADDRESS>` when it is empty, without a trailing slash.
+- `TAU_SPINE_TOKEN`: the `HUB_TOKEN`.
+- Each pass-through secret, when it is set and not empty.
+
+The image sets `TAU_HOME=/tau` and `TAU_DATA_DIR=/data` and runs as the non-root user `tau`.
 
 ### Cron
 
@@ -236,6 +270,15 @@ The spine runs every minute (`* * * * *`):
    | anything | `blocked`, or not a contact | dropped and logged, never answered |
 
    Keys are pinned when a contact becomes `accepted`. An envelope that does not verify with the pinned key is dropped with a warning ("key changed").
+
+   Details, as shipped in `tau-net` 0.1.0:
+
+   - A repeated request while `pending_in` keeps one request, refreshes its note and sends nothing.
+   - An accept from an `accepted` contact is a no-op, and a message from a pending contact is dropped.
+   - `tau net add` on a `pending_in` address accepts at once.
+   - Pending contacts are verified with a fresh card and dropped as "key changed" if that card differs from the keys stored when they were added.
+   - Strangers (anything but a `contact_request`) and blocked senders are dropped before any card fetch.
+   - Handled ids are keyed by `(from, id)`.
 4. **Network turn.** For a `message` from an accepted contact, with `[component.net] auto_reply = true` (the default), the service builds an agent with `build_agent(channel="net", tools=[], ...)`:
    - The persona is `PersonaLoader(persona_dir, user_file=<public note>)`, where the public note is `persona/net.md`, so `user.md` never enters the prompt.
    - The approver is the default auto-reject.
@@ -257,15 +300,25 @@ The spine runs every minute (`* * * * *`):
    <<<END MESSAGE>>>
    ```
 
-   Untrusted text never contains the markers: every `<<<` and `>>>` in the text and in the history is replaced with `‹‹‹` and `›››` before the frame is built.
+   Untrusted text never contains the markers: every `<<<` and `>>>` in the text and in the history is replaced with `‹‹‹` and `›››` before the frame is built. The contact's name is cleaned the same way, without control characters and cut to 80 characters. Each history line is collapsed to one line of at most 1 000 characters. `[no reply]` is matched without regard to case or surrounding quotes.
+
+   Replies to an envelope have deterministic ids, so an envelope handled again after a crash cannot send a second reply.
 
    The reply goes back as a `message` with the same `thread`, `reply_to` set to the incoming `id` and `hops = incoming hops + 1`. The reply is not sent when any of these holds:
    - it is empty or `[no reply]`;
    - `hops + 1 > max_hops` (default 6);
    - the contact already got `max_auto_replies_per_hour` auto-replies (default 20).
+
+   When a limit is already reached, the model is not called at all.
 5. **Log.** Every handled envelope and every sent one is appended to the network log, capped at the last 500 entries: `{ts, direction: "in"|"out", address, kind, id, thread, text}`.
 6. **Sending.** The hub posts envelopes directly to `<scheme>://<to>/net/inbox`, never through its own spine. The recipient's card is fetched once and pinned for contacts. A `202` or a `duplicate` counts as delivered; anything else is an error for the caller.
-7. **Storage.** `[component.net] store = "file"` (default) keeps identity-independent state under `TAU_DATA_DIR/net/`: `contacts.json`, `sessions.json`, `seen.json`, `log.jsonl` and `cursor`. `store = "spine"` keeps the same documents in the spine's state API (`net.contacts`, `net.sessions`, `net.seen`, `net.log`, `net.cursor`); cloud mode uses this store.
+7. **Errors.**
+
+   - A `401` from the spine stops polling (state `failed`), because the token is only read at start.
+   - Other errors back off exponentially, up to 60 s.
+   - The cursor is saved after a successful ack. A failed ack leaves the cursor where it was, and the envelope that comes back is dropped as already handled.
+   - The hub reaches its own spine over `http` only when the spine is on `localhost` or `127.0.0.1`. Peers need `TAU_NET_ALLOW_INSECURE=1` for `http`.
+8. **Storage.** `[component.net] store = "file"` (default) keeps identity-independent state under `TAU_DATA_DIR/net/`: `contacts.json`, `sessions.json`, `seen.json`, `log.jsonl` and `cursor`. `store = "spine"` keeps the same documents in the spine's state API (`net.contacts`, `net.sessions`, `net.seen`, `net.log`, `net.cursor`); cloud mode uses this store.
 
 ## 7. Configuration
 

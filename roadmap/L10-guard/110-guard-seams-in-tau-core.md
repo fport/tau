@@ -98,7 +98,7 @@ class Guard(Protocol):
   - **Strict mapping.** Only an answer that says `unlocked` (or `allowed: true` from `/guard/admit`), with a valid proof and an `enrollment` id equal to the local marker's, admits. Everything else refuses with `unavailable`: `off`, 404, 403 after one token re-read, 5xx, a timeout, bad JSON, a missing proof or an enrollment mismatch.
   - **`admit`** has its own 3 s bound (`asyncio.wait_for`).
   - **Threads.** All blocking HTTP runs in daemon threads, never in `asyncio.to_thread`, which is joined at shutdown.
-  - **`unlock` and `step_up`** post `/guard/verify`, then long-poll `GET /guard/status?since=<seq>` until the attempt is done, calling `on_progress` on every change of `seq`. On `asyncio.CancelledError` they post `/guard/cancel`, then re-raise.
+  - **`unlock` and `step_up`** post `/guard/verify`, then long-poll `GET /guard/status?since=<seq>&attempt=<id>` until their own attempt is done, calling `on_progress` on every change of `seq`. On `asyncio.CancelledError` they post `/guard/cancel`, then re-raise. A 403 to `/guard/verify` is never signed, so it gives `unavailable` whatever its body says.
   - **Policy.** The request carries the client's own weakening-sensitive policy (`[component.guard]` `step_up`, `unlock_liveness`), and the hub applies the stricter of the two.
 - **`resolve_guard(config) -> Guard | None`** memoizes a found guard per `(config.home, config.data_dir)`; `None` is never memoized (it would fail open for the rest of the process):
   - `None` when neither the marker nor `enabled = true` is present;

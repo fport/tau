@@ -50,6 +50,7 @@ class GuardRoutes:
 
     admit: tuple[int, Any] = (200, {"allowed": True, "reason": "ok", "enrollment": "E1"})
     verify: tuple[int, Any] = (202, {"attempt": "a1", "seq": 5})
+    lock: tuple[int, Any] = (200, {"state": "locked"})
     statuses: list[dict[str, Any]] = field(default_factory=list)
     delay: float = 0.0
     blocking: bool = False
@@ -64,7 +65,7 @@ class GuardRoutes:
         api.add_route("GET", "/guard/status", self._status)
         api.add_route("POST", "/guard/verify", self._verify)
         api.add_route("POST", "/guard/cancel", self._ok)
-        api.add_route("POST", "/guard/lock", self._ok)
+        api.add_route("POST", "/guard/lock", self._lock)
 
     def _record(self, request: ControlRequest) -> None:
         self.requests.append((request.path, request.json(), request.query))
@@ -93,6 +94,10 @@ class GuardRoutes:
     def _ok(self, request: ControlRequest) -> tuple[int, Any]:
         self._record(request)
         return 200, {"ok": True}
+
+    def _lock(self, request: ControlRequest) -> tuple[int, Any]:
+        self._record(request)
+        return self.lock
 
 
 @dataclass
@@ -278,6 +283,20 @@ def test_an_unproven_or_broken_answer_never_admits(
         assert asyncio.run(guard.admit(TURN)) == Admission(False, "unavailable")
         assert asyncio.run(guard.status()).state == "unavailable"
         assert raw.requests == 2
+    finally:
+        raw.close()
+
+
+def test_an_unproven_403_never_picks_the_verdict(tmp_path: Path) -> None:
+    body = json.dumps({"reason": "cooldown", "retry_after": 900}).encode()
+    guard, raw = raw_guard(tmp_path, 403, body, "missing")  # any listener can say this
+    try:
+        assert asyncio.run(guard.unlock(channel="tui", client_id="c1")) == GuardVerdict(
+            False, "unavailable"
+        )
+        assert asyncio.run(guard.step_up(REQUEST, client_id="c1")) is False
+        assert asyncio.run(guard.admit(TURN)) == Admission(False, "unavailable")
+        assert raw.requests == 6  # every request retried once after re-reading the token
     finally:
         raw.close()
 
@@ -626,6 +645,28 @@ def test_unlock_verdicts_map_strictly(
     assert asyncio.run(hub.guard.unlock(channel="tui", client_id="c1")) == expected
 
 
+def test_a_step_up_queued_behind_another_attempt_follows_its_own_id(hub: FakeHub) -> None:
+    hub.routes.verify = (202, {"attempt": "s1", "seq": 10})
+    queued = {"id": "s1", "kind": "step_up", "step": "starting", "seq": 1, "done": False}
+    done = {**queued, "step": "done", "seq": 2, "done": True, "ok": True, "reason": "match"}
+    hub.routes.statuses = [
+        {"state": "verifying", "seq": 11, "attempt": queued},  # another client's unlock runs
+        {"state": "verifying", "seq": 12, "attempt": queued},
+        {"state": "unlocked", "seq": 13, "enrollment": "E1", "attempt": {**done, "method": "face"}},
+    ]
+    assert asyncio.run(hub.guard.step_up(REQUEST, client_id="c1")) is True
+    polls = [query for path, _, query in hub.routes.requests if path == "/guard/status"]
+    assert [query["attempt"] for query in polls] == [["s1"], ["s1"], ["s1"]]
+    assert [query["since"] for query in polls] == [["10"], ["11"], ["12"]]
+
+
+def test_an_unknown_or_expired_attempt_is_unavailable(hub: FakeHub) -> None:
+    hub.routes.statuses = [{"state": "unlocked", "seq": 6, "enrollment": "E1", "attempt": None}]
+    assert asyncio.run(hub.guard.unlock(channel="tui", client_id="c1")) == GuardVerdict(
+        False, "unavailable"
+    )
+
+
 def test_unlock_refused_by_the_hub(hub: FakeHub) -> None:
     hub.routes.verify = (429, {"reason": "cooldown", "retry_after": 12})
     verdict = asyncio.run(hub.guard.unlock(channel="tui", client_id="c1"))
@@ -688,3 +729,18 @@ def test_lock_and_cancel_post_and_never_raise(hub: FakeHub) -> None:
     hub.api.shutdown()
     asyncio.run(hub.guard.lock(channel="tui", client_id="c1"))  # no hub: logged, not raised
     asyncio.run(hub.guard.cancel(client_id="c1"))
+
+
+def test_a_lock_the_hub_did_not_confirm_is_logged_as_an_error(
+    hub: FakeHub, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("ERROR", logger="tau_core.guard")
+    asyncio.run(hub.guard.lock(channel="tui", client_id="c1"))
+    assert caplog.records == []
+    hub.routes.lock = (200, {"state": "unlocked"})
+    asyncio.run(hub.guard.lock(channel="tui", client_id="c1"))
+    assert "did not confirm" in caplog.records[-1].getMessage()
+    hub.api.shutdown()
+    asyncio.run(hub.guard.lock(channel="tui", client_id="c1"))
+    assert "did not reach the hub" in caplog.records[-1].getMessage()
+    assert all(record.levelname == "ERROR" for record in caplog.records)

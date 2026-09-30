@@ -65,14 +65,19 @@ The states are `off` / `locked` / `verifying` / `unlocked` / `unavailable`. Orth
 
 | Route | Body / query | Response |
 |---|---|---|
-| `GET /guard/status` | `?since=<seq>&wait=<0..25>` long poll | every `GuardStatus` field as JSON, plus the `enrollment` id |
+| `GET /guard/status` | `?since=<seq>&wait=<0..25>[&attempt=<id>]` long poll | every `GuardStatus` field as JSON, plus the `enrollment` id; `attempt` is the running attempt, or with `attempt=<id>` that attempt's own record |
 | `POST /guard/admit` | `{channel, session_id, client_id}` | `{allowed, reason, enrollment}`, with the reflex checks evaluated inline |
 | `POST /guard/verify` | `{channel, client_id, kind: "unlock" \| "recheck" \| "step_up", request_id?, tool?, policy?}` | `202 {attempt, seq}`; joins a running unlock |
 | `POST /guard/cancel` | `{client_id, attempt?}` | `{ok}` |
 | `POST /guard/lock` | `{channel, client_id, trigger}` | `{state: "locked"}`, idempotent |
 | `POST /guard/enroll` | `{client_id}` | `202 {attempt, seq}`; runs LocalAuthentication first (112) |
 
-- **Reading a result.** An attempt's result is read through `/guard/status`: `attempt` with `done`, `ok`, `reason`, `method` and `retry_after`.
+- **Reading a result.** An attempt is `{id, kind, step, seq, deadline, hint, done, ok, reason, method, retry_after}`; `HubGuard` (110) reads every field. Its result is read through `GET /guard/status?attempt=<id>`, with the id from the `202` of `/guard/verify`:
+  - `attempt` is then that attempt's own record, whether it is queued (a step-up waiting behind a running verification: `step: "starting"`, `done: false`), running or finished; it is `null` once the id is unknown or expired;
+  - the hub keeps a finished attempt's record for at least 60 s, so a client that polls late, or while another client's attempt runs, still reads its own verdict;
+  - without the parameter, `attempt` is the running attempt or `null`;
+  - a successful attempt has `done: true`, `ok: true`, `reason: "match"` and a `method` (`face` or `touch_id`), and the same answer must carry `state: "unlocked"` and the local `enrollment` id, or `HubGuard` does not count it as a success;
+  - a refused `/guard/verify` answers 4xx (never 403, which only the token check uses) with `{reason, retry_after?}`, for example `cooldown` or `busy`.
 - **Nothing is taken on trust.** No route accepts a verdict, an image or an embedding. The `channel` fields are audit labels only.
 - **Policy.** A `policy` in the verify body can only make the check stricter.
 - **The open `/status`** gains only `guard: {state, enrolled, available, reason}`.

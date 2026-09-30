@@ -18,12 +18,18 @@ camera library is imported here or in any channel process.
 
 Route contract (all protected control routes, JSON; the hub side is issue 111):
 
-- ``GET /guard/status?since=<seq>&wait=<0..25>`` (long poll) answers every
-  :class:`GuardStatus` field plus ``enrollment``; ``attempt`` is ``null`` or
-  ``{id, kind, step, seq, deadline, hint, done, ok, reason, method, retry_after}``.
+- ``GET /guard/status?since=<seq>&wait=<0..25>[&attempt=<id>]`` (long poll) answers every
+  :class:`GuardStatus` field plus ``enrollment``. ``attempt`` is ``null`` or
+  ``{id, kind, step, seq, deadline, hint, done, ok, reason, method, retry_after}``: the running
+  attempt, or, with ``attempt=<id>``, that attempt's own record whether it is queued (a step-up
+  behind a running verification: ``step: "starting"``, ``done: false``), running or finished,
+  and ``null`` once the id is unknown or expired. The hub keeps a finished attempt's record for
+  at least 60 s. A finished attempt with ``ok: true`` has ``reason: "match"``, a ``method``,
+  and comes with ``state: "unlocked"`` and the ``enrollment`` id.
 - ``POST /guard/admit`` ``{channel, session_id, client_id}`` → ``{allowed, reason, enrollment}``.
 - ``POST /guard/verify`` ``{channel, client_id, kind, request_id?, tool?, policy?}`` → ``202
-  {attempt, seq}``; the result is read through ``/guard/status``.
+  {attempt, seq}``; a refusal answers 4xx ``{reason, retry_after?}`` (``cooldown``, ``busy``).
+  The result is read through ``/guard/status?attempt=<id>``.
 - ``POST /guard/cancel`` ``{client_id, attempt?}`` → ``{ok}``.
 - ``POST /guard/lock`` ``{channel, client_id, trigger}`` → ``{state: "locked"}``.
 - ``POST /guard/enroll`` ``{client_id}`` → ``202 {attempt, seq}``.
@@ -536,8 +542,11 @@ class HubGuard:
     The mapping is strict: only a proven answer that says ``unlocked`` (``allowed: true`` from
     ``/guard/admit``) with an ``enrollment`` id equal to the local marker's admits. ``off``, a
     404, a 403 after one token re-read, a 5xx, a timeout, bad JSON, a missing or wrong proof
-    and an enrollment mismatch all mean locked (``unavailable``). Blocking HTTP runs in daemon
-    threads; a cancelled ``unlock`` or ``step_up`` posts ``/guard/cancel`` and re-raises.
+    and an enrollment mismatch all mean locked (``unavailable``); a 403 is never signed, so its
+    body never picks a verdict. ``unlock`` and ``step_up`` follow their own attempt by id
+    (``/guard/status?attempt=<id>``), so a step-up queued behind another client's attempt keeps
+    waiting, bounded by :data:`ATTEMPT_LIMIT`. Blocking HTTP runs in daemon threads; a
+    cancelled ``unlock`` or ``step_up`` posts ``/guard/cancel`` and re-raises.
     """
 
     name = "hub"
@@ -689,17 +698,24 @@ class HubGuard:
             logger.warning("guard cancel failed: %s", exc)
 
     async def lock(self, *, channel: str, client_id: str, trigger: str = "command") -> None:
+        """Ask the hub to lock. It never raises; a lock the hub did not confirm is logged as an
+        error, and a channel that must know re-reads :meth:`status` afterwards (113)."""
         body = {
             "channel": channel,
             "client_id": client_id,
             "trigger": trigger if trigger in LOCK_TRIGGERS else "command",
         }
         try:
-            await _in_daemon_thread(self.client.post, "/guard/lock", body, timeout=REQUEST_TIMEOUT)
+            answer = await _in_daemon_thread(
+                self.client.post, "/guard/lock", body, timeout=REQUEST_TIMEOUT
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.warning("guard lock failed: %s", exc)
+            logger.error("the guard lock did not reach the hub: %s", exc)
+            return
+        if not isinstance(answer, dict) or answer.get("state") != "locked":
+            logger.error("the hub did not confirm the guard lock: %r", answer)
 
     # -- one attempt ----------------------------------------------------------------------
 
@@ -719,7 +735,9 @@ class HubGuard:
         except HubUnavailable:
             return GuardVerdict(False, "unavailable")
         except HubError as exc:
-            return _refused_verdict(exc.payload)
+            if exc.status == 403:
+                return GuardVerdict(False, "unavailable")  # never signed: any listener's words
+            return _refused_verdict(exc.payload)  # HubClient checked this answer's proof
         if not isinstance(started, dict):
             return GuardVerdict(False, "error")
         attempt_id = _str(started.get("attempt"))
@@ -738,7 +756,7 @@ class HubGuard:
                     )
                     return GuardVerdict(False, "timeout")
                 wait = min(LONG_POLL, remaining)
-                query = {"since": str(seq), "wait": f"{wait:g}"}
+                query = {"since": str(seq), "wait": f"{wait:g}", "attempt": attempt_id}
                 try:
                     payload = await _in_daemon_thread(
                         self.client.get,
@@ -752,7 +770,8 @@ class HubGuard:
                     return GuardVerdict(False, "unavailable")
                 attempt = payload.get("attempt")
                 if not isinstance(attempt, dict) or attempt.get("id") != attempt_id:
-                    return GuardVerdict(False, "unavailable")  # the attempt vanished
+                    # unknown or expired (null), or a hub that ignored ``attempt=<id>``
+                    return GuardVerdict(False, "unavailable")
                 seq = max(seq, _int(payload.get("seq"), seq))
                 progress = _progress(attempt)
                 if progress is not None and progress.seq != reported:
@@ -782,7 +801,8 @@ class HubGuard:
 
 
 def _refused_verdict(payload: object) -> GuardVerdict:
-    """A verify request the hub refused (``cooldown``, ``busy``): never ``ok``."""
+    """A verify request the hub refused with a proven non-403 answer (``cooldown``, ``busy``):
+    never ``ok``."""
     if isinstance(payload, dict):
         reason = payload.get("reason")
         if reason in VERDICT_REASONS and reason != "match":

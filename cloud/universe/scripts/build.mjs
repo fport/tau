@@ -13,18 +13,19 @@
 //   chunks/        code the pages share (the character generator, the strings), and the
 //                  development fixtures, which only localhost ever loads (client/api.ts)
 //   theme.css      cloud/shared/theme.css: the tokens, fonts and primitives of the hard theme
-//   fonts/         the Jost variable font (latin, latin-ext) and its licence, next to
-//                  theme.css, whose @font-face URLs are relative
+//   fonts/         Chakra Petch, IBM Plex Sans and JetBrains Mono (latin, latin-ext) and their
+//                  licences (scripts/fonts.mjs), next to theme.css, whose @font-face URLs are
+//                  relative
 
 import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { copyFonts } from "./fonts.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = join(root, "public", "static");
 const shared = join(root, "..", "shared");
-const fontSource = join(root, "node_modules", "@fontsource-variable", "jost");
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, "fonts"), { recursive: true });
@@ -49,10 +50,6 @@ await build({
 });
 
 copyFileSync(join(shared, "theme.css"), join(out, "theme.css"));
-for (const subset of ["latin", "latin-ext"]) {
-  const file = `jost-${subset}-wght-normal.woff2`;
-  copyFileSync(join(fontSource, "files", file), join(out, "fonts", file));
-}
-copyFileSync(join(fontSource, "LICENSE"), join(out, "fonts", "OFL.txt"));
+copyFonts(root, join(out, "fonts"));
 
 console.log("Built public/static/ (page scripts, theme.css, fonts).");

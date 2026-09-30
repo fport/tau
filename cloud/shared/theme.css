@@ -1,28 +1,35 @@
 /* tau's hard theme (ADR 0013 §8): the tokens, fonts and primitives shared by the public site
    (cloud/universe) and tau-host (cloud/host).
 
-   Near-black with a faint grid and a dark-blue code texture, one neon red accent taken from
-   the tau triangle, chrome-white type, thin lines, square corners and HUD rings. Dark only:
-   it is the brand.
+   The brand palette on Void (docs/brand/README.md): Void blue-black with a faint grid and a
+   dark-blue code texture, Signal red as the one accent with Ember and Flare for heat, Core
+   white type, 1 px lines, square or chamfered corners, HUD rings and neon triangles. Dark
+   only: it is the brand.
 
-   How to use it: serve this file next to a `fonts/` directory holding the Jost variable font
-   (`jost-latin-wght-normal.woff2`, `jost-latin-ext-wght-normal.woff2` and its OFL licence,
-   from @fontsource-variable/jost), because the @font-face URLs below are relative to this
-   file. The universe's build copies both into public/app/. Load it before the page's own
+   Type: Chakra Petch (angular, chamfered letters) for headings and buttons, IBM Plex Sans for
+   reading, JetBrains Mono for HUD labels and code.
+
+   How to use it: serve this file next to a `fonts/` directory holding the files named in the
+   @font-face rules below and their OFL licences (from @fontsource/chakra-petch,
+   @fontsource-variable/ibm-plex-sans and @fontsource-variable/jetbrains-mono), because the
+   URLs are relative to this file. The universe's build copies them into public/static/.
+   Without the fonts every rule falls back to system faces. Load it before the page's own
    stylesheet.
 
    CSP: everything here works under `style-src 'self'; img-src 'self' data:`. There is no
    @import and no remote font; the code texture is a data: SVG.
 
-   Motion: every animation here stops under `prefers-reduced-motion: reduce`. The character
+   Motion: every animation here stops under `prefers-reduced-motion: reduce`. The sigil
    classes (`.ch-*`) animate the SVG that cloud/shared/character.ts writes. */
 
+/* ---- fonts ------------------------------------------------------------------------ */
+
 @font-face {
-  font-family: "Jost";
+  font-family: "Chakra Petch";
   font-style: normal;
   font-display: swap;
-  font-weight: 100 900;
-  src: url("fonts/jost-latin-ext-wght-normal.woff2") format("woff2");
+  font-weight: 500;
+  src: url("fonts/chakra-petch-latin-ext-500-normal.woff2") format("woff2");
   unicode-range:
     U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
     U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
@@ -30,50 +37,135 @@
 }
 
 @font-face {
-  font-family: "Jost";
+  font-family: "Chakra Petch";
   font-style: normal;
   font-display: swap;
-  font-weight: 100 900;
-  src: url("fonts/jost-latin-wght-normal.woff2") format("woff2");
+  font-weight: 500;
+  src: url("fonts/chakra-petch-latin-500-normal.woff2") format("woff2");
   unicode-range:
     U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
     U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("fonts/chakra-petch-latin-ext-600-normal.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("fonts/chakra-petch-latin-600-normal.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("fonts/ibm-plex-sans-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("fonts/ibm-plex-sans-latin-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("fonts/jetbrains-mono-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ---- tokens ----------------------------------------------------------------------- */
+
 :root {
-  /* Surfaces, darkest first. */
-  --bg: #07080a;
-  --bg-2: #0d0f13;
-  --bg-3: #13161c;
+  /* The brand palette (docs/brand/README.md). */
+  --void: #05071a;
+  --signal: #ff2e63;
+  --ember: #ff7a3d;
+  --flare: #ffb25c;
+  --core: #fff4e0;
+
+  /* Surfaces, darkest first: Void, then panels lifted toward its blue. */
+  --bg: #05071a;
+  --bg-2: #0a0d24;
+  --bg-3: #10142f;
   /* Lines: hairlines between things, and a stronger one for edges you can act on. */
-  --line: #1f232b;
-  --line-2: #2e3440;
-  /* Type: chrome white, muted, faint (faint only for large or decorative text). */
-  --text: #e8ecf1;
-  --muted: #8a93a3;
-  --faint: #5d6574;
-  /* The one accent: the neon red of the tau triangle, its glow and its tints. */
-  --accent: #ff2e3e;
-  --accent-hot: #ff6b75;
-  --accent-glow: rgba(255, 46, 62, 0.45);
-  --accent-soft: rgba(255, 46, 62, 0.12);
-  --accent-line: rgba(255, 46, 62, 0.55);
+  --line: #1b2042;
+  --line-2: #2d335c;
+  /* Type: Core white, muted, faint (faint only for large or decorative text). */
+  --text: #f3eee6;
+  --muted: #979bb9;
+  --faint: #6b7096;
+  /* The accent is Signal; Ember is its heat (links, hot states), Flare the brightest. */
+  --accent: #ff2e63;
+  --accent-hot: #ff7a3d;
+  --accent-glow: rgba(255, 46, 99, 0.45);
+  --accent-soft: rgba(255, 46, 99, 0.12);
+  --accent-line: rgba(255, 46, 99, 0.55);
   /* Text on the accent. */
-  --on-accent: #07080a;
+  --on-accent: #05071a;
   /* The code texture's blue, and the grid. */
-  --code: #16305c;
-  --grid: rgba(232, 236, 241, 0.035);
-  /* Chrome: the gradient of the big letters. */
-  --chrome: linear-gradient(180deg, #ffffff 0%, #dfe4ea 38%, #8b95a5 52%, #c9d0da 64%, #f4f6f9 100%);
+  --code: #1b2656;
+  --grid: rgba(255, 244, 224, 0.032);
+  /* Fire: Signal → Ember → Flare, for beams, floors and lit edges. */
+  --fire: linear-gradient(90deg, var(--signal), var(--ember) 55%, var(--flare));
+  /* The big letters: Core white, lit from below by the fire. */
+  --chrome: linear-gradient(180deg, #ffffff 0%, #fff4e0 55%, #ffc690 100%);
 
-  --font-sans: "Jost", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Chakra Petch", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    monospace;
 
-  /* Square corners and thin lines, everywhere. */
+  /* Square corners, chamfers and thin lines, everywhere. */
   --radius: 0;
   --hair: 1px;
+  --cut: 10px;
 
   --page: 76rem;
+  --page-wide: 104rem;
   --gutter: clamp(1rem, 4vw, 2.5rem);
 
   color-scheme: dark;
@@ -105,7 +197,7 @@ body {
   font-family: var(--font-sans);
   font-size: 1.0625rem;
   line-height: 1.6;
-  font-weight: 380;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
@@ -116,9 +208,10 @@ h2,
 h3,
 h4 {
   margin: 0;
-  font-weight: 300;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.005em;
   text-wrap: balance;
 }
 
@@ -154,7 +247,7 @@ a:hover {
 code,
 kbd {
   font-family: var(--font-mono);
-  font-size: 0.86em;
+  font-size: 0.84em;
 }
 
 code {
@@ -198,7 +291,7 @@ kbd {
   padding: 0.5rem 1rem;
   background: var(--accent);
   color: var(--on-accent);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .skip:focus {
@@ -220,13 +313,51 @@ kbd {
    of its own (a pseudo-element or an empty div) so its opacity does not touch the content. */
 .code-bg {
   background-color: transparent;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='320' font-family='monospace' font-size='12' fill='%2316305c'%3E%3Cg%3E%3Ctext x='6' y='14'%3E1%3C/text%3E%3Ctext x='6' y='30'%3E0%3C/text%3E%3Ctext x='6' y='46'%3E%CF%84%3C/text%3E%3Ctext x='6' y='62'%3E7%3C/text%3E%3Ctext x='6' y='78'%3E%E2%96%B2%3C/text%3E%3Ctext x='6' y='94'%3E0%3C/text%3E%3Ctext x='6' y='110'%3E1%3C/text%3E%3Ctext x='6' y='190'%3E3%3C/text%3E%3Ctext x='6' y='206'%3Ef%3C/text%3E%3Ctext x='6' y='222'%3E0%3C/text%3E%3Ctext x='54' y='62'%3Ea%3C/text%3E%3Ctext x='54' y='78'%3E9%3C/text%3E%3Ctext x='54' y='94'%3E%CF%84%3C/text%3E%3Ctext x='54' y='110'%3E0%3C/text%3E%3Ctext x='54' y='126'%3E1%3C/text%3E%3Ctext x='54' y='142'%3E1%3C/text%3E%3Ctext x='54' y='270'%3E%E2%96%B3%3C/text%3E%3Ctext x='54' y='286'%3E4%3C/text%3E%3Ctext x='54' y='302'%3E0%3C/text%3E%3Ctext x='102' y='14'%3E%E2%96%B3%3C/text%3E%3Ctext x='102' y='30'%3E8%3C/text%3E%3Ctext x='102' y='158'%3E1%3C/text%3E%3Ctext x='102' y='174'%3E0%3C/text%3E%3Ctext x='102' y='190'%3Ec%3C/text%3E%3Ctext x='102' y='206'%3E%CF%84%3C/text%3E%3Ctext x='102' y='222'%3E2%3C/text%3E%3Ctext x='102' y='238'%3E0%3C/text%3E%3Ctext x='150' y='94'%3E5%3C/text%3E%3Ctext x='150' y='110'%3E%E2%96%B2%3C/text%3E%3Ctext x='150' y='126'%3E0%3C/text%3E%3Ctext x='150' y='142'%3E1%3C/text%3E%3Ctext x='150' y='158'%3Ee%3C/text%3E%3Ctext x='150' y='302'%3E1%3C/text%3E%3Ctext x='198' y='30'%3E0%3C/text%3E%3Ctext x='198' y='46'%3E1%3C/text%3E%3Ctext x='198' y='62'%3E%CF%84%3C/text%3E%3Ctext x='198' y='206'%3Eb%3C/text%3E%3Ctext x='198' y='222'%3E6%3C/text%3E%3Ctext x='198' y='238'%3E%E2%96%B3%3C/text%3E%3Ctext x='198' y='254'%3E0%3C/text%3E%3Ctext x='198' y='270'%3E1%3C/text%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='320' font-family='monospace' font-size='12' fill='%231b2656'%3E%3Cg%3E%3Ctext x='6' y='14'%3E1%3C/text%3E%3Ctext x='6' y='30'%3E0%3C/text%3E%3Ctext x='6' y='46'%3E%CF%84%3C/text%3E%3Ctext x='6' y='62'%3E7%3C/text%3E%3Ctext x='6' y='78'%3E%E2%96%B2%3C/text%3E%3Ctext x='6' y='94'%3E0%3C/text%3E%3Ctext x='6' y='110'%3E1%3C/text%3E%3Ctext x='6' y='190'%3E3%3C/text%3E%3Ctext x='6' y='206'%3Ef%3C/text%3E%3Ctext x='6' y='222'%3E0%3C/text%3E%3Ctext x='54' y='62'%3Ea%3C/text%3E%3Ctext x='54' y='78'%3E9%3C/text%3E%3Ctext x='54' y='94'%3E%CF%84%3C/text%3E%3Ctext x='54' y='110'%3E0%3C/text%3E%3Ctext x='54' y='126'%3E1%3C/text%3E%3Ctext x='54' y='142'%3E1%3C/text%3E%3Ctext x='54' y='270'%3E%E2%96%B3%3C/text%3E%3Ctext x='54' y='286'%3E4%3C/text%3E%3Ctext x='54' y='302'%3E0%3C/text%3E%3Ctext x='102' y='14'%3E%E2%96%B3%3C/text%3E%3Ctext x='102' y='30'%3E8%3C/text%3E%3Ctext x='102' y='158'%3E1%3C/text%3E%3Ctext x='102' y='174'%3E0%3C/text%3E%3Ctext x='102' y='190'%3Ec%3C/text%3E%3Ctext x='102' y='206'%3E%CF%84%3C/text%3E%3Ctext x='102' y='222'%3E2%3C/text%3E%3Ctext x='102' y='238'%3E0%3C/text%3E%3Ctext x='150' y='94'%3E5%3C/text%3E%3Ctext x='150' y='110'%3E%E2%96%B2%3C/text%3E%3Ctext x='150' y='126'%3E0%3C/text%3E%3Ctext x='150' y='142'%3E1%3C/text%3E%3Ctext x='150' y='158'%3Ee%3C/text%3E%3Ctext x='150' y='302'%3E1%3C/text%3E%3Ctext x='198' y='30'%3E0%3C/text%3E%3Ctext x='198' y='46'%3E1%3C/text%3E%3Ctext x='198' y='62'%3E%CF%84%3C/text%3E%3Ctext x='198' y='206'%3Eb%3C/text%3E%3Ctext x='198' y='222'%3E6%3C/text%3E%3Ctext x='198' y='238'%3E%E2%96%B3%3C/text%3E%3Ctext x='198' y='254'%3E0%3C/text%3E%3Ctext x='198' y='270'%3E1%3C/text%3E%3C/g%3E%3C/svg%3E");
   background-size: 240px 320px;
+}
+
+/* The hero's vertical beams: thin Signal and Ember lines rising from the floor and fading out
+   toward the top. Put it on a layer of its own. */
+.beams {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 41px,
+      rgba(255, 46, 99, 0.2) 41px 42px,
+      transparent 42px 97px,
+      rgba(255, 122, 61, 0.24) 97px 99px,
+      transparent 99px 137px,
+      rgba(255, 46, 99, 0.14) 137px 138px,
+      transparent 138px 181px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 23px,
+      rgba(255, 178, 92, 0.1) 23px 24px,
+      transparent 24px 113px
+    );
+  -webkit-mask-image: linear-gradient(0deg, #000 0%, rgba(0, 0, 0, 0.5) 45%, transparent 90%);
+  mask-image: linear-gradient(0deg, #000 0%, rgba(0, 0, 0, 0.5) 45%, transparent 90%);
+}
+
+/* The reflecting floor: a lit line, brightest in the middle, with its glow. */
+.floor-line {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--signal) 18%,
+    var(--flare) 50%,
+    var(--signal) 82%,
+    transparent
+  );
+  box-shadow: 0 0 14px 1px rgba(255, 122, 61, 0.35);
 }
 
 /* ---- type ------------------------------------------------------------------------- */
 
-/* Chrome letters: thin, silver, lit from above. */
+/* The big letters: Core white, lit from below. */
 .chrome {
   background: var(--chrome);
   -webkit-background-clip: text;
@@ -243,9 +374,9 @@ kbd {
   gap: 0.35rem 0.75rem;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 400;
-  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   line-height: 1.5;
   text-transform: uppercase;
 }
@@ -321,51 +452,105 @@ kbd {
     right bottom;
 }
 
+/* A chamfered box: the top-left and bottom-right corners cut at 45°, with a 1 px edge that
+   follows the cuts. The edge and the fill are two layers behind the content, so the box's
+   own outline (focus) is never clipped. Set `--cut`, `--edge` and `--fill`; the element must
+   not set a border or a background of its own. */
+.cut {
+  --cut: 10px;
+  --edge: var(--line-2);
+  --fill: var(--bg-2);
+  position: relative;
+  isolation: isolate;
+}
+
+.cut::before,
+.cut::after,
+.button::before,
+.button::after,
+.chip::before,
+.chip::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  transition: background-color 0.15s;
+}
+
+.cut::before,
+.button::before,
+.chip::before {
+  inset: 0;
+  background-color: var(--edge);
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+}
+
+.cut::after,
+.button::after,
+.chip::after {
+  inset: 1px;
+  background-color: var(--fill);
+  clip-path: polygon(
+    calc(var(--cut) - 0.4px) 0,
+    100% 0,
+    100% calc(100% - var(--cut) + 0.4px),
+    calc(100% - var(--cut) + 0.4px) 100%,
+    0 100%,
+    0 calc(var(--cut) - 0.4px)
+  );
+}
+
 /* ---- controls --------------------------------------------------------------------- */
 
 .button {
+  --cut: 9px;
+  --edge: var(--line-2);
+  --fill: rgba(10, 13, 36, 0.78);
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.6rem;
   min-height: 2.75rem;
-  padding: 0.55rem 1.2rem;
-  border: 1px solid var(--line-2);
+  padding: 0.55rem 1.3rem;
+  border: 0;
   border-radius: var(--radius);
-  background: rgba(13, 15, 19, 0.7);
+  background: none;
   color: var(--text);
-  font: inherit;
-  font-size: 0.95rem;
-  font-weight: 450;
-  letter-spacing: 0.02em;
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
   text-decoration: none;
   cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background-color 0.15s,
-    color 0.15s,
-    box-shadow 0.15s;
+  transition: color 0.15s;
 }
 
 .button:hover {
+  --edge: var(--accent);
+  --fill: rgba(255, 46, 99, 0.14);
   color: var(--text);
-  border-color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .button-primary {
-  border-color: var(--accent);
-  background: var(--accent);
+  --edge: var(--accent);
+  --fill: var(--accent);
   color: var(--on-accent);
-  font-weight: 550;
-  box-shadow: 0 0 22px var(--accent-soft);
 }
 
 .button-primary:hover {
+  --edge: var(--ember);
+  --fill: var(--ember);
   color: var(--on-accent);
-  border-color: var(--accent-hot);
-  background: var(--accent-hot);
-  box-shadow: 0 0 28px var(--accent-glow);
 }
 
 .button:disabled,
@@ -381,46 +566,56 @@ kbd {
   fill: currentColor;
 }
 
+/* A small choice: a suggestion, a filter. */
 .chip {
+  --cut: 7px;
+  --edge: var(--line-2);
+  --fill: var(--bg);
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   min-height: 2rem;
-  padding: 0.2rem 0.75rem;
-  border: 1px solid var(--line-2);
-  background: transparent;
+  padding: 0.25rem 0.85rem;
+  border: 0;
+  background: none;
   color: var(--text);
   font: inherit;
   font-size: 0.9rem;
   line-height: 1.3;
+  text-align: left;
   text-decoration: none;
   cursor: pointer;
 }
 
 .chip:hover {
-  border-color: var(--accent);
+  --edge: var(--accent);
+  --fill: rgba(255, 46, 99, 0.12);
   color: var(--text);
-  background: var(--accent-soft);
 }
 
-/* ---- HUD rings -------------------------------------------------------------------- */
+/* ---- HUD -------------------------------------------------------------------------- */
 
 /* Thin rings for an inline SVG: `.hud-ring` a steady line, `.hud-ticks` a dashed dial,
-   `.hud-spin` / `.hud-spin-back` turn them slowly around the SVG's centre. */
+   `.hud-arc` a lit arc, `.hud-comet` the thinking arc's head, `.hud-spin` / `.hud-spin-back`
+   turn them slowly around the SVG's centre and `.hud-think` circles like the hero's comet. */
 .hud-ring,
 .hud-ticks,
-.hud-arc {
+.hud-arc,
+.hud-tri {
   fill: none;
   stroke: var(--accent);
   vector-effect: non-scaling-stroke;
 }
 
 .hud-ring {
-  stroke-opacity: 0.28;
+  stroke-opacity: 0.26;
   stroke-width: 1;
 }
 
 .hud-ticks {
-  stroke-opacity: 0.4;
+  stroke: var(--flare);
+  stroke-opacity: 0.38;
   stroke-width: 1;
   stroke-dasharray: 1 7;
 }
@@ -430,13 +625,44 @@ kbd {
   stroke-width: 1.5;
 }
 
+.hud-comet,
+.hud-tail {
+  fill: none;
+  stroke: var(--flare);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.hud-tail {
+  stroke: var(--ember);
+  stroke-opacity: 0.45;
+  stroke-width: 1.5;
+}
+
 .hud-frag {
   fill: var(--accent);
   fill-opacity: 0.6;
 }
 
+.hud-head {
+  fill: var(--core);
+}
+
+/* The hero's two neon triangles, faint behind whatever stands on them. */
+.hud-tri {
+  stroke-width: 1;
+  stroke-opacity: 0.32;
+  stroke-linejoin: miter;
+}
+
+.hud-tri-inner {
+  stroke: #ff4d4d;
+  stroke-opacity: 0.22;
+}
+
 .hud-spin,
-.hud-spin-back {
+.hud-spin-back,
+.hud-think {
   transform-box: view-box;
   transform-origin: 50% 50%;
   animation: hud-spin 90s linear infinite;
@@ -447,16 +673,32 @@ kbd {
   animation-direction: reverse;
 }
 
+.hud-think {
+  animation: hud-spin 7s cubic-bezier(0.55, 0.1, 0.45, 0.9) infinite;
+}
+
 @keyframes hud-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-/* ---- characters ------------------------------------------------------------------- */
+/* A HUD readout: tiny mono text for coordinates, counts and names of instruments. */
+.hud-label {
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
 
-/* The SVG of cloud/shared/character.ts. `.ch-anim` turns the idle motion on; `.ch-p0`…
-   `.ch-p7` shift its phase so a row of creatures never moves in step. */
+/* ---- sigils ----------------------------------------------------------------------- */
+
+/* The SVG of cloud/shared/character.ts. `.ch-anim` turns the motion on: the flame flickers,
+   its core pulses, a tau's ring turns. `.ch-p0`…`.ch-p7` shift the phase so a row of sigils
+   never moves in step. */
 .ch {
   display: inline-block;
   flex: none;
@@ -469,116 +711,158 @@ kbd {
 }
 
 .ch-p1 {
-  --ch-delay: -0.45s;
+  --ch-delay: -0.37s;
 }
 .ch-p2 {
-  --ch-delay: -0.9s;
+  --ch-delay: -0.74s;
 }
 .ch-p3 {
-  --ch-delay: -1.35s;
+  --ch-delay: -1.11s;
 }
 .ch-p4 {
-  --ch-delay: -1.8s;
+  --ch-delay: -1.48s;
 }
 .ch-p5 {
-  --ch-delay: -2.25s;
+  --ch-delay: -1.85s;
 }
 .ch-p6 {
-  --ch-delay: -2.7s;
+  --ch-delay: -2.22s;
 }
 .ch-p7 {
-  --ch-delay: -3.15s;
+  --ch-delay: -2.59s;
 }
 
-.ch-anim .ch-body {
-  animation: ch-float 3.6s ease-in-out var(--ch-delay) infinite;
-}
-
-.ch-anim .ch-shadow {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: ch-shadow 3.6s ease-in-out var(--ch-delay) infinite;
-}
-
-.ch-anim .ch-eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: ch-blink 5.2s linear calc(var(--ch-delay) * 2.3) infinite;
-}
-
-.ch-anim .ch-wiggle {
+.ch-anim .ch-flame,
+.ch-anim .ch-flame-in,
+.ch-anim .ch-core {
   transform-box: fill-box;
   transform-origin: 50% 100%;
-  animation: ch-wiggle 2.6s ease-in-out var(--ch-delay) infinite;
 }
 
-.ch-anim .ch-bob {
-  animation: ch-bob 3.6s ease-in-out calc(var(--ch-delay) - 0.3s) infinite;
+.ch-anim .ch-flame {
+  animation: ch-flicker 2.1s ease-in-out var(--ch-delay) infinite;
 }
 
-@keyframes ch-float {
+.ch-anim .ch-flame-in {
+  animation: ch-flicker-in 1.3s ease-in-out var(--ch-delay) infinite;
+}
+
+.ch-anim .ch-core {
+  animation: ch-pulse 2.8s ease-in-out var(--ch-delay) infinite;
+}
+
+.ch-anim .ch-ring,
+.ch-anim .ch-ring-back {
+  transform-box: view-box;
+  transform-origin: 50% 52%;
+  animation: hud-spin 48s linear infinite;
+}
+
+.ch-anim .ch-ring-back {
+  animation-duration: 96s;
+  animation-direction: reverse;
+}
+
+.ch-anim .ch-spark {
+  animation: ch-spark 2.6s ease-out var(--ch-delay) infinite;
+}
+
+.ch-anim .ch-s1 {
+  animation-delay: calc(var(--ch-delay) - 0.65s);
+}
+
+.ch-anim .ch-s2 {
+  animation-delay: calc(var(--ch-delay) - 1.3s);
+}
+
+.ch-anim .ch-s3 {
+  animation-delay: calc(var(--ch-delay) - 1.95s);
+}
+
+.ch-anim .ch-ember {
+  animation: ch-ember 4.2s ease-in-out var(--ch-delay) infinite;
+}
+
+@keyframes ch-flicker {
   0%,
   100% {
-    transform: translateY(0);
+    transform: scale(1, 1) skewX(0deg);
+  }
+  22% {
+    transform: scale(0.98, 1.05) skewX(-1.6deg);
+  }
+  48% {
+    transform: scale(1.02, 0.96) skewX(1deg);
+  }
+  74% {
+    transform: scale(0.99, 1.03) skewX(1.8deg);
+  }
+}
+
+@keyframes ch-flicker-in {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  40% {
+    transform: scale(0.94, 1.1);
+  }
+  70% {
+    transform: scale(1.04, 0.92);
+  }
+}
+
+@keyframes ch-pulse {
+  0%,
+  100% {
+    opacity: 0.8;
+    transform: scale(0.94);
   }
   50% {
-    transform: translateY(-3px);
+    opacity: 1;
+    transform: scale(1.06);
   }
 }
 
-@keyframes ch-shadow {
-  0%,
-  100% {
-    transform: scaleX(1);
+@keyframes ch-spark {
+  0% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  30% {
     opacity: 1;
   }
-  50% {
-    transform: scaleX(0.84);
-    opacity: 0.6;
+  100% {
+    opacity: 0;
+    transform: translateY(-5px);
   }
 }
 
-@keyframes ch-blink {
-  0%,
-  93%,
-  100% {
-    transform: scaleY(1);
-  }
-  96% {
-    transform: scaleY(0.08);
-  }
-}
-
-@keyframes ch-wiggle {
+@keyframes ch-ember {
   0%,
   100% {
-    transform: rotate(-7deg);
-  }
-  50% {
-    transform: rotate(7deg);
-  }
-}
-
-@keyframes ch-bob {
-  0%,
-  100% {
+    opacity: 0.9;
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-1.5px);
+    opacity: 0.45;
+    transform: translateY(-2px);
   }
 }
 
 /* ---- motion ----------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .ch-anim .ch-body,
-  .ch-anim .ch-shadow,
-  .ch-anim .ch-eyes,
-  .ch-anim .ch-wiggle,
-  .ch-anim .ch-bob,
+  .ch-anim .ch-flame,
+  .ch-anim .ch-flame-in,
+  .ch-anim .ch-core,
+  .ch-anim .ch-ring,
+  .ch-anim .ch-ring-back,
+  .ch-anim .ch-spark,
+  .ch-anim .ch-ember,
   .hud-spin,
   .hud-spin-back,
+  .hud-think,
   .pip-live {
     animation: none;
   }

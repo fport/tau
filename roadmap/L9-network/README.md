@@ -43,5 +43,17 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 151 | [Sub-taus from `tau chat`, the TUI and Telegram: `/sub NAME …`](151-sub-tau-slash-commands.md) | AFK | 149 |
 | 152 | [Generated interfaces in the web UI](152-generated-ui.md) | AFK | 074 |
 | 153 | [A persistent spend ledger and every provider key in cloud mode](153-cloud-spend-ledger.md) | AFK | 094 |
+| 154 | [`tau init` asks for the provider key](154-init-asks-for-the-key.md) | AFK | – |
+| 155 | [Handle-based addresses (`host/@handle`) in tau-net and the spine](155-handle-addresses.md) | AFK | – |
+| 156 | [`visit` envelopes and web sub-taus on the hub](156-visit-envelopes-and-web-sub-taus.md) | AFK | – |
+| 157 | [Handle claims: `tau net universe claim` and the `claim` request](157-universe-handle-claims.md) | AFK | 155 |
+| 158 | [The protocol's TypeScript half in `cloud/shared/net`](158-shared-net-typescript.md) | AFK | – |
+| 159 | [tau-host: accounts, the brain in a Durable Object and the owner's app](159-tau-host-core.md) | AFK | – |
+| 160 | [Universe v3: handles, claims, slugs and the page APIs](160-universe-handles-and-pages-api.md) | AFK | – |
+| 161 | [The site opens on the universe: hard theme, characters, person and sub-tau pages](161-site-hard-theme-characters-pages.md) | AFK | – |
+| 162 | [Hosted taus on the network and in the universe](162-hosted-taus-on-the-network.md) | AFK | 158, 159 |
+| 163 | [Visitors talk to web sub-taus through the universe](163-visitor-chat-relay.md) | AFK | 156, 158, 159, 160 |
+| 164 | [Docs, README and site: three ways to start](164-docs-three-ways.md) | AFK | 154, 159, 161 |
+| 165 | [Go live: hosted taus on `tau.getporti.com`](165-hosted-go-live.md) | HITL | 159–163 |
 
 Live status: `python3 roadmap/board.py --layer L9`

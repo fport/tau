@@ -99,6 +99,7 @@ plugins:
             0010 The public site and the tau universe: 0010 Herkese açık site ve tau evreni
             0011 Budgets in tau, no LiteLLM: 0011 Bütçeler tau'da, LiteLLM yok
             0012 Sub-taus: 0012 Alt-tau'lar
+            0013 Hosted taus, handles and public pages: 0013 Barındırılan tau'lar, kullanıcı adları ve açık sayfalar
             Contributing: Katkıda bulunma
             Development setup: Geliştirme ortamı
             Write a plugin: Eklenti yaz
@@ -178,6 +179,7 @@ nav:
           - 0010 The public site and the tau universe: adr/0010-public-site-and-tau-universe.md
           - 0011 Budgets in tau, no LiteLLM: adr/0011-budgets-in-tau-no-litellm.md
           - 0012 Sub-taus: adr/0012-sub-taus.md
+          - 0013 Hosted taus, handles and public pages: adr/0013-hosted-taus-handles-and-public-pages.md
   - Contributing:
       - Development setup: contributing/development.md
       - Write a plugin: contributing/plugins.md

@@ -11,6 +11,7 @@ Read before non-trivial work:
 - `docs/adr/0007-cloud-mode-and-tau-network.md` + `docs/reference/tau-network.md` — the opt-in cloud mode and the protocol taus use to talk to each other
 - `docs/adr/0010-public-site-and-tau-universe.md` + `docs/reference/tau-universe.md` — the public site, the opt-in universe directory and the spine kit
 - `docs/adr/0012-sub-taus.md` — sub-taus: named, task-specific specialists of a tau (`tau sub`)
+- `docs/adr/0013-hosted-taus-handles-and-public-pages.md` — three ways to run a tau (local, hosted on tau-host, own host), `host/@handle` addresses, handles, person and sub-tau pages, visitor chats
 
 ## Language
 
@@ -32,6 +33,8 @@ infra/remote/          L0: Tailscale + OpenSSH + tmux/mosh setup (done, see its 
 packages/              publishable Python packages (tau-core, tau-tui, tau-net, tau-cloud, tau-sub, …) — from #004 on
 cloud/spine/           tau-spine Worker (TS, pnpm): card, mailbox, hub long poll; cloud mode brain container — from #092 on
 cloud/universe/        tau-universe Worker (TS, pnpm): the public site tau.<domain> and the opt-in universe — from #140 on
+cloud/host/            tau-host Worker (TS, pnpm): hosted taus, GitHub sign-in, the owner's web app — from #159 on
+cloud/shared/          TypeScript shared by the Workers: the protocol's TS half, the character generator — from #158 on
 apps/taubar/           Tauri v2 + React tray app — from #024 on
 infra/tunnel/ backup/  Cloudflare Tunnel + Access setup, encrypted R2 backups — from #076/#018 on
 persona/  tools/       persona files; hot-reloaded tools (+ tools/_pending/)
@@ -67,6 +70,7 @@ This repo is the center. Everything is built so it can be published or split out
 - **Privacy:** the repo may go public, so nothing personal goes into tracked files: no hostnames, tailnet names, IP addresses, emails, account ids or key fingerprints. Use example values (`my-mac.tailXXXXXX.ts.net`, `100.x.y.z`, `SHA256:...`). Real values the user shares go into the gitignored `.env`, with the name and an example value in `.env.example`.
 - **State (ADR 0006, 0007):** local mode is the default: life data (sessions, settings, memory, KB, routines) stays under `TAU_DATA_DIR` on the hub; the only cloud copy is a client-side encrypted backup in R2. In local mode no code path puts personal data into D1, KV, Vectorize or AI Search, the spine holds only sealed envelopes in transit, no server sits between an external channel and the hub, and the hub never opens an inbound port. Cloud mode (the hub in a Container, data in the owner's own D1/KV) happens only when the owner deploys the cloud config and runs `tau cloud push`.
 - **tau network (ADR 0007, 0010):** envelopes are always signed and sealed; the spine never sees plaintext or contacts; a network turn never sees `user.md`, gets no tools and refuses every approval; `net_send` stays tier 2. Everything a peer sends is untrusted text. The universe is opt-in: a hub reports only links to listed contacts, only counts, and a link is shown only when both sides report it.
+- **Hosted taus (ADR 0013):** local stays the private default; hosted taus on someone else's tau-host are readable by that operator, and the site says so. Provider and network keys in tau-host are sealed with `VAULT_KEY` and never returned or logged. Hosted tier-2 calls wait for the owner's approval in the app, never auto-approved. Visitors reach only `public` + `web` sub-taus, through the universe, within `web_daily`.
 - **Remote access:** changing `infra/remote/sshd/tau.conf` must keep password auth off and `AllowUsers` restricted to tailnet + localhost; re-run `infra/remote/doctor.sh`.
 
 ## Commits

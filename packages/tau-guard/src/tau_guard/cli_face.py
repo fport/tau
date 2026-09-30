@@ -11,7 +11,11 @@
   ``SSH_CONNECTION`` is set (the prompt and the camera are at the Mac).
 - **setup**: the platform, the model (download with its sha256 checked, or ``--model-file``),
   the enrollment, one verification, then ``[component.guard] enabled = true`` through
-  ``tau_core.settings``, the restart hint and the remote-use note.
+  ``tau_core.settings``, the restart hint and the remote-use note. On a first setup the hub's
+  guard is not active yet (no marker, ``enabled`` not written), so the enrollment and the check
+  run in a local worker under the terminal's camera permission even while a hub runs; setup
+  then says that the app running the hub asks for its own camera permission on the first
+  unlock.
 - **forget**: behind LocalAuthentication in the worker, it removes the template, the marker and
   the Keychain key, and writes ``enabled = false`` when ``enabled = true`` was set, so the guard
   is off afterwards (ADR 0008 decision 4: forget is the off switch). When only the key could
@@ -343,7 +347,8 @@ def _cancel(client: Any, attempt_id: str) -> None:
         pass
 
 
-def _enroll(ctx: click.Context, config: Config, *, add: bool) -> bool:
+def _enroll(ctx: click.Context, config: Config, *, add: bool) -> tuple[bool, bool]:
+    """``(enrolled, through the hub)``."""
     language = config.ui.language
     _need_model(ctx, config)
     had = read_enrollment(config) is not None
@@ -351,7 +356,8 @@ def _enroll(ctx: click.Context, config: Config, *, add: bool) -> bool:
     if add:
         click.echo(t("guard.cli.enroll.add", language))
     printer = _Printer(language, {"touch_id": "guard.cli.enroll.local_auth"})
-    if _hub_active(ctx, config, language):
+    via_hub = _hub_active(ctx, config, language)
+    if via_hub:
         click.echo(t("guard.cli.via_hub", language))
         answer = _hub_enroll(ctx, config, add, printer)
         first = not had
@@ -372,10 +378,10 @@ def _enroll(ctx: click.Context, config: Config, *, add: bool) -> bool:
     if answer.get("ok") is not True:
         reason = _reason_text(answer.get("reason"), language, enroll=True)
         click.echo(t("guard.cli.enroll.failed", language, reason=reason), err=True)
-        return False
+        return False, via_hub
     key = "done_add" if add else ("done_first" if first else "done_again")
     click.echo(t(f"guard.cli.enroll.{key}", language))
-    return True
+    return True, via_hub
 
 
 # -- verification --------------------------------------------------------------------------------
@@ -482,7 +488,8 @@ def setup_command(ctx: click.Context, model_file: Path | None) -> None:
     click.echo(t("guard.cli.setup.start", language))
     _ensure_model(ctx, config, model_file)
     click.echo(t("guard.cli.setup.enroll", language))
-    if not _enroll(ctx, config, add=False):
+    enrolled, via_hub = _enroll(ctx, config, add=False)
+    if not enrolled:
         ctx.exit(1)
     click.echo(t("guard.cli.setup.verify", language))
     if not _verify(ctx, config, explain=False):
@@ -491,6 +498,8 @@ def setup_command(ctx: click.Context, model_file: Path | None) -> None:
     path = _set_enabled(config, True)
     click.echo(t("guard.cli.setup.enabled", language, path=path))
     click.echo(t("guard.cli.setup.restart", language))
+    if not via_hub:  # the terminal's camera grant is not the hub's
+        click.echo(t("guard.cli.setup.hub_camera", language))
     click.echo(t("guard.cli.setup.remote", language))
     click.echo(t("guard.cli.setup.done", language))
 
@@ -502,7 +511,7 @@ def setup_command(ctx: click.Context, model_file: Path | None) -> None:
 def enroll_command(ctx: click.Context, add: bool) -> None:
     config = _config(ctx)
     _refuse_elsewhere(ctx, config.ui.language)
-    if not _enroll(ctx, config, add=add):
+    if not _enroll(ctx, config, add=add)[0]:
         ctx.exit(1)
 
 

@@ -185,6 +185,14 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Hub'ı ve açık tau chat, tau tui ya da tau Desktop pencerelerini yeniden başlat: "
         "bundan önce açılan bir pencere bir sonraki açılışına kadar korumasız kalır.",
     },
+    "guard.cli.setup.hub_camera": {
+        "en": "The enrollment used this terminal's camera permission. The app that runs the hub "
+        "(TauBar, or the terminal running `tau hub run`) needs its own: macOS asks for it at the "
+        "first unlock after the restart; allow it.",
+        "tr": "Kayıt bu terminalin kamera iznini kullandı. Hub'ı çalıştıran uygulamanın (TauBar "
+        "ya da `tau hub run` çalıştıran terminal) kendi iznine ihtiyacı var: macOS bunu yeniden "
+        "başlatmadan sonraki ilk kilit açmada sorar; izin ver.",
+    },
     "guard.cli.setup.remote": {
         "en": "While you are away from the Mac, remote tau tui and tau chat (over SSH or mosh) "
         "and tau ask stay locked.",

@@ -146,6 +146,7 @@ def test_setup_downloads_enrolls_verifies_and_enables(tmp_path: Path, model_ok: 
     assert t("guard.progress.turn_left") in output or t("guard.progress.turn_right") in output
     assert t("guard.cli.enroll.done_first") in output
     assert t("guard.cli.setup.restart") in output and t("guard.cli.setup.remote") in output
+    assert t("guard.cli.setup.hub_camera") in output  # the hub's app needs its own grant
     assert [op for op, _ in runner.calls] == ["enroll", "verify"]
     enroll_request = runner.calls[0][1]
     assert enroll_request["reason_text"] == t("guard.cli.la.enroll")

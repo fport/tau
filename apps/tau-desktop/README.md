@@ -31,9 +31,12 @@ that mode does Vite serve the page on `localhost:1420`.
 ### Signing
 
 Like TauBar, `tauri.conf.json` sets `bundle.macOS.signingIdentity` to `"-"`: `tauri build` signs
-the app ad hoc, which is enough for your own Mac. tau Desktop asks for no privacy permission, so
-the ad-hoc signature changing with every build costs nothing. A copy from another machine is
-quarantined: open it once with right-click → Open, or run
+the app ad hoc, which is enough for your own Mac. tau Desktop uses no camera or microphone, so
+no device permission is lost when the ad-hoc signature changes with a new build. macOS does hold
+tau Desktop responsible for the TUI it runs, though: a file prompt (Desktop, Documents,
+Downloads, removable volumes) or a Local Network prompt caused by the TUI or its tools is granted
+to tau Desktop, and a rebuild with a new ad-hoc signature resets those grants. A copy from
+another machine is quarantined: open it once with right-click → Open, or run
 `xattr -dr com.apple.quarantine "tau Desktop.app"`. For a Developer ID signature, set
 `APPLE_SIGNING_IDENTITY` before `pnpm tauri build` (Tauri's
 [macOS code signing](https://v2.tauri.app/distribute/sign/macos/) guide).
@@ -58,6 +61,11 @@ folder has no `.venv` or the venv has no tau-core. The Python is always the chec
 `.venv/bin/python`. There is no field for another interpreter: a configurable executable would
 let anyone at the Mac run any program through the app.
 
+The check does not look for `tau.toml`. A fresh checkout that has a venv but no `tau.toml` yet
+opens tau's setup wizard in the window, as `tau tui` does in Terminal; run `uv run tau init`
+first to skip it. Quitting the wizard ends the TUI with an error code, so the window stays open
+with the exit notice, and Enter starts it again.
+
 The TUI starts from an empty environment. It inherits only `HOME`, `USER`, `LOGNAME`, `TMPDIR`,
 `SHELL`, `__CF_USER_TEXT_ENCODING` and a UTF-8 `LC_ALL`/`LC_CTYPE`. On top of that it gets
 `PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`, `TAU_HOME`,
@@ -66,6 +74,14 @@ uses for the hub (`apps/taubar/src-tauri/src/hub/launch.rs`) plus the terminal v
 the TUI behaves the same however the app was opened. tau itself reads `.env` and `tau.toml`
 from `TAU_HOME`, as always. The UI language comes from `[ui] language` there, because `TAU_LANG`
 is not passed through.
+
+From TauBar's settings tau Desktop reads only the checkout (`hub.tau_home`), and only as the
+first-run hint. TauBar's other hub settings (data folder, port, extra environment) reach only
+the hub TauBar starts. Keep `TAU_DATA_DIR` and the hub port (`TAU_HUB_PORT`, or
+`[hub] control_port` in `tau.toml`) in the checkout's `.env` and `tau.toml`, where both the hub
+and the TUI read them. Set only in TauBar, they give the TUI in tau Desktop (and `tau tui` in
+Terminal) another data folder or hub port than the hub TauBar runs: a separate session store,
+and with the guard on, a lock that never opens because the TUI cannot reach the hub.
 
 ## Using it
 
@@ -104,6 +120,15 @@ When the TUI exits on its own with an error, the window stays open, shows how it
 Enter starts it again. After a clean exit (ctrl+q) the window closes. Closing the last window
 leaves the app running, like Terminal. ⌘N or a click on the Dock icon opens a new window.
 
+**A page reload keeps the TUI.** Tauri reloads a window's page when its web content process
+crashes, and `pnpm tauri dev` reloads it after some edits. The TUI keeps running in its PTY
+through that, and the new page takes it over: it first gets the terminal modes the TUI had
+switched on (alternate screen, mouse reporting, focus events, bracketed paste, cursor), then the
+PTY changes size (one row smaller for 150 ms if the size is the same), which makes the TUI paint
+its whole screen again. A running turn or guard check carries on. The webview's right-click menu,
+which offers Reload, is switched off outside the terminal; inside it, the text menu (Copy,
+Paste) stays.
+
 ### Checks
 
 After closing a window, or quitting, no TUI started by tau Desktop should remain:
@@ -123,14 +148,16 @@ codesign -d --entitlements - "/Applications/tau Desktop.app"                   #
 ## Development
 
 ```sh
-pnpm test                          # vitest: output coalescing, input order, terminal and key options, resize debounce
+pnpm test                          # vitest: output coalescing, input order, terminal and key options, resize, context menu
 pnpm build                         # tsc + vite
 (cd src-tauri && cargo test)       # Rust: environment, TAU_HOME discovery and validation, PTY sessions
 (cd src-tauri && cargo clippy --all-targets -- -D warnings)
 ```
 
 The PTY tests run `/bin/sh` scripts as stand-in TUIs in real PTYs. They cover raw bytes,
-split UTF-8, resizing, the ctrl+q quit and the process-group kill. They need no tau checkout.
+split UTF-8, resizing, the ctrl+q quit, the process-group kill, and a reloaded page taking over
+a running TUI (modes replayed, a real size change). They need no tau checkout, and they run on
+Linux too; CI runs all of the above on Ubuntu (`.github/workflows/ci.yml`, job `desktop`).
 
 | File | Job |
 |---|---|
@@ -138,7 +165,8 @@ split UTF-8, resizing, the ctrl+q quit and the process-group kill. They need no 
 | `src-tauri/src/commands.rs` | the commands a window may call (its own PTY, the first-run choice, links) |
 | `src-tauri/src/home.rs` | finding and validating `TAU_HOME`, TauBar's hint, the saved choice |
 | `src-tauri/src/launch.rs` | the TUI command and its environment |
-| `src-tauri/src/pty.rs` | one PTY session: raw output batching, input, resize, exit, shutdown |
+| `src-tauri/src/pty.rs` | one PTY session: raw output batching, input, resize, exit, shutdown, a new page taking over |
+| `src-tauri/src/modes.rs` | the terminal modes the TUI switched on, replayed for a reloaded page |
 | `src-tauri/capabilities/terminal.json` | what `term-*` windows may call; nothing else is granted |
 | `src/TerminalView.tsx`, `src/FirstRun.tsx`, `src/App.tsx` | the window |
 | `src/output.ts`, `src/input.ts`, `src/terminal.ts`, `src/api.ts` | output coalescing, ordered input, terminal options and helpers, command wrappers |
@@ -149,8 +177,10 @@ page gathers them for another 8 ms and calls `term.write(Uint8Array)`. Nothing d
 the way, so a character split between two reads reaches xterm.js's decoder whole. Input goes the
 other way as raw bytes, one `pty_write` in flight at a time, so keys arrive in order.
 
-The icons are generated from `docs/brand/tau-app-icon.svg` (`pnpm tauri icon`) and match
-TauBar's. The window's mark is `docs/brand/tau-mark.svg`, imported as is.
+The icons are generated from `docs/brand/tau-app-icon.svg` (`pnpm tauri icon`), the same
+source as TauBar's: the PNGs are byte-identical to TauBar's, and `icon.icns` holds the same
+images (only its container bytes differ). The window's mark is `docs/brand/tau-mark.svg`,
+imported as is.
 
 The UI is English only for now. tau's other UIs take their strings from the `tau_core.i18n`
 table, which the Tauri apps cannot read yet (issue 086).

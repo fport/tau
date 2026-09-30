@@ -20,8 +20,11 @@ Rules the table in the ADR leaves to the implementation:
   finishes with ``timeout``.
 - A step-up or a recheck while ``locked`` (or while an unlock from ``locked`` runs) is refused
   with ``locked`` and never starts a worker.
-- A recheck that fails with a counted reason locks with trigger ``step_up_failed`` ("locked
-  after a failed identity check"); tau-core's lock triggers have no separate recheck value.
+- **Strict attempts.** A recheck, a step-up, an unlock started while ``unlocked`` (a re-unlock)
+  and any attempt a recheck joined lock with trigger ``step_up_failed`` ("locked after a
+  failed identity check") when they fail with a counted reason: any check that sees someone
+  else while tau is unlocked locks. tau-core's lock triggers have no separate recheck value.
+  An unlock from ``locked`` that fails goes back to ``locked``.
 - Cooldown: three counted failures within :data:`FAILURE_WINDOW` start a cooldown of
   :data:`COOLDOWN_START` seconds. From then on every counted failure starts the next cooldown
   at twice the length, up to :data:`COOLDOWN_MAX`, until a match or a quiet window (no failure
@@ -182,6 +185,9 @@ class Attempt:
     challenge_fresh: bool = False
     """A step-up within ``challenge_fresh`` seconds of a passed challenge (a passive match
     is enough, decision 12)."""
+    strict: bool = False
+    """A counted failure locks (``step_up_failed``): a recheck, a step-up, a re-unlock started
+    while ``unlocked``, or an attempt a recheck joined."""
 
     def record(self) -> dict[str, Any]:
         """The wire shape tau-core's ``HubGuard`` reads."""
@@ -353,6 +359,8 @@ class GuardMachine:
         for candidate in [self.running, *self.queue]:
             if candidate is not None and not candidate.done and candidate.kind in joins:
                 candidate.clients.add(client_id)
+                if kind == "recheck":
+                    candidate.strict = True
                 return candidate
         if self.running is not None and len(self.queue) >= MAX_QUEUE:
             return Refusal("busy")
@@ -366,6 +374,7 @@ class GuardMachine:
             policy=dict(policy or {}),
             clients={client_id},
             created=self.clock.monotonic(),
+            strict=kind in ("recheck", "step_up"),
         )
         if self.running is None:
             self._start(attempt)
@@ -505,8 +514,11 @@ class GuardMachine:
         now = self.clock.monotonic()
         attempt.started = now
         self.running = attempt
-        if attempt.kind == "unlock" and self.state == "locked":
-            self.state = "verifying"
+        if attempt.kind == "unlock":
+            if self.state == "locked":
+                self.state = "verifying"
+            elif self.state == "unlocked":
+                attempt.strict = True  # a re-unlock that sees someone else locks
         if attempt.kind == "step_up":
             self.step_up_active = True
             fresh = self._challenge_passed
@@ -592,17 +604,13 @@ class GuardMachine:
                 self.failures = 0
             elif self.state == "verifying":
                 self.state = "locked"
-        elif attempt.kind == "recheck":
+        elif attempt.kind in ("recheck", "step_up"):
+            if attempt.kind == "step_up":
+                self.step_up_active = False
             if outcome.ok:
                 self._face_seen(wall)
-            elif counted:
-                lock_after = "step_up_failed"
-        elif attempt.kind == "step_up":
-            self.step_up_active = False
-            if outcome.ok:
-                self._face_seen(wall)
-            elif counted:
-                lock_after = "step_up_failed"
+        if counted and attempt.strict:
+            lock_after = "step_up_failed"
         if outcome.ok:
             self._failure_times.clear()
             self._cooldown_level = 0

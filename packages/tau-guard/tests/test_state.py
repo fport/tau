@@ -128,11 +128,49 @@ def test_unlock_fail_goes_back_to_the_previous_state(clock: FakeClock) -> None:
     assert not isinstance(attempt, Refusal)
     m.finish(attempt.id, Outcome(False, "no_face"))
     assert m.state == "locked" and m.failures == 0  # no_face does not count
+    m.finish(attempt.id, NO_MATCH)  # a verdict for a finished attempt changes nothing
+    attempt = m.request("unlock", channel="tui", client_id="c1")
+    assert not isinstance(attempt, Refusal)
+    m.finish(attempt.id, NO_MATCH)
+    assert (m.state, m.lock_trigger, m.failures) == ("locked", "startup", 1)
     m2 = unlocked(FakeClock())
     attempt = m2.request("unlock", channel="tui", client_id="c1")
     assert not isinstance(attempt, Refusal)
-    m2.finish(attempt.id, NO_MATCH)
-    assert m2.state == "unlocked" and m2.failures == 1
+    m2.finish(attempt.id, Outcome(False, "no_face"))
+    assert m2.state == "unlocked"  # an uncounted failure of a re-unlock stays unlocked
+
+
+def test_a_re_unlock_that_sees_someone_else_locks(clock: FakeClock) -> None:
+    """A channel that asks for ``unlock`` instead of the due ``recheck`` gets no free tries."""
+    m = unlocked(clock)
+    attempt = m.request("unlock", channel="tui", client_id="c1")
+    assert not isinstance(attempt, Refusal) and attempt.strict
+    m.finish(attempt.id, NO_MATCH)
+    assert (m.state, m.lock_trigger, m.failures) == ("locked", "step_up_failed", 1)
+
+
+def test_a_recheck_that_joins_a_re_unlock_locks_on_a_counted_failure(clock: FakeClock) -> None:
+    m = unlocked(clock)
+    unlock = m.request("unlock", channel="desktop", client_id="d1")
+    recheck = m.request("recheck", channel="tui", client_id="t1")
+    assert not isinstance(unlock, Refusal) and recheck is unlock and unlock.strict
+    m.finish(unlock.id, NO_MATCH)
+    assert (m.state, m.lock_trigger) == ("locked", "step_up_failed")
+    record = m.record(unlock.id)
+    assert record is not None and record["reason"] == "no_match"
+
+
+def test_a_recheck_joined_to_a_queued_unlock_makes_it_strict(clock: FakeClock) -> None:
+    m = unlocked(clock)
+    step_up = m.request("step_up", channel="tui", client_id="s1")
+    unlock = m.request("unlock", channel="desktop", client_id="d1")
+    recheck = m.request("recheck", channel="tui", client_id="t1")
+    assert not isinstance(step_up, Refusal) and not isinstance(unlock, Refusal)
+    assert recheck is unlock and unlock in m.queue and unlock.strict
+    m.finish(step_up.id, MATCH)
+    assert m.running is unlock
+    m.finish(unlock.id, Outcome(False, "spoof"))
+    assert (m.state, m.lock_trigger) == ("locked", "step_up_failed")
 
 
 def test_step_up_while_unlocked_stays_unlocked_and_queues_behind_a_running_check(
@@ -509,12 +547,14 @@ def test_a_match_resets_the_doubling(clock: FakeClock) -> None:
 
 def test_step_up_failures_count_toward_the_cooldown(clock: FakeClock) -> None:
     m = unlocked(clock)
-    fail(m)
-    fail(m)
     attempt = m.request("step_up", channel="tui", client_id="c1")
     assert not isinstance(attempt, Refusal)
     m.finish(attempt.id, NO_MATCH)
-    assert m.state == "locked" and m.cooldown_left() == 30
+    assert m.state == "locked" and m.failures == 1
+    fail(m)
+    assert m.cooldown_left() is None
+    fail(m)
+    assert m.cooldown_left() == 30
 
 
 def test_enrollment_ignores_the_cooldown_and_the_lock(clock: FakeClock) -> None:

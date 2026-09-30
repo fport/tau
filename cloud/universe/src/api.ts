@@ -108,18 +108,14 @@ export async function receive(
   const self = universeHost(env, url);
   if (payload.universe.toLowerCase() !== self) return error(400, "wrong_universe");
 
-  // 4. Freshness: inside the clock window of the kind, and not a replay: newer than the
-  //    last accepted request, or for a claim a nonce not used before.
+  // 4. Freshness: inside the clock window of the kind (an hour for a claim, five minutes
+  //    otherwise) and newer than the last accepted request of the address.
   const now = nowSeconds();
   const window = payload.kind === "claim" ? CLAIM_WINDOW_SECONDS : CLOCK_WINDOW_SECONDS;
   if (Math.abs(now - payload.ts) > window) return error(400, "stale");
   const directory = directoryOf(env);
-  if (payload.kind === "claim") {
-    if (await directory.nonceUsed(payload.address, payload.nonce)) return error(400, "stale");
-  } else {
-    const last = await directory.lastTs(payload.address);
-    if (last !== null && payload.ts <= last) return error(400, "stale");
-  }
+  const last = await directory.lastTs(payload.address);
+  if (last !== null && payload.ts <= last) return error(400, "stale");
 
   // 5. The path names the payload's kind.
   if (payload.kind !== path) return badRequest(`kind ${payload.kind} does not match the path`);
@@ -177,7 +173,6 @@ export async function receive(
       const claimed = await directory.claim({
         ...signed,
         universe: self,
-        nonce: payload.nonce,
         handle: who.account.handle,
         github_id: who.account.github_id,
       });

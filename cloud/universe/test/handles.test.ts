@@ -183,7 +183,7 @@ describe("POST /api/claim", () => {
     expect((await sendClaim(host, ALICE, { account: GITHUB_ALICE, wire })).status).toBe(200);
   });
 
-  it("uses a nonce once", async () => {
+  it("is single use", async () => {
     const wire = await signed("claim", ALICE);
     expect((await sendClaim(host, ALICE, { account: GITHUB_ALICE, wire })).status).toBe(200);
     const replay = await sendClaim(host, ALICE, { account: GITHUB_ALICE, wire });
@@ -191,9 +191,11 @@ describe("POST /api/claim", () => {
     expect(await replay.json()).toEqual({ error: "stale" });
   });
 
-  it("is valid for an hour, even when the tau reported after signing it", async () => {
-    const now = nowSeconds();
-    expect((await send("report", ALICE, { ts: nextTs(ALICE.address) })).status).toBe(200);
+  it("is valid for an hour, and newer than the tau's last accepted request", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = nowSeconds() + 10_000;
+    vi.setSystemTime(now * 1000);
+    // Alice and Bob joined in beforeEach, a few seconds before `now - 10 000`.
     const hourOld = await sendClaim(host, ALICE, {
       account: GITHUB_ALICE,
       overrides: { ts: now - 3_500 },
@@ -204,8 +206,18 @@ describe("POST /api/claim", () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "stale" });
     }
-    // A claim does not move the tau's clock: its next report is fine.
-    expect((await send("report", ALICE, { ts: nextTs(ALICE.address) })).status).toBe(200);
+    // A request accepted after the claim was signed makes the claim stale, and an accepted
+    // claim moves the tau's clock like any request.
+    expect((await send("report", BOB, { ts: now - 100 })).status).toBe(200);
+    const behind = await sendClaim(host, BOB, {
+      account: GITHUB_BOB,
+      overrides: { ts: now - 200 },
+    });
+    expect(behind.status).toBe(400);
+    expect(await behind.json()).toEqual({ error: "stale" });
+    const report = await send("report", ALICE, { ts: now - 3_500 });
+    expect(await report.json()).toEqual({ error: "stale" });
+    expect((await send("report", ALICE, { ts: now })).status).toBe(200);
   });
 
   it("moves the handle to another tau of the same GitHub account", async () => {

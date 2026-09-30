@@ -151,12 +151,21 @@ describe("payloads", () => {
     });
   });
 
-  it("parse a claim's nonce: 8-128 base64url or hex characters", () => {
+  it("parse a claim's nonce: 16-64 base64url characters", () => {
     const claim = (nonce: unknown) => parsePayload({ ...base, kind: "claim", nonce });
-    for (const nonce of ["abcdefgh", "0123456789abcdef", "A-_z".repeat(32)]) {
+    for (const nonce of ["0123456789abcdef", "AAECAwQFBgcICQoLDA0ODw", "A-_z".repeat(16)]) {
       expect(claim(nonce).ok, nonce).toBe(true);
     }
-    for (const nonce of [undefined, 7, "", "short", "has space!", "a".repeat(129), "a+b/cdefg="]) {
+    const bad = [
+      undefined,
+      7,
+      "",
+      "abcdefgh",
+      "has space!0123456",
+      "a".repeat(65),
+      "a+b/cdefg=1234567",
+    ];
+    for (const nonce of bad) {
       expect(claim(nonce).ok, String(nonce)).toBe(false);
     }
     expect(parsePayload({ ...base, kind: "join", address: "tau.example/@alice" }).ok).toBe(true);
@@ -164,6 +173,7 @@ describe("payloads", () => {
 
   it("parse a report's sub-taus: absent is none, the name rule, at most 20", () => {
     expect(parseSubs(undefined)).toEqual({ ok: true, value: [] });
+    expect(parseSubs(null)).toEqual({ ok: true, value: [] });
     expect(parseSubs([{ name: "coach", about: "A", extra: 1 }, { name: "ab" }])).toEqual({
       ok: true,
       value: [
@@ -173,7 +183,6 @@ describe("payloads", () => {
     });
     expect(parseSubs([{ name: `a${"b".repeat(30)}`, about: "" }]).ok).toBe(true);
     for (const bad of [
-      null,
       "coach",
       [{ name: `a${"b".repeat(31)}`, about: "" }],
       [{ name: "a", about: "" }],

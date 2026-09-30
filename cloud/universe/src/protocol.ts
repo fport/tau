@@ -32,13 +32,14 @@ export const RESERVED_SUB_NAMES: ReadonlySet<string> = new Set([
 /** A web sub-tau suggests at most this many first messages, each 1–80 characters. */
 export const MAX_STARTERS = 4;
 export const MAX_STARTER_CHARS = 80;
-/** A claim's single-use token: base64url or hex, 8–128 characters. */
-export const NONCE = /^[A-Za-z0-9_-]{8,128}$/;
+/** A claim's nonce: 16–64 base64url characters, like an envelope id (cloud/shared/net). */
+export const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
 /** The clock window of join, report and leave, in seconds. */
 export const CLOCK_WINDOW_SECONDS = 300;
 /**
  * The clock window of a claim: the owner opens the claim link and signs in with GitHub in
- * between, so it is valid for an hour. Its nonce, not its `ts`, guards against replay.
+ * between, so it is valid for an hour. Like every request, it must also be newer than the
+ * last request accepted from its address.
  */
 export const CLAIM_WINDOW_SECONDS = 3_600;
 /** Card names are 1–80 characters on the spine (`PUT /hub/card`). */
@@ -81,7 +82,7 @@ export interface LeavePayload extends Common {
 /** Binds the GitHub account signed in on the claim page to this tau (ADR 0013 §6). */
 export interface ClaimPayload extends Common {
   kind: "claim";
-  /** Single use: a second claim with the same nonce is refused. */
+  /** Makes every claim link unique; the `ts` guard makes each one single use. */
   nonce: string;
 }
 
@@ -160,7 +161,7 @@ export function parsePayload(value: unknown): Parsed<Payload> {
       return { ok: true, value: { ...common, kind: "leave" } };
     case "claim":
       if (typeof p.nonce !== "string" || !NONCE.test(p.nonce)) {
-        return { ok: false, detail: "nonce must be 8-128 base64url characters" };
+        return { ok: false, detail: "nonce must be 16-64 base64url characters" };
       }
       return { ok: true, value: { ...common, kind: "claim", nonce: p.nonce } };
   }
@@ -170,10 +171,10 @@ export function parsePayload(value: unknown): Parsed<Payload> {
  * The optional `subs` of a report: at most 20 `{name, about, web?, starters?}` items, each
  * name a sub-tau name, each about 0–200 characters (a missing about is empty), `web` a
  * boolean (missing is false) and `starters` at most 4 strings of 1–80 characters (missing is
- * none). Absent means none.
+ * none). Absent (or null) means none.
  */
 export function parseSubs(value: unknown): Parsed<ReportedSub[]> {
-  if (value === undefined) return { ok: true, value: [] };
+  if (value === undefined || value === null) return { ok: true, value: [] };
   if (!Array.isArray(value)) return { ok: false, detail: "subs must be a list" };
   if (value.length > MAX_SUBS) {
     return { ok: false, detail: `subs must have at most ${MAX_SUBS} items` };

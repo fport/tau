@@ -40,7 +40,7 @@ function reported(name: string, about = "", extra: { web?: boolean; starters?: s
 
 /** Drops every table and rebuilds the schema as version `version` left it. */
 function rebuild(sql: SqlStorage, version: 1 | 2): void {
-  for (const table of ["taus", "reports", "clocks", "hits", "slugs", "nonces", "schema_version"]) {
+  for (const table of ["taus", "reports", "clocks", "hits", "slugs", "schema_version"]) {
     sql.exec(`DROP TABLE IF EXISTS ${table}`);
   }
   for (const statement of SCHEMA_V1) sql.exec(statement);
@@ -136,8 +136,15 @@ describe("Directory RPC", () => {
         { name: "universe", about: "A reserved name." },
         { name: "app", about: "A reserved sub-tau name." },
       ]);
-      sql.exec("INSERT INTO reports (reporter, peer, messages) VALUES ('alice.example', 'bob.example', 3)");
-      sql.exec("INSERT INTO reports (reporter, peer, messages) VALUES ('bob.example', 'alice.example', 4)");
+      const link = (reporter: string, peer: string, messages: number) =>
+        sql.exec(
+          "INSERT INTO reports (reporter, peer, messages) VALUES (?, ?, ?)",
+          reporter,
+          peer,
+          messages,
+        );
+      link("alice.example", "bob.example", 3);
+      link("bob.example", "alice.example", 4);
       (instance as unknown as { migrate(): void }).migrate();
     });
     const snap = await d.snapshot("u.example", T + 60);
@@ -166,9 +173,12 @@ describe("Directory RPC", () => {
     const d = directory();
     await d.join(joinInput("a.example", T));
     await runInDurableObject(d, (_instance, state) => {
-      state.storage.sql.exec(
-        `UPDATE taus SET subs = '[{"name":"ok","about":"fine","web":"yes","starters":["a",1]},{"name":1},"x"]'`,
-      );
+      const stored = [
+        { name: "ok", about: "fine", web: "yes", starters: ["a", 1] },
+        { name: 1 },
+        "x",
+      ];
+      state.storage.sql.exec("UPDATE taus SET subs = ?", JSON.stringify(stored));
     });
     expect((await d.tau("a.example", T))?.subs).toEqual([
       { name: "ok", about: "fine", web: false, starters: ["a"], first_seen: T, slug: null },
@@ -292,7 +302,7 @@ describe("hourly cron", () => {
     const d = directory();
     await d.join(joinInput("a.example", T - 3_700, T - 3_700));
     await d.join(joinInput("b.example", T - 100, T - 100));
-    expect(await d.prune(T)).toEqual({ taus: 0, reports: 0, hits: 1, clocks: 1, nonces: 0 });
+    expect(await d.prune(T)).toEqual({ taus: 0, reports: 0, hits: 1, clocks: 1 });
     expect(await count("hits")).toBe(1);
     expect(await d.lastTs("b.example")).toBe(T - 100);
     expect(await d.lastTs("a.example")).toBeNull();

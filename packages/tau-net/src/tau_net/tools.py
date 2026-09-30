@@ -165,8 +165,9 @@ def net_send(address: str, text: str) -> str:
     owner's approval every time.
 
     Args:
-        address: The contact's tau address, for example "tau.example.com", or
-            "tau.example.com/coach" for that tau's public sub-tau /coach (a specialist).
+        address: The contact's tau address, for example "tau.example.com" or
+            "tau.example.com/@alice" (a hosted tau), or "tau.example.com/coach" and
+            "tau.example.com/@alice/coach" for that tau's public sub-tau /coach (a specialist).
         text: The message, at most 8000 characters.
     """
     try:

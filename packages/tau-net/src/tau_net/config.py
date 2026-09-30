@@ -37,7 +37,7 @@ from typing import Any
 
 from tau_core import Config
 
-from tau_net.encoding import INSECURE_HOSTS, AddressError, parse_address
+from tau_net.encoding import INSECURE_HOSTS, AddressError, parse_host
 from tau_net.spine import MAX_POLL_TIMEOUT, SpineClient, Transport
 from tau_net.store import STORE_KINDS
 from tau_net.universe import DEFAULT_UNIVERSE
@@ -160,7 +160,7 @@ class NetSettings:
             raise NetConfigError(_UNIVERSE_ERROR)
         if universe.strip():
             try:
-                universe = parse_address(universe)
+                universe = parse_host(universe)
             except AddressError:
                 raise NetConfigError(_UNIVERSE_ERROR) from None
         else:

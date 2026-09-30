@@ -42,6 +42,7 @@ from tau_net.encoding import (
     is_valid_address,
     is_valid_sub_name,
     validate_address,
+    validate_host,
 )
 from tau_net.envelope import BadSignature
 from tau_net.identity import Identity
@@ -433,7 +434,7 @@ class UniverseClient:
         allow_insecure: bool = False,
         clock: Callable[[], float] = time.time,
     ):
-        self.host = validate_address(host)
+        self.host = validate_host(host)
         self.transport: Transport = transport or UrllibTransport()
         self.timeout = float(timeout)
         self.allow_insecure = allow_insecure

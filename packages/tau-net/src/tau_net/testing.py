@@ -19,6 +19,9 @@
   to one of several fake spines (and fake universes), so tests run taus that talk to each other
   with no socket. It refuses ``http`` to any host but ``localhost``/``127.0.0.1``, like a careful
   client must, and a host on those two speaks only ``http`` (a development spine has no TLS).
+  A request whose path starts with ``/@handle`` goes to the fake at ``host/@handle`` when there
+  is one: a :class:`FakeSpine` may have a handle address (``tau.example.com/@alice``, ADR 0013)
+  and then serves its card, inbox and hub API under that path, as tau-host does.
 
 Both are thread-safe: the hub calls the transport from worker threads.
 """
@@ -42,7 +45,10 @@ from tau_net.encoding import (
     EncodingError,
     b64u_decode,
     base_url,
+    host_of,
     is_valid_address,
+    is_valid_host,
+    split_address,
 )
 from tau_net.envelope import (
     MAX_ENVELOPE_BYTES,
@@ -138,6 +144,18 @@ def _key32(value: Any) -> bool:
         return isinstance(value, str) and len(b64u_decode(value)) == 32
     except EncodingError:
         return False
+
+
+def route_key(url: str) -> tuple[str, str]:
+    """``(fake address, path under it)`` of a URL: ``host/@handle`` and the rest of the path
+    when the path starts with ``/@handle``, else the host and the whole path."""
+    parts = urllib.parse.urlsplit(url)
+    path = parts.path or "/"
+    if path.startswith("/@"):
+        handle, slash, rest = path[2:].partition("/")
+        if handle:
+            return f"{parts.netloc}/@{handle}", slash + rest or "/"
+    return parts.netloc, path
 
 
 @dataclass
@@ -295,7 +313,7 @@ class FakeSpine:
 
     @property
     def scheme(self) -> str:
-        return "http" if self.address.split(":")[0] in INSECURE_HOSTS else "https"
+        return "http" if host_of(self.address) in INSECURE_HOSTS else "https"
 
     @property
     def url(self) -> str:
@@ -370,9 +388,9 @@ class FakeSpine:
         timeout: float,
     ) -> tuple[int, Mapping[str, str], bytes]:
         """Use the spine alone as a transport (it reaches only its own address)."""
-        host = urllib.parse.urlsplit(url).netloc
-        if host != self.address:
-            raise TransportError(f"no route to {host}")
+        where, _ = route_key(url)
+        if where != self.address:
+            raise TransportError(f"no route to {where}")
         return self.handle(method, url, headers, body)
 
     def handle(
@@ -382,9 +400,15 @@ class FakeSpine:
         headers: Mapping[str, str],
         body: bytes | None = None,
     ) -> Response:
-        """Answer one request (``url`` may be a full URL or a path with a query)."""
+        """Answer one request (``url`` may be a full URL or a path with a query). A spine with a
+        handle address serves everything under ``/@handle``."""
         parts = urllib.parse.urlsplit(url)
         path = parts.path or "/"
+        prefix = self.address[len(split_address(self.address)[0]) :]
+        if prefix:
+            if not (path == prefix or path.startswith(prefix + "/")):
+                return _error(404, "not_found")
+            path = path[len(prefix) :] or "/"
         query = {k: v[-1] for k, v in urllib.parse.parse_qs(parts.query).items()}
         with self._cond:
             self.requests.append((method, path))
@@ -733,7 +757,7 @@ class FakeUniverse:
         allow_insecure_peers: bool = False,
         rate_per_hour: int = UNIVERSE_RATE_PER_HOUR,
     ):
-        if not is_valid_address(host):
+        if not is_valid_host(host):
             raise ValueError(f"not a host: {host!r}")
         self.address = host
         self.clock = clock
@@ -759,7 +783,7 @@ class FakeUniverse:
 
     @property
     def scheme(self) -> str:
-        return "http" if self.address.split(":")[0] in INSECURE_HOSTS else "https"
+        return "http" if host_of(self.address) in INSECURE_HOSTS else "https"
 
     @property
     def url(self) -> str:
@@ -1048,7 +1072,8 @@ class FakeNetwork:
             raise TransportError(f"plain http to {host} refused")
         if parts.scheme not in ("http", "https"):
             raise TransportError(f"unsupported scheme {parts.scheme!r}")
-        spine = self.spines.get(host)
+        where, _ = route_key(url)
+        spine = self.spines.get(where) or self.spines.get(host)
         if spine is None:
             raise TransportError(f"no route to {host}")
         if host in self.down or spine.down:

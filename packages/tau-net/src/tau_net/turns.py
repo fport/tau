@@ -236,7 +236,8 @@ class NetworkTurns:
     @staticmethod
     def key(address: str, sub: PublicSub | None = None) -> str:
         """The store key of a network session: the address, or ``<address>/<name>`` for a
-        sub-tau (an address never holds a ``/``)."""
+        sub-tau. An address holds a ``/`` only before ``@handle`` and a sub-tau name never
+        starts with ``@``, so the two never collide."""
         return address if sub is None else f"{address}/{sub.name}"
 
     def agent(self, address: str, sub: PublicSub | None = None) -> TauAgent:

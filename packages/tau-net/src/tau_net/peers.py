@@ -4,7 +4,10 @@ A card is fetched from ``<scheme>://<address>/.well-known/tau.json`` with a 5 s 
 must be at most 8 KiB, JSON with ``v == 1``, ``address`` equal to the address asked for and
 32-byte ``sign_key`` and ``box_key``. The hub posts envelopes straight to
 ``<scheme>://<to>/net/inbox``, never through its own spine; ``202`` or a ``duplicate`` answer
-counts as delivered, anything else is a :class:`DeliveryError`.
+counts as delivered, anything else is a :class:`DeliveryError`. The address may carry a handle
+(``tau.example.com/@alice``, ADR 0013): the card is then at
+``https://tau.example.com/@alice/.well-known/tau.json`` and the inbox at
+``https://tau.example.com/@alice/net/inbox``.
 """
 
 from __future__ import annotations
@@ -13,7 +16,14 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from tau_net.encoding import INSECURE_HOSTS, EncodingError, b64u_decode, base_url, validate_address
+from tau_net.encoding import (
+    INSECURE_HOSTS,
+    EncodingError,
+    b64u_decode,
+    base_url,
+    host_of,
+    validate_address,
+)
 from tau_net.envelope import Envelope
 from tau_net.spine import Transport, UrllibTransport
 
@@ -153,8 +163,7 @@ class PeerClient:
             )
         except OSError as exc:
             reason = f"no answer ({type(exc).__name__})"
-            host = address.rsplit(":", 1)[0] if ":" in address else address
-            if host in INSECURE_HOSTS and not self.allow_insecure:
+            if host_of(address) in INSECURE_HOSTS and not self.allow_insecure:
                 reason += "; a local peer needs TAU_NET_ALLOW_INSECURE=1 for plain http"
             raise CardError(address, reason) from None
         if status != 200:

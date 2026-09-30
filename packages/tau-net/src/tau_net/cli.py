@@ -335,7 +335,8 @@ def contacts_command(ctx: click.Context) -> None:
 @net.command(
     name="add",
     help="Ask another tau to become a contact: fetch its card, remember it as pending and "
-    "send a signed, encrypted contact request. If it had asked already, this accepts it.",
+    "send a signed, encrypted contact request. If it had asked already, this accepts it. "
+    "ADDRESS is a host (tau.example.com) or a hosted tau (tau.example.com/@alice).",
     short_help="Ask another tau to become a contact.",
 )
 @help_option()
@@ -414,8 +415,10 @@ def _log_party(entry: dict[str, Any]) -> str:
 @net.command(
     name="send",
     help="Send a message in your name to an accepted contact (signed and end-to-end "
-    "encrypted, at most 8000 characters). ADDRESS/NAME writes to that tau's public sub-tau "
-    "/NAME, e.g. tau.example.com/coach; its answer comes back from /NAME.",
+    "encrypted, at most 8000 characters). ADDRESS is a host (tau.example.com) or a hosted "
+    "tau (tau.example.com/@alice). ADDRESS/NAME writes to that tau's public sub-tau /NAME, "
+    "e.g. tau.example.com/coach or tau.example.com/@alice/coach; its answer comes back from "
+    "/NAME.",
     short_help="Send a message to a contact.",
 )
 @help_option()

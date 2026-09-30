@@ -9,7 +9,7 @@ reduced agent, the owner's tools and ``tau net``. An owner may also list the tau
 Public API (other packages import these names, ``tau_net.spine`` and ``tau_net.testing``)::
 
     b64u_encode, b64u_decode, parse_address, validate_address, is_valid_address, base_url,
-    AddressError, EncodingError
+    parse_host, is_valid_host, parse_target, split_address, AddressError, EncodingError
     Identity, IdentityError, IdentityExists, create_identity, load_identity, load_or_none,
     identity_path, IDENTITY_ENV
     Envelope, Payload, Box, build_envelope, open_verified, open_box, parse_content,
@@ -45,7 +45,11 @@ from tau_net.encoding import (
     b64u_encode,
     base_url,
     is_valid_address,
+    is_valid_host,
     parse_address,
+    parse_host,
+    parse_target,
+    split_address,
     validate_address,
 )
 from tau_net.envelope import (
@@ -172,6 +176,7 @@ __all__ = [
     "identity_path",
     "is_no_reply",
     "is_valid_address",
+    "is_valid_host",
     "load_identity",
     "load_or_none",
     "make_service",
@@ -180,8 +185,11 @@ __all__ = [
     "open_verified",
     "parse_address",
     "parse_content",
+    "parse_host",
+    "parse_target",
     "peek_sender",
     "sanitize",
     "seal",
+    "split_address",
     "validate_address",
 ]

@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from tau_net.config import SPINE_TOKEN_ENV, SPINE_URL_ENV
-from tau_net.encoding import AddressError, host_of, parse_address
+from tau_net.encoding import AddressError, host_of, parse_host
 
 __all__ = [
     "GITIGNORE",
@@ -175,9 +175,10 @@ def load_kit(root: Traversable | Path | None = None) -> Kit:
 
 def spine_host(text: str) -> str:
     """A deployable address typed by a person: a DNS name with at least one dot, no port and
-    no IP literal (``https://`` and a trailing ``/`` are forgiven)."""
+    no IP literal and no ``/@handle`` (``https://`` and a trailing ``/`` are forgiven): a spine's
+    own address is always a plain host."""
     try:
-        host = parse_address(text)
+        host = parse_host(text)
     except AddressError:
         raise SpineKitError(f"not a host name for a spine: {text!r}") from None
     if host_of(host) != host:

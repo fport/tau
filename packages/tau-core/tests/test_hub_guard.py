@@ -744,3 +744,61 @@ def test_a_lock_the_hub_did_not_confirm_is_logged_as_an_error(
     asyncio.run(hub.guard.lock(channel="tui", client_id="c1"))
     assert "did not reach the hub" in caplog.records[-1].getMessage()
     assert all(record.levelname == "ERROR" for record in caplog.records)
+
+
+# -- the Touch ID fallback (issue 114) -----------------------------------------------------------
+
+
+def test_a_touch_id_unlock_asks_the_hub_to_run_it_and_maps_the_verdict(hub: FakeHub) -> None:
+    done = attempt("done", 3, done=True, ok=True, reason="match", method="touch_id")
+    hub.routes.statuses = [
+        {"state": "verifying", "seq": 6, "attempt": attempt("touch_id", 1)},
+        {"state": "unlocked", "seq": 7, "attempt": done, "enrollment": "E1"},
+    ]
+    steps: list[Any] = []
+    verdict = asyncio.run(
+        hub.guard.unlock(channel="tui", client_id="c1", on_progress=steps.append, method="touch_id")
+    )
+    assert verdict == GuardVerdict(True, "match", "touch_id")
+    assert [p.step for p in steps] == ["touch_id", "done"]
+    assert hub.routes.requests[0][1] == {
+        "channel": "tui",
+        "client_id": "c1",
+        "kind": "unlock",
+        "policy": {"step_up": "face", "unlock_liveness": "challenge"},
+        "method": "touch_id",  # a request to look, never a result
+    }
+
+
+def test_a_touch_id_unlock_the_hub_does_not_offer_is_refused(hub: FakeHub) -> None:
+    hub.routes.verify = (409, {"reason": "touch_id_unavailable"})
+    verdict = asyncio.run(hub.guard.unlock(channel="tui", client_id="c1", method="touch_id"))
+    assert verdict == GuardVerdict(False, "touch_id_unavailable")
+
+
+@pytest.mark.parametrize(
+    ("kind", "method"), [("recheck", "touch_id"), ("unlock", "password"), ("unlock", "")]
+)
+def test_only_an_unlock_may_ask_for_touch_id(hub: FakeHub, kind: str, method: str) -> None:
+    verdict = asyncio.run(hub.guard.unlock(channel="tui", client_id="c1", kind=kind, method=method))
+    assert verdict == GuardVerdict(False, "error")
+    assert hub.routes.requests == []  # nothing was sent
+
+
+@pytest.mark.parametrize(
+    ("payload", "fallback"),
+    [
+        ({"state": "locked", "fallback": "touch_id"}, "touch_id"),
+        ({"state": "locked", "fallback": "touch_id_or_password"}, "touch_id_or_password"),
+        ({"state": "locked", "fallback": "none"}, None),
+        ({"state": "locked", "fallback": ["touch_id"]}, None),
+        ({"state": "locked"}, None),
+        ({"state": "unlocked", "enrollment": "E1", "fallback": "touch_id"}, None),
+        ({"state": "verifying", "fallback": "touch_id"}, None),
+    ],
+)
+def test_status_reads_the_fallback_offer_only_while_locked(
+    hub: FakeHub, payload: dict[str, Any], fallback: str | None
+) -> None:
+    hub.routes.statuses = [{"seq": 3, **payload}]
+    assert asyncio.run(hub.guard.status()).fallback == fallback

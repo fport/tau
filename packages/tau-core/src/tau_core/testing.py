@@ -495,6 +495,10 @@ class FakeBotApi:
 from datetime import UTC, datetime  # noqa: E402
 
 from tau_core.guard import (  # noqa: E402
+    FACE_FAILURES,
+    FALLBACK_AFTER,
+    FALLBACK_MODES,
+    FALLBACK_NOW,
     Admission,
     GuardProgress,
     GuardStatus,
@@ -516,8 +520,14 @@ class FakeGuard:
       raised instead); exhausted, it returns ``False``. Whatever it returns, the tier gate
       approves only after the approver said ``APPROVED`` and only for a literal ``True``.
     - ``set_state`` flips the state and bumps ``seq`` for ``watch``.
+    - ``fallback`` (``touch_id`` or ``touch_id_or_password``) plays the hub's Touch ID fallback
+      (issue 114): after :data:`~tau_core.guard.FALLBACK_AFTER` failed face unlocks, or one
+      ``camera_*`` verdict, the locked status offers it (``GuardStatus.fallback``), and
+      ``unlock(method="touch_id")`` pops the next verdict; while it is not offered that call
+      answers ``touch_id_unavailable`` and pops nothing. An unlock clears the offer.
 
-    Every call is recorded in ``calls`` as ``(method, detail)``.
+    Every call is recorded in ``calls`` as ``(method, detail)``, and the ``method`` of every
+    ``unlock`` in ``unlock_methods``.
     """
 
     name = "fake"
@@ -529,10 +539,18 @@ class FakeGuard:
         step_ups: Iterable[Any] = (),
         progress: Iterable[GuardProgress] = (),
         admissions: Iterable[Admission | bool | str] | None = None,
+        fallback: str | None = None,
     ) -> None:
+        if fallback is not None and fallback not in FALLBACK_MODES:
+            raise ValueError(f"fallback must be one of {FALLBACK_MODES} or None")
         self.state = state
         self.seq = 0
         self.lock_trigger: str | None = None
+        self.fallback = fallback
+        self.face_failures = 0
+        self.camera_trouble = False
+        self.method: str | None = None
+        self.unlock_methods: list[str] = []
         self.verdicts: list[GuardVerdict] = list(verdicts)
         self.step_ups: list[Any] = list(step_ups)
         self.progress: list[GuardProgress] = list(progress)
@@ -546,13 +564,21 @@ class FakeGuard:
         self.lock_trigger = trigger if state == "locked" else None
         self.seq += 1
 
+    def offered(self) -> str | None:
+        """The fallback the locked status offers now, else ``None``."""
+        due = self.face_failures >= FALLBACK_AFTER or self.camera_trouble
+        return self.fallback if due and self.state == "locked" else None
+
     def _status(self) -> GuardStatus:
+        unlocked = self.state == "unlocked"
         return GuardStatus(
             state=self.state,  # type: ignore[arg-type]
             enrolled=True,
             seq=self.seq,
             lock_trigger=self.lock_trigger,
-            since=datetime.now(UTC) if self.state == "unlocked" else None,
+            since=datetime.now(UTC) if unlocked else None,
+            method=self.method if unlocked else None,
+            fallback=self.offered(),
         )
 
     async def status(self) -> GuardStatus:
@@ -586,14 +612,28 @@ class FakeGuard:
         client_id: str,
         kind: str = "unlock",
         on_progress: Callable[[GuardProgress], None] | None = None,
+        method: str = "face",
     ) -> GuardVerdict:
         self.calls.append(("unlock", kind))
+        self.unlock_methods.append(method)
+        if method == "touch_id" and (kind != "unlock" or self.offered() is None):
+            return GuardVerdict(False, "touch_id_unavailable")
         for step in self.progress:
             if on_progress is not None:
                 on_progress(step)
         verdict = self.verdicts.pop(0) if self.verdicts else GuardVerdict(False, "no_match")
         if verdict.ok:
+            self.face_failures, self.camera_trouble = 0, False
+            self.method = verdict.method or method
             self.set_state("unlocked")
+        elif method == "face" and kind == "unlock":
+            before = self.offered()
+            if verdict.reason in FALLBACK_NOW:
+                self.camera_trouble = True
+            elif verdict.reason in FACE_FAILURES:
+                self.face_failures += 1
+            if self.offered() != before:
+                self.seq += 1  # the offer is a status change a watcher sees
         return verdict
 
     async def cancel(self, *, client_id: str) -> None:

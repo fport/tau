@@ -27,9 +27,12 @@ Route contract (all protected control routes, JSON; the hub side is issue 111):
   at least 60 s. A finished attempt with ``ok: true`` has ``reason: "match"``, a ``method``,
   and comes with ``state: "unlocked"`` and the ``enrollment`` id.
 - ``POST /guard/admit`` ``{channel, session_id, client_id}`` → ``{allowed, reason, enrollment}``.
-- ``POST /guard/verify`` ``{channel, client_id, kind, request_id?, tool?, policy?}`` → ``202
-  {attempt, seq}``; a refusal answers 4xx ``{reason, retry_after?}`` (``cooldown``, ``busy``).
-  The result is read through ``/guard/status?attempt=<id>``.
+- ``POST /guard/verify`` ``{channel, client_id, kind, request_id?, tool?, policy?, method?}``
+  → ``202 {attempt, seq}``; a refusal answers 4xx ``{reason, retry_after?}`` (``cooldown``,
+  ``busy``). The result is read through ``/guard/status?attempt=<id>``. ``method:
+  "touch_id"`` (an ``unlock`` only) asks for the Touch ID fallback: the hub runs it only while
+  its status offers it (``fallback``), and runs LocalAuthentication itself, so the sheet
+  appears on the Mac's screen. No route accepts a Touch ID result either.
 - ``POST /guard/cancel`` ``{client_id, attempt?}`` → ``{ok}``.
 - ``POST /guard/lock`` ``{channel, client_id, trigger}`` → ``{state: "locked"}``.
 - ``POST /guard/enroll`` ``{client_id}`` → ``202 {attempt, seq}``.
@@ -64,12 +67,17 @@ __all__ = [
     "ALLOWED_WHILE_LOCKED",
     "DISCOVER",
     "ENROLLED_MARKER",
+    "FACE_FAILURES",
+    "FALLBACK_AFTER",
+    "FALLBACK_MODES",
+    "FALLBACK_NOW",
     "GUARD_CONFIG_KEYS",
     "GUARD_MESSAGES",
     "LOCKED_NOTE",
     "LOCK_TRIGGERS",
     "PROGRESS_STEPS",
     "STEP_UP_NOTE",
+    "UNLOCK_METHODS",
     "VERDICT_REASONS",
     "Admission",
     "Guard",
@@ -212,6 +220,23 @@ ATTEMPT_LIMIT = 120.0
 """Upper bound on one unlock or step-up attempt seen from the client."""
 SUCCESS_METHODS = ("face", "touch_id")
 
+# -- the Touch ID fallback (ADR 0008 decision 15, issue 114) --------------------------------------
+
+UNLOCK_METHODS = ("face", "touch_id")
+"""What ``Guard.unlock(method=...)`` may ask for; ``touch_id`` only while it is offered."""
+FALLBACK_MODES = ("touch_id", "touch_id_or_password")
+"""``[component.guard] unlock_fallback`` values that offer Touch ID (``none`` offers nothing);
+``touch_id_or_password`` also takes the Mac password (the opt-in for a closed lid)."""
+FALLBACK_AFTER = 2
+"""Failed face unlocks in one attempt window before the lock screen offers the fallback."""
+FALLBACK_NOW = frozenset({"camera_busy", "camera_unavailable", "camera_denied"})
+"""Verdicts after which the fallback is offered at once (the face check cannot work)."""
+FACE_FAILURES = frozenset(
+    {"no_match", "no_face", "multiple_faces", "spoof", "timeout", "too_dark", "face_too_small"}
+)
+"""Verdicts of a face check that ran and failed; :data:`FALLBACK_AFTER` of them offer the
+fallback. Refusals (``cooldown``, ``locked``, ``busy``) and ``cancelled`` do not count."""
+
 
 # -- value types -------------------------------------------------------------------------------
 
@@ -282,6 +307,10 @@ class GuardStatus:
     """``ok``, ``denied``, ``not_determined`` or ``unavailable``."""
     reason: str | None = None
     """Why ``unavailable``."""
+    fallback: str | None = None
+    """While ``locked``: the Touch ID fallback the lock screen may offer now (one of
+    :data:`FALLBACK_MODES`), after :data:`FALLBACK_AFTER` failed face unlocks or a
+    :data:`FALLBACK_NOW` verdict; ``None`` otherwise. ``unlock(method="touch_id")`` runs it."""
 
 
 class GuardLocked(Exception):
@@ -298,7 +327,9 @@ class GuardLocked(Exception):
 class Guard(Protocol):
     """The owner guard as a channel sees it. Every method fails closed and never raises
     except ``asyncio.CancelledError``. ``kind`` is ``unlock`` (the full policy) or ``recheck``
-    (a passive quick check)."""
+    (a passive quick check). ``method`` is ``face`` or ``touch_id``: the Touch ID fallback of
+    an ``unlock``, which the hub runs (on the Mac's screen) only while
+    :attr:`GuardStatus.fallback` offers it."""
 
     name: str
 
@@ -315,6 +346,7 @@ class Guard(Protocol):
         client_id: str,
         kind: str = "unlock",
         on_progress: Callable[[GuardProgress], None] | None = None,
+        method: str = "face",
     ) -> GuardVerdict: ...
 
     async def cancel(self, *, client_id: str) -> None: ...
@@ -437,6 +469,7 @@ class LockedGuard:
         client_id: str,
         kind: str = "unlock",
         on_progress: Callable[[GuardProgress], None] | None = None,
+        method: str = "face",
     ) -> GuardVerdict:
         return GuardVerdict(False, self.reason if self.reason in VERDICT_REASONS else "error")
 
@@ -533,6 +566,7 @@ def status_from_json(payload: Mapping[str, Any]) -> GuardStatus:
     attempt = payload.get("attempt")
     running = isinstance(attempt, dict) and attempt.get("done") is not True
     trigger = payload.get("lock_trigger")
+    fallback = payload.get("fallback")
     return GuardStatus(
         state=state if state in GUARD_STATES else "unavailable",  # type: ignore[arg-type]
         enrolled=payload.get("enrolled") is True,
@@ -548,6 +582,7 @@ def status_from_json(payload: Mapping[str, Any]) -> GuardStatus:
         cooldown_until=_parse_time(payload.get("cooldown_until")),
         camera=_str(payload.get("camera")),
         reason=_str(payload.get("reason")),
+        fallback=fallback if fallback in FALLBACK_MODES and state == "locked" else None,
     )
 
 
@@ -680,10 +715,15 @@ class HubGuard:
         client_id: str,
         kind: str = "unlock",
         on_progress: Callable[[GuardProgress], None] | None = None,
+        method: str = "face",
     ) -> GuardVerdict:
-        if kind not in ("unlock", "recheck"):
+        if kind not in ("unlock", "recheck") or method not in UNLOCK_METHODS:
             return GuardVerdict(False, "error")
+        if method == "touch_id" and kind != "unlock":
+            return GuardVerdict(False, "error")  # the hub picks a recheck's method itself
         body = {"channel": channel, "client_id": client_id, "kind": kind, "policy": self.policy}
+        if method == "touch_id":
+            body["method"] = method  # the hub decides whether it is offered and runs it
         try:
             return await self._attempt(body, client_id, on_progress)
         except asyncio.CancelledError:
@@ -1193,6 +1233,20 @@ GUARD_MESSAGES: dict[str, dict[str, str]] = {
     "guard.not_enrolled_hint": {
         "en": "No face is enrolled yet. Run `tau guard setup` at the Mac.",
         "tr": "Henüz kayıtlı yüz yok. Mac'in başında `tau guard setup` çalıştır.",
+    },
+    # the Touch ID fallback on the lock screen and the terminal lock prompt (issue 114);
+    # {how} is the channel's own key hint ("type t and press Enter")
+    "guard.fallback.touch_id": {
+        "en": "The face check is not working? Use Touch ID instead: {how}.",
+        "tr": "Yüz kontrolü çalışmıyor mu? Onun yerine Touch ID kullan: {how}.",
+    },
+    "guard.fallback.touch_id_or_password": {
+        "en": "The face check is not working? Use Touch ID or your Mac password instead: {how}.",
+        "tr": "Yüz kontrolü çalışmıyor mu? Onun yerine Touch ID ya da Mac parolanı kullan: {how}.",
+    },
+    "guard.fallback.confirm": {
+        "en": "Confirm in the macOS prompt on the Mac's screen.",
+        "tr": "Mac'in ekranındaki macOS isteminde onayla.",
     },
     # /status and tau doctor
     "status.guard": {"en": "Guard: {detail}", "tr": "Koruma: {detail}"},

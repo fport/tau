@@ -843,3 +843,78 @@ def test_tau_doctor_shows_the_guard_line(config: Config) -> None:
     checks = run_doctor(config.home, env=env)
     [guard] = [c for c in checks if c.name == "guard"]
     assert guard.status == "info" and guard.detail.startswith("off")
+
+
+# -- the Touch ID fallback (issue 114) -----------------------------------------------------------
+
+
+def test_fallback_messages_have_both_languages() -> None:
+    from tau_core.guard import FALLBACK_MODES
+
+    for key in [f"guard.fallback.{mode}" for mode in FALLBACK_MODES] + ["guard.fallback.confirm"]:
+        assert key in GUARD_MESSAGES, key
+        assert set(MESSAGES[key]) == set(LANGUAGES), key
+    assert "ctrl+t" in t("guard.fallback.touch_id", "tr", how="ctrl+t")
+    assert "parola" in t("guard.fallback.touch_id_or_password", "tr", how="t")
+
+
+def test_every_guard_takes_the_unlock_method() -> None:
+    import inspect
+
+    from tau_core.guard import UNLOCK_METHODS
+
+    assert UNLOCK_METHODS == ("face", "touch_id")
+    for cls in (Guard, FakeGuard, LockedGuard, HubGuard):
+        parameter = inspect.signature(cls.unlock).parameters["method"]
+        assert parameter.default == "face" and parameter.kind is parameter.KEYWORD_ONLY, cls
+    verdict = asyncio.run(
+        LockedGuard("unavailable").unlock(channel="tui", client_id="c1", method="touch_id")
+    )
+    assert verdict == GuardVerdict(False, "unavailable")
+
+
+def test_fake_guard_offers_the_fallback_after_two_face_failures() -> None:
+    guard = FakeGuard(
+        "locked",
+        verdicts=[
+            GuardVerdict(False, "cancelled"),  # a cancel is not a failure
+            GuardVerdict(False, "too_dark"),
+            GuardVerdict(False, "no_match"),
+            GuardVerdict(True, "match", "touch_id"),
+        ],
+        fallback="touch_id",
+    )
+
+    async def main() -> None:
+        assert (await guard.status()).fallback is None
+        refused = await guard.unlock(channel="tui", client_id="c1", method="touch_id")
+        assert refused == GuardVerdict(False, "touch_id_unavailable")  # not offered: no pop
+        await guard.unlock(channel="tui", client_id="c1")
+        await guard.unlock(channel="tui", client_id="c1")
+        assert (await guard.status()).fallback is None
+        seq = guard.seq
+        await guard.unlock(channel="tui", client_id="c1")
+        status = await guard.status()
+        assert status.fallback == "touch_id" and status.seq == seq + 1
+        verdict = await guard.unlock(channel="tui", client_id="c1", method="touch_id")
+        assert verdict == GuardVerdict(True, "match", "touch_id")
+        status = await guard.status()
+        assert (status.state, status.method, status.fallback) == ("unlocked", "touch_id", None)
+        await guard.lock(channel="tui", client_id="c1")
+        assert (await guard.status()).fallback is None  # the unlock cleared the offer
+
+    asyncio.run(main())
+    assert guard.unlock_methods == ["touch_id", "face", "face", "face", "touch_id"]
+    assert guard.calls.count(("unlock", "unlock")) == 5
+
+
+@pytest.mark.parametrize("reason", ["camera_busy", "camera_unavailable", "camera_denied"])
+def test_fake_guard_offers_the_fallback_at_once_after_a_camera_verdict(reason: str) -> None:
+    guard = FakeGuard("locked", verdicts=[GuardVerdict(False, reason)], fallback="touch_id")
+    asyncio.run(guard.unlock(channel="tui", client_id="c1"))
+    assert asyncio.run(guard.status()).fallback == "touch_id"
+    without = FakeGuard("locked", verdicts=[GuardVerdict(False, reason)])
+    asyncio.run(without.unlock(channel="tui", client_id="c1"))
+    assert asyncio.run(without.status()).fallback is None  # unlock_fallback = "none"
+    with pytest.raises(ValueError):
+        FakeGuard(fallback="password")

@@ -654,6 +654,15 @@ returns `None`.
   their own attempt (calling `on_progress` on every step) and post `/guard/cancel` when
   cancelled. `lock` logs an error when the hub did not confirm it. The route contract is in the
   `tau_core.guard` module docstring.
+- **Touch ID fallback (issue 114).** While the hub offers it, a locked `GuardStatus` carries
+  `fallback` (`touch_id` or `touch_id_or_password`, from `[component.guard] unlock_fallback`):
+  after `FALLBACK_AFTER` (2) failed face unlocks in one attempt window (`FACE_FAILURES`) or any
+  `camera_*` verdict (`FALLBACK_NOW`). A channel then offers it (`guard.fallback.<mode>`, with
+  its own key hint as `{how}`) and calls `unlock(method="touch_id")`; `HubGuard` sends
+  `method: "touch_id"` with `/guard/verify`, and the hub runs LocalAuthentication itself, so the
+  sheet appears on the Mac's screen and no route accepts a Touch ID result. A passing fallback
+  unlocks with `method = "touch_id"`. `FakeGuard(..., fallback="touch_id")` plays the offer
+  (`offered()`, `unlock_methods`).
 - **Identified in-hub channels opt out in code**: Telegram and network turns pass
   `guard=None`, and a repo rule refuses `guard=None` anywhere else. No flag, variable or
   config key selects a channel.

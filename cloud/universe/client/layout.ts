@@ -4,8 +4,8 @@
  *
  * A sub-tau is drawn like one of tiny's small agents around its builder: a small node at a
  * fixed offset from its tau, so it follows the tau wherever the simulation moves it and
- * stays inside the owner's hull. The offsets leave the bottom of the orbit free, because
- * the tau's name sits there.
+ * stays inside the owner's hull. The offsets keep clear of the top of the orbit, where the
+ * owner's name sits over the hull, and of its bottom, where the tau's name sits.
  *
  * This module is pure (no DOM, no d3), so the Worker's tests can check it.
  */
@@ -20,8 +20,8 @@ export const SUB_RADIUS = 6.5;
 export const MIN_ORBIT = NODE_RADIUS + 14;
 /** The space between two neighbouring sub-taus on an orbit. */
 const SUB_SPACING = 2 * SUB_RADIUS + 5;
-/** The gap between a sub-tau's disc and its `/name` label. */
-const LABEL_GAP = 4;
+/** The gap between a sub-tau's disc and its `/name` label: clear of the selection ring. */
+const LABEL_GAP = 7;
 
 /** One public sub-tau, placed relative to its tau. */
 export interface SubNodeData {
@@ -60,9 +60,14 @@ export function reach(count: number): number {
   return count > 0 ? orbitRadius(count) + SUB_RADIUS : NODE_RADIUS;
 }
 
-/** The direction of the `index`-th of `count` sub-taus: evenly spread, none straight down. */
+/**
+ * The direction of the `index`-th of `count` sub-taus: evenly spread from the right, never
+ * straight up or down. A count divisible by four would put one on each, so it turns by half
+ * a step.
+ */
 export function subAngle(index: number, count: number): number {
-  return Math.PI / 2 + ((index + 0.5) * 2 * Math.PI) / Math.max(1, count);
+  const step = (2 * Math.PI) / Math.max(1, count);
+  return (count % 4 === 0 ? step / 2 : 0) + index * step;
 }
 
 function round(value: number): number {

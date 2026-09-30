@@ -80,21 +80,28 @@ describe("sub-tau nodes", () => {
     expect(orbitRadius(20)).toBeGreaterThan(orbitRadius(3));
   });
 
-  it("leave the bottom free for the tau's name, which goes below them", () => {
-    for (const count of [1, 2, 3, 4, 6, 20]) {
+  it("keep clear of the owner's name above and the tau's name below", () => {
+    // The distance of a direction from straight down (π/2) or straight up (3π/2).
+    const fromVertical = (angle: number) =>
+      Math.min(
+        ...[Math.PI / 2, (3 * Math.PI) / 2].map((vertical) => {
+          const turn = Math.abs(angle - vertical) % (2 * Math.PI);
+          return Math.min(turn, 2 * Math.PI - turn);
+        }),
+      );
+    for (const count of [1, 2, 3, 4, 5, 6, 7, 8, 12, 20]) {
       const names = Array.from({ length: count }, (_, i) => `s${i}x`);
       const nodes = tauSubNodes(tau("a.example", names));
       for (const node of nodes) {
-        // Never straight down: the direction differs from π/2 by at least half a step.
-        const fromDown = Math.abs(((node.angle - Math.PI / 2 + Math.PI) % (2 * Math.PI)) - Math.PI);
-        expect(fromDown).toBeGreaterThanOrEqual(Math.PI / count - 1e-9);
+        // A few sub-taus stay well to the side; a crowded orbit is never exactly vertical.
+        expect(fromVertical(node.angle)).toBeGreaterThan(count <= 6 ? Math.PI / 12 : 0.01);
         // The name's baseline is a label's height below the lowest disc.
         expect(nameOffset(nodes)).toBeGreaterThanOrEqual(node.dy + SUB_RADIUS + 12);
       }
     }
-    // One sub-tau goes straight up; two go left and right.
-    expect(subAngle(0, 1)).toBeCloseTo((3 * Math.PI) / 2, 9);
-    const [left, right] = tauSubNodes(tau("a.example", ["aa", "bb"]));
+    // One sub-tau goes to the right; two go right and left.
+    expect(subAngle(0, 1)).toBe(0);
+    const [right, left] = tauSubNodes(tau("a.example", ["aa", "bb"]));
     expect(left!.dx).toBeLessThan(0);
     expect(right!.dx).toBeGreaterThan(0);
     expect(Math.abs(left!.dy)).toBeLessThan(0.01);
@@ -105,10 +112,14 @@ describe("sub-tau nodes", () => {
   });
 
   it("put the label outside the orbit, anchored away from the tau", () => {
-    const [top] = tauSubNodes(tau("a.example", ["coach"]));
-    expect(top).toMatchObject({ anchor: "middle" });
-    expect(top!.labelY).toBeLessThan(-SUB_RADIUS);
-    const [left, right] = tauSubNodes(tau("a.example", ["aa", "bb"]));
+    const [only] = tauSubNodes(tau("a.example", ["coach"]));
+    expect(only).toMatchObject({ anchor: "start" });
+    expect(only!.labelX).toBeGreaterThan(SUB_RADIUS);
+    const over = tauSubNodes(tau("a.example", ["aa", "bb", "cc", "dd", "ee", "ff"])).filter(
+      (node) => node.dy < -10 && Math.abs(node.dx) < 10,
+    );
+    expect(over).toEqual([]); // nothing sits right over the tau, under the owner's name
+    const [right, left] = tauSubNodes(tau("a.example", ["aa", "bb"]));
     expect(left!.anchor).toBe("end");
     expect(left!.labelX).toBeLessThan(0);
     expect(right!.anchor).toBe("start");

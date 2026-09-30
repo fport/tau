@@ -135,21 +135,21 @@ mod tests {
 
     #[test]
     fn only_an_installed_bundle_may_register_for_login() {
-        let home = Path::new("/Users/someone");
+        let home = Path::new("/path/to/home");
         let installed = Path::new("/Applications/TauBar.app/Contents/MacOS/taubar");
         assert_eq!(
             installed_bundle(installed, home),
             Ok(PathBuf::from("/Applications/TauBar.app"))
         );
-        let per_user = Path::new("/Users/someone/Applications/TauBar.app/Contents/MacOS/taubar");
+        let per_user = Path::new("/path/to/home/Applications/TauBar.app/Contents/MacOS/taubar");
         assert_eq!(
             installed_bundle(per_user, home),
-            Ok(PathBuf::from("/Users/someone/Applications/TauBar.app"))
+            Ok(PathBuf::from("/path/to/home/Applications/TauBar.app"))
         );
         for elsewhere in [
             "/path/to/tau/apps/taubar/src-tauri/target/release/bundle/macos/TauBar.app/Contents/MacOS/taubar",
             "/Applications/Tools/TauBar.app/Contents/MacOS/taubar",
-            "/Users/someone/Downloads/TauBar.app/Contents/MacOS/taubar",
+            "/path/to/home/Downloads/TauBar.app/Contents/MacOS/taubar",
         ] {
             let err = installed_bundle(Path::new(elsewhere), home).unwrap_err();
             assert!(err.contains("needs TauBar.app installed in /Applications"), "{err}");

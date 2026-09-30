@@ -214,14 +214,31 @@ def test_only_the_allowed_commands_run_while_locked(config: Config) -> None:
         assert t("guard.cmd.refused", "en", command=name) in out
     assert t("guard.cmd.refused", "tr", command="status") in out  # after /lang tr, by alias
     assert t("guard.prompt.not_sent", "en") in out
-    assert "  /guard [lock|unlock]" in out  # /help ran
+    assert "  /guard [lock|unlock]" in out  # /help ran and lists only what works while locked
+    assert "  /help" in out and "  /quit" in out and "  /lang en|tr" in out
+    assert "  /sessions" not in out and "  /status" not in out and "  /tools" not in out
     assert "Profile:" not in out  # /status never ran
     assert model.calls == []
     assert state.language == "tr"
 
 
+class LocksOnAdmit(FakeGuard):
+    """The hub locks right before the turn's admission (the REPL read ``unlocked`` a moment
+    earlier)."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.armed = True
+
+    async def admit(self, turn: Any) -> Any:
+        if self.armed:
+            self.armed = False
+            self.set_state("locked", trigger="idle")
+        return await super().admit(turn)
+
+
 def test_a_refused_turn_returns_to_the_lock_prompt(config: Config) -> None:
-    guard = FakeGuard("unlocked", verdicts=[MATCH], admissions=["locked"])
+    guard = LocksOnAdmit("unlocked", verdicts=[MATCH])
     model = FakeModel(["Okay."])
     state = make_state(config, guard, model=model)
     feed = Feed(["hello", "", "again", "/quit"])
@@ -280,14 +297,66 @@ def test_a_recheck_runs_the_passive_check_and_resends_the_prompt(config: Config)
     assert CLEAR_ALL not in out and feed.prompts == ["you> ", "you> "]
 
 
-def test_a_failed_recheck_returns_to_the_lock_prompt(config: Config) -> None:
+def test_a_failed_recheck_keeps_the_prompt_while_the_guard_says_unlocked(config: Config) -> None:
+    """Like the TUI: the guard still reports ``unlocked``, so there is no lock prompt (whose
+    banner would say "Guard: unlocked"); the prompt was not sent and can be sent again."""
     guard = FakeGuard("unlocked", verdicts=[GuardVerdict(False, "no_face")], admissions=["recheck"])
+    model = FakeModel(["Okay."])
+    state = make_state(config, guard, model=model)
+    feed = Feed(["hello", "hello again", "/quit"])
+    out = run(state, feed)
+    assert "  ✗ No face was seen." in out
+    assert t("guard.recheck_not_sent", "en") in out
+    assert CLEAR_ALL not in out and not state.locked
+    assert feed.prompts == ["you> ", "you> ", "you> "]
+    assert len(model.calls) == 1  # only the second prompt reached the model
+
+
+class LocksOnFailedRecheck(FakeGuard):
+    """A recheck that fails and locks the guard (the hub's cooldown after counted failures)."""
+
+    async def unlock(self, **kwargs: Any) -> GuardVerdict:
+        verdict = await super().unlock(**kwargs)
+        if not verdict.ok:
+            self.set_state("locked", trigger="idle")
+        return verdict
+
+
+def test_a_failed_recheck_that_locks_the_guard_returns_to_the_lock_prompt(config: Config) -> None:
+    guard = LocksOnFailedRecheck("unlocked", admissions=["recheck"])
     model = FakeModel(["Okay."])
     state = make_state(config, guard, model=model)
     feed = Feed(["hello", "/quit"])
     out = run(state, feed)
-    assert "  ✗ No face was seen." in out
+    assert "  ✗ The face did not match." in out
+    after = out.split(CLEAR_ALL, 1)[1]
+    assert "Guard: locked · locked after inactivity" in after
+    assert f"  ℹ {t('guard.refused.recheck', 'en')}" in after
     assert feed.prompts == ["you> ", "locked> "]
+    assert model.calls == []
+
+
+def test_ctrl_c_during_a_recheck_keeps_the_prompt_unsent(config: Config) -> None:
+    class HangingRecheck(FakeGuard):
+        async def unlock(self, **kwargs: Any) -> GuardVerdict:
+            self.calls.append(("unlock", kwargs.get("kind")))
+
+            def interrupt() -> None:
+                raise KeyboardInterrupt
+
+            asyncio.get_running_loop().call_soon(interrupt)
+            await asyncio.Event().wait()
+            raise AssertionError("never reached")
+
+    guard = HangingRecheck("unlocked", admissions=["recheck"])
+    model = FakeModel(["Okay."])
+    state = make_state(config, guard, model=model)
+    feed = Feed(["hello", "/quit"])
+    out = run(state, feed)
+    assert ("cancel", process_client_id()) in guard.calls
+    assert "  ✗ The check was cancelled." in out
+    assert t("guard.recheck_not_sent", "en") in out
+    assert feed.prompts == ["you> ", "you> "]
     assert model.calls == []
 
 
@@ -383,3 +452,175 @@ def test_a_guard_set_up_after_the_start_is_found_before_the_next_prompt(
     assert state.guard is guard
     assert feed.prompts == ["you> ", "locked> ", "locked> "]
     assert t("guard.cmd.refused", "en", command="new") in out
+
+
+# -- a guard that appears while the REPL runs ------------------------------------------------
+
+
+@pytest.fixture
+def builds_with(monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[Any]]:
+    """Every rebuild (``_switch_to``) gets the test's model and tools; returns the guards it
+    passed to ``build_agent``."""
+
+    def install(model: FakeModel, tools: list) -> list[Any]:
+        seen: list[Any] = []
+
+        def building(**kwargs: Any) -> Any:
+            seen.append(kwargs.get("guard"))
+            return build_agent(**{**kwargs, "model": model, "tools": tools})
+
+        monkeypatch.setattr("tau_core.channels.terminal.build_agent", building)
+        return seen
+
+    return install
+
+
+def test_a_guard_found_while_unlocked_rebuilds_the_agent_before_the_next_turn(
+    config: Config, monkeypatch: pytest.MonkeyPatch, builds_with: Callable[..., list[Any]]
+) -> None:
+    """``tau guard setup`` ran in another window and left the guard unlocked: no lock prompt,
+    but the next turn is admitted and its tier-2 call stepped up (a failed step-up refuses)."""
+    ran: list[str] = []
+
+    @tau_tool(tier=Tier.PHYSICAL, effect="Moves the arm.")
+    def arm(direction: str) -> str:
+        """Moves the arm.
+
+        Args:
+            direction: where to.
+        """
+        ran.append(direction)
+        return f"moved {direction}"
+
+    guard = FakeGuard("unlocked", step_ups=[False])
+    found: list[Any] = [None]
+    monkeypatch.setattr("tau_core.channels.terminal.resolve_guard", lambda config: found[0])
+    model = FakeModel([[ToolCall("arm", {"direction": "left"})], "Not moved."])
+    approver = ScriptedApprover([Decision.APPROVED])
+    state = make_state(config, None, model=model, approver=approver, tools=[arm])
+    session = state.agent.session_id
+    seen = builds_with(model, [arm])
+    feed = Feed(["move the arm", "/quit"], hooks={1: lambda: found.__setitem__(0, guard)})
+    out = run(state, feed)
+    assert state.agent.guard is guard and state.agent.gate.guard is guard
+    assert state.agent.session_id == session and seen == [guard]  # same session, one rebuild
+    assert any(name == "admit" for name, _ in guard.calls)
+    assert any(name == "step_up" for name, _ in guard.calls)
+    assert ran == []  # the step-up failed: the arm never moved
+    assert f"  ✗ {t('guard.step_up.failed', 'en')}" in out
+
+
+def test_a_guard_found_locked_rebuilds_the_agent_at_the_unlock(
+    config: Config, monkeypatch: pytest.MonkeyPatch, builds_with: Callable[..., list[Any]]
+) -> None:
+    guard = FakeGuard("locked", verdicts=[MATCH], step_ups=[False])
+    found: list[Any] = [None]
+    monkeypatch.setattr("tau_core.channels.terminal.resolve_guard", lambda config: found[0])
+    model = FakeModel([[ToolCall("lamp", {"state": "on"})], "Not done."])
+    approver = ScriptedApprover([Decision.APPROVED])
+    state = make_state(config, None, model=model, approver=approver, tools=[lamp])
+    seen = builds_with(model, [lamp])
+    feed = Feed(["/help", "", "lamp on", "/quit"], hooks={1: lambda: found.__setitem__(0, guard)})
+    out = run(state, feed)
+    assert feed.prompts == ["you> ", "locked> ", "you> ", "you> "]
+    assert seen == [guard]  # rebuilt at the unlock, before the turn
+    assert state.agent.guard is guard
+    assert any(name == "step_up" for name, _ in guard.calls)
+    assert f"  ✗ {t('guard.step_up.failed', 'en')}" in out
+    assert "tau> Not done." in out
+
+
+def test_a_failed_rebuild_under_a_new_guard_sends_nothing(
+    config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tau_core.models import MissingCredentials
+
+    guard = FakeGuard("unlocked")
+    found: list[Any] = [None]
+    monkeypatch.setattr("tau_core.channels.terminal.resolve_guard", lambda config: found[0])
+
+    def broken(**kwargs: Any) -> Any:
+        raise MissingCredentials("brain", "fake", ["SOME_KEY"])
+
+    monkeypatch.setattr("tau_core.channels.terminal.build_agent", broken)
+    model = FakeModel(["Okay."])
+    state = make_state(config, None, model=model)
+    feed = Feed(["hello", "/compact", "/quit"], hooks={1: lambda: found.__setitem__(0, guard)})
+    out = run(state, feed)
+    assert out.count(t("guard.rearm_failed", "en")) == 2  # the turn and /compact
+    assert state.agent.guard is None and model.calls == []
+
+
+class FakeReadline:
+    """``sys.modules["readline"]`` for the test: a list with readline's history calls."""
+
+    def __init__(self, items: list[str]) -> None:
+        self.items = list(items)
+
+    def get_current_history_length(self) -> int:
+        return len(self.items)
+
+    def get_history_item(self, index: int) -> str | None:
+        return self.items[index - 1] if 1 <= index <= len(self.items) else None
+
+    def clear_history(self) -> None:
+        self.items.clear()
+
+    def add_history(self, line: str) -> None:
+        self.items.append(line)
+
+
+def test_the_lock_prompt_hides_the_line_history_until_the_unlock(
+    config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    readline = FakeReadline(["my secret plan", "/sessions"])
+    monkeypatch.setitem(sys.modules, "readline", readline)
+    guard = FakeGuard("unlocked", verdicts=[MATCH])
+    state = make_state(config, guard)
+    seen: list[list[str]] = []
+
+    def at_lock_prompt() -> None:
+        seen.append(list(readline.items))  # what the Up arrow could recall at locked>
+        readline.add_history("/help")  # input() records what is typed at the lock prompt
+
+    feed = Feed(["/guard lock", "/help", "", "/quit"], hooks={2: at_lock_prompt})
+    run(state, feed)
+    assert feed.prompts == ["you> ", "locked> ", "locked> ", "you> "]
+    assert seen == [[]]
+    assert readline.items == ["my secret plan", "/sessions"]  # back after the unlock
+    assert state.hidden_history is None
+
+
+class OldReadline:
+    """A readline build without ``clear_history``: items are removed one by one."""
+
+    def __init__(self, items: list[str]) -> None:
+        self.items = list(items)
+
+    def get_current_history_length(self) -> int:
+        return len(self.items)
+
+    def get_history_item(self, index: int) -> str | None:
+        return self.items[index - 1] if 1 <= index <= len(self.items) else None
+
+    def remove_history_item(self, position: int) -> None:
+        del self.items[position]
+
+    def add_history(self, line: str) -> None:
+        self.items.append(line)
+
+
+def test_the_line_history_is_hidden_without_clear_history(
+    config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    readline = OldReadline(["first", "second"])
+    monkeypatch.setitem(sys.modules, "readline", readline)
+    guard = FakeGuard("locked", verdicts=[MATCH])
+    state = make_state(config, guard)
+    seen: list[list[str]] = []
+    run(state, Feed(["", "/quit"], hooks={1: lambda: seen.append(list(readline.items))}))
+    assert seen == [[]] and readline.items == ["first", "second"]

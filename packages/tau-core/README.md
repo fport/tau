@@ -676,12 +676,23 @@ returns `None`.
   the guard is not `unlocked` it shows a lock prompt (`locked> `): entering it writes
   `\x1b[2J\x1b[3J\x1b[H` (screen and scrollback; a terminal app that ignores `\x1b[3J`, or
   one with its own scrollback outside the terminal such as tmux's copy mode, keeps what was
-  there), Enter on an empty line (or `/guard unlock`) unlocks and prints every challenge step,
-  Ctrl-C during an attempt cancels it and the REPL goes on, and only `ALLOWED_WHILE_LOCKED`
-  (`/help`, `/lang`, `/guard`, `/quit`) run. The state is read again before every prompt and
-  before a command that is not allowed while locked; a turn the guard refused returns to the
-  lock prompt, a `recheck` refusal runs the passive check and resends the prompt, and step-up
-  steps print from the agent's `guard` events. The TUI's lock screen is described in the
+  there) and takes readline's line history out until the unlock, so the Up arrow at
+  `locked>` recalls nothing the owner typed. Enter on an empty line (or `/guard unlock`)
+  unlocks and prints every challenge step, Ctrl-C during an attempt cancels it and the REPL
+  goes on, and only `ALLOWED_WHILE_LOCKED` (`/help`, `/lang`, `/guard`, `/quit`) run; `/help`
+  lists only those. The state is read again before every prompt and before a command that is
+  not allowed while locked. After a refused turn the guard's state decides, as in the TUI:
+  anything but `unlocked` returns to the lock prompt. A `recheck` refusal runs the passive
+  check and resends the prompt; a failed or cancelled check keeps `you>` (the guard still
+  reports unlocked) and says the prompt was not sent. Step-up steps print from the agent's
+  `guard` events. A guard found after the agent was built (a window opened before `tau guard
+  setup`) rebuilds the agent on the same session and role at the unlock and before its next
+  turn or `/compact`; when that rebuild fails nothing is sent.
+  **Limit:** the REPL reads the guard only between lines. While it waits at `you>` or at an
+  approval prompt, or while a turn streams, it cannot see a lock: the conversation stays on
+  screen and in the scrollback until the next line, and a running turn goes on (the guard
+  still refuses its tier-1 and tier-2 calls and every later turn, but the reply keeps
+  printing). The TUI watches the guard and locks at once; its lock screen is described in the
   tau-tui README; Telegram's `/guard` under [Telegram](#telegram).
 
 Public API: `Guard` (protocol: `status`, `watch`, `admit`, `unlock`, `cancel`, `lock`,

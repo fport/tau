@@ -11,22 +11,36 @@ Every string a person reads comes from :func:`tau_core.i18n.t` in ``ReplState.la
 
 With an owner guard (ADR 0008) the REPL shows a lock prompt while the guard is not unlocked:
 entering it clears the screen and the scrollback (a terminal that ignores ``\x1b[3J`` keeps
-its scrollback), Enter on an empty line unlocks and prints every challenge step, Ctrl-C during
-an attempt cancels it and keeps the REPL, and only :data:`~tau_core.guard.ALLOWED_WHILE_LOCKED`
-commands run. The state is read again before every prompt; a turn the guard refused
-(``TurnEnd("locked")``) returns to the lock prompt, and a ``recheck`` refusal runs the passive
-check and resends the prompt. Step-up challenge steps arrive as ``guard`` events on the agent's
-bus and print under the tool call.
+its scrollback) and takes the line history of ``input()`` out of readline, so the Up arrow at
+``locked>`` recalls nothing the owner typed (it comes back at the unlock). Enter on an empty
+line unlocks and prints every challenge step, Ctrl-C during an attempt cancels it and keeps the
+REPL, and only :data:`~tau_core.guard.ALLOWED_WHILE_LOCKED` commands run (``/help`` lists only
+those). The state is read again before every prompt and before a command that is not allowed
+while locked; a turn the guard refused (``TurnEnd("locked")``) returns to the lock prompt when
+the guard is not unlocked, and a ``recheck`` refusal runs the passive check and resends the
+prompt (a failed or cancelled check keeps the REPL at ``you>``: the guard still reports
+unlocked). Step-up challenge steps arrive as ``guard`` events on the agent's bus and print
+under the tool call. A guard found after the agent was built (a window opened before ``tau
+guard setup``) rebuilds the agent on the same session and role before its next turn, its next
+``/compact`` and at the unlock, so nothing runs on an agent without the guard.
+
+The REPL reads the guard's state only between lines. While it waits at ``you>`` or at an
+approval prompt, or while a turn streams, it cannot see a lock: the conversation stays on
+screen and in the scrollback until the next line is entered, and a running turn goes on (the
+guard still refuses its tier-1 and tier-2 calls and every later turn, but the model's reply
+keeps printing). The TUI watches the guard and locks at once.
 """
 
 from __future__ import annotations
 
 import asyncio
 import getpass
+import logging
 import os
 import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 import click
 from rich.console import Console
@@ -56,16 +70,19 @@ from tau_core.config import Config, ConfigError
 from tau_core.events import AgentEvent
 from tau_core.guard import (
     ALLOWED_WHILE_LOCKED,
+    COUNTED_FAILURES,
     DISCOVER,
-    VERDICT_REASONS,
     Guard,
     GuardProgress,
     GuardStatus,
     GuardVerdict,
     admission_reason,
     guard_status_line,
+    method_text,
     process_client_id,
+    progress_text,
     resolve_guard,
+    verdict_text,
 )
 from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES, t
 from tau_core.logs import configure_logging
@@ -85,6 +102,8 @@ from tau_core.settings import (
 from tau_core.status import describe_model, role_lines, status_report, stored_role
 from tau_core.tiers import tier_of
 
+logger = logging.getLogger(__name__)
+
 LIST_LIMIT = 10
 SCAN_LIMIT = 100  # empty sessions are skipped, so look further back than the list shows
 DEFAULT_ROLE = "brain"
@@ -92,8 +111,6 @@ CLEAR_SCREEN = "\x1b[2J\x1b[H"
 """ANSI: erase the whole screen, cursor to the top-left."""
 CLEAR_ALL = "\x1b[2J\x1b[3J\x1b[H"
 """ANSI: erase the screen and the scrollback, cursor to the top-left (the lock prompt)."""
-COUNTED_FAILURES = frozenset({"no_match", "spoof", "multiple_faces"})
-"""Verdict reasons that count as a failed attempt (ADR 0008 decision 13)."""
 
 
 @dataclass
@@ -124,6 +141,8 @@ class ReplState:
     last_status: GuardStatus | None = None
     pending_resume: str | None = None
     """``--resume`` waits until the first unlock (a resumed session prints its title)."""
+    hidden_history: list[str] | None = None
+    """readline's line history, taken out while the lock prompt shows (``None`` otherwise)."""
 
     def say(self, key: str, **kwargs: object) -> None:
         self.console.print(t(key, self.language, **kwargs))
@@ -366,6 +385,9 @@ async def cmd_compact(state: ReplState, arg: str) -> None:
     """``/compact [focus]``: summarize the session with the agent's own model, open a new
     session seeded with the summary and continue there. The old session stays in the store;
     the two are linked through ``compacted_from`` / ``compacted_to`` in their metadata."""
+    if not _arm(state):  # the summarizer asks the agent's guard: it must be the process's
+        state.say("guard.rearm_failed")
+        return
     old = state.agent
     n = len(old.messages)
     if n:
@@ -559,30 +581,64 @@ async def dispatch_slash(state: ReplState, line: str) -> None:
 # -- the owner guard ----------------------------------------------------------------------------
 
 
-def progress_text(progress: GuardProgress, language: str = DEFAULT_LANGUAGE) -> str:
-    """One challenge step ("Turn your head left."), with a live hint ("It is too dark.")."""
+def _arm(state: ReplState) -> bool:
+    """Make sure the agent carries the process's guard. A guard found after the agent was
+    built (a window opened before ``tau guard setup``) rebuilds the agent on the same session
+    and role, so its turns are admitted and its tier-2 calls stepped up. ``False`` when that
+    rebuild failed (the reason is printed): nothing may run on the agent without the guard."""
+    guard = state.current_guard()
+    if guard is None or state.agent.guard is guard:
+        return True
+    logger.info("an owner guard became active; rebuilding session %s", state.agent.session_id)
+    return _switch_to(state, state.agent.session_id, role=state.role)
+
+
+def _clear_history(readline: Any) -> None:
+    clear = getattr(readline, "clear_history", None)  # missing on some readline builds
+    if callable(clear):
+        clear()
+        return
+    for position in range(readline.get_current_history_length() - 1, -1, -1):
+        readline.remove_history_item(position)
+
+
+def _hide_history(state: ReplState) -> None:
+    """Take readline's line history out while locked: the Up arrow at ``locked>`` must not
+    recall what the owner typed. Nothing to do when ``input()`` runs without readline."""
+    readline = sys.modules.get("readline")
+    if readline is None or state.hidden_history is not None:
+        return
     try:
-        text = t(f"guard.progress.{progress.step}", language)
-    except KeyError:
-        text = str(progress.step)
-    if progress.hint in VERDICT_REASONS:
-        text = f"{text} {t(f'guard.verdict.{progress.hint}', language)}"
-    return text
+        count = readline.get_current_history_length()
+        items = [readline.get_history_item(n) for n in range(1, count + 1)]
+        _clear_history(readline)
+    except Exception:
+        logger.exception("could not clear the line history for the lock prompt")
+        return
+    state.hidden_history = [item for item in items if item is not None]
 
 
-def verdict_text(verdict: GuardVerdict, language: str = DEFAULT_LANGUAGE) -> str:
-    """Why an attempt did not pass, with "try again in N s" for a cooldown."""
-    reason = verdict.reason if verdict.reason in VERDICT_REASONS else "error"
-    text = t(f"guard.verdict.{reason}", language)
-    if verdict.retry_after:
-        text = f"{text} {t('guard.retry_after', language, seconds=f'{verdict.retry_after:.0f}')}"
-    return text
+def _restore_history(state: ReplState) -> None:
+    """The owner is back: the history before the lock returns; lines typed at the lock prompt
+    are dropped."""
+    readline = sys.modules.get("readline")
+    hidden, state.hidden_history = state.hidden_history, None
+    if readline is None or hidden is None:
+        return
+    try:
+        _clear_history(readline)
+        for item in hidden:
+            readline.add_history(item)
+    except Exception:
+        logger.exception("could not restore the line history after the unlock")
 
 
 def _enter_lock(state: ReplState, status: GuardStatus | None) -> None:
-    """Show the lock prompt: clear the screen and the scrollback, then the banner."""
+    """Show the lock prompt: clear the screen, the scrollback and the line history, then the
+    banner."""
     state.locked = True
     state.lock_seq = status.seq if status is not None else -1
+    _hide_history(state)
     state.console.print(CLEAR_ALL, end="")
     if status is not None:
         state.console.print(guard_status_line(status, state.language))
@@ -596,10 +652,17 @@ def _failures(state: ReplState) -> int:
 
 def _leave_lock(state: ReplState, loop: asyncio.AbstractEventLoop, method: str | None) -> None:
     """Unlocked: the notice with the failure count, the ready banner, a pending ``--resume``.
-    Nothing is sent to the model."""
+    Nothing is sent to the model. An agent built before the guard appeared is rebuilt with it
+    now."""
     state.locked = False
-    state.say("guard.unlocked", method=method or "—", failures=_failures(state))
+    _restore_history(state)
+    state.say(
+        "guard.unlocked",
+        method=method_text(method, state.language),
+        failures=_failures(state),
+    )
     state.guard_failures = 0
+    _arm(state)
     _ready_banner(state)
     resume, state.pending_resume = state.pending_resume, None
     if resume is not None:
@@ -672,7 +735,8 @@ def _unlock(state: ReplState, loop: asyncio.AbstractEventLoop) -> None:
 
 
 def _locked_line(state: ReplState, loop: asyncio.AbstractEventLoop, text: str) -> None:
-    """A line typed at the lock prompt: Enter unlocks; only the allowed commands run."""
+    """A line typed at the lock prompt: Enter unlocks; only the allowed commands run, and
+    ``/help`` lists only those."""
     if not text:
         _unlock(state, loop)
         return
@@ -686,6 +750,10 @@ def _locked_line(state: ReplState, loop: asyncio.AbstractEventLoop, text: str) -
     name, arg = resolved
     if name == "guard" and arg.strip().casefold() == "unlock":
         _unlock(state, loop)
+    elif name == "help":
+        state.say("chat.help_header")
+        for line in help_lines(state.language, only=ALLOWED_WHILE_LOCKED):
+            state.console.print(line)
     elif name in ALLOWED_WHILE_LOCKED:
         loop.run_until_complete(dispatch_slash(state, text))
     else:
@@ -774,19 +842,26 @@ async def run_turn(state: ReplState, prompt: str) -> str | None:
 
 
 def _turn(state: ReplState, loop: asyncio.AbstractEventLoop, prompt: str) -> None:
-    """One prompt: a ``recheck`` refusal runs the passive check once and resends the prompt;
-    any other refusal returns to the lock prompt."""
+    """One prompt: a ``recheck`` refusal runs the passive check once and resends the prompt.
+    After a refusal the guard's state decides, as in the TUI: anything but ``unlocked``
+    returns to the lock prompt; ``unlocked`` (a failed or cancelled recheck) keeps ``you>``."""
+    if not _arm(state):
+        state.say("guard.rearm_failed")
+        return
     reason = loop.run_until_complete(run_turn(state, prompt))
-    if reason == "recheck" and state.current_guard() is not None:
+    if reason == "recheck" and state.guard is not None:
         verdict = _attempt(state, loop, kind="recheck")
         if verdict is not None and verdict.ok:
             reason = loop.run_until_complete(run_turn(state, prompt))
-    if reason is None or state.current_guard() is None:
-        return
     guard = state.guard
-    assert guard is not None
+    if reason is None or guard is None:
+        return
     status = loop.run_until_complete(guard.status())
     state.last_status = status
+    if status.state == "unlocked":
+        if reason == "recheck":
+            state.say("guard.recheck_not_sent")
+        return
     _enter_lock(state, status)
     # the refusal notice went with the cleared screen: say it again under the banner
     state.console.print(f"  ℹ {t(f'guard.refused.{admission_reason(reason)}', state.language)}")

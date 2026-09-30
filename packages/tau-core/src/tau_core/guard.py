@@ -213,6 +213,7 @@ GUARD_CONFIG_KEYS = frozenset(
         "step_up_challenge_fresh_seconds",
         "unlock_fallback",
         "step_up",
+        "window",
     }
 )
 """The keys ``[component.guard]`` may hold; any other key locks the guard for good (a typo

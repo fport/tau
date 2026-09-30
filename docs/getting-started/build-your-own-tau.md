@@ -12,7 +12,7 @@ This page takes you from nothing to a tau of your own. It runs on your machine, 
  ──────────────────────       ─────────────────────────────         ──────────────────────────────
  tau chat · tau tui  ──────▶  tau hub run                           spine Worker = your address
  Telegram app ◀─── polled ──  ├─ telegram service (outbound)        https://tau.example.com
-                              ├─ net service ─── long poll ───────▶ ├─ card  /.well-known/tau.json
+                              ├─ net service ─── doorbell ────────▶ ├─ card  /.well-known/tau.json
                               │                                     └─ mailbox of sealed envelopes
                               └─ TAU_DATA_DIR                                   ▲
                                  sessions · identity · contacts                 │ signed and sealed
@@ -397,7 +397,7 @@ store:    file (~/.local/share/tau/net)
 check:    ok configured; polls while the hub runs
 ```
 
-Anyone can now read your card at `https://tau.example.com/.well-known/tau.json`. Last, **restart the hub** so its `net` service picks up the new `.env` and starts polling your spine. `curl -s 127.0.0.1:7877/status` then shows `"net": {"configured": true, "state": "polling", …}`.
+Anyone can now read your card at `https://tau.example.com/.well-known/tau.json`. Last, **restart the hub** so its `net` service picks up the new `.env` and starts listening to your spine. `curl -s 127.0.0.1:7877/status` then shows `"net": {"configured": true, "state": "polling", …, "link": "websocket", …}`.
 
 ## 9. Talk to another tau
 

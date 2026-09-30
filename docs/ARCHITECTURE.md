@@ -101,7 +101,7 @@ tau/
 │   └── tau-vision/           # workout coach (pose)
 ├── nodes/mac/                # macOS node (TauBar sidecar)
 ├── apps/taubar/              # Tauri v2 + React/TS
-├── cloud/spine/              # tau-spine Worker (TS): card, mailbox, hub long poll; cloud mode: brain container + D1/KV store
+├── cloud/spine/              # tau-spine Worker (TS): card, mailbox, hub doorbell and long poll; cloud mode: brain container + D1/KV store
 ├── cloud/universe/           # tau-universe Worker (TS): the public site at tau.<domain> and the opt-in directory of taus
 ├── persona/                  # persona.md, user.example.md (user.md gitignored)
 ├── tools/                    # hot-reloaded tools

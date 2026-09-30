@@ -120,10 +120,13 @@ The spine's own address is the `ADDRESS` variable when it is set and not empty, 
 
 | Check | Failure |
 |---|---|
+| `Content-Type: application/json` (parameters such as `charset` allowed); the body is not read otherwise | `415 {"error": "unsupported_media_type"}` |
 | body size ≤ 65 536 | `413 {"error": "too_large"}` |
 | JSON with string `payload` and `sig`, both valid b64u; payload is a JSON object with every field of §3 and the right types; `v == 1`; `kind` known; `from` a valid address | `400 {"error": "bad_request", "detail": "..."}` |
 | `to` equals the spine's address | `400 {"error": "wrong_recipient"}` |
 | `abs(now - ts) ≤ 300` | `400 {"error": "stale"}` |
+| the client IP (`CF-Connecting-IP`; an IPv6 address counted by its /64) sent at most 60 envelopes in the last minute (the `INBOX_IP_LIMIT` binding) | `429 {"error": "rate_limited"}` |
+| `from` sent at most 30 envelopes in the last minute (the `INBOX_SENDER_LIMIT` binding) | `429 {"error": "rate_limited"}` |
 | the sender's card can be fetched (`GET <scheme>://<from>/.well-known/tau.json`, 5 s timeout, ≤ 8 KiB, `v == 1`, `address == from`, `sign_key` 32 bytes). Cards are cached in KV under `peer:<from>` for 3 600 s | `502 {"error": "sender_card_unavailable"}` |
 | the signature verifies with the card's `sign_key` (WebCrypto `Ed25519`) | `403 {"error": "bad_signature"}` |
 | `(from, id)` was not seen before | `200 {"status": "duplicate", "id": ...}` (idempotent; nothing stored) |
@@ -134,7 +137,7 @@ The last three checks run in the spine's `Mailbox` Durable Object, which the Wor
 
 1. records `(from, id, ts)` in `seen`;
 2. stores the envelope in `mailbox`;
-3. wakes a waiting long poll;
+3. wakes a waiting long poll and rings every doorbell (§5);
 
 and the spine answers `202 {"status": "queued", "id": ...}`.
 
@@ -151,6 +154,8 @@ Implementation details, as shipped in `tau-spine` 0.1.0:
 - An envelope addressed from the spine's own address is checked against its own stored card.
 - The rate limit counts arrivals per sender in the last hour (the sender's `seen` rows).
 - The `Mailbox` creates its tables on first use and keeps a schema version in its `meta` table.
+- The two per-minute limits are Workers [Rate Limiting bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/). They run before anything that costs more than CPU (the card fetch, KV, the `Mailbox`), because anyone with a wildcard domain has endless valid senders and cards. Their counters are per Cloudflare location and approximate. A request without `CF-Connecting-IP` skips the IP limit. A spine without the bindings, or whose binding throws, skips the check and logs `rate_limit_unbound` or `rate_limit_failed` once.
+- A failing KV write of the card cache (the Workers Free plan allows 1 000 writes a day) is ignored, and a failing read counts as a miss.
 
 ## 5. Spine: hub API
 
@@ -169,8 +174,16 @@ The hub reads the token from `TAU_SPINE_TOKEN` and the spine URL from `TAU_SPINE
 | `PUT /hub/card` | `{"name", "sign_key", "box_key"}` (name 1–80 chars, keys b64u 32 bytes) | `200` the full card; `400` on bad input |
 | `GET /hub/updates?after=<seq>&timeout=<0..25>&limit=<1..100>` | defaults: `after` 0, `timeout` 0, `limit` 50 | `200 {"updates": [{"seq": int, "received_at": int, "envelope": {"payload", "sig"}}]}`, ordered by `seq`, only `seq > after`. With `timeout > 0` and nothing queued, the call waits until an envelope arrives or the timeout passes, then answers (possibly empty) |
 | `POST /hub/ack` | `{"seqs": [int, ...]}` | `200 {"deleted": int}`; acknowledged envelopes are deleted, since the spine only stores and forwards |
+| `GET /hub/ws` | a WebSocket upgrade (`Upgrade: websocket`) with the bearer token in its `Authorization` header | `101`, then the doorbell (below); `426 {"error": "upgrade_required"}` with `Upgrade: websocket` for a request that is not an upgrade |
 
 The mode is the `TAU_MODE` variable (`local` by default, `cloud` in the cloud configuration).
+
+**The doorbell.** `GET /hub/ws` is how a hub waits without holding a request open. The hub is not a browser, so it sends `Authorization: Bearer <HUB_TOKEN>` in the upgrade request itself, and the spine answers `401`/`503` before any upgrade as on every other hub route. The `Mailbox` accepts the socket with the Durable Object WebSocket Hibernation API and sends text messages of one kind, `{"type": "hello" | "mail", "depth": int}`:
+
+- `hello` once, right after the connection opens, with the number of undelivered envelopes;
+- `mail` after every envelope it queued (§4), to every open doorbell, with the new depth.
+
+The socket never carries envelopes or acknowledgements. On a message the hub fetches with `GET /hub/updates?timeout=0` and acknowledges with `POST /hub/ack` as with the long poll; `depth` is a hint, never a count to rely on. The hub may send the text `ping`, which the spine answers with `pong` through `setWebSocketAutoResponse`, without waking the object; anything else the hub sends is ignored. At most four doorbells stay open; a fifth connection closes the oldest with code `1008`. Between envelopes the `Mailbox` hibernates with the sockets still open and is not billed for duration, while a long poll keeps it active for the whole wait. The long poll stays for hubs that do not use the doorbell.
 
 The long poll waits up to `timeout` seconds and wakes as soon as an envelope arrives; it waits inside the `Mailbox` Durable Object, next to the mailbox itself, so an envelope stored just before the wait starts is never missed. It always queries again before answering, so the answer may be an empty list, and an empty answer comes back after about `timeout` plus a few milliseconds. Clients therefore set their HTTP timeout above 25 s (tau-net uses 35 s).
 
@@ -179,7 +192,7 @@ Query values that are out of range or not integers get `400`; they are never cla
 Unless a table says otherwise:
 
 - A `200` or `201` without a specified body is `{"ok": true}`.
-- Errors carry `{"error": <code>}`, where the code is one of `exists` (409), `not_found` (404), `too_large` (413), `method_not_allowed` (405, with an `Allow` header), `bad_request` (400, with `detail`) or `internal` (500).
+- Errors carry `{"error": <code>}`, where the code is one of `exists` (409), `not_found` (404), `too_large` (413), `method_not_allowed` (405, with an `Allow` header), `bad_request` (400, with `detail`), `upgrade_required` (426) or `internal` (500).
 - The Bearer scheme is matched case-insensitively.
 
 ### Cloud mode only
@@ -257,7 +270,17 @@ The spine runs every minute (`* * * * *`):
 
 ## 6. Hub behaviour (`tau-net`)
 
-1. **Poll.** The `net` hub service long-polls `GET /hub/updates?after=0&timeout=25`. For each update, in order, it handles the envelope and then acknowledges it, so a crash re-handles rather than loses. Network errors back off exponentially, up to 60 s. The service never crashes the hub, and it stays idle, reporting `net: {configured: false}` in `/status`, without `TAU_SPINE_URL`, `TAU_SPINE_TOKEN` or an identity.
+1. **Wait and fetch.** The `net` hub service takes its mail with `GET /hub/updates?after=0`. For each update, in order, it handles the envelope and then acknowledges it, so a crash re-handles rather than loses. Network errors back off exponentially, up to 60 s. The service never crashes the hub, and it stays idle, reporting `net: {configured: false}` in `/status`, without `TAU_SPINE_URL`, `TAU_SPINE_TOKEN` or an identity. How it waits for mail is `[component.net] link` (§7):
+
+   - `auto` (the default) keeps the doorbell (`GET /hub/ws`, §5) open. It fetches with `timeout=0` on every message of the doorbell (the `hello` of every connection included, so mail that arrived while it was away is taken at once), and at least every 5 minutes as a safety net; otherwise it makes no HTTP request at all. A fetch that returned a full batch (50) is repeated at once.
+   - The hub sends the text `ping` every 30 s and counts 75 s without any frame from the spine as a dropped connection. A connection that lasted a minute or more is reopened at once; one that dropped sooner counts as a failed attempt, so a flapping link backs off.
+   - After a failed attempt the hub backs off, then fetches over HTTP before the next one: mail keeps flowing, and while the spine cannot be reached at all (the hub's own network is gone) the fetch retries on its own and no attempt counts.
+   - **Fallback.** A spine that answers the upgrade with `404` or `426` (one without the doorbell), or three failed attempts in a row, make an `auto` hub long-poll `GET /hub/updates?after=0&timeout=25` instead, and try the doorbell again every 30 minutes. `link = "websocket"` never falls back; it keeps retrying with backoff. `link = "poll"` always long-polls.
+   - `401` on the upgrade stops the service like a `401` anywhere else (7).
+   - `/status` reports `net.link` (`websocket` or `poll`, what the service uses right now) and `net.doorbell`: `setting`, `connects`, `reconnects`, `rings` (the hellos included), `fallbacks`, `last_ring_at`, `last_error` and, after a fallback, `retry_at`. `state` stays `polling` on both links.
+   - The doorbell connects directly to the spine, over TLS unless the spine is on `localhost` or `127.0.0.1`, without a proxy; a hub that can only reach the spine through a proxy falls back to the long poll, which uses the proxy variables.
+
+   On the Workers Free plan this is what keeps a 24/7 hub cheap: a long poll holds a request inside the `Mailbox`, which then stays active all day (about 10 800 of the 13 000 GB-s of Durable Object duration a day), while on the doorbell the object hibernates between envelopes and is billed only for the few milliseconds of each call.
 2. **Verify again.** The hub does not trust its spine:
    - It re-verifies the signature: with the contact's pinned `sign_key` when the sender is a known contact, otherwise with a freshly fetched card.
    - It checks `to` against its own address, the one `GET /hub/health` returns.
@@ -322,7 +345,7 @@ The spine runs every minute (`* * * * *`):
 6. **Sending.** The hub posts envelopes directly to `<scheme>://<to>/net/inbox`, never through its own spine. The recipient's card is fetched once and pinned for contacts. A `202` or a `duplicate` counts as delivered; anything else is an error for the caller.
 7. **Errors.**
 
-   - A `401` from the spine stops polling (state `failed`), because the token is only read at start.
+   - A `401` from the spine, on any request or on the doorbell's upgrade, stops the service (state `failed`), because the token is only read at start.
    - Other errors back off exponentially, up to 60 s.
    - The poll always asks from `after=0`: the spine deletes what the hub acknowledges, so the mailbox itself is the queue. The saved cursor only records the last seq taken. A cursor used as `after` would skip mail after a move to another spine, because a fresh spine counts from 1 again. An envelope whose ack failed comes back, is dropped as already handled and is acknowledged again.
    - The hub reaches its own spine over `http` only when the spine is on `localhost` or `127.0.0.1`. Peers need `TAU_NET_ALLOW_INSECURE=1` for `http`.
@@ -349,7 +372,8 @@ max_hops = 6
 max_auto_replies_per_hour = 20
 public_note = "net.md"            # under persona/; replaces user.md in network turns
 store = "file"                    # file | spine (cloud mode)
-poll_timeout_seconds = 25
+link = "auto"                     # auto | websocket | poll (§6.1)
+poll_timeout_seconds = 25         # the long poll's wait (link = "poll", or the fallback)
 ```
 
 Spine variables and secrets:
@@ -363,3 +387,7 @@ Spine variables and secrets:
 | `SPINE_URL` | var | the spine's public URL, given to the container (cloud mode) |
 | `HUB_TOKEN` | secret | the hub's bearer token |
 | container secrets | secrets (cloud mode) | model credentials, `TELEGRAM_*`, `TAU_NET_IDENTITY`, handed to the brain container as environment variables |
+| `INBOX_IP_LIMIT` | Rate Limiting binding | 60 inbox envelopes per 60 s per client IP (§4); `namespace_id` `10501` |
+| `INBOX_SENDER_LIMIT` | Rate Limiting binding | 30 inbox envelopes per 60 s per `from` (§4); `namespace_id` `10502` |
+
+A Rate Limiting `namespace_id` is shared by every Worker of the account that uses it, so two spines on one account share those counters unless one of them gets other ids. A spine configured before the bindings existed works without them and skips those two checks.

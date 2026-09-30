@@ -162,9 +162,10 @@ How it waits for mail is `link`:
 - `auto` (default): it keeps the spine's WebSocket **doorbell** (`GET /hub/ws`) open and
   fetches with `GET /hub/updates?timeout=0` on every ring, on every (re)connect and at least
   every 5 minutes. The spine's `Mailbox` Durable Object hibernates in between, which keeps a
-  spine on the Workers Free plan far inside its daily budget. A spine without the doorbell
-  (`404`/`426`), or three failed attempts in a row, makes it long-poll instead and try the
-  doorbell again every 30 minutes.
+  spine on the Workers Free plan far inside its daily budget. After a failed attempt it backs
+  off and fetches over HTTP before the next one, so an outage of the hub's own network never
+  counts. A spine without the doorbell (`404`/`426`), or three failed attempts in a row while
+  HTTP works, makes it long-poll instead and try the doorbell again every 30 minutes.
 - `websocket`: the doorbell only; it never falls back.
 - `poll`: the long poll of `GET /hub/updates?timeout=25`, as before the doorbell (it keeps the
   `Mailbox` active all day: about 10 800 of the Free plan's 13 000 GB-s).

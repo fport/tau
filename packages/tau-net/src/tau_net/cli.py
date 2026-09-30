@@ -11,7 +11,9 @@ network store (:mod:`tau_net.profile`).
 
 Tests pass a transport through the click context object (``obj={"net_transport": ...}``);
 ``net_env`` and ``net_model_factory`` work the same way, and ``spine_runner`` /
-``spine_environ`` replace the program runner and the environment of ``tau net spine deploy``.
+``spine_environ`` replace the program runner and the environment of ``tau net spine deploy``;
+``spine_transport`` (the Cloudflare API and the spine's health), ``spine_sleep`` and
+``spine_open`` (the token page) replace the network, the waits and the browser of its API path.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import contextlib
 import json
 import logging
 import os
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -49,6 +52,7 @@ from tau_net.node import NetError, NetNode, open_node
 from tau_net.peers import CardError
 from tau_net.service import doctor_check
 from tau_net.spine import SpineError
+from tau_net.spine_api import Account, NeedAccount, NeedToken, Scope, deploy_api
 from tau_net.spine_kit import SpineKitError, deploy_project, init_project, is_workers_dev
 from tau_net.universe import MalformedRequest, UniverseError, tau_links, tau_subs
 
@@ -701,17 +705,23 @@ def universe_claim_command(ctx: click.Context) -> None:
 # -- spine kit ---------------------------------------------------------------------------------
 
 
-def _spine_say(ctx: click.Context) -> Callable[..., None]:
-    """Output in the UI language without requiring a ``tau.toml`` (the spine usually comes
-    before ``tau init``): ``--lang``/``TAU_LANG``, else ``[ui] language``, else English."""
+def _spine_language(ctx: click.Context) -> str:
+    """The UI language without requiring a ``tau.toml`` (the spine usually comes before
+    ``tau init``): ``--lang``/``TAU_LANG``, else ``[ui] language``, else English."""
     obj = _obj(ctx)
     language = obj.get("lang")
-    if language not in LANGUAGES:
-        try:
-            language = Config.load(obj.get("home"), env=dict(os.environ)).ui.language
-        except ConfigError:
-            language = os.environ.get("TAU_LANG", "")
-            language = language if language in LANGUAGES else DEFAULT_LANGUAGE
+    if language in LANGUAGES:
+        return language
+    try:
+        return Config.load(obj.get("home"), env=dict(os.environ)).ui.language
+    except ConfigError:
+        language = os.environ.get("TAU_LANG", "")
+        return language if language in LANGUAGES else DEFAULT_LANGUAGE
+
+
+def _spine_say(ctx: click.Context) -> Callable[..., None]:
+    """Output lines in :func:`_spine_language`."""
+    language = _spine_language(ctx)
 
     def say(key: str, /, **kwargs: Any) -> None:
         click.echo(t(key, language, **kwargs))
@@ -762,25 +772,94 @@ def spine_init_command(ctx: click.Context, directory: Path, address: str | None)
         say("net.spine.init.address", address=result.host)
     click.echo()
     say("net.spine.next")
-    say("net.spine.init.step_node")
     say("net.spine.init.step_deploy", path=directory)
+    say("net.spine.init.step_wrangler", path=directory)
+
+
+def _json_line(**fields: Any) -> None:
+    click.echo(json.dumps(fields, ensure_ascii=False, separators=(",", ":")))
+
+
+def _deploy_input(ctx: click.Context) -> dict[str, str]:
+    """The JSON object ``--json`` reads from stdin: ``{"token"?, "account_id"?}``."""
+    raw = sys.stdin.read()
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        _json_line(type="error", message="stdin is not a JSON object")
+        ctx.exit(1)
+    unknown = sorted(set(data) - {"token", "account_id"})
+    if unknown or not all(isinstance(value, str) for value in data.values()):
+        extra = f", not {', '.join(unknown)}" if unknown else ""
+        _json_line(type="error", message=f"stdin takes the strings token and account_id{extra}")
+        ctx.exit(1)
+    return data
+
+
+def _open_link(ctx: click.Context, link: str) -> None:
+    """Open the token page in the browser of an interactive terminal on this machine (never
+    over SSH); tests replace it with ``spine_open`` in the context object."""
+    opener = _obj(ctx).get("spine_open")
+    if opener is not None:
+        opener(link)
+        return
+    if sys.stdin.isatty() and not os.environ.get("SSH_CONNECTION"):
+        with contextlib.suppress(Exception):
+            click.launch(link)
 
 
 @spine_group.command(
     name="deploy",
-    help="Deploy the spine project in DIRECTORY (from `tau net spine init`) with Wrangler: "
-    "check the Cloudflare login, install Wrangler (bun install when bun is on PATH, else npm "
-    "install), wrangler deploy and, when the project has a D1 database, its migrations. Then "
-    "set the Worker's HUB_TOKEN secret to TAU_SPINE_TOKEN from the hub's .env (generated "
-    "when missing; passed on stdin, never printed) and write TAU_SPINE_URL there: "
-    "https://HOST for a known address, else the workers.dev URL.",
+    help="Deploy the spine project in DIRECTORY (from `tau net spine init`) to your Cloudflare "
+    "account, set the Worker's HUB_TOKEN secret to TAU_SPINE_TOKEN from the hub's .env "
+    "(generated when missing, never printed) and write TAU_SPINE_URL there: https://HOST for "
+    "a custom domain, else the workers.dev URL. By default through the Cloudflare API, with no "
+    "Node.js: the API token is CLOUDFLARE_API_TOKEN from the environment or .env, else it is "
+    "asked at a hidden prompt after a link that creates it with the right permissions, and "
+    "saved in .env. The API path uploads worker.js with the bindings, Durable Object "
+    "migrations and crons of wrangler.jsonc, creates the KV namespace when needed, records the "
+    "account and namespace ids in wrangler.jsonc, turns on workers.dev or attaches the custom "
+    "domain and checks the spine's health. --wrangler deploys with Wrangler instead (Node.js "
+    "22 or newer, bun optional, `wrangler login` first). --json (API only) reads "
+    '{"token": ..., "account_id": ...} (both optional) from stdin and prints JSON lines.',
     short_help="Deploy a spine project.",
 )
 @help_option()
 @click.argument("directory", type=click.Path(file_okay=False, path_type=Path))
 @click.option("--address", metavar="HOST", help=_ADDRESS_HELP)
+@click.option(
+    "--api/--wrangler",
+    "use_api",
+    default=True,
+    help="Deploy through the Cloudflare API (the default) or with Wrangler.",
+)
+@click.option(
+    "--account-id",
+    metavar="ID",
+    help="API only: the Cloudflare account to deploy to; asked when the token reaches several.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="API only: read {token, account_id} as JSON on stdin and print JSON lines.",
+)
 @click.pass_context
-def spine_deploy_command(ctx: click.Context, directory: Path, address: str | None) -> None:
+def spine_deploy_command(
+    ctx: click.Context,
+    directory: Path,
+    address: str | None,
+    use_api: bool,
+    account_id: str | None,
+    as_json: bool,
+) -> None:
+    if not use_api and (as_json or account_id):
+        raise click.UsageError("--json and --account-id belong to the API path, not --wrangler")
+    if use_api:
+        _spine_deploy_api(ctx, directory, address, account_id, as_json)
+        return
     obj = _obj(ctx)
     say = _spine_say(ctx)
     try:
@@ -795,9 +874,113 @@ def spine_deploy_command(ctx: click.Context, directory: Path, address: str | Non
         )
     except SpineKitError as exc:
         _fail(ctx, exc)
+    _spine_deployed(say, result.url)
+
+
+def _spine_deployed(say: Callable[..., None], url: str) -> None:
     click.echo()
-    say("net.spine.deploy.done", url=result.url)
+    say("net.spine.deploy.done", url=url)
     say("net.spine.next")
     say("net.spine.deploy.step_init")
     say("net.spine.deploy.step_publish")
     say("net.spine.deploy.step_status")
+
+
+def _spine_deploy_api(
+    ctx: click.Context,
+    directory: Path,
+    address: str | None,
+    account_id: str | None,
+    as_json: bool,
+) -> None:
+    """``tau net spine deploy`` through the Cloudflare API (:mod:`tau_net.spine_api`). With
+    ``as_json`` every line on stdout is one JSON object (tau-universe.md §4)."""
+    obj = _obj(ctx)
+    language = _spine_language(ctx)
+    given = _deploy_input(ctx) if as_json else {}
+
+    def say(key: str, /, **fields: Any) -> None:
+        text = t(key, language, **fields)
+        if not as_json:
+            click.echo(text)
+            return
+        plain = {k: v if isinstance(v, bool | int | float) else str(v) for k, v in fields.items()}
+        _json_line(type="progress", key=key, text=text, fields=plain)
+
+    def ask_token(link: str, scopes: tuple[Scope, ...]) -> str | None:
+        if as_json:
+            return None
+        say("net.spine.api.token_needed")
+        for scope in scopes:
+            say("net.spine.api.token_scope", scope=scope.label)
+        say("net.spine.api.token_link")
+        say("net.spine.api.link", link=link)
+        _open_link(ctx, link)
+        value = click.prompt(
+            t("net.spine.api.token_prompt", language),
+            hide_input=True,
+            default="",
+            show_default=False,
+        )
+        return value.strip() or None
+
+    def choose_account(accounts: tuple[Account, ...]) -> str | None:
+        if as_json:
+            return None
+        say("net.spine.api.accounts", count=len(accounts))
+        for n, account in enumerate(accounts, start=1):
+            say("net.spine.api.account_item", n=n, name=account.name or "-", id=account.id)
+        number = click.prompt(
+            t("net.spine.api.account_prompt", language), type=click.IntRange(1, len(accounts))
+        )
+        return accounts[number - 1].id
+
+    try:
+        result = deploy_api(
+            directory,
+            home=resolve_home(obj.get("home")),
+            address=address,
+            account_id=account_id or given.get("account_id"),
+            token=given.get("token"),
+            transport=obj.get("spine_transport"),
+            ask_token=ask_token,
+            choose_account=choose_account,
+            say=say,
+            environ=obj.get("spine_environ"),
+            sleep=obj.get("spine_sleep", time.sleep),
+        )
+    except NeedToken as exc:
+        if not as_json:
+            _fail(ctx, exc)
+        _json_line(
+            type="need_token",
+            link=exc.link,
+            scopes=[scope.label for scope in exc.scopes],
+            permissions=[{"key": scope.key, "type": scope.type} for scope in exc.scopes],
+            message=str(exc),
+        )
+        ctx.exit(1)
+    except NeedAccount as exc:
+        if not as_json:
+            _fail(ctx, exc)
+        _json_line(
+            type="choose_account",
+            accounts=[{"id": account.id, "name": account.name} for account in exc.accounts],
+            message=str(exc),
+        )
+        ctx.exit(1)
+    except SpineKitError as exc:
+        if not as_json:
+            _fail(ctx, exc)
+        _json_line(type="error", message=" ".join(str(exc).split()))
+        ctx.exit(1)
+    if as_json:
+        _json_line(
+            type="done",
+            url=result.url,
+            account_id=result.account_id,
+            token_created=result.token_created,
+            healthy=result.healthy,
+        )
+        return
+    _spine_deployed(say, result.url)

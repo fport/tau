@@ -10,12 +10,17 @@ tau-net ships the spine Worker as a kit in ``tau_net/spine_kit/``, generated fro
 - ``migrations/*.sql``: the D1 schema, only when the config has a D1 binding;
 - ``VERSION`` and ``README.md``.
 
-:func:`init_project` writes a Wrangler project from it; :func:`deploy_project` deploys that
-project with ``bunx wrangler`` (``npx wrangler`` when bun is not on ``PATH``, see
-:func:`package_tools`) and writes ``TAU_SPINE_TOKEN`` and ``TAU_SPINE_URL`` into the hub's
-``.env``. Every external command goes through a :class:`Runner`, so tests never start bun,
-npm or Wrangler. The token reaches Wrangler only on stdin: it is never part of a command
-line, never printed and never logged. Error messages are plain English.
+:func:`init_project` writes a Wrangler project from it. Two paths deploy that project and
+write ``TAU_SPINE_TOKEN`` and ``TAU_SPINE_URL`` into the hub's ``.env``:
+
+- :func:`tau_net.spine_api.deploy_api`, the default: the Cloudflare API with a scoped API
+  token, no Node.js, bun or Wrangler (ADR 0014 §4);
+- :func:`deploy_project` (``--wrangler``): ``bunx wrangler`` (``npx wrangler`` when bun is
+  not on ``PATH``, see :func:`package_tools`).
+
+Every external command goes through a :class:`Runner`, so tests never start bun, npm or
+Wrangler. The token reaches Wrangler only on stdin: it is never part of a command line, never
+printed and never logged. Error messages are plain English.
 """
 
 from __future__ import annotations
@@ -49,12 +54,16 @@ __all__ = [
     "SpineKitError",
     "SubprocessRunner",
     "deploy_project",
+    "dotenv_value",
+    "ensure_hub_token",
     "init_project",
     "is_workers_dev",
     "load_kit",
     "package_tools",
     "parse_jsonc",
+    "project_address",
     "render_config",
+    "save_url",
     "spine_host",
 ]
 
@@ -377,7 +386,12 @@ class DeployResult:
     dotenv: Path
     token_created: bool
     migrated: tuple[str, ...]
-    """The D1 bindings whose migrations were applied."""
+    """The D1 bindings whose migrations were applied (Wrangler path)."""
+    account_id: str | None = None
+    """The Cloudflare account deployed to (API path)."""
+    healthy: bool | None = None
+    """Whether ``GET /hub/health`` answered with the new token (API path; ``None``: not
+    checked)."""
 
 
 def _plain(text: str) -> str:
@@ -423,6 +437,74 @@ def _dotenv_value(home: Path, name: str) -> str:
     return (env_with_dotenv(home, {}).get(name) or "").strip()
 
 
+def dotenv_value(home: Path, name: str) -> str:
+    """``NAME`` from ``<home>/.env`` only (not the environment); ``""`` when it is missing."""
+    return _dotenv_value(Path(home), name)
+
+
+def project_address(
+    path: Path, config: Mapping[str, Any], address: str | None
+) -> tuple[str | None, str | None]:
+    """``(host, known)`` for a deploy: ``host`` from ``--address`` (:func:`spine_host`), and the
+    address the spine will have when it is known now: ``host``, else ``vars.ADDRESS`` of the
+    project. :class:`SpineKitError` when the two contradict each other."""
+    vars_ = config.get("vars") if isinstance(config.get("vars"), dict) else {}
+    configured = str(vars_.get("ADDRESS") or "").strip().lower()
+    host = spine_host(address) if address else None
+    if host and configured and host != configured:
+        raise SpineKitError(
+            f"{path / CONFIG} has ADDRESS {configured!r}, not {host!r}; "
+            "fix the one that is wrong and deploy again"
+        )
+    return host, host or (spine_host(configured) if configured else None)
+
+
+def ensure_hub_token(
+    home: Path,
+    *,
+    say: Callable[..., None],
+    environ: Mapping[str, str],
+    hide: list[str] | None = None,
+) -> tuple[str, bool]:
+    """``TAU_SPINE_TOKEN`` from ``<home>/.env``, generated and written there (mode ``0600``)
+    when it is missing: ``(token, created)``. A new token is appended to ``hide`` so every
+    line shown afterwards masks it. Notes when the environment holds another value, which
+    would win over ``.env`` in the hub."""
+    from tau_core.settings import set_credential
+
+    dotenv = home / ".env"
+    token = _dotenv_value(home, SPINE_TOKEN_ENV)
+    created = False
+    if not token:
+        token = secrets.token_urlsafe(TOKEN_BYTES)
+        if hide is not None:
+            hide.append(token)
+        try:
+            set_credential(home, SPINE_TOKEN_ENV, token)
+        except (OSError, ValueError) as exc:
+            raise SpineKitError(f"cannot write {dotenv}: {exc}") from None
+        created = True
+        say("net.spine.deploy.token_created", path=dotenv)
+    else:
+        say("net.spine.deploy.token_kept", path=dotenv)
+    from_env = (environ.get(SPINE_TOKEN_ENV) or "").strip()
+    if from_env and from_env != token:
+        say("net.spine.deploy.token_env")
+    return token, created
+
+
+def save_url(home: Path, url: str, *, say: Callable[..., None]) -> None:
+    """``TAU_SPINE_URL=url`` in ``<home>/.env``."""
+    from tau_core.settings import set_credential
+
+    dotenv = home / ".env"
+    try:
+        set_credential(home, SPINE_URL_ENV, url)
+    except (OSError, ValueError) as exc:
+        raise SpineKitError(f"cannot write {dotenv}: {exc}") from None
+    say("net.spine.deploy.url_saved", url=url, path=dotenv)
+
+
 def deploy_project(
     directory: Path | str,
     *,
@@ -451,8 +533,6 @@ def deploy_project(
     of the commands (the token replaced by ``***`` should it ever appear). The first failure
     raises :class:`SpineKitError`; nothing after it runs.
     """
-    from tau_core.settings import set_credential
-
     runner = runner or SubprocessRunner()
     environ = os.environ if environ is None else environ
     path = Path(directory).expanduser().resolve()
@@ -466,15 +546,7 @@ def deploy_project(
         )
     package = _read_json(path / PACKAGE, "package.json")
     name = config.get("name") if isinstance(config.get("name"), str) else None
-    vars_ = config.get("vars") if isinstance(config.get("vars"), dict) else {}
-    configured = str(vars_.get("ADDRESS") or "").strip().lower()
-    host = spine_host(address) if address else None
-    if host and configured and host != configured:
-        raise SpineKitError(
-            f"{path / CONFIG} has ADDRESS {configured!r}, not {host!r}; "
-            "fix the one that is wrong and deploy again"
-        )
-    known = host or (spine_host(configured) if configured else None)
+    _, known = project_address(path, config, address)
     d1 = [
         str(db["binding"])
         for db in config.get("d1_databases") or []
@@ -513,7 +585,7 @@ def deploy_project(
     if '"loggedIn":false' in compact or "notauthenticated" in compact.lower():
         raise NotLoggedIn(
             f"Wrangler is not logged in to Cloudflare; run `{login}`, "
-            f"then `tau net spine deploy {path}` again"
+            f"then `tau net spine deploy {path} --wrangler` again"
         )
     if status.returncode != 0:
         raise SpineKitError(
@@ -523,7 +595,7 @@ def deploy_project(
     if '"loggedIn":true' not in compact:
         raise NotLoggedIn(
             f"`wrangler whoami` shows no Cloudflare login; run `{login}`, "
-            f"then `tau net spine deploy {path}` again"
+            f"then `tau net spine deploy {path} --wrangler` again"
         )
     say("net.spine.deploy.logged_in")
 
@@ -537,22 +609,7 @@ def deploy_project(
         migrated.append(binding)
 
     # 3. The hub token, on stdin only.
-    token = existing
-    created = False
-    if not token:
-        token = secrets.token_urlsafe(TOKEN_BYTES)
-        hidden.append(token)
-        try:
-            set_credential(home, SPINE_TOKEN_ENV, token)
-        except (OSError, ValueError) as exc:
-            raise SpineKitError(f"cannot write {dotenv}: {exc}") from None
-        created = True
-        say("net.spine.deploy.token_created", path=dotenv)
-    else:
-        say("net.spine.deploy.token_kept", path=dotenv)
-    from_env = (environ.get(SPINE_TOKEN_ENV) or "").strip()
-    if from_env and from_env != token:
-        say("net.spine.deploy.token_env")
+    token, created = ensure_hub_token(home, say=say, environ=environ, hide=hidden)
     run([*tools.run, "wrangler", "secret", "put", HUB_TOKEN_SECRET], stdin=f"{token}\n")
     say("net.spine.deploy.secret_set")
 
@@ -563,10 +620,6 @@ def deploy_project(
             "the deploy printed no workers.dev URL; set TAU_SPINE_URL in "
             f"{dotenv} to https://<your spine's address> yourself"
         )
-    try:
-        set_credential(home, SPINE_URL_ENV, url)
-    except (OSError, ValueError) as exc:
-        raise SpineKitError(f"cannot write {dotenv}: {exc}") from None
-    say("net.spine.deploy.url_saved", url=url, path=dotenv)
+    save_url(home, url, say=say)
     logger.info("spine deployed from %s to %s", path, url)
     return DeployResult(url=url, dotenv=dotenv, token_created=created, migrated=tuple(migrated))

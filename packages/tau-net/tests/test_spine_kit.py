@@ -425,7 +425,9 @@ def test_deploy_runs_the_steps_and_keeps_the_token_off_the_command_line(
 ) -> None:
     target = _project(tmp_path, cli, d1=d1)
     runner = FakeRunner(found=WITH_BUN) if bun else FakeRunner()
-    result = cli("spine", "deploy", str(target), spine_runner=runner, spine_environ={})
+    result = cli(
+        "spine", "deploy", "--wrangler", str(target), spine_runner=runner, spine_environ={}
+    )
     assert result.exit_code == 0, _text(result)
 
     pin = json.loads(load_kit().package)["devDependencies"]["wrangler"]
@@ -459,10 +461,12 @@ def test_deploy_runs_the_steps_and_keeps_the_token_off_the_command_line(
 def test_deploy_reuses_the_token(tmp_path: Path, cli) -> None:
     target = _project(tmp_path, cli)
     first = FakeRunner()
-    assert cli("spine", "deploy", str(target), spine_runner=first).exit_code == 0
+    assert cli("spine", "deploy", "--wrangler", str(target), spine_runner=first).exit_code == 0
     token = _dotenv(tmp_path)["TAU_SPINE_TOKEN"]
     second = FakeRunner()
-    result = cli("spine", "deploy", str(target), spine_runner=second, spine_environ={})
+    result = cli(
+        "spine", "deploy", "--wrangler", str(target), spine_runner=second, spine_environ={}
+    )
     assert result.exit_code == 0, _text(result)
     assert _dotenv(tmp_path)["TAU_SPINE_TOKEN"] == token
     assert second.calls[-1].stdin == f"{token}\n"
@@ -474,7 +478,7 @@ def test_deploy_reuses_the_token(tmp_path: Path, cli) -> None:
 def test_deploy_hides_the_token_even_if_a_tool_prints_it(tmp_path: Path, cli) -> None:
     target = _project(tmp_path, cli)
     runner = FakeRunner(echo_stdin=True)
-    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    result = cli("spine", "deploy", "--wrangler", str(target), spine_runner=runner)
     assert result.exit_code == 0, _text(result)
     token = _dotenv(tmp_path)["TAU_SPINE_TOKEN"]
     assert token not in _text(result)
@@ -484,7 +488,14 @@ def test_deploy_hides_the_token_even_if_a_tool_prints_it(tmp_path: Path, cli) ->
 def test_deploy_warns_when_the_environment_has_another_token(tmp_path: Path, cli) -> None:
     target = _project(tmp_path, cli)
     environ = {"TAU_SPINE_TOKEN": "another-value-from-the-environment"}
-    result = cli("spine", "deploy", str(target), spine_runner=FakeRunner(), spine_environ=environ)
+    result = cli(
+        "spine",
+        "deploy",
+        "--wrangler",
+        str(target),
+        spine_runner=FakeRunner(),
+        spine_environ=environ,
+    )
     assert result.exit_code == 0, _text(result)
     assert "also set in the environment" in result.output
     assert "another-value-from-the-environment" not in result.output
@@ -494,7 +505,13 @@ def test_deploy_url_from_the_address(tmp_path: Path, cli) -> None:
     target = _project(tmp_path, cli)
     runner = FakeRunner()
     result = cli(
-        "spine", "deploy", str(target), "--address", "tau.example.com", spine_runner=runner
+        "spine",
+        "deploy",
+        "--wrangler",
+        str(target),
+        "--address",
+        "tau.example.com",
+        spine_runner=runner,
     )
     assert result.exit_code == 0, _text(result)
     assert _dotenv(tmp_path)["TAU_SPINE_URL"] == "https://tau.example.com"
@@ -502,7 +519,9 @@ def test_deploy_url_from_the_address(tmp_path: Path, cli) -> None:
 
 def test_deploy_url_from_the_project_address(tmp_path: Path, cli) -> None:
     target = _project(tmp_path, cli, "--address", "tau.example.com")
-    assert cli("spine", "deploy", str(target), spine_runner=FakeRunner()).exit_code == 0
+    assert (
+        cli("spine", "deploy", "--wrangler", str(target), spine_runner=FakeRunner()).exit_code == 0
+    )
     assert _dotenv(tmp_path)["TAU_SPINE_URL"] == "https://tau.example.com"
 
 
@@ -510,7 +529,13 @@ def test_deploy_refuses_an_address_that_contradicts_the_project(tmp_path: Path, 
     target = _project(tmp_path, cli, "--address", "tau.example.com")
     runner = FakeRunner()
     result = cli(
-        "spine", "deploy", str(target), "--address", "other.example.org", spine_runner=runner
+        "spine",
+        "deploy",
+        "--wrangler",
+        str(target),
+        "--address",
+        "other.example.org",
+        spine_runner=runner,
     )
     assert result.exit_code == 1
     assert "has ADDRESS 'tau.example.com', not 'other.example.org'" in _text(result)
@@ -530,9 +555,10 @@ def test_deploy_refuses_an_address_that_contradicts_the_project(tmp_path: Path, 
 def test_deploy_stops_when_wrangler_is_not_logged_in(tmp_path: Path, cli, answer) -> None:
     target = _project(tmp_path, cli)
     runner = FakeRunner(answers={"npx --yes wrangler@": answer})
-    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    result = cli("spine", "deploy", "--wrangler", str(target), spine_runner=runner)
     assert result.exit_code == 1
     assert "npx wrangler login" in _text(result)
+    assert f"then `tau net spine deploy {target.resolve()} --wrangler` again" in _text(result)
     assert len(runner.calls) == 1
     assert not (tmp_path / "home" / ".env").exists()
 
@@ -541,7 +567,7 @@ def test_deploy_stops_when_wrangler_is_not_logged_in_with_bun(tmp_path: Path, cl
     target = _project(tmp_path, cli)
     answer = Completed(1, WHOAMI_OUT + "\n")
     runner = FakeRunner(answers={"bunx wrangler@": answer}, found=WITH_BUN)
-    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    result = cli("spine", "deploy", "--wrangler", str(target), spine_runner=runner)
     assert result.exit_code == 1
     assert "run `bunx wrangler login`" in _text(result)
     assert runner.argvs[0][0] == "bunx" and len(runner.calls) == 1
@@ -550,7 +576,7 @@ def test_deploy_stops_when_wrangler_is_not_logged_in_with_bun(tmp_path: Path, cl
 def test_deploy_needs_npx(tmp_path: Path, cli) -> None:
     target = _project(tmp_path, cli)
     runner = FakeRunner(found=("npm",))
-    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    result = cli("spine", "deploy", "--wrangler", str(target), spine_runner=runner)
     assert result.exit_code == 1
     assert "npx was not found on PATH; install Node.js 22 or newer" in _text(result)
     assert runner.calls == []
@@ -574,7 +600,7 @@ def test_deploy_with_bun_still_needs_node(tmp_path: Path, cli) -> None:
     """Wrangler runs on Node.js; without ``node`` bunx would run it on bun."""
     target = _project(tmp_path, cli)
     runner = FakeRunner(found=("bun", "bunx", "npx", "npm"))
-    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    result = cli("spine", "deploy", "--wrangler", str(target), spine_runner=runner)
     assert result.exit_code == 1
     assert "node was not found on PATH; Wrangler runs on Node.js, also with bun" in _text(result)
     assert runner.calls == []
@@ -584,7 +610,7 @@ def test_deploy_stops_at_the_first_failure(tmp_path: Path, cli) -> None:
     target = _project(tmp_path, cli)
     failure = Completed(1, "Uploading...\n✘ [ERROR] A request to the Cloudflare API failed.\n")
     runner = FakeRunner(answers={"npx wrangler deploy": failure})
-    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    result = cli("spine", "deploy", "--wrangler", str(target), spine_runner=runner)
     assert result.exit_code == 1
     assert (
         "tau net: `npx wrangler deploy` failed (exit 1): "
@@ -598,7 +624,7 @@ def test_deploy_failing_secret_leaves_the_url_unset(tmp_path: Path, cli) -> None
     target = _project(tmp_path, cli)
     failure = Completed(1, "✘ [ERROR] Authentication error\n")
     runner = FakeRunner(answers={"npx wrangler secret put": failure})
-    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    result = cli("spine", "deploy", "--wrangler", str(target), spine_runner=runner)
     assert result.exit_code == 1
     assert "`npx wrangler secret put HUB_TOKEN` failed (exit 1)" in _text(result)
     env = _dotenv(tmp_path)
@@ -609,14 +635,14 @@ def test_deploy_failing_secret_leaves_the_url_unset(tmp_path: Path, cli) -> None
 def test_deploy_without_a_url(tmp_path: Path, cli) -> None:
     target = _project(tmp_path, cli)
     runner = FakeRunner(answers={"npx wrangler deploy": Completed(0, "Uploaded tau-spine\n")})
-    result = cli("spine", "deploy", str(target), spine_runner=runner)
+    result = cli("spine", "deploy", "--wrangler", str(target), spine_runner=runner)
     assert result.exit_code == 1
     assert "printed no workers.dev URL; set TAU_SPINE_URL" in _text(result)
 
 
 def test_deploy_needs_a_spine_project(tmp_path: Path, cli) -> None:
     runner = FakeRunner()
-    result = cli("spine", "deploy", str(tmp_path / "nothing"), spine_runner=runner)
+    result = cli("spine", "deploy", "--wrangler", str(tmp_path / "nothing"), spine_runner=runner)
     assert result.exit_code == 1
     assert "is not a spine project" in _text(result) and "tau net spine init" in _text(result)
     assert runner.calls == []

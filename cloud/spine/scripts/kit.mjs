@@ -203,7 +203,7 @@ try {
     `// ${GENERATED}`,
     "//",
     "// `tau net spine init` writes it as wrangler.jsonc; `tau net spine deploy` deploys it.",
-    "// Resources without an id (KV, D1) are provisioned on the first deploy.",
+    "// Storage bindings without an id are provisioned on the first deploy.",
     "{",
     `  "$schema": "node_modules/wrangler/config-schema.json",`,
     `${entry("name", template.name)},`,

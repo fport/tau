@@ -2,7 +2,7 @@
 
 # tau spine
 
-The spine of a tau (0.1.0+23e68ef60fa9): a Cloudflare Worker whose hostname is the tau's address. It
+The spine of a tau (0.1.0+c377832830c9): a Cloudflare Worker whose hostname is the tau's address. It
 serves the tau's public card at `/.well-known/tau.json`, keeps the sealed envelopes other
 taus send until the hub picks them up, and gives the hub its API under `/hub/*`. It never
 decrypts anything and holds no contacts. It runs in local mode and fits the Workers Free plan.
@@ -15,7 +15,6 @@ package. You do not need the tau repository.
 | `worker.js` | the bundled Worker; deployed as it is |
 | `wrangler.jsonc` | its Wrangler configuration (name `tau-spine`, bindings, cron) |
 | `package.json` | Wrangler, pinned |
-| `migrations/` | the D1 schema |
 
 ## Deploy
 
@@ -26,7 +25,7 @@ npx wrangler login               # once
 tau net spine deploy <this directory>
 ```
 
-`tau net spine deploy` installs Wrangler, deploys the Worker, applies the D1 migrations,
+`tau net spine deploy` installs Wrangler, deploys the Worker,
 creates `TAU_SPINE_TOKEN` in the hub's `.env` when it is missing, sets it as the Worker's
 `HUB_TOKEN` secret and writes `TAU_SPINE_URL`. Then, on the hub:
 
@@ -41,7 +40,6 @@ By hand, the same steps are:
 ```sh
 npm install
 npx wrangler deploy
-npx wrangler d1 migrations apply DB --remote
 npx wrangler secret put HUB_TOKEN   # the hub's TAU_SPINE_TOKEN
 ```
 

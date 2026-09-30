@@ -16,6 +16,8 @@ build/
 
 # Personal facts about the user stay local (persona/user.example.md is the tracked template)
 persona/user.md
+# The public note for other taus (ADR 0007); persona/net.example.md is the tracked template
+persona/net.md
 
 # Tools tau wrote itself, waiting for approval
 tools/_pending/*

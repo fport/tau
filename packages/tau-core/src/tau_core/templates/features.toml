@@ -1,0 +1,282 @@
+# The features `tau setup` offers (ADR 0014 §1, issue 169).
+#
+# Data, not code: tau_core.setup reads this file, and the Mac app sees it through
+# `tau setup status --json`. Every text is a key into the i18n message table
+# (tau_core/setup/strings.py, en + tr). docs/reference/setup.md specifies the schema.
+#
+# tau-core never imports a feature's package: a step is a tau subcommand run as a subprocess,
+# and a note is a text with a link. Nothing here runs sudo or anything but `tau`.
+#
+# Paths in [feature.configured]: `{home}` is the configuration root (TAU_HOME), `{data}` the
+# data dir (TAU_DATA_DIR) and `~` the user's home directory.
+
+schema = 1
+docs = "https://docs.tau.getporti.com/" # a feature's `docs` is relative to this; Turkish adds tr/
+
+# -- the terminal UI ----------------------------------------------------------------------------
+
+[[feature]]
+id = "tui"
+package = "tau-tui"
+lockstep = true
+label = "setup.feature.tui"
+description = "setup.feature.tui.about"
+platforms = ["darwin", "linux"]
+default = true
+docs = "getting-started/talk/"
+
+# -- the Mac app (issue 170 ships it; until then the step points to the download page) ----------
+
+[[feature]]
+id = "app"
+label = "setup.feature.app"
+description = "setup.feature.app.about"
+platforms = ["darwin"]
+default = false
+permissions = ["notifications"]
+unavailable = "setup.unavailable.app"
+docs = "guides/taubar/"
+
+[feature.configured]
+any_files = [
+  "/Applications/tau.app",
+  "~/Applications/tau.app",
+  "/Applications/TauBar.app",
+  "~/Applications/TauBar.app",
+]
+
+[[feature.step]]
+id = "download"
+kind = "note"
+label = "setup.step.app.download"
+text = "setup.note.app.download"
+url = "https://tau.getporti.com/download"
+
+# -- sub-taus -------------------------------------------------------------------------------------
+
+[[feature]]
+id = "sub"
+package = "tau-sub"
+label = "setup.feature.sub"
+description = "setup.feature.sub.about"
+platforms = ["darwin", "linux"]
+default = true
+docs = "guides/public-sub-taus/"
+
+[[feature.step]]
+id = "first"
+kind = "note"
+label = "setup.step.sub.first"
+text = "setup.note.sub.first"
+
+# -- Telegram (issue 172 adds `tau telegram pair`; without it the step explains the manual way) --
+
+[[feature]]
+id = "telegram"
+label = "setup.feature.telegram"
+description = "setup.feature.telegram.about"
+platforms = ["darwin", "linux"]
+default = false
+docs = "guides/telegram/"
+
+[feature.configured]
+env = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_CHAT_IDS"]
+
+[[feature.step]]
+id = "pair"
+label = "setup.step.telegram.pair"
+command = ["telegram", "pair"]
+interactive = true
+when_command = ["telegram", "pair"]
+unavailable = "setup.note.telegram.manual"
+
+# -- remote access (issue 173 turns this into guided steps) ---------------------------------------
+
+[[feature]]
+id = "remote"
+label = "setup.feature.remote"
+description = "setup.feature.remote.about"
+platforms = ["darwin", "linux"]
+default = false
+docs = "guides/phone-tailscale-termius/"
+
+[[feature.step]]
+id = "guide"
+kind = "note"
+label = "setup.step.remote.guide"
+text = "setup.note.remote.guide"
+
+# -- the owner guard (ADR 0008: at the Mac, never over SSH) ---------------------------------------
+
+[[feature]]
+id = "guard"
+package = "tau-guard"
+lockstep = true
+label = "setup.feature.guard"
+description = "setup.feature.guard.about"
+platforms = ["darwin"]
+default = false
+permissions = ["camera"]
+unavailable = "setup.unavailable.guard"
+keep_while_configured = "setup.remove.guard_enrolled"
+docs = "guides/guard/"
+
+[feature.configured]
+files = ["{data}/guard/enrolled"]
+
+[[feature.step]]
+id = "doctor"
+label = "setup.step.guard.doctor"
+command = ["guard", "doctor"]
+advisory = true
+
+[[feature.step]]
+id = "setup"
+label = "setup.step.guard.setup"
+command = ["guard", "setup"]
+interactive = true
+local_only = true
+
+[[feature.step]]
+id = "restart"
+kind = "note"
+label = "setup.step.guard.restart"
+text = "setup.note.guard.restart"
+
+# -- the tau network and the universe -------------------------------------------------------------
+
+[[feature]]
+id = "net"
+package = "tau-net"
+label = "setup.feature.net"
+description = "setup.feature.net.about"
+platforms = ["darwin", "linux"]
+default = false
+docs = "guides/tau-network/"
+
+[feature.configured]
+files = ["{data}/net/identity.json"]
+
+[[feature.step]]
+id = "init"
+label = "setup.step.net.init"
+command = ["net", "init"]
+
+[[feature.step.input]]
+name = "name"
+label = "setup.input.net_name"
+flag = "--name"
+
+[[feature.step]]
+id = "spine"
+kind = "note"
+label = "setup.step.net.spine"
+text = "setup.note.net.spine"
+
+[[feature.step]]
+id = "spine-init"
+label = "setup.step.net.spine_init"
+command = ["net", "spine", "init"]
+optional = true
+needs = ["node"]
+needs_text = "setup.needs.node"
+
+[[feature.step.input]]
+name = "spine_dir"
+label = "setup.input.spine_dir"
+positional = true
+path = true
+required = true
+default = "~/tau-spine"
+
+[[feature.step.input]]
+name = "address"
+label = "setup.input.address"
+flag = "--address"
+
+[[feature.step]]
+id = "spine-deploy"
+label = "setup.step.net.spine_deploy"
+command = ["net", "spine", "deploy"]
+optional = true
+interactive = true
+needs = ["node"]
+needs_text = "setup.needs.node"
+
+[[feature.step.input]]
+name = "spine_dir"
+label = "setup.input.spine_dir"
+positional = true
+path = true
+required = true
+default = "~/tau-spine"
+
+[[feature.step]]
+id = "universe"
+label = "setup.step.net.universe"
+command = ["net", "universe", "join"]
+optional = true
+
+[[feature.step.input]]
+name = "owner"
+label = "setup.input.owner"
+flag = "--owner"
+
+[[feature.step.input]]
+name = "about"
+label = "setup.input.about"
+flag = "--about"
+
+[[feature.step]]
+id = "claim"
+label = "setup.step.net.claim"
+command = ["net", "universe", "claim"]
+optional = true
+
+# -- start the hub at login -----------------------------------------------------------------------
+
+[[feature]]
+id = "autostart"
+label = "setup.feature.autostart"
+description = "setup.feature.autostart.about"
+platforms = ["darwin", "linux"]
+default = ["darwin"]
+docs = "guides/hub-service/"
+
+[feature.configured]
+any_files = [
+  "~/Library/LaunchAgents/com.tau.hub.plist",
+  "~/.config/systemd/user/tau-hub.service",
+]
+
+[[feature.step]]
+id = "launchd"
+label = "setup.step.autostart.launchd"
+command = ["hub", "install"]
+platforms = ["darwin"]
+
+[[feature.step]]
+id = "systemd"
+kind = "note"
+label = "setup.step.autostart.systemd"
+text = "setup.note.autostart.systemd"
+platforms = ["linux"]
+
+# -- cloud mode (advanced: installs tau-cloud and points to the guide) ----------------------------
+
+[[feature]]
+id = "cloud"
+package = "tau-cloud"
+label = "setup.feature.cloud"
+description = "setup.feature.cloud.about"
+platforms = ["darwin", "linux"]
+default = false
+advanced = true
+requires = ["net"]
+docs = "guides/cloud-mode/"
+
+[[feature.step]]
+id = "guide"
+kind = "note"
+label = "setup.step.cloud.guide"
+text = "setup.note.cloud.guide"

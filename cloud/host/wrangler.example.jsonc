@@ -74,13 +74,14 @@
   // The inbox's flood guards (docs/reference/tau-network.md §4), before anything that costs
   // a subrequest or a Durable Object call: envelopes per client IP (an IPv6 address counted
   // by its /64) and per sender and hosted tau, each a minute. A namespace_id is shared by
-  // every Worker of an account that uses it; these differ from the spine's (10501, 10502).
+  // every Worker of an account that uses it; these differ from the spine's (10501, 10502) and
+  // the universe's (10601–10603), since tau-host and the universe share tau.getporti.com's account.
   // Without the bindings the checks are skipped (logged once).
   "ratelimits": [
-    { "name": "INBOX_IP_LIMIT", "namespace_id": "10601", "simple": { "limit": 60, "period": 60 } },
+    { "name": "INBOX_IP_LIMIT", "namespace_id": "10701", "simple": { "limit": 60, "period": 60 } },
     {
       "name": "INBOX_SENDER_LIMIT",
-      "namespace_id": "10602",
+      "namespace_id": "10702",
       "simple": { "limit": 30, "period": 60 }
     }
   ],

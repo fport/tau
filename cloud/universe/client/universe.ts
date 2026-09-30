@@ -2,12 +2,15 @@
  * The universe graph: reads /api/universe and draws the taus as a force-directed graph, on
  * the universe page (`/universe`) and, full screen behind the hero, on the landing page.
  *
- * - Every tau and sub-tau is drawn as its character (cloud/shared/character.ts), seeded
- *   with its address (a sub-tau: `<address>/<name>`).
- * - Taus of the same owner share a hull; a tau without an owner is a group of its own.
- * - A tau's public sub-taus circle it as small characters inside the hull (client/layout.ts).
- * - A mutual link is a dashed line, wider for more messages.
- * - Online taus carry a lit ring, offline ones are dim.
+ * - Every tau and sub-tau is drawn as its ember sigil (cloud/shared/character.ts), seeded
+ *   with its address (a sub-tau: `<address>/<name>`, burning in its tau's hue).
+ * - Taus of the same owner share a hull, a sharp polygon; a tau without an owner is a group
+ *   of its own.
+ * - A tau's public sub-taus circle it as small sigils inside the hull (client/layout.ts).
+ * - A mutual link is an energy beam: a thin line from one tau's hue to the other's over a
+ *   faint glow, wider for more messages, with a pulse running along it.
+ * - Online taus burn; offline ones are cold and still. Hover and selection show a square
+ *   reticle.
  * - Hover or tap shows a tau's card; `#<address>` in the URL pins it, and
  *   `#<address>/<name>` pins the card of one of its sub-taus. A card links the tau's person
  *   page and a sub-tau's page when the universe knows them.
@@ -36,6 +39,7 @@ import {
 import { polygonHull } from "d3-polygon";
 import type { PublicLink } from "../src/snapshot";
 import { getJson } from "./api";
+import { hueOf, type Kind, traits } from "../../shared/character";
 import { byId, characterElement, html, link, maybeId, svg } from "./dom";
 import {
   groupKey,
@@ -65,8 +69,13 @@ const MAX_SCALE = 1.8;
 const NAME_LABEL_LIMIT = 40;
 const TINY_UNIVERSE = 5;
 const JOIN_COMMAND = "tau net universe join";
-/** A character is drawn this many times its node's radius wide. */
+/** A sigil is drawn this many times its node's radius wide. */
 const CHARACTER_SCALE = 2.7;
+/** Where a sigil's centre sits, as a fraction of its height: a tau's ring, a sub-tau's
+ *  smaller triangle. */
+const SIGIL_CENTRE: Record<Kind, number> = { tau: 0.52, sub: 0.58 };
+/** The beams' middle: Flare, the brightest of the fire. */
+const BEAM_MIDDLE = "#ffb25c";
 
 interface GraphNode extends SimulationNodeDatum {
   tau: PublicTau;
@@ -89,8 +98,12 @@ interface SubNode {
 interface GraphLink extends SimulationLinkDatum<GraphNode> {
   data: PublicLink;
   element: SVGGElement;
-  line: SVGLineElement;
-  hit: SVGLineElement;
+  /** The glow, the beam and the hit area: lines between the two taus. */
+  lines: SVGLineElement[];
+  /** The travelling pulse: a path, so its dashes can be measured in `pathLength` units. */
+  pulse: SVGPathElement;
+  /** The beam's gradient, in the graph's own units, from one tau's hue to the other's. */
+  gradient: SVGLinearGradientElement;
 }
 
 interface Group {
@@ -189,6 +202,10 @@ function layer(name: string): SVGGElement {
   return element;
 }
 
+/** The graph's <defs>, where each beam keeps its gradient. */
+const defs: SVGDefsElement =
+  page.graph.querySelector("defs") ?? page.graph.insertBefore(svg("defs"), page.graph.firstChild);
+
 const layers = {
   hulls: layer("hulls"),
   links: layer("links"),
@@ -285,19 +302,39 @@ function render(snapshot: Snapshot): void {
 // ---------------------------------------------------------------------------------------
 // The graph
 
-/** A character centred on its node: the body's middle sits on the node's centre. */
-function placedCharacter(seed: string, radius: number): SVGSVGElement {
+/** A sigil centred on its node: its ring's (or its triangle's) middle on the node's centre. */
+function placedCharacter(seed: string, radius: number, kind: Kind): SVGSVGElement {
   const size = radius * CHARACTER_SCALE;
-  const element = characterElement(seed, { size, animated: !reducedMotion.matches });
+  const element = characterElement(seed, { size, kind, animated: !reducedMotion.matches });
   element.setAttribute("x", (-size / 2).toFixed(1));
-  element.setAttribute("y", (-size * 0.6).toFixed(1));
+  element.setAttribute("y", (-size * SIGIL_CENTRE[kind]).toFixed(1));
   element.classList.add("node-character");
   return element;
+}
+
+/** A square reticle of four corner brackets, `half` from the centre, arms `arm` long. */
+function reticle(half: number, arm: number): SVGPathElement {
+  const h = half.toFixed(1);
+  const a = (half - arm).toFixed(1);
+  const d =
+    `M-${h} -${a}V-${h}H-${a}M${a} -${h}H${h}V-${a}` +
+    `M${h} ${a}V${h}H${a}M-${a} ${h}H-${h}V${a}`;
+  return svg("path", { class: "reticle", d });
+}
+
+/** The colour of a tau's triangle, for the ends of its beams. */
+function hueColour(address: string): string {
+  return hueOf(traits(address, "tau").hue).a;
+}
+
+function gradientStop(offset: string, colour: string, opacity: string): SVGStopElement {
+  return svg("stop", { offset, "stop-color": colour, "stop-opacity": opacity });
 }
 
 function buildGraph(s: State): void {
   layers.hulls.replaceChildren();
   layers.links.replaceChildren();
+  defs.replaceChildren();
   layers.subs.replaceChildren();
   layers.nodes.replaceChildren();
 
@@ -323,10 +360,9 @@ function buildGraph(s: State): void {
     }
 
     const element = svg("g", { class: `node ${tau.online ? "online" : "offline"}` });
-    if (tau.online) element.append(svg("circle", { class: "halo", r: NODE_RADIUS + 2 }));
-    element.append(svg("circle", { class: "ring", r: NODE_RADIUS + 7 }));
+    element.append(reticle(NODE_RADIUS + 7, 5));
     element.append(svg("circle", { class: "node-hit", r: NODE_RADIUS + 2 }));
-    element.append(placedCharacter(tau.address, NODE_RADIUS));
+    element.append(placedCharacter(tau.address, NODE_RADIUS, "tau"));
     const subData = tauSubNodes(tau);
     let label: SVGTextElement | null = null;
     if (showNames) {
@@ -359,13 +395,30 @@ function buildGraph(s: State): void {
 
   const counts = s.snapshot.links.map((link) => link.messages);
   const most = Math.max(1, ...counts);
-  for (const data of s.snapshot.links) {
+  s.snapshot.links.forEach((data, index) => {
     const source = s.byAddress.get(data.a);
     const target = s.byAddress.get(data.b);
-    if (source === undefined || target === undefined) continue;
-    const element = svg("g", { class: "link" });
-    const width = 1 + 2.6 * Math.sqrt(data.messages / most);
-    const line = svg("line", { class: "link-line", "stroke-width": width.toFixed(2) });
+    if (source === undefined || target === undefined) return;
+    const id = `beam-${index}`;
+    const gradient = svg("linearGradient", { id, gradientUnits: "userSpaceOnUse" });
+    gradient.append(
+      gradientStop("0", hueColour(data.a), "0.95"),
+      gradientStop("0.5", BEAM_MIDDLE, "0.5"),
+      gradientStop("1", hueColour(data.b), "0.95"),
+    );
+    defs.append(gradient);
+    // Pulses start at different points and half of them run the other way.
+    const element = svg("g", {
+      class: `link beam-d${index % 6}${index % 2 === 1 ? " beam-back" : ""}`,
+    });
+    const width = 0.8 + 1.5 * Math.sqrt(data.messages / most);
+    const glow = svg("line", { class: "beam-glow", "stroke-width": (width * 4).toFixed(2) });
+    const line = svg("line", {
+      class: "beam-line",
+      stroke: `url(#${id})`,
+      "stroke-width": width.toFixed(2),
+    });
+    const pulse = svg("path", { class: "beam-pulse", pathLength: 100 });
     const hit = svg("line", { class: "link-hit" });
     const title = svg("title");
     title.textContent = t.linkTitle(
@@ -374,10 +427,10 @@ function buildGraph(s: State): void {
       count(t.messages, data.messages),
     );
     hit.append(title);
-    element.append(line, hit);
+    element.append(glow, line, pulse, hit);
     layers.links.append(element);
-    s.links.push({ source, target, data, element, line, hit });
-  }
+    s.links.push({ source, target, data, element, lines: [glow, line, hit], pulse, gradient });
+  });
 
   // Spread the layout the way the free part of the box is shaped: wide on a desktop, tall on
   // a phone.
@@ -451,8 +504,8 @@ function buildSub(parent: GraphNode, data: SubNodeData, showNames: boolean): Sub
     }),
   );
   element.append(svg("circle", { class: "sub-hit", r: SUB_RADIUS + 5 }));
-  element.append(svg("circle", { class: "sub-ring", r: SUB_RADIUS + 4 }));
-  element.append(placedCharacter(data.id, SUB_RADIUS));
+  element.append(reticle(SUB_RADIUS + 4, 3));
+  element.append(placedCharacter(data.id, SUB_RADIUS, "sub"));
   if (showNames) {
     const label = svg("text", {
       class: "sub-name",
@@ -552,12 +605,17 @@ function draw(s: State, settled: boolean): void {
   for (const link of s.links) {
     const source = link.source as GraphNode;
     const target = link.target as GraphNode;
-    for (const line of [link.line, link.hit]) {
-      line.setAttribute("x1", (source.x ?? 0).toFixed(1));
-      line.setAttribute("y1", (source.y ?? 0).toFixed(1));
-      line.setAttribute("x2", (target.x ?? 0).toFixed(1));
-      line.setAttribute("y2", (target.y ?? 0).toFixed(1));
+    const x1 = (source.x ?? 0).toFixed(1);
+    const y1 = (source.y ?? 0).toFixed(1);
+    const x2 = (target.x ?? 0).toFixed(1);
+    const y2 = (target.y ?? 0).toFixed(1);
+    for (const element of [...link.lines, link.gradient]) {
+      element.setAttribute("x1", x1);
+      element.setAttribute("y1", y1);
+      element.setAttribute("x2", x2);
+      element.setAttribute("y2", y2);
     }
+    link.pulse.setAttribute("d", `M${x1} ${y1}L${x2} ${y2}`);
   }
   for (const group of s.groups) {
     const { d, top, cx } = hullPath(group.members);

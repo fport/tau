@@ -853,25 +853,18 @@ details.result pre {
   padding: 6px;
 }
 
-.ring::before,
-.ring::after {
+/* The sigil draws its own τ ring; the frame only marks its corners, square like the site. */
+.ring::before {
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px solid var(--line, #1f232b);
-  border-radius: 50%;
-}
-
-.ring::after {
-  inset: -5px;
-  border: 1px dashed color-mix(in srgb, var(--accent, #ff2e3e) 55%, transparent);
-  animation: spin 24s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  pointer-events: none;
+  background:
+    linear-gradient(var(--accent, #ff2e63), var(--accent, #ff2e63)) top left / 8px 1px no-repeat,
+    linear-gradient(var(--accent, #ff2e63), var(--accent, #ff2e63)) top left / 1px 8px no-repeat,
+    linear-gradient(var(--accent, #ff2e63), var(--accent, #ff2e63)) bottom right / 8px 1px no-repeat,
+    linear-gradient(var(--accent, #ff2e63), var(--accent, #ff2e63)) bottom right / 1px 8px no-repeat;
+  opacity: 0.7;
 }
 
 .tau-char--idle .tau-char-body {

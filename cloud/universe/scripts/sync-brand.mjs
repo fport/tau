@@ -8,7 +8,8 @@
 // Two files are derived: tau-coin.svg drawn in one colour instead of `currentColor`, which
 // an <img> or a favicon would render black. tau-coin-ember.svg is Ember (the explainer's
 // diagrams); tau-coin-red.svg is the site accent of the hard theme (ADR 0013 §8,
-// cloud/shared/theme.css `--accent`), used for the header, the footer and the favicon.
+// cloud/shared/theme.css `--accent`, Signal), used for the header, the footer and the
+// favicon.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -27,7 +28,7 @@ export const COPIED = [
   "tau-coin.svg",
 ];
 const EMBER = "#FF7A3D";
-const ACCENT = "#FF2E3E";
+const ACCENT = "#FF2E63";
 
 /** @type {Record<string, string>} */
 const wanted = {};

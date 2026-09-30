@@ -18,7 +18,7 @@ theme:
     primary: custom
     accent: custom
   font:
-    text: Inter
+    text: IBM Plex Sans
     code: JetBrains Mono
   features:
     - navigation.sections

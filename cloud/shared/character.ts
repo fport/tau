@@ -1,122 +1,184 @@
 /**
- * Characters: a small creature for every tau and sub-tau (ADR 0013 §8).
+ * Sigils: an ember sigil for every tau and sub-tau (ADR 0013 §8).
  *
- * `character(seed)` turns a seed into an SVG string. The creature is built on the tau
- * triangle: a triangle body (sharp, rounded, tall, squat, notched, leaning or cut flat),
- * split into a lit and a shaded facet, in one colour of a fixed neon palette, with eyes, a
- * mouth, sometimes a mark, cheeks, feet or a neon glow, and at most one accessory.
+ * `character(seed)` turns a seed into an SVG string. A sigil is drawn in the language of the
+ * brand hero (docs/brand/tau-hero.svg): a sharp neon triangle, double-stroked from its hue's
+ * first colour to its second, with a flame of layered, angular tongues burning inside it on
+ * a white-hot core, and HUD accents around it: a partial τ ring with a comet head, instrument
+ * ticks, square fragments, a scan line and a reflecting floor. No faces, no mascot parts.
  *
- * - **Seeds.** A tau's seed is its address (`alice.example.com`,
- *   `tau.example.com/@alice`); a sub-tau's is its address and name
- *   (`alice.example.com/coach`). The same seed always gives the same creature, in the site
- *   and in tau-host alike.
- * - **Frozen order.** The traits are drawn from one PRNG in a fixed order (see `traits`).
- *   Adding a palette colour, a body or an accessory, or drawing in another order, changes
- *   every existing creature; a golden test pins a few seeds so such a change is deliberate.
+ * - **Taus and sub-taus.** A tau's sigil is the richer one: a second triangle (nested,
+ *   inverted or an echo behind it) and the ring. A sub-tau's is a smaller triangle with a
+ *   single flame and no ring, burning in its tau's hue, so it reads as one of the family.
+ *   The kind comes from the seed (see `kindOf`) unless `opts.kind` says otherwise.
+ * - **Seeds.** A tau's seed is its address (`alice.example.com`, `tau.example.com/@alice`);
+ *   a sub-tau's is its address and name (`alice.example.com/coach`). The part before the last
+ *   `/name` is the owner, whose hue the sub-tau inherits. The same seed always gives the same
+ *   sigil, in the site and in tau-host alike.
+ * - **Frozen order.** The traits are drawn from one PRNG in a fixed order (see `traits`), the
+ *   same for both kinds. Adding a hue, a frame or a flame, or drawing in another order,
+ *   changes every existing sigil; a golden test pins a few seeds so such a change is
+ *   deliberate.
+ * - **Small sizes.** Below 34 px (graph nodes of sub-taus, list icons) only the triangle, the
+ *   flame and a tau's ring arc are drawn, with strokes kept at least ~1.3 px; below 64 px
+ *   the fine HUD details (ticks, fragments, the scan line) are left out.
  * - **Pure and safe.** No DOM, no clock, no randomness beyond the seed. The SVG has no ids
- *   (many creatures share a page), no `<style>` and no `style` attributes (the pages'
- *   CSP is `style-src 'self'`): colours are presentation attributes, and the idle motion is
- *   CSS classes (`ch-body`, `ch-eyes`, `ch-wiggle`, `ch-bob`, `ch-shadow`) that
- *   `cloud/shared/theme.css` animates and stops under `prefers-reduced-motion`.
+ *   (many sigils share a page), no gradients (they would need ids), no `<style>` and no
+ *   `style` attributes (the pages' CSP is `style-src 'self'`): colours are presentation
+ *   attributes, and the motion is CSS classes (`ch-flame`, `ch-flame-in`, `ch-core`,
+ *   `ch-ring`, `ch-ring-back`, `ch-spark`, `ch-ember`) that `cloud/shared/theme.css` animates
+ *   and stops under `prefers-reduced-motion`.
  * - **Accessible.** The root is `role="img"` with an `aria-label` (the given label, or an
- *   English description of the creature). An empty label marks it decorative instead
+ *   English description of the sigil). An empty label marks it decorative instead
  *   (`aria-hidden="true"`), for places where the name is written next to it.
  */
 
 // ---------------------------------------------------------------------------------------
-// Palette and traits
+// Hues and traits
 
-/** The neon palette. The order is part of every creature: append only with intent. */
-export const PALETTE = [
-  { name: "red", hex: "#ff2e3e" },
-  { name: "magenta", hex: "#ff2bd6" },
-  { name: "pink", hex: "#ff6b9a" },
-  { name: "orange", hex: "#ff7a3d" },
-  { name: "amber", hex: "#ffb020" },
-  { name: "yellow", hex: "#ffe14d" },
-  { name: "lime", hex: "#b6ff2e" },
-  { name: "teal", hex: "#2effc0" },
-  { name: "cyan", hex: "#22e4ff" },
-  { name: "blue", hex: "#3d7bff" },
-  { name: "violet", hex: "#9b6bff" },
-  { name: "white", hex: "#e8ecf1" },
+/**
+ * The hues: the fire family of the brand palette (Signal, Ember, Flare and a deep infra
+ * crimson) and a minority of cold fires. Each has a triangle colour (`a`), the inner line of
+ * the double stroke (`b`), three flame layers from the outside in (`f1`–`f3`) and a
+ * white-hot core. The order is part of every sigil: append only with intent.
+ */
+export const HUES = [
+  {
+    name: "signal",
+    word: "signal red",
+    cold: false,
+    a: "#ff2e63",
+    b: "#ff7a3d",
+    f1: "#ff2e63",
+    f2: "#ff7a3d",
+    f3: "#ffb25c",
+    core: "#fff4e0",
+  },
+  {
+    name: "ember",
+    word: "ember orange",
+    cold: false,
+    a: "#ff7a3d",
+    b: "#ffb25c",
+    f1: "#ff4d2e",
+    f2: "#ff9a3d",
+    f3: "#ffd08a",
+    core: "#fff4e0",
+  },
+  {
+    name: "flare",
+    word: "flare amber",
+    cold: false,
+    a: "#ffb25c",
+    b: "#ffe2ad",
+    f1: "#ff7a3d",
+    f2: "#ffb25c",
+    f3: "#ffe6b8",
+    core: "#fffaf0",
+  },
+  {
+    name: "infra",
+    word: "infra crimson",
+    cold: false,
+    a: "#e3194c",
+    b: "#ff5a3d",
+    f1: "#a3123a",
+    f2: "#ff2e63",
+    f3: "#ff8a5c",
+    core: "#ffe1d2",
+  },
+  {
+    name: "ion",
+    word: "ion blue",
+    cold: true,
+    a: "#3d8bff",
+    b: "#5ce1ff",
+    f1: "#2f5fff",
+    f2: "#3db8ff",
+    f3: "#9be9ff",
+    core: "#eefaff",
+  },
+  {
+    name: "plasma",
+    word: "plasma violet",
+    cold: true,
+    a: "#a259ff",
+    b: "#ff4fd8",
+    f1: "#7b3dff",
+    f2: "#c05cff",
+    f3: "#f5a3ff",
+    core: "#fcf0ff",
+  },
+  {
+    name: "toxic",
+    word: "toxic green",
+    cold: true,
+    a: "#2ee886",
+    b: "#c6ff3d",
+    f1: "#0fae55",
+    f2: "#4dff6a",
+    f3: "#d8ff8a",
+    core: "#f4ffe6",
+  },
 ] as const;
 
-export type ColorName = (typeof PALETTE)[number]["name"];
+export type Hue = (typeof HUES)[number];
+export type HueName = Hue["name"];
+/** How often each hue is drawn: the fire family about four times in five. */
+const HUE_WEIGHTS = [5, 4, 3, 3, 1.6, 1.6, 1.2];
 
-export const BODIES = ["sharp", "rounded", "tall", "squat", "notched", "lean", "cut"] as const;
-export type BodyKind = (typeof BODIES)[number];
+/** The shape of the triangle. */
+export const FRAMES = ["equilateral", "tall", "split", "broken", "notched", "chamfered"] as const;
+export type FrameKind = (typeof FRAMES)[number];
 
-export const EYES = ["round", "big", "dots", "pixel", "happy", "sleepy", "mono", "wink"] as const;
-export type EyeKind = (typeof EYES)[number];
+/** A tau's second triangle: inside it, inverted inside it, or a larger echo behind it. */
+export const SECONDS = ["nested", "inverted", "echo"] as const;
+export type SecondKind = (typeof SECONDS)[number];
 
-export const MOUTHS = ["none", "smile", "grin", "o", "flat", "fang", "cat"] as const;
-export type MouthKind = (typeof MOUTHS)[number];
+export type Kind = "tau" | "sub";
 
-export const ACCESSORIES = [
-  "none",
-  "beret",
-  "glasses",
-  "sunglasses",
-  "visor",
-  "antenna",
-  "horns",
-  "halo",
-  "headphones",
-  "crown",
-  "sprout",
-  "scarf",
-  "monocle",
-  "bow",
-] as const;
-export type AccessoryKind = (typeof ACCESSORIES)[number];
-
-export const MARKS = ["none", "core", "stripe", "dots", "chevron", "circuit"] as const;
-export type MarkKind = (typeof MARKS)[number];
-
-export const FEET = ["none", "stubs", "points"] as const;
-export type FeetKind = (typeof FEET)[number];
-
-/** Everything that makes one creature; `traits(seed)` draws it. */
+/** Everything that makes one sigil; `traits(seed)` draws it. */
 export interface Traits {
-  color: ColorName;
-  body: BodyKind;
-  /** The corner radius choice of the body (0 is its sharp variant, 1 its soft one). */
-  soft: 0 | 1;
-  /** How low the face sits, as a fraction of the body's height. */
-  face: number;
-  eyes: EyeKind;
-  eyeScale: number;
-  spread: number;
-  /** Where the pupils look: -1..1 on each axis. */
-  gaze: readonly [number, number];
-  mouth: MouthKind;
-  accessory: AccessoryKind;
-  /** The accessory's colour: chrome, dark, or a palette colour other than the body's. */
-  accessoryColor: string;
-  mark: MarkKind;
-  cheeks: boolean;
-  feet: FeetKind;
-  glow: boolean;
-  /** A lean for accessories that can tilt (beret, antenna, sprout): -1..1. */
-  tilt: number;
-  /** The phase of the idle motion, 0..7, so a row of creatures does not move in step. */
+  kind: Kind;
+  hue: HueName;
+  frame: FrameKind;
+  /** A tau's second triangle; a sub-tau has none. */
+  second: SecondKind | "none";
+  /** Flame tongues: 1–3 for a tau, always 1 for a sub-tau. */
+  tongues: 1 | 2 | 3;
+  /** How high the flame burns, 0 (low) … 3 (up to the apex). */
+  height: 0 | 1 | 2 | 3;
+  /** Where the flame leans: -1 (left) … 1 (right). */
+  lean: number;
+  /** Sparks over the flame, 0–4. */
+  sparks: number;
+  /** Two ember fragments floating beside the flame. */
+  embers: boolean;
+  /** The τ ring's arc in degrees (0: none, a sub-tau) and where it starts. */
+  ringSpan: number;
+  ringStart: number;
+  /** Instrument ticks around the ring (0: none). */
+  ticks: number;
+  /** A scan line at this fraction of the triangle's height, or null. */
+  scan: number | null;
+  /** Small square HUD fragments, 0–3. */
+  frags: number;
+  /** A reflecting floor line under the triangle. */
+  floor: boolean;
+  /** The phase of the motion, 0..7, so a row of sigils never flickers in step. */
   phase: number;
 }
 
 export interface CharacterOptions {
   /** Width and height in CSS pixels (default 96). */
   size?: number;
-  /** Idle motion classes (default true). */
+  /** Motion classes (default true). */
   animated?: boolean;
-  /** The accessible name; "" makes the creature decorative (default: a description). */
+  /** The accessible name; "" makes the sigil decorative (default: a description). */
   label?: string;
+  /** A tau or a sub-tau (default: from the seed, see `kindOf`). */
+  kind?: Kind;
 }
-
-const INK = "#07080a";
-const CHROME = "#e8ecf1";
-const DARK = "#15181e";
-const WHITE = "#ffffff";
 
 /** FNV-1a, 32 bits, over the UTF-16 code units of the seed. */
 export function fnv1a(text: string): number {
@@ -159,55 +221,68 @@ function weighted<T>(rnd: () => number, list: readonly T[], weights: readonly nu
   return list[list.length - 1] as T;
 }
 
-const GAZES: readonly (readonly [number, number])[] = [
-  [0, 0],
-  [0, 0],
-  [-1, 0],
-  [1, 0],
-  [0, -1],
-  [0.7, 0.6],
-  [-0.7, 0.6],
-];
+const HUE_NAMES: readonly HueName[] = HUES.map((hue) => hue.name);
 
-/** The creature of a seed. The order of the draws below is frozen. */
-export function traits(seed: string): Traits {
+/**
+ * The owner of a sub-tau's seed: everything before its last `/name`. A tau's seed (an
+ * address, or `host/@handle`) has none.
+ */
+export function ownerOf(seed: string): string | null {
+  const slash = seed.lastIndexOf("/");
+  if (slash <= 0 || slash === seed.length - 1) return null;
+  return seed[slash + 1] === "@" ? null : seed.slice(0, slash);
+}
+
+/** A seed's kind: a sub-tau when it ends in `/name` after an address, else a tau. */
+export function kindOf(seed: string): Kind {
+  return ownerOf(seed) === null ? "tau" : "sub";
+}
+
+/** The hue a seed draws for itself: always the first draw. */
+function ownHue(seed: string): HueName {
+  return weighted(prng(seed), HUE_NAMES, HUE_WEIGHTS);
+}
+
+/**
+ * The sigil of a seed. Every trait is drawn for both kinds in the same frozen order; a
+ * sub-tau then takes its owner's hue, one tongue, and no second triangle, ring or ticks.
+ */
+export function traits(seed: string, kind: Kind = kindOf(seed)): Traits {
   const rnd = prng(seed);
-  const color = pick(rnd, PALETTE).name;
-  const body = pick(rnd, BODIES);
-  const soft = rnd() < 0.5 ? 0 : 1;
-  const face = pick(rnd, [0.54, 0.58, 0.62]);
-  const eyes = weighted(rnd, EYES, [4, 2, 2, 2, 1.5, 1.5, 1, 1]);
-  const eyeScale = pick(rnd, [0.9, 1, 1.15]);
-  const spread = pick(rnd, [0.9, 1, 1.1]);
-  const gaze = pick(rnd, GAZES);
-  const mouth = weighted(rnd, MOUTHS, [1, 3, 2, 1.5, 1, 1, 1]);
-  const accessory = weighted(rnd, ACCESSORIES, [3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
-  const others = PALETTE.filter((entry) => entry.name !== color).map((entry) => entry.hex);
-  const accent = pick(rnd, others);
-  const accessoryColor = pick(rnd, [CHROME, DARK, accent]);
-  const mark = weighted(rnd, MARKS, [3, 2, 1, 1, 1, 1]);
-  const cheeks = rnd() < 0.3;
-  const feet = weighted(rnd, FEET, [2, 1.5, 1]);
-  const glow = rnd() < 0.4;
-  const tilt = Math.round((rnd() * 2 - 1) * 100) / 100;
+  const hue = weighted(rnd, HUE_NAMES, HUE_WEIGHTS);
+  const frame = weighted(rnd, FRAMES, [3, 2.5, 2, 2, 2, 2]);
+  const second = weighted(rnd, SECONDS, [3, 2, 2]);
+  const tongues = weighted(rnd, [1, 2, 3] as const, [3, 4, 2]);
+  const height = pick(rnd, [0, 1, 2, 3] as const);
+  const lean = weighted(rnd, [-1, -0.5, 0, 0.5, 1], [1, 1.5, 2, 1.5, 1]);
+  const sparks = weighted(rnd, [0, 1, 2, 3, 4], [1.5, 2, 2, 1.5, 1]);
+  const embers = rnd() < 0.45;
+  const ringSpan = pick(rnd, [150, 210, 270, 320]);
+  const ringStart = Math.floor(rnd() * 12) * 30;
+  const ticks = weighted(rnd, [0, 12, 24, 36], [1, 2, 2, 1.5]);
+  const scanOn = rnd() < 0.4;
+  const scanAt = pick(rnd, [0.36, 0.5, 0.64]);
+  const frags = weighted(rnd, [0, 1, 2, 3], [1, 2, 2, 1]);
+  const floor = rnd() < 0.55;
   const phase = Math.floor(rnd() * 8);
+  const sub = kind === "sub";
+  const owner = sub ? ownerOf(seed) : null;
   return {
-    color,
-    body,
-    soft,
-    face,
-    eyes,
-    eyeScale,
-    spread,
-    gaze,
-    mouth,
-    accessory,
-    accessoryColor,
-    mark,
-    cheeks,
-    feet,
-    glow,
-    tilt,
+    kind,
+    hue: owner !== null ? ownHue(owner) : hue,
+    frame,
+    second: sub ? "none" : second,
+    tongues: sub ? 1 : tongues,
+    height,
+    lean,
+    sparks,
+    embers,
+    ringSpan: sub ? 0 : ringSpan,
+    ringStart,
+    ticks: sub ? 0 : ticks,
+    scan: scanOn ? scanAt : null,
+    frags,
+    floor,
     phase,
   };
 }
@@ -217,156 +292,22 @@ export function traits(seed: string): Traits {
 
 type Pt = readonly [number, number];
 
-interface Shape {
-  /** Clockwise from the top: the apex, or the middle of a flat top. */
-  points: Pt[];
-  /** The corner radius of each point (0 keeps it sharp). */
-  radius: number[];
-  /** The last point of the shaded (right) facet before the ridge turns back to the top. */
-  facetLast: number;
-  /** Where the ridge from the top meets the bottom. */
-  ridgeFoot: Pt;
-  /** The outline's left and right lines, top to bottom, for placing the face and things. */
-  left: readonly [Pt, Pt];
-  right: readonly [Pt, Pt];
-}
+/** The triangle's base line, the floor under it and the ring's centre and radius. */
+const BASE_Y = 84;
+const FLOOR_Y = 90;
+const RING: Pt = [50, 52];
+const RING_R = 45;
+/** A sub-tau's sigil is drawn this much smaller, standing on the same base line. */
+const SUB_SCALE = 0.84;
 
-const BASE_Y = 88;
-
-function shapeOf(body: BodyKind, soft: 0 | 1): Shape {
-  const r = soft === 1 ? 6.5 : 1.6;
-  switch (body) {
-    case "sharp":
-    case "rounded": {
-      const radius = body === "rounded" ? 11 : 1.6;
-      return {
-        points: [
-          [50, 20],
-          [88, BASE_Y],
-          [12, BASE_Y],
-        ],
-        radius: [radius, radius, radius],
-        facetLast: 1,
-        ridgeFoot: [50, BASE_Y],
-        left: [
-          [50, 20],
-          [12, BASE_Y],
-        ],
-        right: [
-          [50, 20],
-          [88, BASE_Y],
-        ],
-      };
-    }
-    case "tall":
-      return {
-        points: [
-          [50, 13],
-          [76, BASE_Y],
-          [24, BASE_Y],
-        ],
-        radius: [r, r, r],
-        facetLast: 1,
-        ridgeFoot: [50, BASE_Y],
-        left: [
-          [50, 13],
-          [24, BASE_Y],
-        ],
-        right: [
-          [50, 13],
-          [76, BASE_Y],
-        ],
-      };
-    case "squat":
-      return {
-        points: [
-          [50, 38],
-          [94, BASE_Y],
-          [6, BASE_Y],
-        ],
-        radius: [r, r, r],
-        facetLast: 1,
-        ridgeFoot: [50, BASE_Y],
-        left: [
-          [50, 38],
-          [6, BASE_Y],
-        ],
-        right: [
-          [50, 38],
-          [94, BASE_Y],
-        ],
-      };
-    case "notched":
-      return {
-        points: [
-          [50, 20],
-          [88, BASE_Y],
-          [59, BASE_Y],
-          [50, 77],
-          [41, BASE_Y],
-          [12, BASE_Y],
-        ],
-        radius: [r, r, 1.2, 0, 1.2, r],
-        facetLast: 2,
-        ridgeFoot: [50, 77],
-        left: [
-          [50, 20],
-          [12, BASE_Y],
-        ],
-        right: [
-          [50, 20],
-          [88, BASE_Y],
-        ],
-      };
-    case "lean":
-      return {
-        points: [
-          [40, 20],
-          [88, BASE_Y],
-          [14, BASE_Y],
-        ],
-        radius: [r, r, r],
-        facetLast: 1,
-        ridgeFoot: [47, BASE_Y],
-        left: [
-          [40, 20],
-          [14, BASE_Y],
-        ],
-        right: [
-          [40, 20],
-          [88, BASE_Y],
-        ],
-      };
-    case "cut":
-      return {
-        points: [
-          [50, 27],
-          [57.5, 27],
-          [90, BASE_Y],
-          [10, BASE_Y],
-          [42.5, 27],
-        ],
-        radius: [0, soft === 1 ? 3 : 1, r, r, soft === 1 ? 3 : 1],
-        facetLast: 2,
-        ridgeFoot: [50, BASE_Y],
-        left: [
-          [42.5, 27],
-          [10, BASE_Y],
-        ],
-        right: [
-          [57.5, 27],
-          [90, BASE_Y],
-        ],
-      };
-  }
+/** Numbers as short as SVG allows: one decimal, no trailing ".0". */
+function n(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Object.is(rounded, -0) ? "0" : String(rounded);
 }
 
 function lerp(a: Pt, b: Pt, t: number): Pt {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-}
-
-function mid(a: Pt, b: Pt): Pt {
-  return lerp(a, b, 0.5);
 }
 
 function toward(from: Pt, to: Pt, distance: number): Pt {
@@ -376,92 +317,231 @@ function toward(from: Pt, to: Pt, distance: number): Pt {
   return [from[0] + (dx / length) * distance, from[1] + (dy / length) * distance];
 }
 
-/** Numbers as short as SVG allows: one decimal, no trailing ".0". */
-function n(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Object.is(rounded, -0) ? "0" : String(rounded);
-}
-
-function p(point: Pt): string {
-  return `${n(point[0])} ${n(point[1])}`;
-}
-
-interface Corner {
-  a: Pt;
-  v: Pt;
-  b: Pt;
-}
-
-/** Each point's rounded corner: from `a` on the edge in, around `v`, to `b` on the edge out. */
-function corners(shape: Shape): Corner[] {
-  const { points, radius } = shape;
-  return points.map((v, i) => {
-    const prev = points[(i - 1 + points.length) % points.length]!;
-    const next = points[(i + 1) % points.length]!;
-    const room = Math.min(
-      Math.hypot(prev[0] - v[0], prev[1] - v[1]),
-      Math.hypot(next[0] - v[0], next[1] - v[1]),
-    );
-    const r = Math.min(radius[i] ?? 0, room / 2 - 0.01);
-    return r <= 0 ? { a: v, v, b: v } : { a: toward(v, prev, r), v, b: toward(v, next, r) };
-  });
-}
-
-interface Outline {
-  /** The body's outline. */
-  body: string;
-  /** The shaded right facet, inside the outline. */
-  facet: string;
-  /** The top of the head: the middle of the rounded apex, or of the flat top. */
-  top: Pt;
-}
-
-/**
- * The outline and the shaded facet, both starting at the top of the head. The apex curve is
- * split in two halves at its middle (de Casteljau at t = 0.5), so the facet follows the
- * outline exactly and needs no clip path.
- */
-function outline(shape: Shape): Outline {
-  const cs = corners(shape);
-  const first = cs[0]!;
-  const top: Pt = [
-    (first.a[0] + 2 * first.v[0] + first.b[0]) / 4,
-    (first.a[1] + 2 * first.v[1] + first.b[1]) / 4,
-  ];
-  const rightControl = mid(first.v, first.b);
-  const leftControl = mid(first.a, first.v);
-  const around = (from: number, to: number) => {
-    let d = "";
-    for (let i = from; i <= to; i++) {
-      const c = cs[i]!;
-      d += `L${p(c.a)}Q${p(c.v)} ${p(c.b)}`;
-    }
-    return d;
-  };
-  const start = `M${p(top)}Q${p(rightControl)} ${p(first.b)}`;
-  const body = `${start}${around(1, cs.length - 1)}L${p(first.a)}Q${p(leftControl)} ${p(top)}Z`;
-  const facet = `${start}${around(1, shape.facetLast)}L${p(shape.ridgeFoot)}Z`;
-  return { body, facet, top };
-}
-
-/** The x of a line at height y (extended beyond its ends when needed). */
-function xAt(line: readonly [Pt, Pt], y: number): number {
-  const [a, b] = line;
-  const t = (y - a[1]) / (b[1] - a[1] || 1);
-  return a[0] + (b[0] - a[0]) * t;
+/** `point` scaled by `sx`, `sy` about `origin`. */
+function scaled(point: Pt, origin: Pt, sx: number, sy = sx): Pt {
+  return [origin[0] + (point[0] - origin[0]) * sx, origin[1] + (point[1] - origin[1]) * sy];
 }
 
 function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value));
 }
 
-/** A colour mixed toward another: `amount` 0 is `hex`, 1 is `other`. */
-function mix(hex: string, other: string, amount: number): string {
-  const read = (value: string) => [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16));
-  const a = read(hex);
-  const b = read(other);
-  const out = a.map((channel, i) => Math.round(channel + ((b[i] ?? 0) - channel) * amount));
-  return `#${out.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+/** A path through `points`, closed or open. */
+function d(points: readonly Pt[], closed = true): string {
+  const body = points.map((point, i) => `${i === 0 ? "M" : "L"}${n(point[0])} ${n(point[1])}`);
+  return `${body.join("")}${closed ? "Z" : ""}`;
+}
+
+function polar(center: Pt, radius: number, degrees: number): Pt {
+  const angle = (degrees * Math.PI) / 180;
+  return [center[0] + Math.cos(angle) * radius, center[1] + Math.sin(angle) * radius];
+}
+
+/** An arc of the circle around `center`, clockwise from `from` to `to` degrees. */
+function arc(center: Pt, radius: number, from: number, to: number): string {
+  const start = polar(center, radius, from);
+  const end = polar(center, radius, to);
+  const large = to - from > 180 ? 1 : 0;
+  return `M${n(start[0])} ${n(start[1])}A${n(radius)} ${n(radius)} 0 ${large} 1 ${n(end[0])} ${n(end[1])}`;
+}
+
+interface Stroke {
+  points: Pt[];
+  closed: boolean;
+}
+
+interface Frame {
+  apex: Pt;
+  left: Pt;
+  right: Pt;
+  /** The outline: one closed stroke, or open strokes for a broken apex. */
+  strokes: Stroke[];
+  /** The broken-off tip of a broken apex, floating above it. */
+  shard: Stroke | null;
+}
+
+/** The apex height and half base of each frame, before a sub-tau's scale. */
+const FRAME_SPECS: Record<FrameKind, readonly [number, number]> = {
+  equilateral: [20, 37],
+  tall: [10, 27],
+  split: [17, 38],
+  broken: [17, 37],
+  notched: [20, 37],
+  chamfered: [19, 38],
+};
+
+function frameOf(kind: FrameKind, k: number): Frame {
+  const [apexY, half] = FRAME_SPECS[kind];
+  const apex: Pt = [50, BASE_Y - (BASE_Y - apexY) * k];
+  const left: Pt = [50 - half * k, BASE_Y];
+  const right: Pt = [50 + half * k, BASE_Y];
+  const base = { apex, left, right, shard: null };
+  switch (kind) {
+    case "equilateral":
+    case "tall":
+      return { ...base, strokes: [{ points: [apex, right, left], closed: true }] };
+    case "split": {
+      const notch: Pt = [50, apex[1] + (BASE_Y - apex[1]) * 0.2];
+      return {
+        ...base,
+        strokes: [
+          {
+            points: [notch, lerp(apex, right, 0.11), right, left, lerp(apex, left, 0.11)],
+            closed: true,
+          },
+        ],
+      };
+    }
+    case "broken": {
+      const lift = 3.5 * k;
+      const up = (point: Pt): Pt => [point[0], point[1] - lift];
+      return {
+        ...base,
+        strokes: [
+          { points: [lerp(apex, left, 0.17), left, right, lerp(apex, right, 0.25)], closed: false },
+        ],
+        shard: {
+          points: [up(lerp(apex, left, 0.1)), up(apex), up(lerp(apex, right, 0.1))],
+          closed: false,
+        },
+      };
+    }
+    case "notched": {
+      const centroid: Pt = [50, (apex[1] + 2 * BASE_Y) / 3];
+      const notch = (from: Pt, to: Pt, t: number): Pt[] => {
+        const middle = lerp(from, to, t);
+        return [lerp(from, to, t - 0.06), toward(middle, centroid, 5 * k), lerp(from, to, t + 0.06)];
+      };
+      return {
+        ...base,
+        strokes: [
+          {
+            points: [apex, ...notch(apex, right, 0.4), right, left, ...notch(left, apex, 0.46)],
+            closed: true,
+          },
+        ],
+      };
+    }
+    case "chamfered": {
+      const cut = 8.5 * k;
+      return {
+        ...base,
+        strokes: [
+          {
+            points: [
+              apex,
+              toward(right, apex, cut),
+              toward(right, left, cut),
+              toward(left, right, cut),
+              toward(left, apex, cut),
+            ],
+            closed: true,
+          },
+        ],
+      };
+    }
+  }
+}
+
+/** The incentre and inradius of the frame's triangle. */
+function incircle(frame: Frame): { center: Pt; r: number } {
+  const half = frame.right[0] - 50;
+  const height = BASE_Y - frame.apex[1];
+  const r = (half * height) / (half + Math.hypot(half, height));
+  return { center: [50, BASE_Y - r], r };
+}
+
+/** The half width of the frame's triangle at height `y`. */
+function halfAt(frame: Frame, y: number): number {
+  const height = BASE_Y - frame.apex[1];
+  return (frame.right[0] - 50) * clamp((y - frame.apex[1]) / height, 0, 1);
+}
+
+/**
+ * One flame tongue in unit space: x in -1…1 across its widest part, v in 0…1 up to its tip.
+ * It bulges above its base, tapers to a sharp tip and throws one lick up from each side: an
+ * angular flame, not a blob.
+ */
+const TONGUE: readonly Pt[] = [
+  [-0.74, 0],
+  [-1, 0.2],
+  [-0.8, 0.42],
+  [-0.74, 0.64],
+  [-0.44, 0.5],
+  [-0.3, 0.76],
+  [0, 1],
+  [0.2, 0.7],
+  [0.42, 0.82],
+  [0.5, 0.52],
+  [0.8, 0.44],
+  [1, 0.22],
+  [0.76, 0],
+];
+
+interface Tongue {
+  /** The middle of its base. */
+  base: Pt;
+  width: number;
+  height: number;
+  lean: number;
+  /** Mirror the template, so a tongue leaning left has its notches on the other side. */
+  mirror: boolean;
+}
+
+function tonguePoints(tongue: Tongue, sx = 1, sy = 1): Pt[] {
+  return TONGUE.map(([x, v]) => {
+    const u = (tongue.mirror ? -x : x) + tongue.lean * 0.4 * v ** 1.4;
+    const point: Pt = [tongue.base[0] + u * tongue.width, tongue.base[1] - v * tongue.height];
+    return scaled(point, tongue.base, sx, sy);
+  });
+}
+
+function tipOf(tongue: Tongue): Pt {
+  return [tongue.base[0] + tongue.lean * 0.4 * tongue.width, tongue.base[1] - tongue.height];
+}
+
+/** The flame heights, as fractions of the room from the flame's base to the apex. */
+const HEIGHTS = [0.56, 0.68, 0.8, 0.94] as const;
+
+function tonguesOf(frame: Frame, tr: Traits, k: number): { main: Tongue; sides: Tongue[] } {
+  const baseY = BASE_Y - 3.5 * k;
+  const room = baseY - frame.apex[1];
+  const height = room * HEIGHTS[tr.height];
+  const width = halfAt(frame, baseY) * (tr.tongues === 1 ? 0.46 : 0.38);
+  const mirror = tr.lean < 0;
+  const side = mirror ? -1 : 1;
+  if (tr.tongues === 2) {
+    const main: Tongue = { base: [50 - side * width * 0.3, baseY], width, height, lean: tr.lean, mirror };
+    const twin: Tongue = {
+      base: [50 + side * width * 0.72, baseY],
+      width: width * 0.72,
+      height: height * 0.7,
+      lean: side * 0.7,
+      mirror: !mirror,
+    };
+    return { main, sides: [twin] };
+  }
+  const main: Tongue = { base: [50, baseY], width, height, lean: tr.lean, mirror };
+  if (tr.tongues === 1) return { main, sides: [] };
+  const flank = (sign: number, scale: number): Tongue => ({
+    base: [50 + sign * width * 0.9, baseY],
+    width: width * 0.62,
+    height: height * scale,
+    lean: sign * 0.65,
+    mirror: sign < 0,
+  });
+  return { main, sides: [flank(-1, mirror ? 0.64 : 0.54), flank(1, mirror ? 0.54 : 0.64)] };
+}
+
+/** A small diamond: a spark. */
+function diamond(center: Pt, size: number): Pt[] {
+  const [x, y] = center;
+  return [
+    [x, y - size],
+    [x + size * 0.62, y],
+    [x, y + size],
+    [x - size * 0.62, y],
+  ];
 }
 
 function escapeXml(text: string): string {
@@ -476,423 +556,278 @@ function escapeXml(text: string): string {
 // ---------------------------------------------------------------------------------------
 // Drawing
 
-interface Face {
-  cx: number;
-  eyeY: number;
-  halfWidth: number;
-  er: number;
-  dx: number;
-  /** The x of the ridge at eye level: an eye right of it sits on the shaded facet. */
-  ridgeX: number;
-  mouthY: number;
+/** How much the sigil draws at a size: 0 below 34 px, 1 below 64 px, 2 from there. */
+function levelOf(size: number): 0 | 1 | 2 {
+  return size < 34 ? 0 : size < 64 ? 1 : 2;
 }
 
-function faceOf(shape: Shape, top: Pt, tr: Traits): Face {
-  const eyeY = top[1] + (BASE_Y - top[1]) * tr.face;
-  const xl = xAt(shape.left, eyeY);
-  const xr = xAt(shape.right, eyeY);
-  const halfWidth = (xr - xl) / 2;
-  const cx = (xl + xr) / 2;
-  const er = clamp(halfWidth * 0.22, 3.8, 6.8) * tr.eyeScale;
-  let dx = clamp(halfWidth * 0.4, 6.5, 12.5) * tr.spread;
-  if (dx + er > halfWidth - 2.5) dx = Math.max(er + 0.8, halfWidth - 2.5 - er);
-  const ridgeX = xAt([top, shape.ridgeFoot], eyeY);
-  return { cx, eyeY, halfWidth, er, dx, ridgeX, mouthY: eyeY + er + 5.5 };
+interface Pen {
+  level: 0 | 1 | 2;
+  /** A stroke width in viewBox units, never thinner than `minPx` on screen. */
+  width(units: number, minPx?: number): string;
 }
 
-function eyesSvg(face: Face, tr: Traits, base: string, shade: string, hidden: boolean): string {
-  if (hidden) return "";
-  const { cx, eyeY, er, dx, ridgeX } = face;
-  const [gx, gy] = tr.gaze;
-  const pupil = (x: number, r: number) =>
-    `<circle cx="${n(x + gx * r * 0.45)}" cy="${n(eyeY + gy * r * 0.4)}" r="${n(r)}" fill="${INK}"/>` +
-    `<circle cx="${n(x + gx * r * 0.45 - r * 0.35)}" cy="${n(eyeY + gy * r * 0.4 - r * 0.35)}" r="${n(r * 0.32)}" fill="${WHITE}"/>`;
-  const sclera = (x: number, r: number) =>
-    `<circle cx="${n(x)}" cy="${n(eyeY)}" r="${n(r)}" fill="${WHITE}" stroke="${INK}" stroke-width="1"/>`;
-  const happy = (x: number) =>
-    `<path d="M${n(x - er * 0.9)} ${n(eyeY + er * 0.35)}Q${n(x)} ${n(eyeY - er * 0.95)} ${n(x + er * 0.9)} ${n(eyeY + er * 0.35)}" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"/>`;
-  const left = cx - dx;
-  const right = cx + dx;
-  let inner = "";
-  let blinks = true;
-  switch (tr.eyes) {
-    case "round":
-      inner = [left, right].map((x) => sclera(x, er) + pupil(x, er * 0.52)).join("");
-      break;
-    case "big":
-      inner = [left, right].map((x) => sclera(x, er * 1.3) + pupil(x, er * 0.62)).join("");
-      break;
-    case "dots":
-      inner = [left, right].map((x) => pupil(x, er * 0.58)).join("");
-      break;
-    case "pixel": {
-      const s = er * 0.95;
-      inner = [left, right]
-        .map(
-          (x) =>
-            `<rect x="${n(x - s)}" y="${n(eyeY - s)}" width="${n(2 * s)}" height="${n(2 * s)}" fill="${WHITE}" stroke="${INK}" stroke-width="1"/>` +
-            `<rect x="${n(x - s * 0.45 + gx * s * 0.4)}" y="${n(eyeY - s * 0.45 + gy * s * 0.4)}" width="${n(s * 0.9)}" height="${n(s * 0.9)}" fill="${INK}"/>`,
-        )
-        .join("");
-      break;
-    }
-    case "happy":
-      inner = happy(left) + happy(right);
-      blinks = false;
-      break;
-    case "sleepy":
-      inner = [left, right]
-        .map((x) => {
-          const lid = x > ridgeX ? shade : base;
-          return (
-            sclera(x, er) +
-            pupil(x, er * 0.5) +
-            `<path d="M${n(x - er - 0.6)} ${n(eyeY + 0.4)}A${n(er + 0.6)} ${n(er + 0.6)} 0 0 1 ${n(x + er + 0.6)} ${n(eyeY + 0.4)}Z" fill="${lid}"/>` +
-            `<path d="M${n(x - er)} ${n(eyeY + 0.4)}H${n(x + er)}" stroke="${INK}" stroke-width="1.2" stroke-linecap="round"/>`
-          );
-        })
-        .join("");
-      break;
-    case "mono": {
-      const r = er * 1.55;
-      inner = sclera(cx, r) + pupil(cx, r * 0.5);
-      break;
-    }
-    case "wink":
-      inner = sclera(left, er) + pupil(left, er * 0.52) + happy(right);
-      break;
-  }
-  return blinks ? `<g class="ch-eyes">${inner}</g>` : `<g>${inner}</g>`;
-}
-
-function mouthSvg(face: Face, tr: Traits): string {
-  const x = face.cx;
-  const y = face.mouthY;
-  const w = Math.max(3, face.er * 1.1);
-  const line = `fill="none" stroke="${INK}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"`;
-  switch (tr.mouth) {
-    case "none":
-      return "";
-    case "smile":
-      return `<path d="M${n(x - w)} ${n(y)}Q${n(x)} ${n(y + w * 0.9)} ${n(x + w)} ${n(y)}" ${line}/>`;
-    case "grin":
-      return `<path d="M${n(x - w)} ${n(y)}Q${n(x)} ${n(y + w * 1.6)} ${n(x + w)} ${n(y)}Z" fill="${INK}"/>`;
-    case "o":
-      return `<ellipse cx="${n(x)}" cy="${n(y + 1)}" rx="${n(w * 0.42)}" ry="${n(w * 0.55)}" fill="${INK}"/>`;
-    case "flat":
-      return `<path d="M${n(x - w * 0.7)} ${n(y + 1)}H${n(x + w * 0.7)}" ${line}/>`;
-    case "fang": {
-      const h = w * 0.9;
-      const u = w * 0.35;
-      const t = (u + w) / (2 * w);
-      const at = y + 2 * t * (1 - t) * h;
-      return (
-        `<path d="M${n(x - w)} ${n(y)}Q${n(x)} ${n(y + h)} ${n(x + w)} ${n(y)}" ${line}/>` +
-        `<path d="M${n(x + u - 1.3)} ${n(at - 0.3)}L${n(x + u + 1.3)} ${n(at - 0.5)}L${n(x + u + 0.2)} ${n(at + 2.4)}Z" fill="${WHITE}" stroke="${INK}" stroke-width=".6" stroke-linejoin="round"/>`
-      );
-    }
-    case "cat":
-      return `<path d="M${n(x - w)} ${n(y)}Q${n(x - w / 2)} ${n(y + w * 0.8)} ${n(x)} ${n(y)}Q${n(x + w / 2)} ${n(y + w * 0.8)} ${n(x + w)} ${n(y)}" ${line}/>`;
-  }
-}
-
-function cheeksSvg(face: Face, tr: Traits): string {
-  if (!tr.cheeks || tr.eyes === "mono") return "";
-  const tint = tr.color === "pink" || tr.color === "red" || tr.color === "magenta";
-  const fill = tint ? WHITE : "#ff6b9a";
-  const opacity = tint ? 0.4 : 0.6;
-  const y = face.eyeY + face.er + 2.6;
-  return [face.cx - face.dx - face.er * 0.35, face.cx + face.dx + face.er * 0.35]
-    .map(
-      (x) =>
-        `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(face.er * 0.55)}" ry="${n(face.er * 0.32)}" fill="${fill}" fill-opacity="${opacity}"/>`,
-    )
-    .join("");
-}
-
-function markSvg(shape: Shape, face: Face, tr: Traits): string {
-  if (tr.mark === "none") return "";
-  const y = Math.max(face.eyeY + (BASE_Y - face.eyeY) * 0.62, face.mouthY + 7.5);
-  if (y > BASE_Y - 4) return "";
-  const xl = xAt(shape.left, y);
-  const xr = xAt(shape.right, y);
-  const x = (xl + xr) / 2;
-  switch (tr.mark) {
-    case "core": {
-      const s = 4.2;
-      return (
-        `<path d="M${n(x)} ${n(y - s * 1.35)}L${n(x + s * 1.3)} ${n(y + s)}L${n(x - s * 1.3)} ${n(y + s)}Z" fill="${WHITE}" fill-opacity=".35"/>` +
-        `<path d="M${n(x)} ${n(y - s * 0.7)}L${n(x + s * 0.7)} ${n(y + s * 0.55)}L${n(x - s * 0.7)} ${n(y + s * 0.55)}Z" fill="${WHITE}"/>`
-      );
-    }
-    case "stripe":
-      return `<path d="M${n(xl + 4)} ${n(y)}H${n(xr - 4)}" stroke="${INK}" stroke-opacity=".35" stroke-width="2.6"/>`;
-    case "dots":
-      return [-4.5, 0, 4.5]
-        .map(
-          (offset) =>
-            `<circle cx="${n(x + offset)}" cy="${n(y)}" r="1.4" fill="${INK}" fill-opacity=".5"/>`,
-        )
-        .join("");
-    case "chevron":
-      return `<path d="M${n(x - 5)} ${n(y - 2)}L${n(x)} ${n(y + 2.5)}L${n(x + 5)} ${n(y - 2)}" fill="none" stroke="${INK}" stroke-opacity=".5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
-    case "circuit":
-      return (
-        `<path d="M${n(x - 7)} ${n(y - 1)}H${n(x - 1.5)}V${n(y + 2.5)}H${n(x + 6)}" fill="none" stroke="${WHITE}" stroke-opacity=".6" stroke-width="1.1"/>` +
-        `<circle cx="${n(x - 7)}" cy="${n(y - 1)}" r="1.2" fill="${WHITE}" fill-opacity=".8"/>` +
-        `<circle cx="${n(x + 6)}" cy="${n(y + 2.5)}" r="1.2" fill="${WHITE}" fill-opacity=".8"/>`
-      );
-  }
-}
-
-function feetSvg(shape: Shape, tr: Traits, shade: string): string {
-  if (tr.feet === "none" || tr.body === "notched") return "";
-  const x = shape.ridgeFoot[0];
-  const spread = Math.min(12, (xAt(shape.right, BASE_Y) - xAt(shape.left, BASE_Y)) * 0.18);
-  if (tr.feet === "stubs") {
-    return [x - spread, x + spread]
-      .map(
-        (fx) =>
-          `<rect x="${n(fx - 3.4)}" y="${n(BASE_Y - 1)}" width="6.8" height="5.4" rx="1.2" fill="${shade}"/>`,
-      )
-      .join("");
-  }
-  return [x - spread, x + spread]
-    .map(
-      (fx) =>
-        `<path d="M${n(fx - 3.6)} ${n(BASE_Y - 1)}H${n(fx + 3.6)}L${n(fx)} ${n(BASE_Y + 5)}Z" fill="${shade}"/>`,
-    )
-    .join("");
-}
-
-function accessorySvg(shape: Shape, top: Pt, face: Face, tr: Traits, colorHex: string): string {
-  const c = tr.accessoryColor;
-  const edge = (side: "left" | "right", t: number): Pt => {
-    const line = shape[side];
-    return lerp(line[0], line[1], t);
+function penFor(size: number): Pen {
+  return {
+    level: levelOf(size),
+    width: (units, minPx = 0.9) => n(Math.max(units, (minPx * 100) / size)),
   };
-  const { cx, eyeY, er, dx } = face;
-  const [tx, ty] = top;
-  switch (tr.accessory) {
-    case "none":
-      return "";
-    case "beret": {
-      const x = tx + 1.5 + tr.tilt * 2;
-      const y = ty + 0.5;
-      const angle = -10 + tr.tilt * 8;
-      return (
-        `<g transform="rotate(${n(angle)} ${n(x)} ${n(y)})">` +
-        `<ellipse cx="${n(x)}" cy="${n(y)}" rx="13.5" ry="4.8" fill="${c}"/>` +
-        `<path d="M${n(x - 12)} ${n(y + 1.6)}Q${n(x)} ${n(y + 5)} ${n(x + 12)} ${n(y + 1.6)}" fill="none" stroke="${INK}" stroke-opacity=".35" stroke-width="1"/>` +
-        `<circle cx="${n(x + 1)}" cy="${n(y - 5.2)}" r="1.8" fill="${c}"/></g>`
+}
+
+function strokeSvg(stroke: Stroke, attributes: string): string {
+  return `<path d="${d(stroke.points, stroke.closed)}" ${attributes}/>`;
+}
+
+function frameSvg(frame: Frame, hue: Hue, pen: Pen): string {
+  const all = frame.shard === null ? frame.strokes : [...frame.strokes, frame.shard];
+  const main = `fill="none" stroke="${hue.a}" stroke-width="${pen.width(2.2, 1.3)}" stroke-linejoin="miter" stroke-miterlimit="12"`;
+  let out = "";
+  if (pen.level > 0) {
+    // The neon's bloom: a wide, faint stroke under the line (a filter would need an id).
+    const bloom = `fill="none" stroke="${hue.a}" stroke-opacity=".16" stroke-width="${pen.width(6.5)}" stroke-linejoin="miter" stroke-miterlimit="12"`;
+    out += all.map((stroke) => strokeSvg(stroke, bloom)).join("");
+  }
+  out += all.map((stroke) => strokeSvg(stroke, main)).join("");
+  if (pen.level > 0) {
+    // The double stroke: the same outline, inset toward the incentre, in the second colour.
+    const { center, r } = incircle(frame);
+    const factor = (r - (pen.level === 2 ? 3.4 : 4.2)) / r;
+    const inset = frame.strokes.map((stroke) => ({
+      points: stroke.points.map((point) => scaled(point, center, factor)),
+      closed: stroke.closed,
+    }));
+    const line = `fill="none" stroke="${hue.b}" stroke-opacity=".9" stroke-width="${pen.width(0.9, 0.7)}" stroke-linejoin="miter" stroke-miterlimit="12"`;
+    out += inset.map((stroke) => strokeSvg(stroke, line)).join("");
+  }
+  return out;
+}
+
+/** A tau's second triangle, drawn behind the flame. `echo` goes behind everything. */
+function secondSvg(frame: Frame, tr: Traits, hue: Hue, pen: Pen): string {
+  if (tr.second === "none" || pen.level === 0) return "";
+  const { apex, left, right } = frame;
+  switch (tr.second) {
+    case "nested": {
+      const { center } = incircle(frame);
+      const points = [apex, right, left].map((point) => scaled(point, center, 0.5));
+      return `<path d="${d(points)}" fill="none" stroke="${hue.b}" stroke-opacity=".85" stroke-width="${pen.width(1.3, 0.8)}" stroke-linejoin="miter"/>`;
+    }
+    case "inverted": {
+      const centroid: Pt = [50, (apex[1] + 2 * BASE_Y) / 3];
+      const points = [lerp(apex, left, 0.5), lerp(apex, right, 0.5), [50, BASE_Y] as Pt].map(
+        (point) => scaled(point, centroid, 0.82),
       );
+      return `<path d="${d(points)}" fill="${hue.a}" fill-opacity=".07" stroke="${hue.b}" stroke-opacity=".8" stroke-width="${pen.width(1.1, 0.8)}" stroke-linejoin="miter"/>`;
     }
-    case "glasses": {
-      const r = (tr.eyes === "big" ? er * 1.3 : er) + 2.6;
-      const frame = `fill="${WHITE}" fill-opacity=".1" stroke="${c === DARK ? INK : c}" stroke-width="1.7"`;
-      if (tr.eyes === "mono") {
-        return `<circle cx="${n(cx)}" cy="${n(eyeY)}" r="${n(er * 1.55 + 2.6)}" ${frame}/>`;
-      }
-      return (
-        `<circle cx="${n(cx - dx)}" cy="${n(eyeY)}" r="${n(r)}" ${frame}/>` +
-        `<circle cx="${n(cx + dx)}" cy="${n(eyeY)}" r="${n(r)}" ${frame}/>` +
-        `<path d="M${n(cx - dx + r)} ${n(eyeY)}Q${n(cx)} ${n(eyeY - 3)} ${n(cx + dx - r)} ${n(eyeY)}" fill="none" stroke="${c === DARK ? INK : c}" stroke-width="1.5"/>`
-      );
-    }
-    case "sunglasses": {
-      const w = er + 2.8;
-      const h = er * 0.95 + 1.4;
-      const lens = (x: number) =>
-        `<rect x="${n(x - w)}" y="${n(eyeY - h)}" width="${n(2 * w)}" height="${n(2 * h)}" rx="1.4" fill="${INK}"/>` +
-        `<path d="M${n(x - w + 1.6)} ${n(eyeY - h + 2)}L${n(x - w + 4.4)} ${n(eyeY - h + 2)}" stroke="${WHITE}" stroke-opacity=".7" stroke-width="1.1" stroke-linecap="round"/>`;
-      const bridge = `<path d="M${n(cx - dx + w)} ${n(eyeY - h + 1.5)}H${n(cx + dx - w)}" stroke="${INK}" stroke-width="1.8"/>`;
-      return dx - w < 0.5 ? lens(cx - dx) + lens(cx + dx) : lens(cx - dx) + lens(cx + dx) + bridge;
-    }
-    case "visor": {
-      const y1 = eyeY - er - 1.8;
-      const y2 = eyeY + er + 1.8;
-      const band = `M${n(xAt(shape.left, y1) + 1.2)} ${n(y1)}H${n(xAt(shape.right, y1) - 1.2)}L${n(xAt(shape.right, y2) - 1.2)} ${n(y2)}H${n(xAt(shape.left, y2) + 1.2)}Z`;
-      const neon = c === DARK || c === CHROME ? (colorHex === "#22e4ff" ? "#ff2e3e" : "#22e4ff") : c;
-      const x1 = xAt(shape.left, eyeY) + 4;
-      const x2 = xAt(shape.right, eyeY) - 4;
-      const dot = cx + tr.gaze[0] * (x2 - x1) * 0.25;
-      return (
-        `<path d="${band}" fill="${INK}"/>` +
-        `<path d="M${n(x1)} ${n(eyeY)}H${n(x2)}" stroke="${neon}" stroke-width="1.6" stroke-opacity=".9"/>` +
-        `<rect x="${n(dot - 3)}" y="${n(eyeY - 1.6)}" width="6" height="3.2" fill="${neon}"/>`
-      );
-    }
-    case "antenna": {
-      const length = Math.min(13, ty - 3);
-      const tip: Pt = [tx + tr.tilt * 4, ty - length];
-      return (
-        `<g class="ch-wiggle">` +
-        `<path d="M${p(top)}L${p(tip)}" stroke="${c === DARK ? CHROME : c}" stroke-width="1.6" stroke-linecap="round"/>` +
-        `<path d="M${n(tip[0])} ${n(tip[1] - 3.4)}L${n(tip[0] + 3)} ${n(tip[1] + 1.8)}H${n(tip[0] - 3)}Z" fill="${colorHex}" stroke="${WHITE}" stroke-width=".8" stroke-linejoin="round"/></g>`
-      );
-    }
-    case "horns": {
-      const fill = c === DARK ? CHROME : c;
-      const horn = (side: "left" | "right") => {
-        const sign = side === "left" ? -1 : 1;
-        const a = edge(side, 0.14);
-        const b = edge(side, 0.3);
-        const tip: Pt = [a[0] + sign * 7.5, a[1] - 4.5];
-        return `<path d="M${p(a)}L${p(tip)}L${p(b)}Z" fill="${fill}" stroke="${INK}" stroke-width=".8" stroke-linejoin="round"/>`;
-      };
-      return horn("left") + horn("right");
-    }
-    case "halo":
-      return `<g class="ch-bob"><ellipse cx="${n(tx)}" cy="${n(ty - 7)}" rx="11" ry="3" fill="none" stroke="${c === DARK ? "#ffe14d" : c}" stroke-width="2"/></g>`;
-    case "headphones": {
-      const t = 0.42;
-      const l = edge("left", t);
-      const r = edge("right", t);
-      const arc = Math.max(3, ty - 9);
-      const cup = (point: Pt) =>
-        `<rect x="${n(point[0] - 3)}" y="${n(point[1] - 5.5)}" width="6" height="11" rx="1.6" fill="${DARK}" stroke="${c === DARK ? CHROME : c}" stroke-width="1.2"/>`;
-      return (
-        `<path d="M${n(l[0])} ${n(l[1] - 4)}C${n(l[0])} ${n(arc)} ${n(r[0])} ${n(arc)} ${n(r[0])} ${n(r[1] - 4)}" fill="none" stroke="${DARK}" stroke-width="2.8"/>` +
-        `<path d="M${n(l[0])} ${n(l[1] - 4)}C${n(l[0])} ${n(arc)} ${n(r[0])} ${n(arc)} ${n(r[0])} ${n(r[1] - 4)}" fill="none" stroke="${c === DARK ? CHROME : c}" stroke-width=".9"/>` +
-        cup(l) +
-        cup(r)
-      );
-    }
-    case "crown": {
-      const y = ty + 1;
-      const fill = c === DARK || c === CHROME ? "#ffb020" : c;
-      return `<path d="M${n(tx - 7)} ${n(y)}V${n(y - 6)}L${n(tx - 3.5)} ${n(y - 2.5)}L${n(tx)} ${n(y - 8.5)}L${n(tx + 3.5)} ${n(y - 2.5)}L${n(tx + 7)} ${n(y - 6)}V${n(y)}Z" fill="${fill}" stroke="${INK}" stroke-width=".8" stroke-linejoin="round"/>`;
-    }
-    case "sprout": {
-      const green = tr.color === "lime" ? "#2effc0" : "#b6ff2e";
-      const tip: Pt = [tx + tr.tilt * 3, ty - 9];
-      return (
-        `<g class="ch-wiggle">` +
-        `<path d="M${p(top)}Q${n(tx - tr.tilt * 2)} ${n(ty - 5)} ${p(tip)}" fill="none" stroke="${green}" stroke-width="1.6" stroke-linecap="round"/>` +
-        `<path d="M${p(tip)}Q${n(tip[0] - 7)} ${n(tip[1] - 5)} ${n(tip[0] - 8)} ${n(tip[1] + 1)}Q${n(tip[0] - 3)} ${n(tip[1] + 2)} ${p(tip)}Z" fill="${green}"/>` +
-        `<path d="M${p(tip)}Q${n(tip[0] + 6)} ${n(tip[1] - 6)} ${n(tip[0] + 8)} ${n(tip[1] - 1)}Q${n(tip[0] + 3)} ${n(tip[1] + 1.5)} ${p(tip)}Z" fill="${green}"/></g>`
-      );
-    }
-    case "scarf": {
-      const y1 = face.mouthY + 3.5;
-      const y2 = y1 + 5;
-      if (y2 > BASE_Y - 6) return "";
-      const fill = c === DARK ? "#ff2e3e" : c;
-      const band = `M${n(xAt(shape.left, y1) - 0.6)} ${n(y1)}H${n(xAt(shape.right, y1) + 0.6)}L${n(xAt(shape.right, y2) + 0.6)} ${n(y2)}H${n(xAt(shape.left, y2) - 0.6)}Z`;
-      const end = xAt(shape.right, y2) - 7;
-      return (
-        `<path d="${band}" fill="${fill}"/>` +
-        `<path d="M${n(end)} ${n(y2 - 0.5)}H${n(end + 5)}L${n(end + 6.5)} ${n(y2 + 9)}H${n(end + 1.5)}Z" fill="${fill}" stroke="${INK}" stroke-opacity=".4" stroke-width=".7"/>`
-      );
-    }
-    case "monocle": {
-      const x = tr.eyes === "mono" ? cx : cx + dx;
-      const r = (tr.eyes === "mono" ? er * 1.55 : tr.eyes === "big" ? er * 1.3 : er) + 2.8;
-      const stroke = c === DARK ? "#ffb020" : c;
-      return (
-        `<circle cx="${n(x)}" cy="${n(eyeY)}" r="${n(r)}" fill="${WHITE}" fill-opacity=".12" stroke="${stroke}" stroke-width="1.6"/>` +
-        `<path d="M${n(x + r * 0.7)} ${n(eyeY + r * 0.7)}Q${n(x + r + 3)} ${n(eyeY + 11)} ${n(x + 1)} ${n(eyeY + 17)}" fill="none" stroke="${stroke}" stroke-opacity=".8" stroke-width=".8"/>`
-      );
-    }
-    case "bow": {
-      const at = edge("right", 0.2);
-      const x = at[0] - 1;
-      const y = at[1];
-      const fill = c === DARK ? "#ff2bd6" : c;
-      return (
-        `<path d="M${n(x)} ${n(y)}L${n(x - 6.5)} ${n(y - 4.5)}V${n(y + 4.5)}Z" fill="${fill}" stroke="${INK}" stroke-width=".7" stroke-linejoin="round"/>` +
-        `<path d="M${n(x)} ${n(y)}L${n(x + 6.5)} ${n(y - 4.5)}V${n(y + 4.5)}Z" fill="${fill}" stroke="${INK}" stroke-width=".7" stroke-linejoin="round"/>` +
-        `<rect x="${n(x - 1.6)}" y="${n(y - 1.8)}" width="3.2" height="3.6" rx=".6" fill="${INK}"/>`
-      );
+    case "echo": {
+      const grow = Math.min(1.16, (BASE_Y - 3) / (BASE_Y - apex[1]));
+      const origin: Pt = [50, BASE_Y];
+      const points = [apex, right, left].map((point) => scaled(point, origin, grow));
+      return `<path d="${d(points)}" fill="none" stroke="${hue.a}" stroke-opacity=".42" stroke-width="${pen.width(1, 0.8)}" stroke-linejoin="miter"/>`;
     }
   }
 }
 
-/** Whether the accessory covers the eyes (then no eyes are drawn and none blink). */
-function coversEyes(accessory: AccessoryKind): boolean {
-  return accessory === "sunglasses" || accessory === "visor";
+function flameSvg(frame: Frame, tr: Traits, hue: Hue, pen: Pen, k: number): string {
+  const { main, sides } = tonguesOf(frame, tr, k);
+  const layer = (tongue: Tongue, sx: number, sy: number, fill: string, opacity = 1) =>
+    `<path d="${d(tonguePoints(tongue, sx, sy))}" fill="${fill}"${opacity < 1 ? ` fill-opacity="${opacity}"` : ""}/>`;
+  const glow = pen.level > 0 ? layer(main, 1.3, 1.12, hue.f1, 0.14) : "";
+  const flanks = sides.map((tongue) => layer(tongue, 1, 1, hue.f1, 0.9) + layer(tongue, 0.62, 0.7, hue.f2)).join("");
+  const outer = layer(main, 1, 1, hue.f1) + layer(main, 0.7, 0.76, hue.f2);
+  const inner = pen.level > 0 ? `<g class="ch-flame-in">${layer(main, 0.44, 0.52, hue.f3)}</g>` : "";
+  const [bx, by] = main.base;
+  const burner =
+    pen.level > 0
+      ? `<path d="M${n(bx - main.width * 0.7)} ${n(by)}H${n(bx + main.width * 0.7)}" stroke="${hue.core}" stroke-opacity=".8" stroke-width="${pen.width(0.8, 0.6)}"/>`
+      : "";
+  const core = `<g class="ch-core">${layer(main, 0.22, 0.3, hue.core)}${burner}</g>`;
+  return `<g class="ch-flame">${glow}${flanks}${outer}${inner}${core}</g>`;
 }
 
-const ACCESSORY_WORDS: Record<AccessoryKind, string> = {
-  none: "",
-  beret: "a beret",
-  glasses: "glasses",
-  sunglasses: "sunglasses",
-  visor: "a visor",
-  antenna: "an antenna",
-  horns: "horns",
-  halo: "a halo",
-  headphones: "headphones",
-  crown: "a crown",
-  sprout: "a sprout",
-  scarf: "a scarf",
-  monocle: "a monocle",
-  bow: "a bow",
-};
+function sparksSvg(frame: Frame, tr: Traits, hue: Hue, pen: Pen, k: number): string {
+  if (pen.level === 0 || tr.sparks === 0) return "";
+  const count = pen.level === 1 ? Math.min(2, tr.sparks) : tr.sparks;
+  const tip = tipOf(tonguesOf(frame, tr, k).main);
+  const offsets: readonly Pt[] = [
+    [-5, 6],
+    [6, 10],
+    [-9, 15],
+    [10, 19],
+  ];
+  let out = "";
+  for (let i = 0; i < count; i++) {
+    const [dx, dy] = offsets[i]!;
+    const center: Pt = [tip[0] + (dx + tr.lean * 3) * k, Math.max(3 + i * 2.5, tip[1] - dy * k)];
+    const size = [2.3, 1.9, 1.6, 1.3][i]! * k * (pen.level === 1 ? 1.3 : 1);
+    out += `<path class="ch-spark ch-s${i}" d="${d(diamond(center, size))}" fill="${i % 2 === 0 ? hue.f3 : hue.core}"/>`;
+  }
+  return out;
+}
 
-const BODY_WORDS: Record<BodyKind, string> = {
-  sharp: "sharp",
-  rounded: "rounded",
+function embersSvg(frame: Frame, tr: Traits, hue: Hue, pen: Pen, k: number): string {
+  if (pen.level === 0 || !tr.embers) return "";
+  const shard = (x: number, y: number, s: number, tilt: number) =>
+    `<path class="ch-ember" d="${d([
+      [x + tilt, y - s],
+      [x + s * 0.7, y + s * 0.6],
+      [x - s * 0.7, y + s * 0.4],
+    ])}" fill="${hue.f2}" fill-opacity=".85"/>`;
+  const yLeft = BASE_Y - (BASE_Y - frame.apex[1]) * 0.42;
+  const yRight = BASE_Y - (BASE_Y - frame.apex[1]) * 0.3;
+  return (
+    shard(50 - halfAt(frame, yLeft) * 0.62, yLeft, 1.9 * k, -0.8) +
+    shard(50 + halfAt(frame, yRight) * 0.66, yRight, 1.5 * k, 0.6)
+  );
+}
+
+function ringSvg(tr: Traits, hue: Hue, pen: Pen): string {
+  if (tr.ringSpan === 0) return "";
+  const from = tr.ringStart - 90;
+  const to = from + tr.ringSpan;
+  const line = `fill="none" stroke="${hue.a}" stroke-width="${pen.width(0.9, 1.1)}"`;
+  let ring = `<path d="${arc(RING, RING_R, from, to)}" ${line} stroke-opacity="${pen.level === 0 ? ".8" : ".5"}"/>`;
+  // The comet: a bright head at the arc's end, its tail brighter toward it.
+  const tail = Math.min(26, tr.ringSpan * 0.18);
+  ring += `<path d="${arc(RING, RING_R, to - tail, to)}" fill="none" stroke="${hue.f3}" stroke-width="${pen.width(1.8, 1.4)}"/>`;
+  if (pen.level > 0) {
+    const head = polar(RING, RING_R, to);
+    const s = 1.8;
+    ring += `<rect x="${n(head[0] - s)}" y="${n(head[1] - s)}" width="${n(2 * s)}" height="${n(2 * s)}" fill="${hue.core}"/>`;
+  }
+  if (pen.level === 2) {
+    for (let i = 0; i < tr.frags; i++) {
+      const at = polar(RING, RING_R, to + 40 + i * 47);
+      const wide = i % 2 === 0;
+      const w = wide ? 5 : 2.4;
+      const h = wide ? 1.4 : 2.4;
+      ring += `<rect x="${n(at[0] - w / 2)}" y="${n(at[1] - h / 2)}" width="${n(w)}" height="${n(h)}" fill="${hue.b}" fill-opacity=".75"/>`;
+    }
+  }
+  let ticks = "";
+  if (pen.level === 2 && tr.ticks > 0) {
+    let path = "";
+    for (let i = 0; i < tr.ticks; i++) {
+      const angle = (i * 360) / tr.ticks;
+      const major = i % (tr.ticks / 4) === 0;
+      const a = polar(RING, RING_R + 2.5, angle);
+      const b = polar(RING, RING_R + (major ? 6.5 : 4.5), angle);
+      path += `M${n(a[0])} ${n(a[1])}L${n(b[0])} ${n(b[1])}`;
+    }
+    ticks = `<g class="ch-ring-back"><path d="${path}" fill="none" stroke="${hue.a}" stroke-opacity=".45" stroke-width="${pen.width(0.6, 0.6)}"/></g>`;
+  }
+  return `${ticks}<g class="ch-ring">${ring}</g>`;
+}
+
+/** A sub-tau has no ring; its fragments mark the floor's ends instead. */
+function subFragsSvg(tr: Traits, frame: Frame, hue: Hue, pen: Pen): string {
+  if (tr.kind !== "sub" || pen.level < 2 || tr.frags === 0) return "";
+  const half = frame.right[0] - 50;
+  const spots: readonly Pt[] = [
+    [50 - half - 7, BASE_Y - 2],
+    [50 + half + 5, BASE_Y - 9],
+    [50 + half + 8, BASE_Y - 3],
+  ];
+  return spots
+    .slice(0, tr.frags)
+    .map(([x, y], i) => {
+      const w = i === 0 ? 4.5 : 2.2;
+      const h = i === 0 ? 1.3 : 2.2;
+      return `<rect x="${n(x - w / 2)}" y="${n(y - h / 2)}" width="${n(w)}" height="${n(h)}" fill="${hue.b}" fill-opacity=".7"/>`;
+    })
+    .join("");
+}
+
+/** The reflecting floor: a line brightest under the flame, and the triangle's reflection. */
+function floorSvg(tr: Traits, frame: Frame, hue: Hue, pen: Pen): string {
+  if (!tr.floor || pen.level === 0) return "";
+  const half = frame.right[0] - 50;
+  const width = pen.width(0.8, 0.7);
+  const segment = (x1: number, x2: number, color: string, opacity: string) =>
+    `<path d="M${n(x1)} ${FLOOR_Y}H${n(x2)}" stroke="${color}" stroke-opacity="${opacity}" stroke-width="${width}"/>`;
+  let out =
+    segment(50 - half - 10, 50 - half * 0.45, hue.a, ".3") +
+    segment(50 - half * 0.45, 50 + half * 0.45, hue.f3, ".8") +
+    segment(50 + half * 0.45, 50 + half + 10, hue.a, ".3");
+  if (pen.level === 2) {
+    const drop = (BASE_Y - frame.apex[1]) * 0.12;
+    out +=
+      `<path d="M${n(50 - half * 0.5)} ${FLOOR_Y + 1.5}L${n(50 + half * 0.5)} ${FLOOR_Y + 1.5}L50 ${n(FLOOR_Y + 1.5 + drop)}Z" fill="${hue.a}" fill-opacity=".06" stroke="${hue.a}" stroke-opacity=".22" stroke-width="${pen.width(0.7, 0.6)}"/>`;
+  }
+  return out;
+}
+
+function scanSvg(tr: Traits, frame: Frame, hue: Hue, pen: Pen): string {
+  if (tr.scan === null || pen.level < 2) return "";
+  const y = frame.apex[1] + (BASE_Y - frame.apex[1]) * tr.scan;
+  const reach = halfAt(frame, y) + 9;
+  const x1 = 50 - reach;
+  const x2 = 50 + reach;
+  return (
+    `<path d="M${n(x1)} ${n(y)}H${n(x2)}M${n(x1)} ${n(y - 1.6)}V${n(y + 1.6)}M${n(x2)} ${n(y - 1.6)}V${n(y + 1.6)}" ` +
+    `fill="none" stroke="${hue.b}" stroke-opacity=".32" stroke-width="${pen.width(0.5, 0.5)}"/>`
+  );
+}
+
+const FRAME_WORDS: Record<FrameKind, string> = {
+  equilateral: "equilateral",
   tall: "tall",
-  squat: "squat",
+  split: "split-apex",
+  broken: "broken-apex",
   notched: "notched",
-  lean: "leaning",
-  cut: "flat-topped",
+  chamfered: "chamfered",
 };
 
-/** An English description of a creature, the default accessible name. */
+const SECOND_WORDS: Record<SecondKind | "none", string> = {
+  none: "",
+  nested: " with a nested triangle",
+  inverted: " with an inverted inner triangle",
+  echo: " with an echo triangle",
+};
+
+const TONGUE_WORDS = { 1: "single", 2: "twin", 3: "triple" } as const;
+
+export function hueOf(name: HueName): Hue {
+  return HUES.find((hue) => hue.name === name) ?? HUES[0];
+}
+
+/** An English description of a sigil, the default accessible name. */
 export function describe(tr: Traits): string {
-  const color = tr.color.charAt(0).toUpperCase() + tr.color.slice(1);
-  const words = ACCESSORY_WORDS[tr.accessory];
-  return `${color} ${BODY_WORDS[tr.body]} triangle creature${words === "" ? "" : ` with ${words}`}`;
+  const what = tr.kind === "sub" ? "ember sub-sigil" : "ember sigil";
+  const frame = `${FRAME_WORDS[tr.frame]} triangle${SECOND_WORDS[tr.second]}`;
+  return `${what}: ${frame}, ${TONGUE_WORDS[tr.tongues]} flame, ${hueOf(tr.hue).word}`;
 }
 
 /**
- * The creature of `seed` as an SVG string (viewBox 0 0 100 100).
+ * The sigil of `seed` as an SVG string (viewBox 0 0 100 100). A tau's ring is centred at
+ * (50, 52); a sub-tau's triangle stands on the same base line, smaller.
  *
  * @param seed a tau's address, or `<address>/<name>` for a sub-tau
- * @param opts `size` in CSS pixels (96), `animated` idle motion (true), `label` its
- *   accessible name (a description; "" makes it decorative)
+ * @param opts `size` in CSS pixels (96), `animated` motion (true), `label` its accessible
+ *   name (a description; "" makes it decorative), `kind` (from the seed)
  */
 export function character(seed: string, opts: CharacterOptions = {}): string {
   const size = opts.size ?? 96;
   const animated = opts.animated ?? true;
-  const tr = traits(seed);
-  const hex = PALETTE.find((entry) => entry.name === tr.color)!.hex;
-  const shade = mix(hex, INK, 0.32);
-  const edgeLight = mix(hex, WHITE, 0.45);
-  const shape = shapeOf(tr.body, tr.soft);
-  const { body, facet, top } = outline(shape);
-  const face = faceOf(shape, top, tr);
-  const hidden = coversEyes(tr.accessory);
-
-  const baseLeft = xAt(shape.left, BASE_Y);
-  const baseRight = xAt(shape.right, BASE_Y);
-  const shadow =
-    `<ellipse class="ch-shadow" cx="${n((baseLeft + baseRight) / 2)}" cy="95" ` +
-    `rx="${n((baseRight - baseLeft) * 0.42)}" ry="2.6" fill="${hex}" fill-opacity=".22"/>`;
-  const glow = tr.glow
-    ? `<path d="${body}" fill="none" stroke="${hex}" stroke-opacity=".12" stroke-width="9" stroke-linejoin="round"/>` +
-      `<path d="${body}" fill="none" stroke="${hex}" stroke-opacity=".3" stroke-width="4.5" stroke-linejoin="round"/>`
-    : "";
-  const shine0 = lerp(shape.left[0], shape.left[1], 0.16);
-  const shine1 = lerp(shape.left[0], shape.left[1], 0.4);
-  const shine =
-    `<path d="M${n(shine0[0] + 3.2)} ${n(shine0[1] + 1.5)}L${n(shine1[0] + 3.2)} ${n(shine1[1])}" ` +
-    `stroke="${WHITE}" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round"/>`;
+  const tr = traits(seed, opts.kind ?? kindOf(seed));
+  const hue = hueOf(tr.hue);
+  const pen = penFor(size);
+  const k = tr.kind === "sub" ? SUB_SCALE : 1;
+  const frame = frameOf(tr.frame, k);
+  const behind = tr.second === "echo" ? secondSvg(frame, tr, hue, pen) : "";
+  const inside = tr.second === "echo" ? "" : secondSvg(frame, tr, hue, pen);
 
   const parts = [
-    glow,
-    feetSvg(shape, tr, shade),
-    `<path d="${body}" fill="${hex}"/>`,
-    `<path d="${facet}" fill="${shade}"/>`,
-    `<path d="${body}" fill="none" stroke="${edgeLight}" stroke-width="1.4" stroke-linejoin="round"/>`,
-    shine,
-    markSvg(shape, face, tr),
-    cheeksSvg(face, tr),
-    eyesSvg(face, tr, hex, shade, hidden),
-    mouthSvg(face, tr),
-    accessorySvg(shape, top, face, tr, hex),
+    ringSvg(tr, hue, pen),
+    behind,
+    floorSvg(tr, frame, hue, pen),
+    subFragsSvg(tr, frame, hue, pen),
+    inside,
+    flameSvg(frame, tr, hue, pen, k),
+    frameSvg(frame, hue, pen),
+    embersSvg(frame, tr, hue, pen, k),
+    sparksSvg(frame, tr, hue, pen, k),
+    scanSvg(tr, frame, hue, pen),
   ].join("");
 
   const label = opts.label ?? describe(tr);
@@ -900,10 +835,14 @@ export function character(seed: string, opts: CharacterOptions = {}): string {
     label === ""
       ? `aria-hidden="true" focusable="false"`
       : `role="img" aria-label="${escapeXml(label)}"`;
-  const classes = animated ? `ch ch-anim ch-p${tr.phase}` : "ch";
+  const classes = [
+    "ch",
+    `ch-${tr.kind}`,
+    `ch-l${pen.level}`,
+    ...(animated ? ["ch-anim", `ch-p${tr.phase}`] : []),
+  ].join(" ");
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${n(size)}" height="${n(size)}" ` +
-    `class="${classes}" data-color="${tr.color}" ${a11y}>` +
-    `${shadow}<g class="ch-body">${parts}</g></svg>`
+    `class="${classes}" data-hue="${tr.hue}" ${a11y}>${parts}</svg>`
   );
 }

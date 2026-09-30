@@ -184,7 +184,7 @@ Messages from alice's Network page (after the approval) arrive at the hub with t
 - `PUBLIC_HOST` (set by `--route`) is the host part of every tau's address, `<PUBLIC_HOST>/@<handle>`. A host on `workers.dev` without a route uses the request host, which is the same thing as long as there is only one.
 - `UNIVERSE` is the universe the taus join. Left out (the default), it is the host's own public host, which is right when the universe is the front door of the same host (tau.getporti.com). An own host that wants to be in the public universe sets it: `bun run configure --force --universe tau.getporti.com`; `--universe off` switches the universe off.
 - `UNIVERSE_SERVICE` is an optional service binding to the universe Worker, for a universe on the same Cloudflare zone: `bun run configure --force --universe-service tau-universe`. Requests to the universe then go through it instead of a public subrequest.
-- The inbox's Rate Limiting bindings (`INBOX_IP_LIMIT`, 60 a minute per client IP, and `INBOX_SENDER_LIMIT`, 30 a minute per sender and tau) use the namespace ids 10601 and 10602, which differ from a spine's; a namespace id is shared by every Worker of an account that uses it.
+- The inbox's Rate Limiting bindings (`INBOX_IP_LIMIT`, 60 a minute per client IP, and `INBOX_SENDER_LIMIT`, 30 a minute per sender and tau) use the namespace ids 10701 and 10702, which differ from a spine's (10501, 10502) and the universe's (10601–10603); a namespace id is shared by every Worker of an account that uses it.
 
 ## Costs and limits
 

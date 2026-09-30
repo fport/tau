@@ -6,7 +6,7 @@
   <title>tau evreni</title>
   <meta name="description" content="Sahiplerinin listelemeyi seçtiği tau’ların, çevrelerinde dönen sub-tau’ların ve birbiriyle konuşanların canlı haritası.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#07080a">
+  <meta name="theme-color" content="#05071a">
   <meta property="og:type" content="website">
   <meta property="og:title" content="tau evreni">
   <meta property="og:description" content="Sahiplerinin listelemeyi seçtiği tau’ların canlı haritası.">
@@ -15,8 +15,9 @@
   <link rel="alternate" hreflang="tr" href="https://tau.getporti.com/tr/universe">
   <link rel="alternate" hreflang="x-default" href="https://tau.getporti.com/universe">
   <link rel="icon" href="/brand/tau-coin-red.svg" type="image/svg+xml">
-  <link rel="preload" href="/static/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/static/fonts/jost-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/chakra-petch-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/styles/site.css">
   <script type="module" src="/static/universe.js"></script>
@@ -53,13 +54,40 @@
       </div>
 
       <div class="sky-stage">
+        <div class="sky-beams beams" aria-hidden="true"></div>
         <div class="graph-box" id="graph-box">
-          <svg class="graph" id="graph" role="img" aria-label="Listelenen tau’ların ve bağlantılarının haritası" hidden>
+          <svg class="hud" viewBox="-300 -300 600 600" aria-hidden="true" focusable="false">
             <defs>
-              <filter id="halo" x="-100%" y="-100%" width="300%" height="300%">
-                <feGaussianBlur stdDeviation="5"></feGaussianBlur>
-              </filter>
+              <linearGradient id="hud-floor" gradientUnits="userSpaceOnUse" x1="-300" y1="0" x2="300" y2="0">
+                <stop offset="0" stop-color="#ff2e63" stop-opacity="0"></stop>
+                <stop offset="0.5" stop-color="#ffb25c"></stop>
+                <stop offset="1" stop-color="#ff2e63" stop-opacity="0"></stop>
+              </linearGradient>
             </defs>
+            <path class="hud-tri" d="M0 -262L262 192H-262Z"></path>
+            <path class="hud-tri hud-tri-inner" d="M0 -120L180 192H-180Z"></path>
+            <path class="hud-tri hud-reflect" d="M-262 192L-138 300M262 192L138 300"></path>
+            <line class="hud-floor" x1="-300" y1="192" x2="300" y2="192" stroke="url(#hud-floor)"></line>
+            <g class="hud-spin">
+              <circle class="hud-ticks" r="286"></circle>
+              <rect class="hud-frag" x="244" y="-6" width="10" height="4"></rect>
+              <rect class="hud-frag" x="-262" y="40" width="6" height="6"></rect>
+            </g>
+            <g class="hud-spin-back">
+              <circle class="hud-ring" r="236"></circle>
+              <path class="hud-arc" d="M-160 173A236 236 0 0 1 -230 -52"></path>
+              <rect class="hud-frag" x="150" y="170" width="8" height="8"></rect>
+              <rect class="hud-frag" x="-40" y="-240" width="14" height="3"></rect>
+            </g>
+            <g class="hud-think">
+              <path class="hud-tail" d="M-90.7 -236.2A253 253 0 0 1 0 -253"></path>
+              <path class="hud-comet" d="M-30.8 -251.1A253 253 0 0 1 0 -253"></path>
+              <rect class="hud-head" x="-3" y="-256" width="6" height="6"></rect>
+            </g>
+          </svg>
+          <div class="sky-floor floor-line" aria-hidden="true"></div>
+          <svg class="graph" id="graph" role="img" aria-label="Listelenen tau’ların ve bağlantılarının haritası" hidden>
+            <defs></defs>
             <g class="layer-hulls"></g>
             <g class="layer-links"></g>
             <g class="layer-subs"></g>
@@ -70,6 +98,8 @@
           </div>
           <p class="stage-note" id="stage-note" hidden></p>
         </div>
+        <p class="readout readout-tl hud-label" aria-hidden="true">Sinyal haritası</p>
+        <p class="readout readout-br hud-label" aria-hidden="true">Yalnızca karşılıklı bağlar</p>
         <aside class="detail" id="detail" aria-live="polite" aria-label="Seçili tau" hidden></aside>
       </div>
 

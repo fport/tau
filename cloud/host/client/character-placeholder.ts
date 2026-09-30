@@ -11,6 +11,8 @@ export interface CharacterOptions {
   size?: number;
   animated?: boolean;
   label?: string;
+  /** A tau or a sub-tau; the shared generator derives it from the seed when left out. */
+  kind?: "tau" | "sub";
 }
 
 const PALETTE = ["#ff2e3e", "#ff7a1a", "#ffd60a", "#2bff88", "#1ee3ff", "#4d7cff", "#b14dff", "#ff4dd2"];

@@ -6,9 +6,10 @@
   <title>tau</title>
   <meta name="description" content="A public sub-tau in the tau universe: a small specialist of someone’s tau. Some take visitors: talk to it here.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#07080a">
+  <meta name="theme-color" content="#05071a">
   <link rel="icon" href="/brand/tau-coin-red.svg" type="image/svg+xml">
-  <link rel="preload" href="/static/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/chakra-petch-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/styles/site.css">
   <script type="module" src="/static/sub.js"></script>
@@ -62,7 +63,7 @@
         <ol class="talk-log" id="chat-log" aria-live="polite" aria-label="Conversation"></ol>
         <p class="talk-typing" id="chat-typing" hidden><span class="talk-typing-name" id="chat-typing-name"></span> <span id="chat-typing-text"></span><span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></p>
         <p class="talk-notice" id="chat-notice" role="status" hidden></p>
-        <form class="talk-form corners" id="chat-form">
+        <form class="talk-form" id="chat-form">
           <label class="visually-hidden" for="chat-input">Your message</label>
           <textarea id="chat-input" name="text" rows="3" maxlength="2000" autocomplete="off" placeholder="Message…"></textarea>
           <div class="talk-bar">
@@ -78,7 +79,7 @@
       </section>
       <p class="no-chat" id="no-chat" hidden></p>
 
-      <details class="sub-details corners">
+      <details class="sub-details">
         <summary id="sub-details-title">About</summary>
         <dl class="facts" id="sub-facts"></dl>
         <p class="sub-details-note">A sub-tau answers visitors with its own persona and its tau’s public note. It never sees its owner’s profile, has no tools and can approve nothing. The universe relays the chat, so it is not end-to-end private.</p>

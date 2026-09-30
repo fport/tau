@@ -1110,7 +1110,11 @@ class _Windowed:
 
 
 def _window_for(
-    op: str, request: dict[str, Any], windowed: _Windowed, opener: Opener | None
+    op: str,
+    request: dict[str, Any],
+    windowed: _Windowed,
+    opener: Opener | None,
+    platform: str | None = None,
 ) -> Any:
     """The window this request asks for, or ``None`` (headless) with the reason logged."""
     from tau_guard.window import headless_reason, intro_from_request
@@ -1118,7 +1122,7 @@ def _window_for(
     intro = intro_from_request(op, request)
     if intro is None:
         return None
-    reason = headless_reason()
+    reason = headless_reason(platform=platform)
     view = None
     if reason is None:
         try:
@@ -1158,7 +1162,9 @@ def main(
         emit_line(out, verdict(False, "error"))
         return 2
     windowed = _Windowed(op, out)
-    view = _window_for(op, request, windowed, open_view)
+    view = _window_for(
+        op, request, windowed, open_view, platform=deps.platform if deps is not None else None
+    )
     if view is not None:
         return windowed.run(request, view, deps)
     previous = signal.signal(signal.SIGTERM, _on_term)

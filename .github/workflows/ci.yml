@@ -23,6 +23,39 @@ jobs:
       - run: uv run pytest -q
       - run: uv build --package tau-core
       - run: uv build --package tau-tui
+      - run: uv build --package tau-net
+      - run: uv build --package tau-cloud
+
+  # tau-net ships the spine Worker as a kit (packages/tau-net/src/tau_net/spine_kit/, used by
+  # `tau net spine init`). It is generated from cloud/spine by `pnpm run kit` and tracked, so
+  # a change to the spine without a fresh kit fails here.
+  spine-kit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/spine
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: cloud/spine/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run kit
+      - name: The tracked kit matches the build
+        run: |
+          kit=packages/tau-net/src/tau_net/spine_kit
+          cd "$GITHUB_WORKSPACE"
+          if [ -n "$(git status --porcelain -- "$kit")" ]; then
+            git status --short -- "$kit"
+            git diff --stat -- "$kit"
+            echo "::error::$kit is stale: run \`pnpm run kit\` in cloud/spine and commit the result"
+            exit 1
+          fi
 
   docs:
     runs-on: ubuntu-latest

@@ -14,7 +14,7 @@ Varsayılan olarak tau kendi makinende çalışır ve yaşam verini orada tutar 
 | Spine Worker'ı (`tau-spine`) | Cloudflare Workers: adresin, kartın ve posta kutun, depo API'si, bir cron |
 | Beyin (`tau hub run`, aynı Python kodu) | spine'ın yönettiği, `tau cloud run` ile başlatılan bir Cloudflare Container |
 | Oturumlar, küçük durum (kişiler, imleçler) | spine üzerinden D1 (`[sessions] backend = "spine"`) |
-| `tau.toml`, `persona/*.md` | `tau cloud push` ile yüklenen KV |
+| `tau.toml`, `persona/*.md`, sub-tau'lar (`persona/subs/*.md`) | `tau cloud push` ile yüklenen KV |
 | Kimlik bilgileri (model anahtarları, Telegram token'ı, ağ kimliği) | Worker secret'ları (gizli değerleri); container'a ortam değişkeni olarak verilir |
 
 ## Başlamadan önce
@@ -41,12 +41,14 @@ pnpm run deploy:cloud
 
 ## 2. Secret'ları ayarla
 
-Aşağıdaki her değer `wrangler secret put <NAME>` ile girilir; komut değeri sana sorar. Bir secret'ı asla komut argümanı olarak verme.
+Aşağıdaki her değer `wrangler secret put <NAME>` ile girilir; komut değeri sana sorar. Bir secret'ı asla komut argümanı olarak verme. Yalnızca rollerinin kullandığı model anahtarlarını ayarla; container bu secret'lardan ayarlı olan her birini alır, başka hiçbirini almaz.
 
 | Secret | Değer |
 |---|---|
 | `HUB_TOKEN` | uzun, rastgele bir değer; yerel `tau cloud` komutların onu `TAU_SPINE_TOKEN` olarak kullanır |
 | `ANTHROPIC_API_KEY` (gerekirse `ANTHROPIC_WORKSPACE_ID` ile), ya da `AWS_REGION` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` / `AWS_BEARER_TOKEN_BEDROCK` | `tau.toml` içindeki rollerinin ihtiyaç duyduğu model kimlik bilgileri |
+| `OPENAI_API_KEY` | isteğe bağlı: yalnızca bir rol `openai` sağlayıcısını kullanıyorsa |
+| `GEMINI_API_KEY` ya da `GOOGLE_API_KEY` | isteğe bağlı: yalnızca bir rol `gemini` sağlayıcısını kullanıyorsa (iki ad da çalışır) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS` | [Telegram rehberindeki](telegram.md) gibi |
 | `TAU_NET_IDENTITY` | buluttaki tau'nun tau ağına katılması gerekiyorsa ağ kimliğin: `TAU_DATA_DIR/net/identity.json` içindeki JSON'un base64url hâli ([tau ağına katıl](tau-network.md)) |
 
@@ -57,15 +59,17 @@ Beyin, `tau.toml` dosyandaki `budget` tablolarını tıpkı yerel bir hub gibi k
 `tau.toml` ve `persona/` dosyalarının bulunduğu makinede `TAU_SPINE_URL` (spine URL'si) ve `TAU_SPINE_TOKEN` (`HUB_TOKEN`) değerlerini `.env` dosyasına koy, sonra:
 
 ```sh
-tau cloud push      # tau.toml, persona.md, net.md; shows the list and asks first
+tau cloud push      # tau.toml, persona.md, net.md, persona/subs/*.md; shows the list and asks first
 tau cloud status    # spine health and mode, the files it holds, the brain container's health
 ```
 
-- Dosya kümesi tam olarak `tau.toml`, `persona/persona.md`, `persona/user.md` ve `persona/net.md`. Başka hiçbir şey okunmaz ya da gönderilmez; `.env` asla yüklenmez.
+- Dosya kümesi tam olarak `tau.toml`, `persona/persona.md`, `persona/user.md`, `persona/net.md` ve sub-tau'ların: `persona/subs/` içindeki `.md` dosyaları, yani tanımlar (`coach.md`) ve onların açık notları (`coach.public.md`). Başka hiçbir şey okunmaz ya da gönderilmez; `.env` asla yüklenmez.
+- `tau cloud push`, `persona/subs/` içindeki başka her şeyi atlar ve nedeniyle birlikte adını yazar: adı düz bir `.md` adı olmayan bir dosya (harf, rakam, `.`, `_`, `-`; harf ya da rakamla başlar), bir alt dizin ya da bir sembolik bağlantı (bir bağlantı, `persona/user.md` gibi dışarıdaki bir dosyayı gönderebilir).
+- Burada sildiğin bir sub-tau dosyası (`tau sub remove coach`), bir sonraki push'ta spine'dan da silinir; push sormadan önce onu listeler. `persona/subs/` dizini olmayan bir makine, spine'daki sub-tau'lara dokunmaz.
 - `persona/user.md` tau'nun senin hakkında bildiklerini tutar; bu yüzden onun için ayrı bir soru sorulur ve varsayılan yanıt hayırdır. `tau cloud push --include-user` onu soru sormadan yükler.
 - Bir betikte (terminal yokken) `tau cloud push --yes` sormadan yükler; `persona/user.md` ise ancak ayrıca `--include-user` verilirse yüklenir.
 - Beyin bu dosyaları başlarken okur. Bir push'tan sonra çalışan beyin, bir sonraki başlangıcına kadar eski dosyaları kullanmaya devam eder (yeniden bir deploy onu yeniden başlatır).
-- `tau cloud pull` aynı dosyaları indirir; örneğin yeni bir makineye. `--force` vermedikçe farklı olan bir yerel dosyanın yerine asla yazmaz.
+- `tau cloud pull` aynı dosyaları indirir; örneğin yeni bir makineye. `--force` vermedikçe farklı olan bir yerel dosyanın yerine asla yazmaz, hiçbir yerel dosyayı silmez ve spine'ın dosya kümesi dışında listelediği her adı atlar.
 
 ## 4. Onunla konuş
 
@@ -76,11 +80,13 @@ Telegram'da botuna yaz. Container'daki hub yanıt verir ve tier-2 onaylar (her z
 İmaj (`cloud/spine/container/Dockerfile`), `tau cloud run` komutunu başlatır; bu komut:
 
 1. `TAU_SPINE_URL` ve `TAU_SPINE_TOKEN` değerlerinin ayarlı olduğunu ve spine'ın bulut modunda çalıştığını kontrol eder (değilse tek satırlık bir mesajla çıkar);
-2. dosyaları `TAU_HOME` içine çeker ve çekilen `tau.toml` dosyasının iki anahtarını değiştirir: `[sessions] backend = "spine"` ve `[component.net] store = "spine"`. Yorumlar dahil geri kalan her şey senin yazdığın gibi kalır;
+2. dosyaları, sub-tau'lar dahil, `TAU_HOME` içine çeker ve çekilen `tau.toml` dosyasının iki anahtarını değiştirir: `[sessions] backend = "spine"` ve `[component.net] store = "spine"`. Yorumlar dahil geri kalan her şey senin yazdığın gibi kalır;
 3. 8080 portunda `GET /health` isteğine `{"ok": true, "version": ..., "hub": <the hub's /status or null>}` ile yanıt verir; spine'ın `GET /hub/brain` uç noktası bunu iletir;
 4. container çalışma ortamı SIGTERM gönderene kadar aynı süreçte `tau hub run` çalıştırır; SIGTERM hub'ı temiz bir şekilde durdurur.
 
 `tau cloud run`, kendisinin yazmadığı bir `tau.toml` içeren bir `TAU_HOME` dizinini reddeder; böylece senin kendi yapılandırmanın üzerine asla yazmaz.
+
+İmaj `tau-core`, `tau-net`, `tau-cloud` ve `tau-sub` paketlerini kurar; böylece beyin sub-tau'larına sahip olur: `ask_sub` Telegram'dan çalışır ve açık (public) bir sub-tau, tau ağında kişilerine tıpkı yerel bir hub'daki gibi cevap verir ([tau ağına katıl](tau-network.md)).
 
 ## Container olmadan yerelde dene
 

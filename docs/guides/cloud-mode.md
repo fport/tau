@@ -12,7 +12,7 @@ By default tau runs on your own machine and keeps your life data there (local mo
 | The spine Worker (`tau-spine`) | Cloudflare Workers: your address, card and mailbox, the store API, a cron |
 | The brain (`tau hub run`, the same Python code) | a Cloudflare Container managed by the spine, started with `tau cloud run` |
 | Sessions, small state (contacts, cursors) | D1, through the spine (`[sessions] backend = "spine"`) |
-| `tau.toml`, `persona/*.md` | KV, uploaded with `tau cloud push` |
+| `tau.toml`, `persona/*.md`, sub-taus (`persona/subs/*.md`) | KV, uploaded with `tau cloud push` |
 | Credentials (model keys, Telegram token, network identity) | Worker secrets, handed to the container as environment variables |
 
 ## Before you start
@@ -39,12 +39,14 @@ pnpm run deploy:cloud
 
 ## 2. Set the secrets
 
-Every value below goes in with `wrangler secret put <NAME>`, which prompts for it. Never pass a secret as a command argument.
+Every value below goes in with `wrangler secret put <NAME>`, which prompts for it. Never pass a secret as a command argument. Set only the model keys your roles use; the container gets each of these secrets that is set, and no other.
 
 | Secret | Value |
 |---|---|
 | `HUB_TOKEN` | a long random value; your local `tau cloud` commands use it as `TAU_SPINE_TOKEN` |
 | `ANTHROPIC_API_KEY` (and `ANTHROPIC_WORKSPACE_ID` if needed), or `AWS_REGION` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` / `AWS_BEARER_TOKEN_BEDROCK` | the model credentials your `tau.toml` roles need |
+| `OPENAI_API_KEY` | optional: only when a role uses the `openai` provider |
+| `GEMINI_API_KEY` or `GOOGLE_API_KEY` | optional: only when a role uses the `gemini` provider (either name works) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS` | as in the [Telegram guide](telegram.md) |
 | `TAU_NET_IDENTITY` | your network identity, if the cloud tau should join the tau network: base64url of the JSON in `TAU_DATA_DIR/net/identity.json` ([Join the tau network](tau-network.md)) |
 
@@ -55,15 +57,17 @@ The brain enforces the `budget` tables of your `tau.toml` itself, exactly as a l
 On the machine that has your `tau.toml` and `persona/`, put `TAU_SPINE_URL` (the spine URL) and `TAU_SPINE_TOKEN` (the `HUB_TOKEN`) in `.env`, then:
 
 ```sh
-tau cloud push      # tau.toml, persona.md, net.md; shows the list and asks first
+tau cloud push      # tau.toml, persona.md, net.md, persona/subs/*.md; shows the list and asks first
 tau cloud status    # spine health and mode, the files it holds, the brain container's health
 ```
 
-- The file set is exactly `tau.toml`, `persona/persona.md`, `persona/user.md` and `persona/net.md`. Nothing else is read or sent, and `.env` is never uploaded.
+- The file set is exactly `tau.toml`, `persona/persona.md`, `persona/user.md`, `persona/net.md` and your sub-taus: the `.md` files directly in `persona/subs/`, which are the definitions (`coach.md`) and their public notes (`coach.public.md`). Nothing else is read or sent, and `.env` is never uploaded.
+- `tau cloud push` skips anything else in `persona/subs/` and names it, with the reason: a file whose name is not a plain `.md` name (letters, digits, `.`, `_`, `-`, starting with a letter or a digit), a subdirectory, or a symbolic link (a link could send a file from outside, such as `persona/user.md`).
+- A sub-tau file you removed here (`tau sub remove coach`) is removed from the spine at the next push, and the push lists it before asking. A machine without a `persona/subs/` directory leaves the spine's sub-taus alone.
 - `persona/user.md` holds what tau knows about you, so it has its own question, and the default answer is no. `tau cloud push --include-user` uploads it without the question.
 - In a script (no terminal), `tau cloud push --yes` uploads without asking; `persona/user.md` then goes up only with `--include-user` as well.
 - The brain reads these files when it starts. After a push, the running brain keeps the old ones until its next start (a redeploy restarts it).
-- `tau cloud pull` downloads the same files, for example onto a new machine. It never replaces a local file that differs unless you pass `--force`.
+- `tau cloud pull` downloads the same files, for example onto a new machine. It never replaces a local file that differs unless you pass `--force`, never deletes a local file, and skips any name the spine lists outside the file set.
 
 ## 4. Talk to it
 
@@ -74,11 +78,13 @@ Write to your bot on Telegram. The container's hub answers, and tier-2 approvals
 The image (`cloud/spine/container/Dockerfile`) starts `tau cloud run`, which:
 
 1. checks that `TAU_SPINE_URL` and `TAU_SPINE_TOKEN` are set and that the spine runs in cloud mode (otherwise it exits with one line);
-2. pulls the files into `TAU_HOME` and changes two keys of the pulled `tau.toml`: `[sessions] backend = "spine"` and `[component.net] store = "spine"`. Everything else, comments included, stays as you wrote it;
+2. pulls the files into `TAU_HOME`, sub-taus included, and changes two keys of the pulled `tau.toml`: `[sessions] backend = "spine"` and `[component.net] store = "spine"`. Everything else, comments included, stays as you wrote it;
 3. answers `GET /health` on port 8080 with `{"ok": true, "version": ..., "hub": <the hub's /status or null>}`, which the spine's `GET /hub/brain` passes on;
 4. runs `tau hub run` in the same process, until the container runtime sends SIGTERM, which stops the hub cleanly.
 
 `tau cloud run` refuses a `TAU_HOME` that holds a `tau.toml` it did not write, so it never overwrites your own configuration.
+
+The image installs `tau-core`, `tau-net`, `tau-cloud` and `tau-sub`, so the brain has your sub-taus: `ask_sub` works from Telegram, and a public sub-tau answers your contacts over the tau network exactly as on a local hub ([Join the tau network](tau-network.md)).
 
 ## Try it locally, without a container
 

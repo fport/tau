@@ -63,6 +63,8 @@ Read by the `telegram` hub service (see [Telegram](../guides/telegram.md)). With
 | `TAU_NET_IDENTITY` | The network identity as base64url JSON, in place of `TAU_DATA_DIR/net/identity.json`. Cloud mode sets it as a Worker secret. |
 | `TAU_NET_ALLOW_INSECURE` | `1` allows `http` to peers on `localhost` / `127.0.0.1`. Development only. |
 
+In cloud mode the brain container gets its credentials from the spine's Worker secrets: every model credential above except `AWS_PROFILE` and `TAU_OLLAMA_URL` (`ANTHROPIC_*`, the static and bearer AWS variables, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`), `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TAU_NET_IDENTITY` and `TAU_LANG`, each only when it is set ([cloud mode](../guides/cloud-mode.md), §5 of the [protocol](tau-network.md)).
+
 ## Remote access reference values (layer 0)
 
 These are **not read by tau**. They are the personal values of your remote-access setup, kept in `.env` so they are in one place and out of the repository. `infra/remote/doctor.sh` prints the live values.

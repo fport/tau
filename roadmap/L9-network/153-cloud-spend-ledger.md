@@ -20,7 +20,7 @@ ADR 0011 moved budgets into tau-core, with a SQLite ledger at `TAU_DATA_DIR/spen
 ## Acceptance criteria
 
 - [ ] A container restart keeps the spend of the day and the month; a budget reached before the restart is still reached after it
-- [ ] The container receives OpenAI and Gemini keys when set; the guide lists them
+- [x] The container receives OpenAI and Gemini keys when set; the guide lists them
 
 ## Blocked by
 
@@ -29,3 +29,4 @@ ADR 0011 moved budgets into tau-core, with a SQLite ledger at `TAU_DATA_DIR/spen
 ## Comments
 
 - 2026-09-30: filed from the L2 session's note on ADR 0011 (the ledger lives in `TAU_DATA_DIR`).
+- 2026-09-30: the provider-key half is done on 150's branch: `OPENAI_API_KEY`, `GEMINI_API_KEY` and `GOOGLE_API_KEY` joined the spine's pass-through list (`BRAIN_SECRET_NAMES`), the cloud-mode guide (en + tr), the spine README and `docs/reference/tau-network.md` §5 list them, and the spine kit is regenerated. The persistent ledger stays open.

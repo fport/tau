@@ -755,13 +755,15 @@ class GuardService:
         return 200, {"allowed": allowed, "reason": reason, "enrollment": enrollment, "state": state}
 
     def _route_verify(self, body: dict[str, Any]) -> tuple[int, Any]:
+        # A route caller is a client: without a policy it gets its defaults (``{}``), never
+        # the hub's values alone, which only an in-hub caller (``None``) gets.
         result, seq = self._request_sync(
             body["kind"],
             channel=body["channel"],
             client_id=body["client_id"],
             request_id=body.get("request_id"),
             tool=body.get("tool"),
-            policy=body.get("policy"),
+            policy=body.get("policy") or {},
             method="touch_id" if body.get("fallback") == "touch_id" else "face",
         )
         return _answer(result, seq)

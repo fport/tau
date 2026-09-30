@@ -530,9 +530,11 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
     },
     "guard.cli.doctor.step_up_none": {
         "en": "step_up = none: a tier-2 call on a guarded channel runs after the approval alone, "
-        "with no fresh check (only while the client's tau.toml says none too)",
+        "with no fresh check (only for a client whose own tau.toml says step_up = none too; a "
+        "client that leaves step_up out uses face)",
         "tr": "step_up = none: korunan bir kanalda 2. katman bir çağrı yalnızca onayla, taze "
-        "kontrol olmadan çalışır (yalnızca istemcinin tau.toml'u da none dediğinde)",
+        "kontrol olmadan çalışır (yalnızca kendi tau.toml'u da step_up = none diyen bir istemci "
+        "için; step_up yazmayan bir istemci face kullanır)",
     },
     "guard.cli.doctor.failures": {
         "en": "{count} in the last 24 h",

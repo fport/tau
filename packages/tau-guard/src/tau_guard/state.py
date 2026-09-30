@@ -67,7 +67,8 @@ Rules the table in the ADR leaves to the implementation:
     Touch ID after a face check that could not work); ``touch_id`` (the worker's ``touch_id``
     op, no camera); ``none``, which asks for no check: the attempt ends at once with ``ok``
     and ``method: null`` and nothing is spawned. ``none`` is the merged value only when the hub
-    and the client both say ``none`` (:func:`tau_guard.config.stricter_policy`).
+    and the client both say ``none`` (:func:`tau_guard.config.stricter_policy`; a client that
+    leaves the knob out says ``face``), or for an in-hub caller when the hub says it.
 - Cooldown: three counted failures within :data:`FAILURE_WINDOW` start a cooldown of
   :data:`COOLDOWN_START` seconds. From then on every counted failure starts the next cooldown
   at twice the length, up to :data:`COOLDOWN_MAX`, until a match or a quiet window (no failure

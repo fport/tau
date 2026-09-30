@@ -150,3 +150,15 @@ def test_a_client_policy_can_only_make_the_check_stricter() -> None:
     assert stricter_policy(strict, None) == strict
     both_none = {"step_up": "none", "unlock_liveness": "none"}
     assert stricter_policy(both_none, both_none) == both_none  # none only when both agree
+
+
+@pytest.mark.parametrize(
+    "client",
+    [{}, {"step_up": "bogus", "unlock_liveness": "x"}, {"unlock_liveness": "challenge"}],
+)
+def test_a_knob_the_client_leaves_out_is_its_default_never_agreement(
+    client: dict[str, str],
+) -> None:
+    both_none = {"step_up": "none", "unlock_liveness": "none"}
+    assert stricter_policy(both_none, client) == {"step_up": "face", "unlock_liveness": "challenge"}
+    assert stricter_policy(both_none, None) == both_none  # an in-hub caller: the hub's alone

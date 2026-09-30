@@ -83,8 +83,8 @@ face check it can only narrow: it never produces an approval.
   work (`too_dark`, `no_face`, `timeout`, `face_too_small`, `permission_pending` or a
   `camera_*` verdict); a counted failure never falls back. `touch_id`: Touch ID only, the
   camera never opens (the accessible choice for an owner who cannot turn their head). `none`:
-  no fresh check, only when both the hub's and the client's `tau.toml` say `none` (the doctor
-  warns).
+  no fresh check, only when both the hub's and the client's `tau.toml` say `none`; a client
+  whose `tau.toml` leaves `step_up` out uses `face` (the doctor warns about `none`).
 - **Audit.** Each prompt writes a `touch_id` record (`policy`, the outcome as `reason`, the
   attempt's kind as `trigger`), and checks and unlocks carry `method`.
 
@@ -202,8 +202,10 @@ unlock_fallback = "touch_id"        # touch_id | touch_id_or_password | none
 camera = "builtin"                  # or a camera's AVFoundation uniqueID
 ```
 
-A client sends its own `step_up` and `unlock_liveness` values with every check, and the hub
-applies the stricter of its own value and the client's.
+A client sends its own `step_up` and `unlock_liveness` values with every check (the defaults,
+`face` and `challenge`, for a key its `tau.toml` leaves out), and the hub applies the stricter
+of its own value and the client's; it reads a key missing from a client's request as that
+default, never as agreement. The hub's own channels follow the hub's `tau.toml` alone.
 
 ## Commands
 

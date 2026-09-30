@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 from guard_helpers import TURN, guard_config, running_hub, until_async
-from tau_core import Admission, GuardVerdict, Tier
+from tau_core import Admission, GuardVerdict, HubGuard, Tier
 from tau_core.approval import ApprovalRequest, Decision, TierGate
 from tau_core.events import EventBus
 from tau_core.hub import HubError
@@ -418,6 +418,63 @@ async def test_the_step_up_mode_is_the_stricter_of_hub_and_client(
             text = t("guard.cli.la.step_up", tool="lamp")
             assert requests[-1]["request"]["reason_text"] == text
             assert "touch_id" in steps
+
+
+@pytest.mark.parametrize(
+    "client",
+    [
+        {"enabled": True},  # the client's tau.toml leaves step_up out: its default is face
+        {"enabled": True, "step_up": "bogus"},  # an unknown value is the default too
+    ],
+)
+async def test_a_client_that_leaves_step_up_out_never_agrees_to_none(
+    tmp_path: Path, client: dict[str, Any]
+) -> None:
+    config = guard_config(tmp_path, step_up="none")
+    with running_hub(tmp_path, config=config, runs=[[match()], [match()]]) as running:
+        mine = running.config.with_overrides(component_tables={"guard": client})
+        guard = HubGuard(mine)
+        assert guard.policy["step_up"] == "face"
+        assert (await guard.unlock(channel="tui", client_id="c1")).ok
+        assert await guard.step_up(REQUEST, client_id="c1") is True
+        requests = read_requests(running.script)
+        assert [r["op"] for r in requests] == ["verify", "verify"]  # the step-up ran a check
+        assert requests[-1]["request"]["policy"]["step_up"] == "face"
+
+
+@pytest.mark.parametrize(
+    ("policy", "liveness"),
+    [
+        ({}, "challenge"),
+        ({"unlock_liveness": "none"}, "none"),  # both say none; step_up is still left out
+        (None, "challenge"),
+        ("absent", "challenge"),
+    ],
+)
+async def test_a_route_caller_without_a_policy_gets_the_client_defaults(
+    tmp_path: Path, policy: Any, liveness: str
+) -> None:
+    config = guard_config(tmp_path, step_up="none", unlock_liveness="none")
+    with running_hub(tmp_path, config=config, runs=[[match()], [match()]]) as running:
+        guard = running.guard  # the hub's own tau.toml: none and none
+        assert (await guard.unlock(channel="tui", client_id="c1")).ok
+        body: dict[str, Any] = {"channel": "tui", "client_id": "c2", "kind": "step_up"}
+        if policy != "absent":
+            body["policy"] = policy
+        started = running.client.post("/guard/verify", body, timeout=10)
+        await until_async(lambda: len(read_requests(running.script)) == 2)
+        attempt = running.service.machine.attempt(started["attempt"])
+        assert attempt is not None and attempt.policy["step_up"] == "face"
+        assert attempt.policy["unlock_liveness"] == liveness
+
+
+async def test_an_in_hub_caller_follows_the_hubs_policy_alone(tmp_path: Path) -> None:
+    config = guard_config(tmp_path, step_up="none")
+    with running_hub(tmp_path, config=config, runs=[[match()]]) as running:
+        service = running.service  # the hub's own channels: no configuration of their own
+        assert (await service.unlock(channel="telegram", client_id="hub")).ok
+        assert await service.step_up(REQUEST, client_id="hub") is True
+        assert len(read_requests(running.script)) == 1  # the step-up spawned nothing
 
 
 async def test_a_face_or_touch_id_worker_gets_time_for_the_prompt(tmp_path: Path) -> None:

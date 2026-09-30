@@ -36,6 +36,7 @@ export const RESERVED_NAMES: ReadonlySet<string> = new Set([
   "robots.txt",
   ".well-known",
   "_headers",
+  "install.sh",
   // The Worker's paths and tau-host's (forwarded).
   "api",
   "auth",

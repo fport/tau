@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import headersFile from "../public/_headers?raw";
+import installScript from "../public/install.sh?raw";
 import wranglerConfig from "../wrangler.example.jsonc?raw";
 import {
   CONTENT_SECURITY_POLICY,
@@ -136,6 +137,28 @@ describe("pages", () => {
     }
     expect(headersFile).toContain("X-Content-Type-Options: nosniff");
     expect(headersFile).toContain("Referrer-Policy: strict-origin-when-cross-origin");
+  });
+
+  it("serves install.sh as plain text straight from the asset store", () => {
+    const rule = headersFile
+      .split(/\n\s*\n/)
+      .find((block) => /^\/install\.sh$/m.test(block));
+    expect(rule).toBeDefined();
+    expect(rule).toContain("Content-Type: text/plain; charset=utf-8");
+    const match = /"run_worker_first":\s*(\[[^\]]*\])/.exec(wranglerConfig);
+    const routes = JSON.parse(match![1]!) as string[];
+    expect(routes).not.toContain("/install.sh");
+  });
+
+  it("keeps install.sh safe to pipe into sh", () => {
+    expect(installScript.startsWith("#!/bin/sh\n")).toBe(true);
+    // Everything runs from main, called on the last line: a cut-off download runs nothing.
+    expect(installScript.trimEnd().endsWith('main "$@"')).toBe(true);
+    const code = installScript
+      .split("\n")
+      .filter((line) => line.trim() !== "" && !line.trimStart().startsWith("#"));
+    // `sudo` appears only in what the script says, never as a command it runs
+    expect(code.some((line) => /\bsudo\b/.test(line) && !line.includes('say "'))).toBe(false);
   });
 
   it("runs the Worker first for every page, so every page gets the headers", () => {

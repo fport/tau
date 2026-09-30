@@ -21,3 +21,9 @@
 
 /brand/*
   Cache-Control: public, max-age=86400
+
+# The one-line installer (ADR 0014): plain text, so a browser shows it for reading and
+# `curl -fsSL .../install.sh | sh` runs it.
+/install.sh
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=300

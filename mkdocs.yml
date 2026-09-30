@@ -80,6 +80,8 @@ nav:
       - Run tau as a service: guides/hub-service.md
       - TauBar (macOS menu bar): guides/taubar.md
       - Move the hub to a Raspberry Pi: guides/raspberry-pi.md
+      - Join the tau network: guides/tau-network.md
+      - Run tau in Cloudflare (cloud mode): guides/cloud-mode.md
   - Reference:
       - CLI: reference/cli.md
       - Slash commands: reference/slash-commands.md
@@ -88,6 +90,7 @@ nav:
       - Components and plugins: reference/components.md
       - Tiers and approvals: reference/tiers.md
       - Sessions and compaction: reference/sessions.md
+      - tau network protocol and spine API: reference/tau-network.md
   - Architecture:
       - Decisions: ARCHITECTURE.md
       - Threat model: architecture/threat-model.md
@@ -98,6 +101,7 @@ nav:
           - 0004 Config roots and persona privacy: adr/0004-config-roots-and-persona-privacy.md
           - 0005 Components and entry-point groups: adr/0005-components-and-entry-point-groups.md
           - 0006 Private-first topology: adr/0006-private-first-topology.md
+          - 0007 Cloud mode and the tau network: adr/0007-cloud-mode-and-tau-network.md
   - Contributing:
       - Development setup: contributing/development.md
       - Write a plugin: contributing/plugins.md

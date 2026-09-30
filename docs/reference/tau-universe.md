@@ -243,6 +243,14 @@ A report works like this:
 - `tau net universe leave` also forgets the universe's keys the hub pinned at its first `visit` ([protocol](tau-network.md) §6.4, "Visits"): a tau that left takes no visits.
 - The counts come from the `counts` document of the network store: `{peer: {"in": n, "out": n}}`. It goes up by one for every `message` envelope handled from a contact or sent to one; the file backend stores it as `counts.json`, the spine backend as `net.counts`.
 
+**Hosted taus** ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §4, [protocol](tau-network.md) §8) join, report and leave like hubs, with the same signed requests and their own keys, from their `Tau` Durable Object in tau-host:
+
+- The universe is tau-host's `UNIVERSE` variable; left out, it is tau-host's own public host (on `tau.getporti.com` the universe and tau-host share it); `""` switches it off.
+- The owner's choice is explicit: the onboarding asks with nothing preselected, and the app has the toggle. The toggle joins and reports (or leaves) at once; the onboarding's choice is carried out by the object's alarm shortly after.
+- While the owner wants the tau listed, the alarm reports every hour: it reads `GET /api/universe` first, lists only accepted contacts that appear in it with the messages exchanged (in + out), and the public sub-taus with `web` and `starters`, at most 20 by name. A report answered `not_joined` joins again first. Links are always reported (there is no `universe_links` switch), `owner` and `about` come from the app's settings, and `ts` only grows per tau, with the `stale` retries of the CLI.
+- Leaving forgets the universe's pinned keys, like `tau net universe leave`, and a deleted account leaves first. A failure is kept as the listing's last status in the app and tried again an hour later.
+- A hosted tau on the universe's own host has its handle from its address (§2): it needs no claim.
+
 ## 4. The spine kit (`tau net spine`)
 
 `tau-net` ships the spine as a kit in `tau_net/spine_kit/`. `cloud/spine`'s `bun run kit` regenerates it from the source, and a test plus a CI job fail when it is stale. The kit holds:

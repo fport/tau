@@ -54,7 +54,7 @@ The two halves check each other in both directions:
   uv run python packages/tau-net/scripts/make_ts_vectors.py
   ```
 
-  It holds identities, base64url and address verdicts, envelopes built by `build_envelope`, tampered envelopes and universe requests. The script pins the ephemeral key and nonce, so the output is deterministic. `net/test/vectors.test.ts` verifies and opens every envelope, and rebuilds each one byte for byte. `packages/tau-net/tests/test_ts_vectors.py` fails when the file is stale.
+  It holds identities, base64url and address verdicts, envelopes built by `build_envelope`, tampered envelopes and universe requests, and in `hosted` the envelopes a hub and the universe write to a hosted tau at `host.example/@bob`, which tau-host's tests deliver (`cloud/host/test/interop.test.ts`). The script pins the ephemeral key and nonce, so the output is deterministic. `net/test/vectors.test.ts` verifies and opens every envelope, and rebuilds each one byte for byte. `packages/tau-net/tests/test_ts_vectors.py` fails when the file is stale.
 - **TypeScript → Python**: `net/ts-vectors.json` is written by `bun run vectors` from fresh random keys, with `host/@handle` addresses, `visit` envelopes and `claim` requests. tau-net's test verifies and opens them, and signs and seals the same bytes from the recorded inputs. `net/test/ts-vectors.test.ts` rebuilds the file from its inputs and fails when the TypeScript output has changed. When it does, run `bun run vectors` and commit the file.
 
 Every key in both files is a test-only key.

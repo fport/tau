@@ -16,6 +16,22 @@ envelope (:meth:`NetNode.handle`):
    contact becomes a network turn (:mod:`tau_net.turns`) and its reply goes back with the same
    ``thread``, ``reply_to`` = the incoming id and ``hops + 1``.
 
+**Sub-taus** (ADR 0012, issue 150). A ``message`` may carry ``sub``, a sub-tau name, in its
+sealed content. It always names a sub-tau of the tau that received the thread's first
+envelope: a thread alternates direction and every reply carries ``hops + 1``, so envelopes with
+an even ``hops`` come from the tau that started the thread and envelopes with an odd ``hops``
+from the tau it wrote to (:func:`sub_is_ours`). So:
+
+- an even ``hops`` with ``sub`` addresses one of *this* tau's sub-taus: a public one answers
+  with its own network turn (:mod:`tau_net.subs` finds it through the ``tau.subs`` entry point,
+  never by importing tau-sub); an unknown or private one is dropped and logged, like a
+  stranger, and never answered;
+- an odd ``hops`` with ``sub`` is the answer of the *other* tau's sub-tau: this tau's own
+  network turn handles it, and its reply carries the same ``sub`` back.
+
+Either way every reply carries the ``sub`` it answered, so a thread with ``/coach`` stays with
+``/coach``. A hub that predates the field ignores it and answers as the main tau.
+
 Any failure is logged and the envelope is dropped; the caller acknowledges it either way. A
 reply to a given envelope always gets the same id, so an envelope handled again after a crash
 cannot deliver a second reply (the recipient's spine answers ``duplicate``).
@@ -38,6 +54,7 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from tau_core import AgentEvent, Config, EventBus, SessionStore
@@ -51,7 +68,7 @@ from tau_net.contacts import (
     ContactError,
     clean_name,
 )
-from tau_net.encoding import b64u_encode, insecure_allowed, parse_address
+from tau_net.encoding import b64u_encode, insecure_allowed, parse_address, parse_target
 from tau_net.envelope import (
     MAX_MESSAGE_CHARS,
     BadSignature,
@@ -68,6 +85,7 @@ from tau_net.peers import CardError, Delivery, DeliveryError, PeerCard, PeerClie
 from tau_net.profile import NetProfile, check_profile_changes
 from tau_net.spine import SpineClient, Transport, Update
 from tau_net.store import FileBackend, NetStore, SpineBackend
+from tau_net.subs import PublicSub, SubDirectory, find_sub_directory, universe_subs
 from tau_net.turns import NetworkTurns
 from tau_net.universe import UniverseClient, UniverseError, listed_addresses, select_links
 
@@ -83,6 +101,7 @@ __all__ = [
     "open_node",
     "reply_id",
     "run_blocking",
+    "sub_is_ours",
 ]
 
 logger = logging.getLogger(__name__)
@@ -127,6 +146,16 @@ async def run_blocking[T](func: Callable[[], T]) -> T:
     return await future
 
 
+def sub_is_ours(hops: int) -> bool:
+    """Whether the ``sub`` of a message with ``hops`` names a sub-tau of its *recipient*.
+
+    ``sub`` always names a sub-tau of the tau that received the thread's first envelope
+    (``hops`` 0). Replies alternate direction and add one hop each, so an even ``hops`` travels
+    towards that tau (the ``sub`` is the recipient's) and an odd one comes from it (the
+    ``sub`` is the sender's, the sub-tau that wrote the answer)."""
+    return hops % 2 == 0
+
+
 def reply_id(own_address: str, sender: str, envelope_id: str) -> str:
     """The id of this tau's reply to ``envelope_id`` from ``sender``: always the same."""
     digest = hashlib.sha256(f"tau-net/1 reply|{own_address}|{sender}|{envelope_id}".encode())
@@ -158,6 +187,15 @@ class _TurnJob:
     hops: int
     text: str
     history: list[dict[str, Any]] = field(default_factory=list)
+    sub: PublicSub | None = None
+    """This tau's public sub-tau that answers, or ``None`` for the main tau."""
+    peer_sub: str | None = None
+    """The other tau's sub-tau that wrote the message, when it came from one."""
+
+    @property
+    def reply_sub(self) -> str | None:
+        """The ``sub`` the reply carries: the one the message carried."""
+        return self.sub.name if self.sub is not None else self.peer_sub
 
 
 @dataclass(frozen=True)
@@ -192,6 +230,7 @@ class NetNode:
         model_factory: ModelFactory | None = None,
         session_store: SessionStore | None = None,
         events: EventBus | None = None,
+        subs: SubDirectory | None | Callable[[Config], SubDirectory | None] = find_sub_directory,
     ):
         self.config = config
         self.settings = settings
@@ -209,6 +248,8 @@ class NetNode:
         """Agent events of the network (``contact_request``); subscribe to be told."""
         self._address: str | None = None
         self._universe: UniverseClient | None = None
+        self._subs = subs
+        self._subs_resolved = not callable(subs)
         self.stats = {"handled": 0, "dropped": 0, "replied": 0}
 
     def __repr__(self) -> str:
@@ -225,6 +266,36 @@ class NetNode:
         if self.spine is None:
             raise NetNotConfigured("TAU_SPINE_URL and TAU_SPINE_TOKEN are not both set in .env")
         return self.spine
+
+    def sub_directory(self) -> SubDirectory | None:
+        """This tau's sub-tau directory (the ``tau.subs`` entry point), found on first use;
+        ``None`` when tau-sub is not installed."""
+        if not self._subs_resolved:
+            factory = self._subs
+            assert callable(factory)
+            self._subs = factory(self.config)
+            self._subs_resolved = True
+        return self._subs  # type: ignore[return-value]
+
+    def public_sub(self, name: str) -> PublicSub | None:
+        """This tau's public sub-tau ``name``, or ``None`` (unknown, private, invalid, no
+        tau-sub, or files that would put ``user.md`` in front of a contact)."""
+        directory = self.sub_directory()
+        if directory is None:
+            return None
+        try:
+            sub = directory.public(name)
+        except Exception as exc:
+            logger.warning("net: could not look up the sub-tau /%s: %s", name, exc)
+            return None
+        if sub is None or getattr(sub, "name", None) != name:
+            return None
+        private = (self.config.persona_dir / "user.md").resolve()
+        files = [sub.persona_file, sub.public_note_file]
+        if any(path is not None and Path(path).resolve() == private for path in files):
+            logger.warning("net: /%s would show persona/user.md to a contact; refused", name)
+            return None
+        return sub
 
     def address(self, *, refresh: bool = False) -> str:
         """This tau's address, as its spine reports it (cached)."""
@@ -306,17 +377,19 @@ class NetNode:
             ts=self._now(),
         )
         delivery = self.peers.deliver(address, envelope)
-        logged = self.store.append_log(
-            {
-                "ts": payload.ts,
-                "direction": "out",
-                "address": address,
-                "kind": kind,
-                "id": payload.id,
-                "thread": payload.thread,
-                "text": content.get("text", ""),
-            }
-        )
+        entry = {
+            "ts": payload.ts,
+            "direction": "out",
+            "address": address,
+            "kind": kind,
+            "id": payload.id,
+            "thread": payload.thread,
+            "text": content.get("text", ""),
+        }
+        if content.get("sub"):
+            # An even hop goes to the other tau's sub-tau; an odd one is written by this tau's.
+            entry["peer_sub" if sub_is_ours(hops) else "own_sub"] = content["sub"]
+        logged = self.store.append_log(entry)
         if logged and kind == "message":
             self._count_message(address, "out")
         logger.info("net: sent %s %s to %s (%s)", kind, payload.id, address, delivery.status)
@@ -402,8 +475,12 @@ class NetNode:
         return self.contacts.remove(parse_address(address))
 
     def send(self, address: str, text: str) -> Delivery:
-        """The owner's own message to an accepted contact: a new thread, ``hops`` 0."""
-        address = parse_address(address)
+        """The owner's own message to an accepted contact: a new thread, ``hops`` 0.
+
+        ``address`` may be ``<address>/<name>``: the message is for that tau's public sub-tau
+        ``/name`` (it carries ``sub``). A sub-tau shares its owner's contact entry, so the
+        contact is ``<address>``."""
+        address, sub = parse_target(address)
         text = text.strip()
         if not text:
             raise NetError("the message is empty")
@@ -414,9 +491,10 @@ class NetNode:
             state = contact.state if contact is not None else "not a contact"
             raise ContactError(f"{address} is not an accepted contact ({state})")
         box_key = contact.box_key
+        content = {"text": text} if sub is None else {"text": text, "sub": sub}
         return self._deliver_or_raise(
             "the message was not delivered",
-            lambda: self._send(address, box_key, "message", {"text": text}),
+            lambda: self._send(address, box_key, "message", content),
         )
 
     # -- receiving -----------------------------------------------------------------------------
@@ -521,13 +599,30 @@ class NetNode:
             transition = self.contacts.on_message(sender)
             if transition.action != "turn" or transition.contact is None:
                 return _drop(transition.reason, sender, kind, id=payload.id), None
-            history = [e for e in self.store.log(address=sender) if e.get("id") != payload.id]
+            sub_name = content.get("sub")
+            public: PublicSub | None = None
+            own_sub = peer_sub = None
+            if sub_name is not None and sub_is_ours(payload.hops):
+                public = self.public_sub(sub_name)
+                if public is None:  # unknown or private: like a stranger, never answered
+                    reason = f"no public sub-tau /{sub_name}"
+                    return _drop(reason, sender, kind, id=payload.id), None
+                own_sub = entry["own_sub"] = sub_name
+            elif sub_name is not None:
+                peer_sub = entry["peer_sub"] = sub_name
+            # This tau's main tau and each of its sub-taus keep their own history with a contact.
+            history = [
+                e
+                for e in self.store.log(address=sender)
+                if e.get("id") != payload.id and e.get("own_sub") == own_sub
+            ]
             if self.store.append_log(entry):
                 self._count_message(sender, "in")
             job = self._turn_job(transition.contact, payload.id, payload.thread, payload.hops)
             if job is not None:
                 job.text = content["text"]
                 job.history = history
+                job.sub, job.peer_sub = public, peer_sub
                 return Handled("handled", sender, kind, payload.id), job
         self.store.mark_seen(sender, payload.id)
         return Handled("handled", sender, kind, payload.id), None
@@ -572,11 +667,14 @@ class NetNode:
                 if contact is None or contact.state != ACCEPTED or not contact.box_key:
                     logger.info("net: %s is no longer a contact; the reply is dropped", job.sender)
                 else:
+                    content = {"text": reply[:MAX_MESSAGE_CHARS]}
+                    if job.reply_sub is not None:
+                        content["sub"] = job.reply_sub
                     self._send(
                         job.sender,
                         contact.box_key,
                         "message",
-                        {"text": reply[:MAX_MESSAGE_CHARS]},
+                        content,
                         thread=job.thread,
                         reply_to=job.envelope_id,
                         hops=job.hops + 1,
@@ -597,7 +695,12 @@ class NetNode:
         handled, job = await blocking(lambda: self.receive(raw))
         if job is not None:
             reply = await self.turns.run(
-                address=job.sender, name=job.contact.name, text=job.text, history=job.history
+                address=job.sender,
+                name=job.contact.name,
+                text=job.text,
+                history=job.history,
+                sub=job.sub,
+                peer_sub=job.peer_sub,
             )
             handled = await blocking(lambda: self.finish(job, reply))
         self._count(handled)
@@ -610,7 +713,9 @@ class NetNode:
         else:
             self.stats["dropped"] += 1
             level = logging.INFO if handled.outcome == "duplicate" else logging.WARNING
-            if handled.reason in ("blocked", "not a contact"):
+            if handled.reason in ("blocked", "not a contact") or handled.reason.startswith(
+                "no public sub-tau"
+            ):
                 level = logging.INFO
             logger.log(
                 level,
@@ -709,16 +814,21 @@ class NetNode:
             about=profile.universe_about,
         )
 
+    def universe_subs(self) -> list[dict[str, str]]:
+        """The ``subs`` of a report: this tau's public sub-taus (``{"name", "about"}``, at
+        most 20). Private sub-taus never leave the hub."""
+        return universe_subs(self.sub_directory())
+
     def universe_report(
         self, profile: NetProfile | None = None, *, links: list[dict[str, Any]] | None = None
     ) -> dict[str, Any]:
-        """``POST /api/report`` with ``links`` (default: :meth:`universe_links`); the answer
-        has ``visible_links``."""
+        """``POST /api/report`` with ``links`` (default: :meth:`universe_links`) and the public
+        sub-taus; the answer has ``visible_links``."""
         client = self.universe()
         identity = self.require_identity()
         if links is None:
             links = self.universe_links(profile)
-        return client.report(identity, self.address(), links)
+        return client.report(identity, self.address(), links, subs=self.universe_subs())
 
     def universe_leave(self) -> dict[str, Any]:
         """``POST /api/leave``."""
@@ -772,13 +882,16 @@ def open_node(
     model_factory: ModelFactory | None = None,
     session_store: SessionStore | None = None,
     clock: Callable[[], float] = time.time,
+    subs: SubDirectory | None | Callable[[Config], SubDirectory | None] = find_sub_directory,
 ) -> NetNode:
     """A :class:`NetNode` for ``config``: settings from ``[component.net]``, variables from
     ``env`` (default: the process environment over ``<home>/.env``), the identity from
     ``TAU_NET_IDENTITY`` or the identity file, the spine from ``TAU_SPINE_URL`` and
     ``TAU_SPINE_TOKEN``. Missing pieces stay ``None`` (actions that need them raise
     :class:`NetNotConfigured`); a ``store = "spine"`` without a spine raises it at once.
-    ``NetConfigError`` and ``IdentityError`` report a broken configuration."""
+    ``NetConfigError`` and ``IdentityError`` report a broken configuration. ``subs`` is the
+    sub-tau directory, or a factory for it (default: the ``tau.subs`` entry point, on first
+    use)."""
     merged = net_env(config, env)
     settings = NetSettings.from_config(config)
     if identity is None:
@@ -804,4 +917,5 @@ def open_node(
         clock=clock,
         model_factory=model_factory,
         session_store=session_store,
+        subs=subs,
     )

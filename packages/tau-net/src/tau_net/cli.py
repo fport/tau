@@ -35,7 +35,7 @@ from tau_net import spine_strings as _spine_strings  # noqa: F401  (registers th
 from tau_net import strings as _strings  # noqa: F401  (registers the message keys)
 from tau_net.config import NetConfigError
 from tau_net.contacts import PENDING_IN, ContactError
-from tau_net.encoding import AddressError
+from tau_net.encoding import AddressError, parse_target
 from tau_net.envelope import EnvelopeError
 from tau_net.identity import (
     IDENTITY_ENV,
@@ -49,7 +49,7 @@ from tau_net.peers import CardError
 from tau_net.service import doctor_check
 from tau_net.spine import SpineError
 from tau_net.spine_kit import SpineKitError, deploy_project, init_project, is_workers_dev
-from tau_net.universe import MalformedRequest, UniverseError, tau_links
+from tau_net.universe import MalformedRequest, UniverseError, tau_links, tau_subs
 
 __all__ = ["net"]
 
@@ -399,21 +399,36 @@ def remove_command(ctx: click.Context, address: str) -> None:
 # -- messages ----------------------------------------------------------------------------------
 
 
+def _log_party(entry: dict[str, Any]) -> str:
+    """The other side of a log entry: ``address``, ``address/sub`` when the other tau's
+    sub-tau took part, and `` (/sub)`` when one of this tau's sub-taus did."""
+    address = str(entry.get("address"))
+    peer_sub, own_sub = entry.get("peer_sub"), entry.get("own_sub")
+    if isinstance(peer_sub, str) and peer_sub:
+        return f"{address}/{peer_sub}"
+    if isinstance(own_sub, str) and own_sub:
+        return f"{address} (/{own_sub})"
+    return address
+
+
 @net.command(
     name="send",
     help="Send a message in your name to an accepted contact (signed and end-to-end "
-    "encrypted, at most 8000 characters).",
+    "encrypted, at most 8000 characters). ADDRESS/NAME writes to that tau's public sub-tau "
+    "/NAME, e.g. tau.example.com/coach; its answer comes back from /NAME.",
     short_help="Send a message to a contact.",
 )
 @help_option()
-@click.argument("address")
+@click.argument("address", metavar="ADDRESS[/NAME]")
 @click.argument("text", nargs=-1, required=True)
 @click.pass_context
 def send_command(ctx: click.Context, address: str, text: tuple[str, ...]) -> None:
     config = _config(ctx)
     node = _node(ctx, config)
+    _, sub = _run(ctx, lambda: parse_target(address))
     delivery = _run(ctx, lambda: node.send(address, " ".join(text)))
-    _Say(config)("net.send.done", address=delivery.address, status=delivery.status)
+    target = f"{delivery.address}/{sub}" if sub else delivery.address
+    _Say(config)("net.send.done", address=target, status=delivery.status)
 
 
 @net.command(
@@ -444,7 +459,7 @@ def log_command(ctx: click.Context, address: str | None, limit: int) -> None:
         )
         arrow = "←" if entry.get("direction") == "in" else "→"
         text = " ".join(str(entry.get("text") or "").split())
-        line = f"{when}  {arrow} {entry.get('address')}  {entry.get('kind')}"
+        line = f"{when}  {arrow} {_log_party(entry)}  {entry.get('kind')}"
         click.echo(f"{line}  {text}" if text else line)
 
 
@@ -546,6 +561,9 @@ def universe_join_command(
         say("net.universe.reported", links=len(sent), visible=visible)
     else:
         say("net.universe.reported_off")
+    subs = node.universe_subs()
+    if subs:
+        say("net.universe.subs", subs=", ".join(f"/{sub['name']}" for sub in subs))
 
 
 @universe.command(
@@ -628,6 +646,8 @@ def universe_status_command(ctx: click.Context) -> None:
         say("net.universe.status.no_links")
     for peer, messages in links:
         say("net.universe.status.link", peer=peer, messages=messages)
+    for sub in tau_subs(entry):
+        say("net.universe.status.sub", name=sub["name"], about=sub["about"])
 
 
 # -- spine kit ---------------------------------------------------------------------------------

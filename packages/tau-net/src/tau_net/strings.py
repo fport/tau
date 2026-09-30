@@ -155,6 +155,10 @@ NET_MESSAGES: dict[str, dict[str, str]] = {
         "en": "Report sent without links (links are off).",
         "tr": "Rapor bağlantısız gönderildi (bağlantılar kapalı).",
     },
+    "net.universe.subs": {
+        "en": "Public sub-taus listed: {subs}.",
+        "tr": "Listelenen açık sub-tau'lar: {subs}.",
+    },
     "net.universe.left": {
         "en": "Left the universe {universe}: this tau and its links are no longer listed.",
         "tr": "{universe} evreninden ayrıldın: bu tau ve bağlantıları artık listelenmiyor.",
@@ -206,6 +210,10 @@ NET_MESSAGES: dict[str, dict[str, str]] = {
     "net.universe.status.link": {
         "en": "visible:  {peer}, messages: {messages}",
         "tr": "görünür:  {peer}, mesaj: {messages}",
+    },
+    "net.universe.status.sub": {
+        "en": "sub-tau:  /{name}: {about}",
+        "tr": "sub-tau:  /{name}: {about}",
     },
 }
 

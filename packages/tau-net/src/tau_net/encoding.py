@@ -6,6 +6,8 @@
   :data:`ADDRESS_PATTERN` exactly.
 - The **scheme** is ``https`` for every host. Only while developing, with
   ``TAU_NET_ALLOW_INSECURE=1`` on the hub, ``localhost`` and ``127.0.0.1`` use ``http``.
+- A **sub-tau name** matches :data:`SUB_NAME_PATTERN` (ADR 0012); a person reaches a public
+  sub-tau as ``<address>/<name>`` (:func:`parse_target`).
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ __all__ = [
     "ALLOW_INSECURE_ENV",
     "ID_PATTERN",
     "INSECURE_HOSTS",
+    "SUB_NAME_PATTERN",
     "AddressError",
     "EncodingError",
     "b64u_decode",
@@ -29,7 +32,9 @@ __all__ = [
     "insecure_allowed",
     "is_valid_address",
     "is_valid_id",
+    "is_valid_sub_name",
     "parse_address",
+    "parse_target",
     "validate_address",
 ]
 
@@ -44,6 +49,9 @@ ADDRESS_PATTERN = re.compile(
 
 ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,64}")
 """Envelope ids, used with ``fullmatch``."""
+
+SUB_NAME_PATTERN = re.compile(r"[a-z][a-z0-9-]{1,30}")
+"""A sub-tau name (ADR 0012: ``^[a-z][a-z0-9-]{1,30}$``), used with ``fullmatch``."""
 
 _B64U = re.compile(r"[A-Za-z0-9_-]*={0,2}")
 
@@ -96,6 +104,31 @@ def parse_address(text: str) -> str:
             value = value[len(prefix) :]
     value = value.rstrip("/")
     return validate_address(value)
+
+
+def is_valid_sub_name(value: object) -> bool:
+    return isinstance(value, str) and SUB_NAME_PATTERN.fullmatch(value) is not None
+
+
+def parse_target(text: str) -> tuple[str, str | None]:
+    """``(address, sub)`` from ``address`` or ``address/name`` typed by a person: the address
+    part is forgiven like :func:`parse_address` (``https://``, upper case), the name must be a
+    sub-tau name; :class:`AddressError` otherwise."""
+    value = (text or "").strip()
+    for prefix in ("https://", "http://"):
+        if value.lower().startswith(prefix):
+            value = value[len(prefix) :]
+    value = value.rstrip("/")
+    address, slash, sub = value.partition("/")
+    if not slash:
+        return parse_address(address), None
+    sub = sub.strip().lower()
+    if not is_valid_sub_name(sub):
+        raise AddressError(
+            f"not a sub-tau name: {sub!r} (2 to 31 lowercase letters, digits and '-', "
+            "starting with a letter)"
+        )
+    return parse_address(address), sub
 
 
 def is_valid_id(value: object) -> bool:

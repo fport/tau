@@ -31,6 +31,12 @@ ADR 0007.
   reduced agent: no tools, every approval refused, the prompt holds `persona.md` plus the
   owner's public note (`persona/net.md`) in place of `user.md`, and the incoming text is framed
   as untrusted. Replies stop at `[no reply]`, at `max_hops` and at an hourly cap per contact.
+- **Public sub-taus.** A contact writes to `<address>/<name>` to reach one of the owner's
+  public sub-taus (ADR 0012): the sealed `message` carries `sub`. The sub-tau answers with the
+  same narrow turn (its persona and its own public note, never `user.md`, no tools, the same
+  limits) in a session per contact and sub-tau; a private or unknown one is dropped unanswered.
+  tau-net finds sub-taus through the `tau.subs` entry point (tau-sub provides it) and never
+  imports tau-sub.
 - **The owner's tools.** `net_send` speaks for the owner to a third party, so it needs an
   approval every time, like a physical action.
 
@@ -135,6 +141,7 @@ tau net add tau.example.org --note "Alice would like to plan a hike."
 tau net contacts                  # contacts and pending requests
 tau net accept tau.example.org    # accept a request
 tau net send tau.example.org When are you free this week?
+tau net send tau.example.org/coach Plan my week, please.   # a public sub-tau of that tau
 tau net log --address tau.example.org -n 20
 tau net block tau.example.org     # nothing from it is read or answered
 tau net remove tau.example.org
@@ -195,6 +202,9 @@ A **universe** is an opt-in public directory of taus (ADR 0010; protocol in
   `message` envelopes exchanged with each (the `counts` document). A link shows only when both
   taus report each other. With links off (`--no-links` or `universe_links = false`) the list
   is empty. Message contents, notes and unlisted contacts never leave the hub.
+- A report also lists the tau's public sub-taus as `subs: [{name, about}]` (at most 20, the
+  about line cut to 200 characters; none when there are none). Private sub-taus never leave
+  the hub.
 - While the profile says joined, the `net` hub service reports once the card is published and
   then every `universe_report_minutes`, and joins again if the universe forgot the tau.
   Failures only show in `/status` as `net.universe` (`joined`, `last_report_at`, `last_error`,

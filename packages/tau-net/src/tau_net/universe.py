@@ -11,8 +11,9 @@ talks to it with signed requests whose wire body has the shape of an envelope::
 - **Payload**: compact UTF-8 JSON, at most 64 KiB, with ``v`` (1), ``kind`` (``join``,
   ``report`` or ``leave``), ``universe`` (the universe's host, so a request cannot be replayed
   to another universe), ``address`` and ``ts`` (Unix seconds), plus ``owner`` (0–60
-  characters) and ``about`` (0–200) for ``join`` and ``links`` (at most 500
-  ``{"peer", "messages"}``) for ``report``.
+  characters) and ``about`` (0–200) for ``join``, and ``links`` (at most 500
+  ``{"peer", "messages"}``) plus an optional ``subs`` (at most 20 public sub-taus,
+  ``{"name", "about"}``, issue 150) for ``report``.
 
 :class:`UniverseClient` builds, signs and posts them, reads the public snapshot and one tau's
 entry, and maps the universe's error codes to :class:`UniverseError`. The scheme is the one of
@@ -39,6 +40,7 @@ from tau_net.encoding import (
     b64u_encode,
     base_url,
     is_valid_address,
+    is_valid_sub_name,
     validate_address,
 )
 from tau_net.envelope import BadSignature
@@ -52,6 +54,7 @@ __all__ = [
     "MAX_LINKS",
     "MAX_PAYLOAD_BYTES",
     "MAX_REQUEST_BYTES",
+    "MAX_SUBS",
     "OWNER_LIMIT",
     "STALE_RETRIES",
     "UNIVERSE_CONTEXT",
@@ -70,6 +73,7 @@ __all__ = [
     "select_links",
     "sign_request",
     "tau_links",
+    "tau_subs",
     "verify_request",
 ]
 
@@ -83,6 +87,8 @@ MAX_PAYLOAD_BYTES = 64 * 1024
 OWNER_LIMIT = 60
 ABOUT_LIMIT = 200
 MAX_LINKS = 500
+MAX_SUBS = 20
+"""A report lists at most this many public sub-taus."""
 DEFAULT_TIMEOUT = 15.0
 STALE_RETRIES = 3
 """A client runs at most a few seconds ahead of its clock (join, report and a re-join within
@@ -182,7 +188,25 @@ def check_payload(data: Any) -> dict[str, Any]:
             messages = link.get("messages")
             if not _is_int(messages) or messages < 0:
                 raise MalformedRequest("payload.links has an item without messages >= 0")
+        _check_subs(data.get("subs"))
     return data
+
+
+def _check_subs(subs: Any) -> None:
+    """The optional ``subs`` of a report: at most :data:`MAX_SUBS` ``{"name", "about"}``."""
+    if subs is None:
+        return
+    if not isinstance(subs, list) or len(subs) > MAX_SUBS:
+        raise MalformedRequest(f"payload.subs must be a list of at most {MAX_SUBS} items")
+    for sub in subs:
+        if not isinstance(sub, dict) or not is_valid_sub_name(sub.get("name")):
+            raise MalformedRequest("payload.subs has an item without a sub-tau name")
+        about = sub.get("about")
+        if not isinstance(about, str) or len(about) > ABOUT_LIMIT:
+            raise MalformedRequest(
+                f"payload.subs has an item whose about is not a string of 0-{ABOUT_LIMIT} "
+                "characters"
+            )
 
 
 def make_payload(
@@ -194,9 +218,11 @@ def make_payload(
     owner: str = "",
     about: str = "",
     links: Iterable[Mapping[str, Any]] = (),
+    subs: Iterable[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """The payload object of ``kind`` with the field order of §1, checked like a universe
-    checks it (:class:`MalformedRequest` otherwise)."""
+    checks it (:class:`MalformedRequest` otherwise). A report carries ``subs`` only when
+    there is at least one, so a tau without public sub-taus sends what it always sent."""
     payload: dict[str, Any] = {
         "v": 1,
         "kind": kind,
@@ -209,6 +235,9 @@ def make_payload(
         payload["about"] = about
     elif kind == "report":
         payload["links"] = [{"peer": link["peer"], "messages": link["messages"]} for link in links]
+        listed = [{"name": sub["name"], "about": sub["about"]} for sub in subs]
+        if listed:
+            payload["subs"] = listed
     return check_payload(payload)
 
 
@@ -363,6 +392,22 @@ def tau_links(entry: Mapping[str, Any], address: str) -> list[tuple[str, int]]:
     return sorted(links, key=lambda link: (-link[1], link[0]))
 
 
+def tau_subs(entry: Mapping[str, Any]) -> list[dict[str, str]]:
+    """The public sub-taus (``{"name", "about"}``) in a ``GET /api/taus/<address>`` answer, at
+    the top level or under ``tau``; ``[]`` from a universe that predates them."""
+    raw = entry.get("subs")
+    if raw is None and isinstance(entry.get("tau"), Mapping):
+        raw = entry["tau"].get("subs")
+    subs: list[dict[str, str]] = []
+    for item in raw if isinstance(raw, list) else []:
+        if isinstance(item, Mapping) and is_valid_sub_name(item.get("name")):
+            about = item.get("about")
+            subs.append(
+                {"name": str(item["name"]), "about": about if isinstance(about, str) else ""}
+            )
+    return subs
+
+
 # -- the client --------------------------------------------------------------------------------
 
 
@@ -469,18 +514,32 @@ class UniverseClient:
         """``POST /api/join``; the answer has ``url``, the tau's universe page."""
         return self._signed(identity, "join", address, owner=owner, about=about)
 
-    def report(self, identity: Identity, address: str, links: Iterable[Mapping[str, Any]]) -> dict:
+    def report(
+        self,
+        identity: Identity,
+        address: str,
+        links: Iterable[Mapping[str, Any]],
+        *,
+        subs: Iterable[Mapping[str, Any]] = (),
+    ) -> dict:
         """``POST /api/report`` with ``links`` (at most 500, trimmed from the end until the
-        body fits); the answer has ``visible_links``."""
+        body fits) and the public sub-taus ``subs`` (at most 20); the answer has
+        ``visible_links``."""
         links = [dict(link) for link in links][:MAX_LINKS]
+        subs = [dict(sub) for sub in subs][:MAX_SUBS]
         while links:
             payload = make_payload(
-                "report", universe=self.host, address=address, ts=int(self.clock()), links=links
+                "report",
+                universe=self.host,
+                address=address,
+                ts=int(self.clock()),
+                links=links,
+                subs=subs,
             )
             if len(build_request(identity, payload).to_bytes()) <= MAX_REQUEST_BYTES:
                 break
             links = links[: len(links) * 9 // 10]
-        return self._signed(identity, "report", address, links=links)
+        return self._signed(identity, "report", address, links=links, subs=subs)
 
     def leave(self, identity: Identity, address: str) -> dict:
         """``POST /api/leave``: the universe forgets the tau and its reported links."""

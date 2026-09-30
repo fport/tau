@@ -40,6 +40,7 @@ from tau_net.encoding import (
     b64u_encode,
     is_valid_address,
     is_valid_id,
+    is_valid_sub_name,
 )
 from tau_net.identity import Identity
 
@@ -374,7 +375,9 @@ def parse_content(kind: str, content: dict[str, Any]) -> dict[str, str]:
     """The sealed plaintext of ``kind`` with the right types, else :class:`BoxError`.
 
     ``contact_request`` → ``{"name", "text"}``, ``contact_accept`` → ``{"name"}``,
-    ``message`` → ``{"text"}`` (at most :data:`MAX_MESSAGE_CHARS`).
+    ``message`` → ``{"text"}`` (at most :data:`MAX_MESSAGE_CHARS`) plus ``"sub"`` when the
+    message carries a sub-tau name (issue 150; absent or ``null`` means none). Other keys are
+    ignored, which is what lets a hub that predates a field read a message that has it.
     """
     fields = {
         "contact_request": ("name", "text"),
@@ -391,6 +394,11 @@ def parse_content(kind: str, content: dict[str, Any]) -> dict[str, str]:
         parsed[name] = value
     if kind == "message" and len(parsed["text"]) > MAX_MESSAGE_CHARS:
         raise BoxError(f"message text is longer than {MAX_MESSAGE_CHARS} characters")
+    if kind == "message" and content.get("sub") is not None:
+        sub = content["sub"]
+        if not is_valid_sub_name(sub):
+            raise BoxError("message sub is not a sub-tau name")
+        parsed["sub"] = sub
     return parsed
 
 

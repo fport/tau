@@ -898,6 +898,7 @@ class FakeUniverse:
             "joined_at": entry["joined_at"],
             "last_seen": entry["last_seen"],
             "online": now - entry["last_seen"] <= ONLINE_SECONDS,
+            "subs": [dict(sub) for sub in entry.get("subs", [])],
         }
 
     def _one(self, address: str) -> Response:
@@ -984,6 +985,7 @@ class FakeUniverse:
                     "about": _plain(payload["about"]),
                     "joined_at": previous["joined_at"] if previous else ts,
                     "last_seen": ts,
+                    "subs": previous.get("subs", []) if previous else [],
                 }
                 url = f"https://{self.address}/universe#{address}"
                 return _json(200, {"ok": True, "url": url})
@@ -995,6 +997,9 @@ class FakeUniverse:
                     for link in payload["links"]
                     if link["peer"] in self.taus and link["peer"] != address
                 }
+                # A report replaces the public sub-taus; one without `subs` lists none.
+                subs = {sub["name"]: _plain(sub["about"]) for sub in payload.get("subs") or []}
+                entry["subs"] = [{"name": name, "about": subs[name]} for name in sorted(subs)]
                 visible = sum(1 for link in self.links() if address in (link["a"], link["b"]))
                 return _json(200, {"ok": True, "visible_links": visible})
             del self.taus[address]

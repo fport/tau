@@ -703,7 +703,7 @@ def enrolled_factor(tmp_path: Path) -> FactorGuard:
         enrollment="E1",
         created="2026-09-30T12:00:00+00:00",
         model_sha="0" * 64,
-        calibration=Calibration(1, 0.4, 0.4),
+        calibration=Calibration(1, 30.0, 30.0),
         domain_state=FINGERPRINTS,
     )
     save_enrollment(data_dir / "guard", template, keys.key)  # type: ignore[arg-type]

@@ -1,6 +1,6 @@
 # 067 · Opt-in model failover through Strands `ModelRouter`
 
-Status: needs-triage
+Status: done
 Type: AFK
 Layer: L2 · Models
 Packages: tau-core
@@ -14,9 +14,9 @@ Evaluate the `ModelRouter` API as shipped in the pinned strands-agents version, 
 
 ## Acceptance criteria
 
-- [ ] Decision recorded (ADR or comment): adopt behind opt-in config, or defer with the reason
-- [ ] If adopted: `failover` per role is config only, off by default, tested with `FakeModel`s that raise; budgets and spend reporting count the fallback calls
-- [ ] No model id in code; the proxy path (010) is unchanged when `failover` is unset
+- [x] Decision recorded (ADR or comment): adopt behind opt-in config, or defer with the reason
+- ~~If adopted: `failover` per role is config only, off by default, tested with `FakeModel`s that raise; budgets and spend reporting count the fallback calls~~ not adopted
+- [x] No model id in code; the proxy path (010) is unchanged when `failover` is unset
 
 ## Blocked by
 
@@ -26,3 +26,12 @@ Evaluate the `ModelRouter` API as shipped in the pinned strands-agents version, 
 ## Comments
 
 - 2026-09-29: filed as a follow-up of the Strands-correctness pass (064); `ModelRouter` is provisional in strands-agents 1.57.1, so it was kept out of that wave.
+- 2026-09-30: deferred, recorded as decision 7 of [ADR 0009](../../docs/adr/0009-anthropic-only-models-behind-the-proxy.md).
+  - Why not adopt it: `ModelRouter` is still marked provisional in strands-agents 1.57.1, and it has three problems:
+    - `agent.model` stays the first candidate, so `/status`, compaction and the SDK's proactive compression reason about the wrong model.
+    - A candidate that fails mid-stream leaves duplicate text in the channels.
+    - It advances on any failure the retry strategy declines.
+  - Why nothing needs it now:
+    - The proxy already does `brain`/`local` → `fast`.
+    - A spent budget degrades in `ProxyModel` before anything streams (011).
+  - Revisit when the API is final and threads the chosen model through the agent, or when direct mode needs failover.

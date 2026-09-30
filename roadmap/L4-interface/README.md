@@ -23,5 +23,6 @@
 | 088 | [Opening TauBar again does not show its window](088-taubar-reopen-shows-no-window.md) | AFK | – |
 | 089 | [A nicer TauBar menu and settings window](089-taubar-ui-polish.md) | AFK | – |
 | 091 | [Two TauBar copies can run at once](091-taubar-single-instance.md) | AFK | – |
+| 130 | [TauBar's login tests trip the "no personal paths" repo rule](130-taubar-test-paths-trip-the-repo-rule.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py --layer L4`

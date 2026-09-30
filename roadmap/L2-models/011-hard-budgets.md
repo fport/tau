@@ -1,6 +1,6 @@
 # 011 · Hard budgets per role with graceful degradation
 
-Status: ready-for-agent
+Status: done
 Type: AFK
 Layer: L2 · Models
 Packages: tau-core, infra/litellm
@@ -12,10 +12,10 @@ Each role key gets a hard spend cap (e.g. `fast` $1/day, `brain` $15/month). Whe
 
 ## Acceptance criteria
 
-- [ ] Exceeding a cap blocks further calls on that key (verified with a tiny test cap)
-- [ ] The user gets a clear message in the UI language, never a stack trace
-- [ ] Spend per role is visible in the dynamic context and via the control API
-- [ ] Cap values change without code changes
+- [x] Exceeding a cap blocks further calls on that key (verified with a tiny test cap)
+- [x] The user gets a clear message in the UI language, never a stack trace
+- [x] Spend per role is visible in the dynamic context and via the control API
+- [x] Cap values change without code changes
 
 ## Blocked by
 
@@ -23,3 +23,19 @@ Each role key gets a hard spend cap (e.g. `fast` $1/day, `brain` $15/month). Whe
 - [010 · LiteLLM proxy with `brain` and `fast` roles](010-litellm-proxy-roles.md)
 
 ## Comments
+- 2026-09-30: done (commit b21cb34, [ADR 0009](../../docs/adr/0009-anthropic-only-models-behind-the-proxy.md)).
+  - Budgets: `[models.roles.<role>.budget]` holds `usd`, `period` (LiteLLM `budget_duration`, resets in UTC) and an optional `degrade_to`. The config rejects a degrade to the role itself, to an unknown role, or in a loop. `tau proxy keys` writes the cap to the role's key; `tau doctor` warns when a key's cap drifts from `tau.toml` or a role has no budget.
+  - Defaults: brain $15 per 1mo (degrades to fast), fast $1 per 1d, local $0.50 per 1d.
+  - Spent budget:
+    - `ProxyModel` recognises the proxy's `429 budget_exceeded` before Strands would retry it as throttling.
+    - With `degrade_to`, it streams the call from that role and the channel shows "The brain budget is spent until …; fast answered instead."
+    - Otherwise it raises `BudgetExhausted`, which every channel shows as one sentence in the UI language with the reset time in Europe/Istanbul. `tau_core.models.ModelNotice` is the base class; the agent unwraps `EventLoopException`.
+  - Spend:
+    - `tau_core.spend.SpendTracker` reads each proxy role's key with the key itself (`GET /key/info`, no master key), caches it for 60 s, never blocks a model call, and takes updates from the `x-litellm-key-spend` header.
+    - It shows under `## Now` as `- Budget: …` (renamed from `Budget today`; the value is the current period's spend, which for a daily cap is today's), as a `Budget:` line in `/status`, and in the hub's `GET /spend` and `/status` `spend` key (`spend` hub service).
+    - `tau proxy spend` prints it too.
+  - Verified live:
+    - A throwaway key capped at $0.000001 was refused on its next call, with the Turkish and the English notice.
+    - With `degrade_to = "fast"`, fast answered and the notice said so. With fast spent too, the combined notice appeared.
+    - Changing `usd` in `tau.toml` and running `tau proxy keys` updated the key; `tau doctor` had flagged the drift first.
+    - `GET /spend` on a hub on a spare port listed all three roles.

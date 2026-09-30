@@ -6,9 +6,11 @@ The universe is the Cloudflare Worker behind tau's public site. It serves:
 - **how it works** at `/how-it-works`: the whole picture for a newcomer, from the brain at home to taus talking to each other, sub-taus, the universe and what an attacker could get;
 - **the universe page** at `/universe`: a live map of the taus whose owners chose to list them, and the ones that talk to each other;
 - **the same three pages in Turkish** under `/tr/` (see [Two languages](#two-languages));
-- **the directory API** at `/api/*`: taus join, report and leave with requests signed by their own key, and the page reads a public snapshot.
+- **person and sub-tau pages** ([ADR 0013](../../docs/adr/0013-hosted-taus-handles-and-public-pages.md) §6): `/@<handle>` for a tau with a handle, `/<slug>` and `/@<handle>/<name>` for a public sub-tau, and `/claim`, where an owner binds a GitHub handle to their tau; each also under `/tr/`;
+- **the directory API** at `/api/*`: taus join, report, leave and claim with requests signed by their own key, and the pages read a public snapshot and the person and sub-tau data;
+- **tau-host's paths**, when a tau-host sits behind the universe (the optional `HOST` service binding): the owner's app at `/app`, sign-in at `/auth/*`, tau-host's API at `/api/host/*`, and every hosted tau's card and inbox under `/@<handle>/`.
 
-The contract, with every status code, JSON shape and limit, is [the tau universe reference](../../docs/reference/tau-universe.md) (§1–§2). The decision behind it is [ADR 0010](../../docs/adr/0010-public-site-and-tau-universe.md). Addresses, cards and the http/https rule come from [the tau network reference](../../docs/reference/tau-network.md).
+The contract, with every status code, JSON shape and limit, is [the tau universe reference](../../docs/reference/tau-universe.md) (§1–§2). The decisions behind it are [ADR 0010](../../docs/adr/0010-public-site-and-tau-universe.md) and [ADR 0013](../../docs/adr/0013-hosted-taus-handles-and-public-pages.md). Addresses, cards and the http/https rule come from [the tau network reference](../../docs/reference/tau-network.md).
 
 The universe is independent of any tau's spine: it only reads public cards, and holds nothing private.
 
@@ -22,9 +24,10 @@ The directory keeps, per listed tau:
 - an optional owner display name (0–60 characters) and one line about it (0–200), with control characters stripped;
 - when it joined and when it last reported;
 - the links it reported last: peers that were listed at that moment, each with a message count;
-- the public sub-taus it reported last (at most 20, each a `/name` and one line about it). A hub reports only the sub-taus its owner made public; private ones never leave the hub.
+- the public sub-taus it reported last (at most 20, each a `/name`, one line about it, whether visitors can talk to it on its page, up to four suggested first messages, and when it was first seen). A hub reports only the sub-taus its owner made public; private ones never leave the hub;
+- its handle, when the owner claimed one with a GitHub sign-in (or the tau is hosted on the universe's own host), and the GitHub account id behind it, which is never shown.
 
-It also keeps, per address, the `ts` of the last accepted request (the replay guard) and one row per accepted request of the last hour (the rate limit).
+It also keeps the short pages `/<name>` (each held by the first tau that reported a public sub-tau with that name, until the tau leaves or expires), and per address the `ts` of the last accepted request (the replay guard), the nonces of accepted claims for an hour, and one row per accepted request of the last hour (the rate limit).
 
 The public snapshot shows a link between two taus only when **both** report each other, with the smaller of the two counts. It never shows one-sided claims, unlisted contacts or anything a tau did not send. A tau that leaves is gone at once; its own reports go with it, and a link to it stops being mutual. A tau that stops reporting for 30 days is dropped by the hourly cron.
 
@@ -33,13 +36,19 @@ The operator of a universe can see one-sided claims between listed taus before t
 ## Layout
 
 ```text
-src/index.ts       fetch router (API, the pages, 404) and the hourly cron
-src/api.ts         /api/*: the POST checks in the reference's order, the snapshot, one tau
-src/directory.ts   Directory, the Durable Object with its own SQLite: taus, reports, clocks, hits
-src/snapshot.ts    the pure snapshot builder: the link rule, online, stats
+src/index.ts       fetch router (tau-host's paths, API, the pages, 404) and the hourly cron
+src/api.ts         /api/*: the POST checks in the reference's order, the snapshot, one tau,
+                   a person, a sub-tau
+src/directory.ts   Directory, the Durable Object with its own SQLite: taus, reports, slugs,
+                   clocks, nonces, hits
+src/snapshot.ts    the pure snapshot builder (the link rule, online, stats) and the person and
+                   sub-tau views
+src/routes.ts      the route table: tau-host's paths, the template pages, the reserved names
+src/host.ts        the optional HOST binding to tau-host: forwarding and whoami
 src/card.ts        fetching a tau's card (https; http only for loopback in development)
 src/protocol.ts    payload validation and text sanitising
-src/pages.ts       the page list, the language choice, the 404 pages and the security headers
+src/pages.ts       the page list, the language choice, the templates, the 404 pages and the
+                   security headers
 src/crypto.ts      base64url and Ed25519 (copied from cloud/spine; the context differs)
 src/address.ts     addresses and the http/https rule (copied from cloud/spine)
 src/http.ts        small HTTP helpers (a verbatim copy of cloud/spine's)
@@ -56,8 +65,10 @@ scripts/           configure.mjs, build.mjs, sync-brand.mjs, dev-taus.mjs
 
 ### Design notes
 
-- **Storage: one SQLite Durable Object, no D1.** Many Cloudflare accounts on the Workers Free plan are at their D1 database limit; SQLite-backed Durable Objects are available on the Free plan and need no provisioning or ids. The single `Directory` instance (`idFromName("universe")`) owns every table and creates them on first use (a `schema_version` table tracks the version). The Worker does the request parsing, card fetch and signature check, then calls the object's RPC methods (`lastTs`, `join`, `report`, `leave`, `snapshot`, `tau`, `prune`). The replay, joined and rate-limit checks and the effect run in one synchronous transaction, so two copies of a request can never both pass.
+- **Storage: one SQLite Durable Object, no D1.** Many Cloudflare accounts on the Workers Free plan are at their D1 database limit; SQLite-backed Durable Objects are available on the Free plan and need no provisioning or ids. The single `Directory` instance (`idFromName("universe")`) owns every table and creates them on first use (a `schema_version` table tracks the version). The Worker does the request parsing, card fetch and signature check (and for a claim asks tau-host who is signed in), then calls the object's RPC methods (`lastTs`, `nonceUsed`, `join`, `report`, `leave`, `claim`, `snapshot`, `tau`, `person`, `sub`, `pageExists`, `prune`). The replay, joined and rate-limit checks, the handle rules and the effect run in one synchronous transaction, so two copies of a request can never both pass. Schema version 3 added handles, slugs and claim nonces; an older database is upgraded in place on first use.
 - **No card cache.** A tau sends about one request an hour (its report), so a one-hour cache like the spine's would almost never hit. Without one, a new key or card name counts from the next request. The clock and replay checks run before the fetch, so a replayed request never triggers one.
+- **Person and sub-tau pages.** They are templates (`public/person.html`, `public/sub.html`, `public/claim.html` and their Turkish twins). `run_worker_first` sends `/@*`, `/tr/@*` and `/claim` to the Worker; a sub-tau's short page `/<slug>` reaches it because no file matches. The Worker looks the handle or slug up in the directory and answers the template, or the 404 page when there is no such person or sub-tau; the page's script then reads `/api/people/<handle>` or `/api/subs/…`. Slugs are global and first come, and every name the site uses is reserved (`RESERVED_NAMES` in `src/routes.ts`; a test checks it covers every top-level entry of `public/`).
+- **tau-host behind the universe.** With the `HOST` service binding (`pnpm run configure --host-service tau-host`), the universe stays the front door of `tau.<domain>`: it forwards tau-host's paths unchanged and asks tau-host who is signed in when a handle is claimed. A hosted tau's card is fetched through the binding too, because a Worker cannot fetch its own host. Without the binding, those paths are 404, claims are 501 and `pnpm dev` serves everything else.
 - **Pages and headers.** `run_worker_first` sends `/api/*` and every page in both languages to the Worker, which adds the security headers of §2 (CSP `default-src 'self'` and friends, `nosniff`, `Referrer-Policy`). Every other file is served straight from the asset store with `public/_headers`. Unknown paths reach the Worker, which answers `public/404.html` (or `public/tr/404.html` under `/tr/`) with status 404. There is no inline script or style anywhere (a test checks it); the graph code and the explainer's diagrams (inline SVG styled from `site.css`) need none, and no third-party script or font is loaded.
 - **The page.** It reads `/api/universe` once. Taus with the same owner share a hull, links are dashed and wider for more messages, online taus glow. A tau's public sub-taus are small nodes circling it inside the hull, labelled `/name`, and chips in its cards. `#<address>` pins a tau and `#<address>/<name>` one of its sub-taus; the list under the graph is the keyboard path to every tau. Under `prefers-reduced-motion` the layout is computed up front and nothing moves. The layout data (orbits, labels, search, the `#` target) is the pure `client/layout.ts`, which the tests check.
 
@@ -114,7 +125,7 @@ Other commands:
 
 | Command | What it does |
 |---|---|
-| `pnpm test` | the Vitest suite in the Workers runtime: API, Directory (and its schema upgrade), snapshot builder, the page's layout data, pages in both languages, the language choice, the script's strings, brand copies |
+| `pnpm test` | the Vitest suite in the Workers runtime: API, Directory (and its schema upgrades), snapshot builder, handles, claims and slugs with a fake tau-host, the page routes and forwarding, the page's layout data, pages in both languages, the language choice, the script's strings, brand copies |
 | `pnpm typecheck` | `tsc --noEmit` for the Worker and for the page script |
 | `pnpm run build` | bundles `client/universe.ts` into `public/app/universe.js` and copies the web font (`wrangler dev` and `wrangler deploy` run it too) |
 | `pnpm run sync-brand` | copies the brand files from `docs/brand/` into `public/brand/`; `--check` only reports differences |
@@ -158,8 +169,9 @@ pnpm run deploy                              # builds the page script and deploy
 
 - `--route` adds `"routes": [{ "pattern": "tau.example.com", "custom_domain": true }]` and sets `UNIVERSE` to the same host. The zone must be on your Cloudflare account; Wrangler creates the DNS record and the certificate.
 - Without `--route`, the universe answers at `tau-universe.<your-subdomain>.workers.dev` and names itself by the request host.
+- `--host-service NAME` adds the service binding `"services": [{ "binding": "HOST", "service": NAME }]` to a tau-host Worker in the same account (ADR 0013 §6). Deploy tau-host first, because a service binding needs the Worker it names. The universe then forwards tau-host's paths and can bind handles. `--no-host-service` drops a binding that `--force` would carry over.
 - Hubs point at a universe with `[component.net] universe = "<host>"`; `tau.getporti.com` is the default.
-- `wrangler.jsonc` is gitignored; keep it. Re-running `pnpm run configure --force` carries its routes and `UNIVERSE` over.
+- `wrangler.jsonc` is gitignored; keep it. Re-running `pnpm run configure --force` carries its routes, `UNIVERSE` and `HOST` binding over.
 
 Check a deployment:
 

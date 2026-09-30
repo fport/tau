@@ -1,14 +1,20 @@
 #!/usr/bin/env node
-// pnpm run configure [--route HOST] [--force]
+// pnpm run configure [--route HOST] [--host-service NAME | --no-host-service] [--force]
 //
 // Writes the gitignored `wrangler.jsonc` from wrangler.example.jsonc, and `.dev.vars` from
 // .dev.vars.example when it is missing.
 //
-// --route HOST   serve the universe on a custom domain: adds
-//                  "routes": [{ "pattern": HOST, "custom_domain": true }]
-//                and sets UNIVERSE to HOST (the zone must be on your Cloudflare account)
-// --force        replace an existing wrangler.jsonc; its routes and UNIVERSE are carried
-//                over unless --route is given, and the old file is kept as wrangler.jsonc.bak
+// --route HOST          serve the universe on a custom domain: adds
+//                         "routes": [{ "pattern": HOST, "custom_domain": true }]
+//                       and sets UNIVERSE to HOST (the zone must be on your Cloudflare account)
+// --host-service NAME   put tau-host behind the universe (ADR 0013 §6): adds the service
+//                       binding "services": [{ "binding": "HOST", "service": NAME }], so the
+//                       universe forwards /app, /auth/*, /api/host/* and hosted taus' cards
+//                       and inboxes to the Worker NAME and can bind handles
+// --no-host-service     drop a HOST binding carried over by --force
+// --force               replace an existing wrangler.jsonc; its routes, UNIVERSE and HOST
+//                       binding are carried over unless given again, and the old file is
+//                       kept as wrangler.jsonc.bak
 
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -18,9 +24,13 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const target = join(root, "wrangler.jsonc");
 const devVars = join(root, ".dev.vars");
 const HOST = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+const WORKER_NAME = /^[a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?$/;
 
-const usage = "Usage: pnpm run configure [--route HOST] [--force]";
+const usage =
+  "Usage: pnpm run configure [--route HOST] [--host-service NAME | --no-host-service] [--force]";
 let route = null;
+/** The tau-host Worker's name; null keeps what --force carries over, "" drops it. */
+let hostService = null;
 let force = false;
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
@@ -30,6 +40,14 @@ for (let i = 0; i < argv.length; i++) {
     process.exit(0);
   } else if (arg === "--force") {
     force = true;
+  } else if (arg === "--no-host-service") {
+    hostService = "";
+  } else if (arg === "--host-service" || arg.startsWith("--host-service=")) {
+    hostService = arg === "--host-service" ? argv[++i] : arg.slice("--host-service=".length);
+    if (!hostService || !WORKER_NAME.test(hostService)) {
+      console.error(`--host-service needs a Worker name (e.g. tau-host).\n${usage}`);
+      process.exit(2);
+    }
   } else if (arg === "--route" || arg.startsWith("--route=")) {
     route = arg === "--route" ? argv[++i] : arg.slice("--route=".length);
     if (!route) {
@@ -83,13 +101,19 @@ function parseJsonc(text) {
   return JSON.parse(out.replace(/,(\s*[}\]])/g, "$1"));
 }
 
-/** Puts routes and UNIVERSE into the example text. */
-function apply(text, routes, universe) {
+/** Puts routes, UNIVERSE and the service bindings into the example text. */
+function apply(text, routes, universe, services) {
   if (universe) text = text.replace('"UNIVERSE": ""', `"UNIVERSE": ${JSON.stringify(universe)}`);
   if (routes.length > 0) {
     text = text.replace(
       '  "triggers": {',
       `  "routes": ${JSON.stringify(routes)},\n  "triggers": {`,
+    );
+  }
+  if (services.length > 0) {
+    text = text.replace(
+      '  "triggers": {',
+      `  "services": ${JSON.stringify(services)},\n  "triggers": {`,
     );
   }
   parseJsonc(text); // Still valid.
@@ -108,19 +132,28 @@ if (existsSync(target) && !force) {
 } else {
   let routes = [];
   let universe = "";
-  if (route !== null) {
-    routes = [{ pattern: route, custom_domain: true }];
-    universe = route;
-  } else if (existsSync(target)) {
+  let services = [];
+  let old = null;
+  if (existsSync(target)) {
     try {
-      const old = parseJsonc(readFileSync(target, "utf8"));
-      if (Array.isArray(old.routes)) routes = old.routes;
-      universe = old.vars?.UNIVERSE ?? "";
+      old = parseJsonc(readFileSync(target, "utf8"));
     } catch (err) {
       console.error(
         `Could not read the old wrangler.jsonc (${err.message}); nothing carried over.`,
       );
     }
+  }
+  if (route !== null) {
+    routes = [{ pattern: route, custom_domain: true }];
+    universe = route;
+  } else if (old !== null) {
+    if (Array.isArray(old.routes)) routes = old.routes;
+    universe = old.vars?.UNIVERSE ?? "";
+  }
+  if (hostService) {
+    services = [{ binding: "HOST", service: hostService }];
+  } else if (hostService === null && old !== null && Array.isArray(old.services)) {
+    services = old.services.filter((service) => service?.binding === "HOST");
   }
   if (existsSync(target)) {
     copyFileSync(target, `${target}.bak`);
@@ -128,10 +161,15 @@ if (existsSync(target) && !force) {
   }
   writeFileSync(
     target,
-    apply(readFileSync(join(root, "wrangler.example.jsonc"), "utf8"), routes, universe),
+    apply(readFileSync(join(root, "wrangler.example.jsonc"), "utf8"), routes, universe, services),
   );
   const where = universe ? ` for ${universe}` : " (the universe is the request host)";
   console.log(`Wrote wrangler.jsonc from wrangler.example.jsonc${where}.`);
+  if (services.length > 0) {
+    console.log(
+      `tau-host is the Worker "${services[0].service}" (HOST binding); deploy it before the universe.`,
+    );
+  }
 }
 
 // 2. .dev.vars

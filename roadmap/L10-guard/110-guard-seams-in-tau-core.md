@@ -1,6 +1,6 @@
 # 110 · Guard seams in tau-core: `HubGuard`, admission, tier-2 step-up and lock checks, protected control routes with a response proof
 
-Status: ready-for-agent
+Status: done
 Type: AFK
 Layer: L10 · Guard
 Packages: tau-core, tau-net
@@ -173,25 +173,25 @@ It never approves anything.
 
 ## Acceptance criteria
 
-- [ ] `tau_core` exports `Guard`, `GuardStatus`, `GuardVerdict`, `GuardProgress`, `GuardTurn`, `Admission`, `GuardLocked`, `LockedGuard`, `HubGuard`, `resolve_guard` and the reason lists exactly as above; `tau_core.hub` exports `HubClient`, `HubUnavailable` and `HubError`
-- [ ] The guard never yields `APPROVED`: a parametrized test over approver decisions × step-up results (`True`, `False`, a non-bool truthy value, raising, `CancelledError`) × admissions shows the gate approves only when the approver said `APPROVED` and `step_up` returned exactly `True`; `step_up` is never called for tier 0/1, exempt calls or non-approved decisions
-- [ ] A refused turn appends nothing to the history or the session store, makes no model call (`FakeModel` records no call), yields a `Notice` and `TurnEnd("locked")` and emits one `guard` agent event; the next admitted turn needs no repair turn
-- [ ] An unknown admission reason is shown as `error` (no `KeyError`); a guard whose `admit` raises refuses with `error`
-- [ ] `STOP_REASONS` contains `locked`; the `TurnEnd` docstring, `test_stream_contract.py` and the README stop-reason table agree
-- [ ] `TauAgent.ask()` raises `GuardLocked`; `compaction.summarize` raises `GuardLocked` before any model call when the guard refuses
-- [ ] With a guard that refuses, a tier-1 or tier-2 call is refused without an approver prompt and its `tool_call` event says `locked`; a failed step-up records `step_up: failed` and returns the fixed refusal note to the model
-- [ ] Against a real `ControlApi` on port 0, a protected route answers 403 on a missing or empty token file, a missing or wrong `X-Tau-Token`, any `Origin` header and a `text/plain` POST; `application/json; charset=utf-8` is accepted; `/health` and `/status` answer without a token; `GET /spend` needs it
-- [ ] The token file is created only after the hub lock is held, with mode 0600, and `hub_dir` is 0700; a second hub that loses the lock race leaves the live token alone; stop removes the file only when it still holds its own token
-- [ ] A protected answer without a valid proof is `unavailable`: a fake listener on port 0 that answers `{"state": "unlocked"}` without a proof makes `HubGuard.admit` refuse
-- [ ] `HubGuard` refuses (`unavailable`) on `off`, 404, 403 twice, 5xx, a timeout, bad JSON, a missing proof and an enrollment mismatch (parametrized against a fake hub), and admits only `unlocked` with a proof and the matching enrollment
-- [ ] Cancelling a `HubGuard.unlock` task posts `/guard/cancel` and re-raises; `on_progress` is called once per `seq` change
-- [ ] `resolve_guard` returns `None` with neither marker nor `enabled = true`; `LockedGuard` for `enabled = "true"`, `enabled = 1`, an unknown key such as `enable = true` and a non-darwin platform; `HubGuard` with only the marker, including when `enabled = false`; the same object for the same `(home, data_dir)`
-- [ ] Repo-rule tests: `guard=None` appears in `packages/*/src` only in `tau_core/channels/telegram.py` and `tau_net/turns.py`; every `TierGate(` call in `packages/*/src` passes `guard=`
-- [ ] With the marker present, Telegram turns and network turns still run (they build with `guard=None`)
-- [ ] Every verdict reason, admission reason, progress step and lock trigger has `en` and `tr` messages (test); `GUARD_MESSAGES` does not collide with `MESSAGES`; `i18n.py` is unchanged
-- [ ] `FakeGuard` replays scripted progress, never approves, and `test_no_auto_approve` still passes
-- [ ] `tau doctor` shows the guard check, and `/status` shows the guard line only when a guard is active
-- [ ] With no guard configured the whole suite passes unchanged; `uv run pytest -q`, `ruff check` and `ruff format --check` are green
+- [x] `tau_core` exports `Guard`, `GuardStatus`, `GuardVerdict`, `GuardProgress`, `GuardTurn`, `Admission`, `GuardLocked`, `LockedGuard`, `HubGuard`, `resolve_guard` and the reason lists exactly as above; `tau_core.hub` exports `HubClient`, `HubUnavailable` and `HubError`
+- [x] The guard never yields `APPROVED`: a parametrized test over approver decisions × step-up results (`True`, `False`, a non-bool truthy value, raising, `CancelledError`) × admissions shows the gate approves only when the approver said `APPROVED` and `step_up` returned exactly `True`; `step_up` is never called for tier 0/1, exempt calls or non-approved decisions
+- [x] A refused turn appends nothing to the history or the session store, makes no model call (`FakeModel` records no call), yields a `Notice` and `TurnEnd("locked")` and emits one `guard` agent event; the next admitted turn needs no repair turn
+- [x] An unknown admission reason is shown as `error` (no `KeyError`); a guard whose `admit` raises refuses with `error`
+- [x] `STOP_REASONS` contains `locked`; the `TurnEnd` docstring, `test_stream_contract.py` and the README stop-reason table agree
+- [x] `TauAgent.ask()` raises `GuardLocked`; `compaction.summarize` raises `GuardLocked` before any model call when the guard refuses
+- [x] With a guard that refuses, a tier-1 or tier-2 call is refused without an approver prompt and its `tool_call` event says `locked`; a failed step-up records `step_up: failed` and returns the fixed refusal note to the model
+- [x] Against a real `ControlApi` on port 0, a protected route answers 403 on a missing or empty token file, a missing or wrong `X-Tau-Token`, any `Origin` header and a `text/plain` POST; `application/json; charset=utf-8` is accepted; `/health` and `/status` answer without a token; `GET /spend` needs it
+- [x] The token file is created only after the hub lock is held, with mode 0600, and `hub_dir` is 0700; a second hub that loses the lock race leaves the live token alone; stop removes the file only when it still holds its own token
+- [x] A protected answer without a valid proof is `unavailable`: a fake listener on port 0 that answers `{"state": "unlocked"}` without a proof makes `HubGuard.admit` refuse
+- [x] `HubGuard` refuses (`unavailable`) on `off`, 404, 403 twice, 5xx, a timeout, bad JSON, a missing proof and an enrollment mismatch (parametrized against a fake hub), and admits only `unlocked` with a proof and the matching enrollment
+- [x] Cancelling a `HubGuard.unlock` task posts `/guard/cancel` and re-raises; `on_progress` is called once per `seq` change
+- [x] `resolve_guard` returns `None` with neither marker nor `enabled = true`; `LockedGuard` for `enabled = "true"`, `enabled = 1`, an unknown key such as `enable = true` and a non-darwin platform; `HubGuard` with only the marker, including when `enabled = false`; the same object for the same `(home, data_dir)`
+- [x] Repo-rule tests: `guard=None` appears in `packages/*/src` only in `tau_core/channels/telegram.py` and `tau_net/turns.py`; every `TierGate(` call in `packages/*/src` passes `guard=`
+- [x] With the marker present, Telegram turns and network turns still run (they build with `guard=None`)
+- [x] Every verdict reason, admission reason, progress step and lock trigger has `en` and `tr` messages (test); `GUARD_MESSAGES` does not collide with `MESSAGES`; `i18n.py` is unchanged
+- [x] `FakeGuard` replays scripted progress, never approves, and `test_no_auto_approve` still passes
+- [x] `tau doctor` shows the guard check, and `/status` shows the guard line only when a guard is active
+- [x] With no guard configured the whole suite passes unchanged; `uv run pytest -q`, `ruff check` and `ruff format --check` are green
 
 ## Blocked by
 
@@ -200,3 +200,11 @@ None - can start immediately.
 ## Comments
 
 - 2026-09-30: filed with ADR 0008.
+- 2026-09-30: done on `feat/guard` (commits 2546b78, 1d753c3, da844cf, 785f557, 5602b80, 83b229e, 5787f69). `tau_core.guard` holds the protocol, `LockedGuard`, `HubGuard`, `resolve_guard`, `admit_turn` and the messages; `tau_core.hub.client.HubClient` calls protected routes; `ControlApi` writes `hub_dir/control.token` in `start()` before the port opens and signs protected answers. Notes for the next issues:
+  - **Route contract details for 111.** `GET /guard/status` returns `attempt` as `{id, kind, step, seq, deadline, hint, done, ok, reason, method, retry_after}`; `HubGuard` follows the attempt by `id` (from the `202 {attempt, seq}` of `/guard/verify`), reports progress once per `attempt.seq`, and accepts a result only with `ok: true`, `reason: "match"`, `state: "unlocked"` and the local enrollment. A refused `/guard/verify` may answer 4xx with `{reason, retry_after}` (for example `cooldown`). An admit answer with `state: "off"` refuses. `GUARD_CONFIG_KEYS` lists the `[component.guard]` keys through 114; an issue that adds a knob adds it there, or the guard locks for good.
+  - **The refused turn's `guard` event** is recorded in the session's event log like every agent event (no prompt text); no message, title or repair is written.
+  - **`summarize`** raises `CompactionLocked`, a `CompactionError` and a `GuardLocked`, so the channels' existing `/compact` error paths report it.
+  - **`HubUnavailable.reason`** (`no_hub`, `timeout`, `bad_proof`, `bad_response`) becomes `GuardStatus.reason`; `guard_status_line` turns `no_hub` into the start-the-hub hint. `HubGuard.watch` waits up to 2 s before returning an `unavailable` status, so a watcher never spins.
+  - **Doctor** lines stay English like the rest of `tau doctor`; `guard_doctor_check(..., language=)` can localize them later.
+  - Only the `hub/logs` directory mode (0700) changed here; 0600 log files are left to 111.
+  - The suite's only failure is the pre-existing `test_no_personal_paths_in_tracked_files` (issue 130).

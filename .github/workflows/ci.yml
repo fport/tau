@@ -24,6 +24,49 @@ jobs:
       - run: uv build --package tau-core
       - run: uv build --package tau-tui
 
+  desktop:
+    # apps/tau-desktop (ADR 0008): vitest, the type-checked page build, and the Rust tests and
+    # lints. Ubuntu is enough: Tauri compiles against WebKitGTK there, and the PTY tests only need
+    # /bin/sh, stty, dd and od. The macOS bundle (`pnpm tauri build`) is built by hand.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/tau-desktop
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the WebKitGTK build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          package_json_file: apps/tau-desktop/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/tau-desktop/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      # tsc (the type check) and vite; it also makes the dist/ that Tauri's build script checks.
+      - run: pnpm build
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/tau-desktop/src-tauri/target/
+          key: desktop-cargo-${{ runner.os }}-${{ hashFiles('apps/tau-desktop/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-cargo-${{ runner.os }}-
+      - run: cargo test --locked
+        working-directory: apps/tau-desktop/src-tauri
+      - run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: apps/tau-desktop/src-tauri
+
   docs:
     runs-on: ubuntu-latest
     steps:

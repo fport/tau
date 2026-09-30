@@ -118,13 +118,24 @@ fn resolve_dirs(app: &AppHandle) -> Result<Dirs, Box<dyn std::error::Error>> {
     })
 }
 
-/// Push the current state to the menu and the settings window.
+/// Push the current state to the menu and the settings window. Callable from any thread.
+///
+/// The menu is changed on the main thread only. Off it, every Tauri menu call posts a task to
+/// the event loop and blocks until the main thread has run it, so the hub thread (which
+/// refreshes every second) must never make one: holding any lock across such a call deadlocks
+/// against a main-thread handler waiting for that lock, and the event loop freezes for good.
+/// `run_on_main_thread` never blocks: on the main thread it runs the update in place
+/// (tauri-runtime-wry's `send_user_message`), elsewhere it queues it for the event loop.
 pub fn refresh(app: &AppHandle) {
     let snapshot = app.state::<AppCore>().snapshot();
-    if let Some(menu) = app.try_state::<TrayMenu<Wry>>() {
-        menu.update(app, &snapshot);
-    }
     let _ = app.emit(SNAPSHOT_EVENT, &snapshot);
+    let handle = app.clone();
+    // An error means the event loop is gone (TauBar is quitting): nothing to show then.
+    let _ = app.run_on_main_thread(move || {
+        if let Some(menu) = handle.try_state::<TrayMenu<Wry>>() {
+            menu.update(&handle, &snapshot);
+        }
+    });
 }
 
 /// Turn "Run the hub" on or off, off the main thread (it can wait on the hub supervisor), and

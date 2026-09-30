@@ -7,6 +7,15 @@
 //! The one exception is the guard section under the hub lines (the guard line, "Lock now",
 //! "Grant camera access…"): its items exist only while the hub reports a guard, so they are
 //! inserted and removed when [`GuardItems`] changes.
+//!
+//! [`TrayMenu::update`] runs on the main thread only ([`crate::refresh`] posts it there). Off
+//! the main thread every Tauri menu call posts a task to the event loop and blocks until the
+//! main thread has run it (`run_item_main_thread!` in tauri's `menu` module), so a lock held
+//! across such a call from another thread deadlocks against a main-thread handler that waits
+//! for the same lock: the event loop, the menu and hub supervision would freeze for good. On
+//! the main thread the calls run in place, and the guard section's own lock is still never
+//! held across one. No unit test can reach a Tauri menu; [`apply_guard_items`] holds the logic
+//! the tests do reach.
 
 use crate::core::Snapshot;
 use crate::hub::guard::GuardMenu;
@@ -21,7 +30,7 @@ use tauri::{AppHandle, Runtime};
 
 pub const TRAY_ID: &str = "taubar";
 /// The guard section starts right after the three hub lines.
-const GUARD_POSITION: usize = 3;
+pub const GUARD_POSITION: usize = 3;
 
 pub mod ids {
     pub const HUB_RUN: &str = "hub.run";
@@ -45,6 +54,18 @@ pub struct GuardItems {
     pub camera: bool,
 }
 
+/// One item of the guard section, in menu order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GuardSlot {
+    Line,
+    Lock,
+    Camera,
+}
+
+impl GuardSlot {
+    pub const ALL: [GuardSlot; 3] = [GuardSlot::Line, GuardSlot::Lock, GuardSlot::Camera];
+}
+
 impl GuardItems {
     /// The items for `menu`: none without a guard line.
     pub fn wanted(menu: &GuardMenu) -> Self {
@@ -55,6 +76,54 @@ impl GuardItems {
             camera: shown && menu.grant_camera,
         }
     }
+
+    pub fn has(&self, slot: GuardSlot) -> bool {
+        match slot {
+            GuardSlot::Line => self.line,
+            GuardSlot::Lock => self.lock,
+            GuardSlot::Camera => self.camera,
+        }
+    }
+
+    fn set(&mut self, slot: GuardSlot, held: bool) {
+        match slot {
+            GuardSlot::Line => self.line = held,
+            GuardSlot::Lock => self.lock = held,
+            GuardSlot::Camera => self.camera = held,
+        }
+    }
+}
+
+/// Change the guard section from `shown` to `wanted`: take every shown item out, then put the
+/// wanted ones back in menu order from [`GUARD_POSITION`]. `remove` and `insert` do the menu
+/// calls and say whether they worked. Returns what the menu holds afterwards, so an item whose
+/// removal or insertion failed is tried again at the next update instead of being recorded as
+/// done. An item that could not be removed keeps its place, and the others are put around it.
+pub fn apply_guard_items(
+    shown: GuardItems,
+    wanted: GuardItems,
+    mut remove: impl FnMut(GuardSlot) -> bool,
+    mut insert: impl FnMut(GuardSlot, usize) -> bool,
+) -> GuardItems {
+    let mut held = shown;
+    if shown == wanted {
+        return held;
+    }
+    for slot in GuardSlot::ALL {
+        if held.has(slot) && remove(slot) {
+            held.set(slot, false);
+        }
+    }
+    let mut position = GUARD_POSITION;
+    for slot in GuardSlot::ALL {
+        if held.has(slot) {
+            position += 1;
+        } else if wanted.has(slot) && insert(slot, position) {
+            held.set(slot, true);
+            position += 1;
+        }
+    }
+    held
 }
 
 pub struct TrayMenu<R: Runtime> {
@@ -63,6 +132,8 @@ pub struct TrayMenu<R: Runtime> {
     guard_line: MenuItem<R>,
     guard_lock: MenuItem<R>,
     guard_camera: MenuItem<R>,
+    /// What the guard section holds. Only the main thread touches it (see the module
+    /// docs); the `Mutex` is there because the tray menu is shared app state (`Sync`).
     guard_shown: Mutex<GuardItems>,
     hub_run: CheckMenuItem<R>,
     sleep_header: MenuItem<R>,
@@ -164,6 +235,7 @@ impl<R: Runtime> TrayMenu<R> {
         })
     }
 
+    /// Show `snapshot`. Call it on the main thread only: [`crate::refresh`] posts it there.
     pub fn update(&self, app: &AppHandle<R>, snapshot: &Snapshot) {
         for (item, line) in self.hub_lines.iter().zip(&snapshot.hub.lines) {
             let _ = item.set_text(line);
@@ -197,33 +269,29 @@ impl<R: Runtime> TrayMenu<R> {
 
 impl<R: Runtime> TrayMenu<R> {
     /// Show the guard section `menu` asks for: set the line, and insert or remove items only
-    /// when the set changes.
+    /// when the set changes. The lock on `guard_shown` is taken twice, briefly, and never held
+    /// across a menu call (see the module docs).
     fn update_guard(&self, menu: &GuardMenu) {
         if let Some(line) = &menu.line {
             let _ = self.guard_line.set_text(line);
         }
         let wanted = GuardItems::wanted(menu);
-        let mut shown = self.guard_shown.lock().unwrap_or_else(|e| e.into_inner());
-        if *shown == wanted {
+        let shown = *self.guard_shown.lock().unwrap_or_else(|e| e.into_inner());
+        if shown == wanted {
             return;
         }
-        let items = [
-            (shown.line, wanted.line, &self.guard_line),
-            (shown.lock, wanted.lock, &self.guard_lock),
-            (shown.camera, wanted.camera, &self.guard_camera),
-        ];
-        for (was, _, item) in items {
-            if was {
-                let _ = self.menu.remove(item);
-            }
-        }
-        let mut position = GUARD_POSITION;
-        for (_, want, item) in items {
-            if want && self.menu.insert(item, position).is_ok() {
-                position += 1;
-            }
-        }
-        *shown = wanted;
+        let item = |slot: GuardSlot| match slot {
+            GuardSlot::Line => &self.guard_line,
+            GuardSlot::Lock => &self.guard_lock,
+            GuardSlot::Camera => &self.guard_camera,
+        };
+        let held = apply_guard_items(
+            shown,
+            wanted,
+            |slot| self.menu.remove(item(slot)).is_ok(),
+            |slot, position| self.menu.insert(item(slot), position).is_ok(),
+        );
+        *self.guard_shown.lock().unwrap_or_else(|e| e.into_inner()) = held;
     }
 }
 
@@ -378,6 +446,195 @@ mod tests {
                 camera: true
             }
         );
+    }
+
+    /// A stand-in for the tray menu: the items in order, with removals and insertions that
+    /// fail on request, driven the way `update_guard` drives the real one.
+    struct FakeMenu {
+        items: Vec<String>,
+        fail_remove: Vec<GuardSlot>,
+        fail_insert: Vec<GuardSlot>,
+    }
+
+    impl FakeMenu {
+        fn new() -> Self {
+            Self {
+                items: [
+                    "hub.status",
+                    "hub.detail",
+                    "hub.crash",
+                    "hub.run",
+                    "hub.log",
+                ]
+                .map(String::from)
+                .to_vec(),
+                fail_remove: vec![],
+                fail_insert: vec![],
+            }
+        }
+
+        fn name(slot: GuardSlot) -> String {
+            format!("{slot:?}")
+        }
+
+        fn apply(&mut self, shown: GuardItems, wanted: GuardItems) -> GuardItems {
+            let menu = std::cell::RefCell::new(self);
+            apply_guard_items(
+                shown,
+                wanted,
+                |slot| {
+                    let mut menu = menu.borrow_mut();
+                    if menu.fail_remove.contains(&slot) {
+                        return false;
+                    }
+                    let name = Self::name(slot);
+                    let before = menu.items.len();
+                    menu.items.retain(|item| *item != name);
+                    menu.items.len() < before
+                },
+                |slot, position| {
+                    let mut menu = menu.borrow_mut();
+                    if menu.fail_insert.contains(&slot) || position > menu.items.len() {
+                        return false;
+                    }
+                    let name = Self::name(slot);
+                    assert!(!menu.items.contains(&name), "{name} inserted twice");
+                    menu.items.insert(position, name);
+                    true
+                },
+            )
+        }
+
+        fn guard_section(&self) -> Vec<&str> {
+            self.items[GUARD_POSITION..]
+                .iter()
+                .map(String::as_str)
+                .take_while(|item| !item.starts_with("hub."))
+                .collect()
+        }
+    }
+
+    const ALL: GuardItems = GuardItems {
+        line: true,
+        lock: true,
+        camera: true,
+    };
+    const LINE_LOCK: GuardItems = GuardItems {
+        line: true,
+        lock: true,
+        camera: false,
+    };
+    const NONE: GuardItems = GuardItems {
+        line: false,
+        lock: false,
+        camera: false,
+    };
+
+    #[test]
+    fn the_guard_section_is_inserted_in_order_and_removed() {
+        let mut menu = FakeMenu::new();
+        let held = menu.apply(NONE, LINE_LOCK);
+        assert_eq!(held, LINE_LOCK);
+        assert_eq!(menu.guard_section(), ["Line", "Lock"]);
+        assert_eq!(
+            menu.items[5], "hub.run",
+            "the hub switch follows the section"
+        );
+        let held = menu.apply(held, ALL);
+        assert_eq!(held, ALL);
+        assert_eq!(menu.guard_section(), ["Line", "Lock", "Camera"]);
+        let held = menu.apply(held, NONE);
+        assert_eq!(held, NONE);
+        assert_eq!(menu.items, FakeMenu::new().items);
+        // Nothing to change, no menu call.
+        assert_eq!(
+            apply_guard_items(ALL, ALL, |_| panic!("remove"), |_, _| panic!("insert")),
+            ALL
+        );
+    }
+
+    #[test]
+    fn a_failed_insert_is_not_recorded_and_is_tried_again() {
+        let mut menu = FakeMenu::new();
+        menu.fail_insert = vec![GuardSlot::Lock];
+        let held = menu.apply(NONE, ALL);
+        assert_eq!(
+            held,
+            GuardItems {
+                line: true,
+                lock: false,
+                camera: true
+            },
+            "only what went in is recorded"
+        );
+        assert_eq!(menu.guard_section(), ["Line", "Camera"]);
+        menu.fail_insert.clear();
+        let held = menu.apply(held, ALL);
+        assert_eq!(held, ALL);
+        assert_eq!(menu.guard_section(), ["Line", "Lock", "Camera"]);
+    }
+
+    #[test]
+    fn a_failed_removal_keeps_its_place_and_is_tried_again() {
+        let mut menu = FakeMenu::new();
+        let held = menu.apply(NONE, ALL);
+        menu.fail_remove = vec![GuardSlot::Lock];
+        let held = menu.apply(held, NONE);
+        assert_eq!(
+            held,
+            GuardItems {
+                line: false,
+                lock: true,
+                camera: false
+            }
+        );
+        assert_eq!(menu.guard_section(), ["Lock"]);
+        // The next wanted set is put around the item that stayed, in menu order.
+        let held = menu.apply(held, ALL);
+        assert_eq!(held, ALL);
+        assert_eq!(menu.guard_section(), ["Line", "Lock", "Camera"]);
+        menu.fail_remove.clear();
+        assert_eq!(menu.apply(held, NONE), NONE);
+        assert_eq!(menu.items, FakeMenu::new().items);
+    }
+
+    /// The menu is changed on the main thread only: `refresh` posts `TrayMenu::update` with a
+    /// non-blocking `run_on_main_thread`, and nothing else calls it. A menu call from another
+    /// thread blocks until the main thread runs it, so a lock held across one can deadlock the
+    /// event loop (see the module docs); a unit test cannot reach a Tauri menu, so this pins
+    /// the structure instead.
+    #[test]
+    fn the_menu_is_only_updated_on_the_main_thread() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let lib = std::fs::read_to_string(src.join("lib.rs")).unwrap();
+        let start = lib.find("pub fn refresh(").expect("refresh in lib.rs");
+        let end = start + lib[start..].find("\n}\n").expect("end of refresh");
+        let refresh = &lib[start..end];
+        let posted = refresh
+            .find("run_on_main_thread(move ||")
+            .expect("refresh posts the menu update to the main thread");
+        let update = refresh.find(".update(").expect("refresh updates the menu");
+        assert!(posted < update, "the update runs inside the posted task");
+        let mut calls = 0;
+        let mut stack = vec![src];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    // Split so this test's own source does not count.
+                    calls += text.matches(concat!("menu", ".update(")).count();
+                    assert!(
+                        !text.contains("update_guard(") || path.ends_with("tray.rs"),
+                        "{} calls update_guard",
+                        path.display()
+                    );
+                }
+            }
+        }
+        assert_eq!(calls, 1, "TrayMenu::update is called from refresh only");
     }
 
     #[test]

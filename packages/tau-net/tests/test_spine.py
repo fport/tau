@@ -156,8 +156,12 @@ def test_the_long_poll_waits_and_wakes_on_arrival() -> None:
 # -- the inbox of the fake spine ---------------------------------------------------------------
 
 
-def inbox(network: FakeNetwork, body: bytes) -> tuple[int, dict]:
-    status, _, data = network("POST", "https://bob.example/net/inbox", {}, body, 5)
+JSON_HEADERS = {"Content-Type": "application/json"}
+
+
+def inbox(network: FakeNetwork, body: bytes, headers: dict | None = None) -> tuple[int, dict]:
+    sent = JSON_HEADERS if headers is None else headers
+    status, _, data = network("POST", "https://bob.example/net/inbox", sent, body, 5)
     return status, json.loads(data)
 
 
@@ -191,6 +195,13 @@ def test_inbox_accepts_then_reports_duplicates() -> None:
 
 def test_inbox_checks_in_order() -> None:
     network, alice, bob, bob_spine = setup_pair()
+    for headers in ({}, {"Content-Type": "text/plain"}):
+        status, data = inbox(network, envelope_bytes(alice, bob), headers)
+        assert (status, data) == (415, {"error": "unsupported_media_type"})
+    assert inbox(network, b"x" * 70_000, {})[0] == 415
+    typed = {"content-type": "application/json; charset=utf-8"}
+    assert inbox(network, envelope_bytes(alice, bob), typed)[0] == 202
+    bob_spine.mailbox.clear()
     assert inbox(network, b"x" * 70_000)[0] == 413
     status, data = inbox(network, b'{"payload": "AAAA"}')
     assert status == 400 and data["error"] == "bad_request"

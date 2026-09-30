@@ -1,12 +1,16 @@
 """Public test helpers: an offline spine, an offline universe and an offline network.
 
 - :class:`FakeSpine` implements the spine of protocol v1 in memory: the public endpoints of §4
-  (``GET /``, ``GET /.well-known/tau.json``, ``POST /net/inbox`` with every check, in order) and
+  (``GET /``, ``GET /.well-known/tau.json``, ``POST /net/inbox`` with every check, in order,
+  except the Rate Limiting bindings of the real Worker) and
   the hub API of §5 (``/hub/health``, ``/hub/card``, ``/hub/updates`` with a real long poll,
   ``/hub/ack``), plus the cloud-mode ``/hub/state/<key>`` and ``/hub/files`` routes, which
   answer ``404 cloud_mode_off`` unless ``mode="cloud"``. Other routes (the ``/hub/sessions``
   API, ``/hub/brain``) can be added with :meth:`FakeSpine.route`. A ``FakeSpine`` is itself a
   :class:`~tau_net.spine.Transport` that only reaches its own address.
+- :class:`FakeDoorbell` is an offline :class:`~tau_net.doorbell.Doorbell` (``GET /hub/ws``):
+  tests ring it, drop it or refuse the next connects; one made by :meth:`FakeSpine.doorbell`
+  rings whenever that spine queues an envelope, like the real Mailbox.
 - :class:`FakeUniverse` implements a universe (``docs/reference/tau-universe.md`` §2) in
   memory: signed ``join``/``report``/``leave`` with every check in order (the card is fetched
   over its network), the mutual-link rule and the public snapshot. It records every request
@@ -32,6 +36,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from tau_net.doorbell import DoorbellClosed
 from tau_net.encoding import (
     INSECURE_HOSTS,
     EncodingError,
@@ -54,6 +59,7 @@ from tau_net.universe import MAX_REQUEST_BYTES, MalformedRequest, parse_request,
 __all__ = [
     "DEFAULT_HUB_TOKEN",
     "FILE_NAMES",
+    "FakeDoorbell",
     "FakeNetwork",
     "FakeRequest",
     "FakeSpine",
@@ -134,6 +140,85 @@ class _Route:
     auth: bool = True
 
 
+class FakeDoorbell:
+    """An offline :class:`~tau_net.doorbell.Doorbell`, thread-safe.
+
+    :meth:`connect` succeeds (and queues the hello) unless :meth:`refuse` scripted an error;
+    :meth:`wait` returns ``True`` for pending rings (several coalesce into one), raises
+    :class:`~tau_net.doorbell.DoorbellClosed` after :meth:`drop`, and otherwise returns
+    ``False`` after its timeout, or after ``max_wait`` seconds when that is shorter (so tests
+    reach the safety fetch at once). Inspect :attr:`connects`, :attr:`closes` and :attr:`waits`
+    (the timeouts asked for)."""
+
+    def __init__(self, *, max_wait: float | None = None):
+        self.max_wait = max_wait
+        self.connects = 0
+        self.closes = 0
+        self.waits: list[float] = []
+        self.connected = False
+        self._pending = 0
+        self._dropped = False
+        self._refusals: list[BaseException] = []
+        self._cond = threading.Condition()
+
+    def __repr__(self) -> str:
+        return f"FakeDoorbell(connected={self.connected}, connects={self.connects})"
+
+    # -- scripting -------------------------------------------------------------------------------
+
+    def refuse(self, *errors: BaseException) -> None:
+        """The next :meth:`connect` calls raise these, in order (for example
+        ``DoorbellUnsupported("426", 426)`` for a spine without the doorbell)."""
+        with self._cond:
+            self._refusals.extend(errors)
+
+    def ring(self) -> None:
+        """Announce mail, as the spine does after queuing an envelope."""
+        with self._cond:
+            if self.connected:
+                self._pending += 1
+                self._cond.notify_all()
+
+    def drop(self) -> None:
+        """Lose the connection: the current or next :meth:`wait` raises ``DoorbellClosed``."""
+        with self._cond:
+            if self.connected:
+                self._dropped = True
+                self._cond.notify_all()
+
+    # -- the Doorbell protocol -------------------------------------------------------------------
+
+    def connect(self) -> None:
+        with self._cond:
+            if self._refusals:
+                raise self._refusals.pop(0)
+            self.connects += 1
+            self.connected, self._dropped, self._pending = True, False, 1  # the hello
+            self._cond.notify_all()
+
+    def wait(self, timeout: float) -> bool:
+        with self._cond:
+            self.waits.append(timeout)
+            limit = timeout if self.max_wait is None else min(timeout, self.max_wait)
+            self._cond.wait_for(
+                lambda: self._pending > 0 or self._dropped or not self.connected, timeout=limit
+            )
+            if self._dropped or not self.connected:
+                self.connected, self._dropped = False, False
+                raise DoorbellClosed("the fake doorbell dropped")
+            if self._pending:
+                self._pending = 0
+                return True
+            return False
+
+    def close(self) -> None:
+        with self._cond:
+            if self.connected:
+                self.closes += 1
+            self.connected, self._pending = False, 0
+            self._cond.notify_all()
+
+
 class FakeSpine:
     """An in-memory spine for ``address`` (see the module doc).
 
@@ -178,6 +263,7 @@ class FakeSpine:
         self.acked: list[int] = []
         self.requests: list[tuple[str, str]] = []
         self.peer_cache: dict[str, tuple[dict[str, Any], int]] = {}
+        self.doorbells: list[FakeDoorbell] = []
         self.down = False
         self._next_seq = 1
         self._cond = threading.Condition(threading.RLock())
@@ -225,8 +311,22 @@ class FakeSpine:
             seq = self._next_seq
             self._next_seq += 1
             self.mailbox.append(_Mail(seq, int(self.clock()), dict(envelope), "?", "?"))
-            self._cond.notify_all()
+            self._queued()
             return seq
+
+    def doorbell(self, *, max_wait: float | None = None) -> FakeDoorbell:
+        """A :class:`FakeDoorbell` this spine rings whenever it queues an envelope (what
+        ``GET /hub/ws`` gives a real hub)."""
+        bell = FakeDoorbell(max_wait=max_wait)
+        with self._cond:
+            self.doorbells.append(bell)
+        return bell
+
+    def _queued(self) -> None:
+        """Wake long polls and ring doorbells; the caller holds the lock."""
+        self._cond.notify_all()
+        for bell in self.doorbells:
+            bell.ring()
 
     def publish(self, name: str, sign_key: str, box_key: str) -> dict[str, Any]:
         """Set the card directly (what ``PUT /hub/card`` does)."""
@@ -449,6 +549,9 @@ class FakeSpine:
         return card
 
     def _inbox(self, request: FakeRequest) -> tuple[int, Any]:
+        media_type = request.headers.get("content-type", "").split(";", 1)[0]
+        if media_type.strip().lower() != "application/json":
+            return 415, _error(415, "unsupported_media_type")
         body = request.body
         if len(body) > MAX_ENVELOPE_BYTES:
             return 413, _error(413, "too_large")
@@ -487,7 +590,7 @@ class FakeSpine:
                 _Mail(self._next_seq, now, envelope.to_json(), payload.sender, payload.id)
             )
             self._next_seq += 1
-            self._cond.notify_all()
+            self._queued()
         return 202, {"status": "queued", "id": payload.id}
 
     # -- cloud mode: state and files -----------------------------------------------------------

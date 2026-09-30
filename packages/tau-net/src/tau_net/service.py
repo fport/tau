@@ -1,9 +1,22 @@
-"""The ``net`` hub service: long-poll the spine, handle each envelope, acknowledge it (§6.1).
+"""The ``net`` hub service: wait for mail at the spine, handle each envelope, acknowledge it
+(§6.1).
 
 A ``tau.hub_services`` component (``net = "tau_net.service:make_service"``) that runs inside
-``tau hub run``. It reaches the spine outbound only, with a long poll of ``GET /hub/updates``,
-so the hub still opens no inbound port. For each update, in order, it handles the envelope,
-acknowledges it and then stores the cursor, so a crash re-handles rather than loses.
+``tau hub run``. It reaches the spine outbound only, so the hub still opens no inbound port.
+For each update, in order, it handles the envelope, acknowledges it and then stores the cursor,
+so a crash re-handles rather than loses.
+
+How it waits is ``[component.net] link``:
+
+- ``auto`` (the default): it keeps the spine's WebSocket doorbell (``GET /hub/ws``,
+  :mod:`tau_net.doorbell`) open and fetches with ``GET /hub/updates?timeout=0`` on every ring,
+  on every (re)connect and at least every 5 minutes; otherwise it waits without any HTTP
+  request. The spine's ``Mailbox`` hibernates meanwhile, which keeps a spine on the Workers
+  Free plan far inside its daily Durable Object budget. When the doorbell cannot be used (a
+  spine without it answers ``404``/``426``, or three attempts in a row fail) it long-polls
+  instead and tries the doorbell again every 30 minutes.
+- ``websocket``: the doorbell only; failures back off and retry, never falling back.
+- ``poll``: the long poll of ``GET /hub/updates?timeout=25``, as before the doorbell.
 
 - Without ``TAU_SPINE_URL``, ``TAU_SPINE_TOKEN`` or an identity it stays idle, logs one line and
   reports ``net: {configured: false}`` in ``/status``; it never fails the hub.
@@ -11,8 +24,8 @@ acknowledges it and then stores the cursor, so a crash re-handles rather than lo
   a different one.
 - Network errors back off exponentially up to 60 s; a rejected token stops polling (the token
   is read again only on a restart).
-- Blocking HTTP runs in daemon threads, so the hub loop stays responsive and :meth:`stop`
-  returns at once even while a long poll is in flight.
+- Blocking HTTP and the doorbell run in daemon threads, so the hub loop stays responsive and
+  :meth:`stop` returns at once even while a long poll or a doorbell wait is in flight.
 - With a ``[component.net] universe`` host, a second task reports to that universe (ADR 0010)
   once the card is published and then every ``universe_report_minutes``, but only while the
   owner's profile says ``universe_join`` (it is read again at every interval, so ``tau net
@@ -27,6 +40,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
@@ -43,6 +57,7 @@ from tau_net.config import (
     net_env,
     spine_from_env,
 )
+from tau_net.doorbell import Doorbell, DoorbellError, DoorbellUnauthorized, DoorbellUnsupported
 from tau_net.identity import IdentityError, identity_path, load_or_none
 from tau_net.node import NetError, NetNode, NetNotConfigured, open_node, run_blocking
 from tau_net.spine import SpineError, Transport
@@ -63,6 +78,16 @@ BACKOFF_START = 1.0
 BACKOFF_MAX = 60.0
 FATAL_CODES = frozenset({"unauthorized"})
 """Spine answers that stop polling until the hub restarts (the token is read at start)."""
+SAFETY_FETCH_SECONDS = 300.0
+"""On the doorbell, fetch at least this often even when it stays quiet."""
+DOORBELL_RETRY_SECONDS = 1800.0
+"""``link = "auto"``: after falling back to the long poll, try the doorbell again this late."""
+DOORBELL_MAX_FAILURES = 3
+"""``link = "auto"``: failed doorbell attempts in a row before falling back."""
+DOORBELL_STABLE_SECONDS = 60.0
+"""A doorbell connection that lasted this long and then dropped is reconnected at once; one
+that dropped sooner counts as a failed attempt (so a flapping link backs off)."""
+FETCH_LIMIT = 50
 
 
 def _now_iso() -> str:
@@ -76,7 +101,14 @@ def _iso(seconds: float) -> str:
 class NetService:
     """The ``net`` hub service. Tests pass ``env``, a ``transport`` (a
     :class:`tau_net.testing.FakeNetwork`), a ``model_factory``, a fast ``sleep`` (backoff),
-    a ``universe_sleep`` (the report interval) and a ``clock``."""
+    a ``universe_sleep`` (the report interval), a ``clock`` and a ``monotonic`` clock (the
+    doorbell's retry interval).
+
+    ``doorbell`` makes the doorbell of ``GET /hub/ws`` (a fresh or reused
+    :class:`~tau_net.doorbell.Doorbell` per connection; tests pass a
+    :class:`tau_net.testing.FakeDoorbell`). Without it the service uses the spine's own
+    WebSocket doorbell, unless a ``transport`` was given: a fake network has no sockets, so the
+    service then long-polls."""
 
     name = SERVICE_NAME
 
@@ -92,6 +124,8 @@ class NetService:
         blocking: Callable[[Callable[[], Any]], Awaitable[Any]] = run_blocking,
         universe_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         clock: Callable[[], float] = time.time,
+        doorbell: Callable[[], Doorbell] | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ):
         self.config = config
         self.env = env
@@ -102,6 +136,18 @@ class NetService:
         self._blocking = blocking
         self._universe_sleep = universe_sleep
         self.clock = clock
+        self._doorbell_factory = doorbell
+        self._monotonic = monotonic
+        self.link: str | None = None
+        """How the service waits right now: ``websocket``, ``poll`` or ``None`` before it
+        starts."""
+        self.doorbell_connects = 0
+        self.doorbell_reconnects = 0
+        self.doorbell_rings = 0
+        self.doorbell_fallbacks = 0
+        self.doorbell_last_error: str | None = None
+        self.last_ring_at: str | None = None
+        self._doorbell_retry_at = 0.0
         self.node: NetNode | None = None
         self._task: asyncio.Task[None] | None = None
         self._universe_task: asyncio.Task[None] | None = None
@@ -149,6 +195,8 @@ class NetService:
         if node.identity is None:
             self.idle_reason = "no identity (run `tau net init`)"
             return None
+        if self._doorbell_factory is None and self.transport is None and node.spine is not None:
+            self._doorbell_factory = node.spine.doorbell
         return node
 
     async def start(self, hub: Hub) -> None:
@@ -191,12 +239,34 @@ class NetService:
             "address": self.address,
             "store": self.node.store.kind,
             "card_published": self.card_published,
+            "link": self.link,
             "last_poll_at": self.last_poll_at,
             "last_error": self.last_error,
             "retry_in_s": self.retry_in_s,
+            "doorbell": self.doorbell_status(),
             **self.node.stats,
             **counts,
             "universe": self.universe_status(),
+        }
+
+    def doorbell_status(self) -> dict[str, Any]:
+        """``net.doorbell`` in ``/status``: the ``link`` setting, connections (the first one
+        and reconnects), rings (the hello of each connection included), fallbacks to the long
+        poll, the last ring, the last doorbell error and, after a fallback, when ``auto``
+        tries the doorbell again."""
+        retry_at = None
+        if self.link == "poll" and self._doorbell_retry_at > 0:
+            remaining = max(0.0, self._doorbell_retry_at - self._monotonic())
+            retry_at = _iso(self.clock() + remaining)
+        return {
+            "setting": self.node.settings.link if self.node is not None else None,
+            "connects": self.doorbell_connects,
+            "reconnects": self.doorbell_reconnects,
+            "rings": self.doorbell_rings,
+            "fallbacks": self.doorbell_fallbacks,
+            "last_ring_at": self.last_ring_at,
+            "last_error": self.doorbell_last_error,
+            "retry_at": retry_at,
         }
 
     def universe_status(self) -> dict[str, Any]:
@@ -275,9 +345,34 @@ class NetService:
             return
         if self._ready is not None:
             self._ready.set()
+        setting = node.settings.link
+        if setting != "poll" and self._doorbell_factory is None:
+            logger.info("net: no doorbell in this setup; long-polling the spine")
+        while True:
+            if (
+                setting != "poll"
+                and self._doorbell_factory is not None
+                and self._monotonic() >= self._doorbell_retry_at
+            ):
+                if await self._listen(setting) == "failed":
+                    return
+                self.doorbell_fallbacks += 1
+                self._doorbell_retry_at = self._monotonic() + DOORBELL_RETRY_SECONDS
+            retry = setting == "auto" and self._doorbell_factory is not None
+            if await self._poll(self._doorbell_retry_at if retry else None) == "failed":
+                return
+
+    # -- the long poll -------------------------------------------------------------------------
+
+    async def _poll(self, until: float | None) -> str:
+        """Long-poll until the monotonic time ``until`` (``None``: for ever); ``"failed"``
+        when the token was rejected, else ``"retry"``."""
+        node = self.node
+        assert node is not None
+        self.link = "poll"
         timeout = node.settings.poll_timeout_seconds
         failures = 0
-        while True:
+        while until is None or self._monotonic() < until:
             if failures == 0:
                 self.state, self.retry_in_s = "polling", None
             try:
@@ -285,13 +380,13 @@ class NetService:
             except SpineError as exc:
                 if exc.code in FATAL_CODES:
                     self._fail(str(exc))
-                    return
+                    return "failed"
                 failures += 1
                 await self._backoff(failures, str(exc))
                 continue
             except NetNotConfigured as exc:  # pragma: no cover - checked at start
                 self._fail(str(exc))
-                return
+                return "failed"
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # never crash the hub
@@ -306,6 +401,127 @@ class NetService:
             self.last_poll_at = _now_iso()
             if timeout == 0:
                 await self._sleep(1.0)  # no long poll: do not spin
+        return "retry"
+
+    # -- the doorbell --------------------------------------------------------------------------
+
+    async def _listen(self, setting: str) -> str:
+        """Wait on the doorbell and fetch whenever it rings, reconnecting as needed.
+        Returns ``"failed"`` when the token was rejected and, with ``setting == "auto"``,
+        ``"fallback"`` when the doorbell cannot be used; otherwise it never returns."""
+        assert self._doorbell_factory is not None
+        failures = 0
+        while True:
+            doorbell = self._doorbell_factory()
+            try:
+                await self._blocking(doorbell.connect)
+            except DoorbellUnauthorized as exc:
+                await self._close(doorbell)
+                self._fail(str(exc))
+                return "failed"
+            except (DoorbellError, OSError) as exc:
+                await self._close(doorbell)
+                failures += 1
+                self.doorbell_last_error = str(exc)
+                if setting == "auto" and (
+                    isinstance(exc, DoorbellUnsupported) or failures >= DOORBELL_MAX_FAILURES
+                ):
+                    self._fall_back(exc, failures)
+                    return "fallback"
+                await self._backoff(failures, f"doorbell: {exc}")
+                continue
+            self.doorbell_connects += 1
+            if self.doorbell_connects > 1:
+                self.doorbell_reconnects += 1
+            if self.link != "websocket":
+                logger.info("net: waiting on the doorbell of %s", self.address)
+            self.link = "websocket"
+            self.state, self.last_error, self.retry_in_s = "polling", None, None
+            started = self._monotonic()
+            try:
+                token_ok = await self._ring_loop(doorbell)
+            except (DoorbellError, OSError) as exc:
+                await self._close(doorbell)
+                self.doorbell_last_error = str(exc)
+                if self._monotonic() - started >= DOORBELL_STABLE_SECONDS:
+                    failures = 0
+                    logger.info("net: the doorbell dropped (%s); reconnecting", exc)
+                    continue
+                failures += 1
+                if setting == "auto" and failures >= DOORBELL_MAX_FAILURES:
+                    self._fall_back(exc, failures)
+                    return "fallback"
+                await self._backoff(failures, f"doorbell: {exc}")
+                continue
+            except BaseException:  # cancelled: stop() must not wait for the closing handshake
+                _close_quietly(doorbell)
+                raise
+            await self._close(doorbell)
+            if not token_ok:
+                return "failed"
+
+    async def _close(self, doorbell: Doorbell) -> None:
+        with suppress(Exception):
+            await self._blocking(doorbell.close)
+
+    async def _ring_loop(self, doorbell: Doorbell) -> bool:
+        """Fetch on every ring (the hello included) and at least every
+        :data:`SAFETY_FETCH_SECONDS`. ``False`` when the token was rejected; a lost doorbell
+        raises."""
+        while True:
+            rang = await self._blocking(lambda: doorbell.wait(SAFETY_FETCH_SECONDS))
+            if rang:
+                self.doorbell_rings += 1
+                self.last_ring_at = _now_iso()
+            if not await self._fetch():
+                return False
+
+    async def _fetch(self) -> bool:
+        """Take everything the spine holds, without waiting (``timeout=0``); errors back off
+        and retry. ``False`` when the token was rejected."""
+        node = self.node
+        assert node is not None
+        failures = 0
+        while True:
+            try:
+                handled = await node.poll_once(
+                    timeout=0, limit=FETCH_LIMIT, blocking=self._blocking
+                )
+            except SpineError as exc:
+                if exc.code in FATAL_CODES:
+                    self._fail(str(exc))
+                    return False
+                failures += 1
+                await self._backoff(failures, str(exc))
+                continue
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # never crash the hub
+                logger.exception("net: fetch failed")
+                failures += 1
+                await self._backoff(failures, f"{type(exc).__name__}: {exc}")
+                continue
+            failures = 0
+            self.state, self.last_error, self.retry_in_s = "polling", None, None
+            self.last_poll_at = _now_iso()
+            if len(handled) < FETCH_LIMIT:
+                return True  # a full batch means more may be waiting
+
+    def _fall_back(self, error: BaseException, failures: int) -> None:
+        minutes = DOORBELL_RETRY_SECONDS / 60
+        if isinstance(error, DoorbellUnsupported):
+            logger.info(
+                "net: the spine has no doorbell (%s); long-polling, next try in %.0f min",
+                error,
+                minutes,
+            )
+        else:
+            logger.warning(
+                "net: the doorbell failed %d times (%s); long-polling, next try in %.0f min",
+                failures,
+                error,
+                minutes,
+            )
 
     # -- the universe --------------------------------------------------------------------------
 
@@ -351,6 +567,17 @@ class NetService:
             )
 
 
+def _close_quietly(doorbell: Doorbell) -> None:
+    """Close a doorbell in a daemon thread: the closing handshake may take a second, and
+    :meth:`NetService.stop` must not wait for it."""
+
+    def close() -> None:
+        with suppress(Exception):
+            doorbell.close()
+
+    threading.Thread(target=close, name="tau-net-doorbell-close", daemon=True).start()
+
+
 def make_service(config: Config) -> NetService:
     """The ``tau.hub_services`` factory."""
     return NetService(config)
@@ -386,6 +613,8 @@ def doctor_check(config: Config, env: Mapping[str, str], hub_status: Any) -> Che
         return Check("net", "warn", "configured, but the running hub has no net poller")
     state = poller.get("state")
     if state == "polling":
+        if poller.get("link") == "websocket":
+            return Check("net", "ok", f"on the doorbell as {poller.get('address')}")
         return Check("net", "ok", f"polling as {poller.get('address')}")
     if state == "retrying":
         return Check(

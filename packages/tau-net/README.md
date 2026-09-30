@@ -62,7 +62,8 @@ max_hops = 6
 max_auto_replies_per_hour = 20
 public_note = "net.md"            # under persona/; replaces user.md in network turns
 store = "file"                    # file | spine (cloud mode)
-poll_timeout_seconds = 25
+link = "auto"                     # auto | websocket | poll: how the hub waits for mail
+poll_timeout_seconds = 25         # the long poll's wait (link = "poll", or the fallback)
 universe = "tau.getporti.com"     # the universe host; "" switches the universe off
 universe_links = true             # report mutual links (with counts) to listed contacts
 universe_report_minutes = 60      # 5 to 1440
@@ -148,13 +149,31 @@ English line on stderr with exit code 1.
 
 ## The hub service
 
-`tau hub run` starts the `net` service when the package is installed. It long-polls
-`GET /hub/updates` on the spine (outbound only, so the hub still opens no port), handles each
-envelope, then acknowledges it and stores the cursor, so a crash re-handles rather than
-loses. Without `TAU_SPINE_URL`, `TAU_SPINE_TOKEN` or an identity it stays idle and reports
-`net: {configured: false}` in `/status`. Network errors back off up to 60 s. On start it
-publishes the card when the spine has none or a different one. A contact request is logged
-and emitted as a `contact_request` agent event on `NetNode.events`.
+`tau hub run` starts the `net` service when the package is installed. It reaches the spine
+outbound only (the hub still opens no port), handles each envelope, then acknowledges it and
+stores the cursor, so a crash re-handles rather than loses. Without `TAU_SPINE_URL`,
+`TAU_SPINE_TOKEN` or an identity it stays idle and reports `net: {configured: false}` in
+`/status`. Network errors back off up to 60 s. On start it publishes the card when the spine
+has none or a different one. A contact request is logged and emitted as a `contact_request`
+agent event on `NetNode.events`.
+
+How it waits for mail is `link`:
+
+- `auto` (default): it keeps the spine's WebSocket **doorbell** (`GET /hub/ws`) open and
+  fetches with `GET /hub/updates?timeout=0` on every ring, on every (re)connect and at least
+  every 5 minutes. The spine's `Mailbox` Durable Object hibernates in between, which keeps a
+  spine on the Workers Free plan far inside its daily budget. A spine without the doorbell
+  (`404`/`426`), or three failed attempts in a row, makes it long-poll instead and try the
+  doorbell again every 30 minutes.
+- `websocket`: the doorbell only; it never falls back.
+- `poll`: the long poll of `GET /hub/updates?timeout=25`, as before the doorbell (it keeps the
+  `Mailbox` active all day: about 10 800 of the Free plan's 13 000 GB-s).
+
+The doorbell client (`tau_net.doorbell`) is RFC 6455 on the standard library's `socket` and
+`ssl`, no dependency. It connects directly (no proxy), sends a text `ping` every 30 s and
+treats 75 s of silence as a dropped connection. `/status` shows `net.link` (`websocket` or
+`poll`) and `net.doorbell` (`setting`, `connects`, `reconnects`, `rings`, `fallbacks`,
+`last_ring_at`, `last_error`, `retry_at`).
 
 State lives in `TAU_DATA_DIR/net/` (`contacts.json`, `sessions.json`, `seen.json`,
 `log.jsonl`, `cursor`, `counts.json`, `profile.json`) or, with `store = "spine"`, in the
@@ -201,10 +220,11 @@ spine.state_get("my.key")
 `snapshot`, `tau(address)`).
 
 `tau_net.testing` has `FakeSpine` (the spine of protocol v1 in memory: inbox checks, hub API
-with a real long poll, cloud-mode state and files; `route()` adds more), `FakeUniverse` (a
-universe in memory, with every check of the protocol and the snapshot) and `FakeNetwork` (a
-transport that routes by host to several fakes), so tests run taus against each other and a
-universe with no socket.
+with a real long poll, cloud-mode state and files; `route()` adds more), `FakeDoorbell` (the
+doorbell offline; `FakeSpine.doorbell()` gives one the spine rings on every queued envelope,
+and `NetService(doorbell=...)` takes it), `FakeUniverse` (a universe in memory, with every
+check of the protocol and the snapshot) and `FakeNetwork` (a transport that routes by host to
+several fakes), so tests run taus against each other and a universe with no socket.
 
 ## Development
 

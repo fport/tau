@@ -9,7 +9,8 @@
     max_auto_replies_per_hour = 20
     public_note = "net.md"            # under persona/; replaces user.md in network turns
     store = "file"                    # file | spine (cloud mode)
-    poll_timeout_seconds = 25
+    link = "auto"                     # auto | websocket | poll: how the hub waits for mail
+    poll_timeout_seconds = 25         # the long poll's wait (link = "poll", or the fallback)
     universe = "tau.getporti.com"     # the universe host; "" switches the universe off
     universe_links = true             # report mutual links (with counts) to listed contacts
     universe_report_minutes = 60      # 5 or more
@@ -66,6 +67,7 @@ KNOWN_KEYS = frozenset(
         "max_auto_replies_per_hour",
         "public_note",
         "store",
+        "link",
         "poll_timeout_seconds",
         "universe",
         "universe_links",
@@ -77,6 +79,10 @@ REPORT_MINUTES_RANGE = (5, 1440)
 for 2 hours after its last report and forgets it after 30 days)."""
 PRIVATE_NOTES = frozenset({"user.md", "persona.md"})
 """Files a network turn may never read as the public note."""
+LINKS = ("auto", "websocket", "poll")
+"""``link``: how the hub waits for mail. ``auto`` waits on the spine's WebSocket doorbell and
+falls back to the long poll when the doorbell cannot be used; ``websocket`` never falls back;
+``poll`` always long-polls (what hubs did before the doorbell)."""
 
 
 _UNIVERSE_ERROR = (
@@ -106,6 +112,7 @@ class NetSettings:
     max_auto_replies_per_hour: int = 20
     public_note: str = "net.md"
     store: str = "file"
+    link: str = "auto"
     poll_timeout_seconds: int = MAX_POLL_TIMEOUT
     universe: str = DEFAULT_UNIVERSE
     """The universe host; ``""`` switches the universe off."""
@@ -143,6 +150,11 @@ class NetSettings:
             raise NetConfigError(
                 f"tau.toml: [component.net] 'store' must be one of {', '.join(STORE_KINDS)}."
             )
+        link = settings.get("link", cls.link)
+        if link not in LINKS:
+            raise NetConfigError(
+                f"tau.toml: [component.net] 'link' must be one of {', '.join(LINKS)}."
+            )
         universe = settings.get("universe", cls.universe)
         if not isinstance(universe, str):
             raise NetConfigError(_UNIVERSE_ERROR)
@@ -167,6 +179,7 @@ class NetSettings:
             ),
             public_note=public_note,
             store=store,
+            link=link,
             poll_timeout_seconds=_int(
                 settings, "poll_timeout_seconds", cls.poll_timeout_seconds, 0, MAX_POLL_TIMEOUT
             ),

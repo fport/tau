@@ -219,7 +219,9 @@ async def test_a_lock_during_verifying_kills_a_stubborn_worker(tmp_path: Path) -
 
 
 async def test_a_timeout_kills_the_worker(tmp_path: Path) -> None:
-    with running_hub(tmp_path, runs=[[{"hang": True}]], attempt_timeout=0.5) as running:
+    # long enough for the fake worker to start and record itself on a slow CI runner (Python's
+    # start-up alone took more than 0.5 s there), short enough to keep the test quick
+    with running_hub(tmp_path, runs=[[{"hang": True}]], attempt_timeout=3.0) as running:
         verdict = await running.guard.unlock(channel="tui", client_id="c1")
         assert (verdict.ok, verdict.reason) == (False, "timeout")
         pid = worker_pid(running)

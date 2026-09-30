@@ -4,6 +4,7 @@ flat photo and a face swapped in place all fail."""
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Any
 
@@ -156,9 +157,42 @@ def test_swinging_past_the_centre_on_the_way_back_aborts() -> None:
 
 def test_a_head_already_turned_when_the_prompt_appears_does_not_count() -> None:
     challenge = Challenge(["turn_left"], CAL, 0.0, random.Random(1), 0.0)
-    yaws = [0.4] * 300  # turned all along: the step never arms
+    pause = math.ceil(challenge.resume * 30)  # the pause's frames
+    # already on the way (0.12, not near the baseline) when the prompt shows, then turned: the
+    # step never arms, however well the turn itself would fit
+    yaws = [0.0] * pause + [0.12] + [0.4] * 300
     outcome, t = run_frames(challenge, yaws, start=0.0)
-    assert outcome == "spoof" and t > challenge.deadline
+    assert outcome == "spoof" and challenge.deadline is not None and t > challenge.deadline
+
+
+@pytest.mark.parametrize("yaw", [0.2, -0.2])
+def test_moving_during_a_pause_aborts(yaw: float) -> None:
+    challenge = Challenge(["turn_left", "turn_right"], CAL, 0.0, random.Random(1), 0.0)
+    outcome, t = run_frames(challenge, [0.0, 0.05, yaw], start=0.0)
+    assert outcome == "spoof" and challenge.prompts == []  # before any prompt showed
+    small = Challenge(["turn_left"], CAL, 0.0, random.Random(1), 0.0)
+    assert run_frames(small, [0.12, -0.12] * 5, start=0.0)[0] is None  # a person is never still
+
+
+def test_moving_in_the_pause_between_steps_aborts() -> None:
+    challenge = Challenge(["turn_left", "turn_left"], CAL, 0.0, random.Random(2), 0.0)
+    yaws = [0.0] * int(challenge.resume * 30 + 2) + [0.35] * 30 + [0.0] * 3
+    outcome, _ = run_frames(challenge, yaws, start=0.0)
+    assert outcome is None and challenge.phase == "pause" and challenge.index == 1
+    now = 10.0  # a clip that turns again before the next prompt
+    assert challenge.feed(now, frontal(0.3)) == "spoof"
+
+
+def test_a_head_shaking_clip_fails() -> None:
+    class Shaking(SimulatedUser):
+        def _move(self, dt: float) -> None:
+            self.yaw = 0.45 * math.sin(2 * math.pi * 0.5 * (self.t - self.start) + self.phase)
+
+    for seed in range(40):
+        user = Shaking(frame_seed=seed)
+        user.phase = seed  # type: ignore[attr-defined]
+        result, _ = attempt(user, seed=seed)
+        assert not result.ok, seed
 
 
 def test_directions_come_from_the_rng() -> None:

@@ -19,10 +19,12 @@ works. Enrollment calibrates the sign of a left turn and the owner's amplitude t
 4. The head returns within 0.10 of the baseline: the step passed.
 
 **Failing.** ``Δp`` more than 0.15 the other way at any time in a step (the wrong direction, or
-swinging past the centre on the way back) aborts at once with ``spoof``; so does a step that is
-not done by its deadline (no turn, no hold, no return, too late). Every challenge failure is a
-counted failure (and so is abandoning a published step: :mod:`tau_guard.state`), so a looping
-clip cannot skip the prompts it does not fit.
+swinging past the centre on the way back) aborts at once with ``spoof``. So does ``|Δp|`` beyond
+0.15 either way during a pause, when no prompt is up and a person waits facing the camera while
+a clip keeps moving (a head-shaking loop passed about 12 % of unlocks without this rule). So
+does a step that is not done by its deadline (no turn, no hold, no return, too late). Every
+challenge failure is a counted failure (and so is abandoning a published step:
+:mod:`tau_guard.state`), so a looping clip cannot skip the prompts it does not fit.
 
 **The camera's time limit.** Given ``until`` (when the frames stop), a prompt is published only
 when its step can end before then (the last one with ``reserve`` seconds more, for the frontal
@@ -210,6 +212,8 @@ class Challenge:
 
     def feed(self, now: float, face: Face | None) -> str | None:
         if self.phase == "pause":
+            if face is not None and abs(face.yaw - self.baseline) > OVERSHOOT:
+                return "spoof"  # moving while no prompt is up
             if now < self.resume:
                 return None
             if not self._fits(now):

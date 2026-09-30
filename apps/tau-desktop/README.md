@@ -16,16 +16,16 @@ It is built with Tauri v2, React and TypeScript, `@xterm/xterm` and `portable-pt
 
 ## Build
 
-Needs macOS 13 or later, Rust (`rustup`), Node 20+ with pnpm, and the Xcode command line tools.
+Needs macOS 13 or later, Rust (`rustup`), [Bun](https://bun.sh), and the Xcode command line tools.
 
 ```sh
 cd apps/tau-desktop
-pnpm install
-pnpm tauri build          # → src-tauri/target/release/bundle/macos/tau Desktop.app
+bun install
+bun run tauri build       # → src-tauri/target/release/bundle/macos/tau Desktop.app
 cp -R "src-tauri/target/release/bundle/macos/tau Desktop.app" /Applications/
 ```
 
-The bundle id is `com.tau.desktop`. `pnpm tauri dev` runs the app with hot reload; only in
+The bundle id is `com.tau.desktop`. `bun run tauri dev` runs the app with hot reload; only in
 that mode does Vite serve the page on `localhost:1420`.
 
 ### Signing
@@ -38,7 +38,7 @@ Downloads, removable volumes) or a Local Network prompt caused by the TUI or its
 to tau Desktop, and a rebuild with a new ad-hoc signature resets those grants. A copy from
 another machine is quarantined: open it once with right-click → Open, or run
 `xattr -dr com.apple.quarantine "tau Desktop.app"`. For a Developer ID signature, set
-`APPLE_SIGNING_IDENTITY` before `pnpm tauri build` (Tauri's
+`APPLE_SIGNING_IDENTITY` before `bun run tauri build` (Tauri's
 [macOS code signing](https://v2.tauri.app/distribute/sign/macos/) guide).
 
 ## How it finds tau
@@ -121,7 +121,7 @@ Enter starts it again. After a clean exit (ctrl+q) the window closes. Closing th
 leaves the app running, like Terminal. ⌘N or a click on the Dock icon opens a new window.
 
 **A page reload keeps the TUI.** Tauri reloads a window's page when its web content process
-crashes, and `pnpm tauri dev` reloads it after some edits. The TUI keeps running in its PTY
+crashes, and `bun run tauri dev` reloads it after some edits. The TUI keeps running in its PTY
 through that, and the new page takes it over: it first gets the terminal modes the TUI had
 switched on (alternate screen, mouse reporting, focus events, bracketed paste, cursor), then the
 PTY changes size (one row smaller for 150 ms if the size is the same), which makes the TUI paint
@@ -148,8 +148,8 @@ codesign -d --entitlements - "/Applications/tau Desktop.app"                   #
 ## Development
 
 ```sh
-pnpm test                          # vitest: output coalescing, input order, terminal and key options, resize, context menu
-pnpm build                         # tsc + vite
+bun run test                       # vitest: output coalescing, input order, terminal and key options, resize, context menu
+bun run build                      # tsc + vite
 (cd src-tauri && cargo test)       # Rust: environment, TAU_HOME discovery and validation, PTY sessions
 (cd src-tauri && cargo clippy --all-targets -- -D warnings)
 ```
@@ -177,7 +177,7 @@ page gathers them for another 8 ms and calls `term.write(Uint8Array)`. Nothing d
 the way, so a character split between two reads reaches xterm.js's decoder whole. Input goes the
 other way as raw bytes, one `pty_write` in flight at a time, so keys arrive in order.
 
-The icons are generated from `docs/brand/tau-app-icon.svg` (`pnpm tauri icon`), the same
+The icons are generated from `docs/brand/tau-app-icon.svg` (`bun run tauri icon`), the same
 source as TauBar's: the PNGs are byte-identical to TauBar's, and `icon.icns` holds the same
 images (only its container bytes differ). The window's mark is `docs/brand/tau-mark.svg`,
 imported as is.

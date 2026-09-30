@@ -304,7 +304,7 @@ fn quit(app: &AppHandle) {
     }
 }
 
-/// SIGTERM, SIGINT and SIGHUP (logout, `kill <pid>`, Ctrl-C in `pnpm tauri dev`) quit the same
+/// SIGTERM, SIGINT and SIGHUP (logout, `kill <pid>`, Ctrl-C in `bun run tauri dev`) quit the same
 /// way the menu does, so the TUIs get their ctrl+q.
 fn install_signal_handlers(app: AppHandle) {
     use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};

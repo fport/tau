@@ -11,7 +11,7 @@ export default defineConfig(() => ({
   // Keep Rust errors visible.
   clearScreen: false,
   server: {
-    // Tauri expects a fixed port (only `pnpm tauri dev` runs this server; the built app has none).
+    // Tauri expects a fixed port (only `bun run tauri dev` runs this server; the built app has none).
     port: 1420,
     strictPort: true,
     host: host || false,

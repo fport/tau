@@ -148,7 +148,7 @@ pub async fn choose_home(
 /// the status when the TUI ends on its own (a clean exit closes the window instead).
 ///
 /// If this window's TUI is still running, the page was reloaded (Tauri reloads a page whose web
-/// content process crashed; `pnpm tauri dev` reloads on some edits): the new page takes the
+/// content process crashed; `bun run tauri dev` reloads on some edits): the new page takes the
 /// running TUI over instead of starting a second one, so nothing is left running out of reach.
 #[tauri::command]
 pub fn pty_start(

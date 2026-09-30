@@ -1,7 +1,7 @@
 //! The terminal modes a TUI has switched on, so a new page can pick up a running TUI.
 //!
 //! A page that reloads (a crashed web content process, which Tauri reloads by itself, or a Vite
-//! reload in `pnpm tauri dev`) comes back with a fresh xterm.js, while `tau tui` keeps running in
+//! reload in `bun run tauri dev`) comes back with a fresh xterm.js, while `tau tui` keeps running in
 //! the PTY. Textual sets its modes once, at start-up: the alternate screen, mouse reporting,
 //! focus events, bracketed paste and a hidden cursor. A repaint does not send them again, so
 //! [`ModeTracker`] watches the output for DEC private mode sets and resets (`CSI ? n h`,

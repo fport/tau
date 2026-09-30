@@ -270,22 +270,29 @@ def test_live_hints_reach_guard_status(session: Session, tmp_path: Path) -> None
     session.run("verify", session.request("verify", "unlock"), source=FakeFrameSource(frames))
     hints = [line["hint"] for line in session.progress() if line["hint"]]
     assert "too_dark" in hints and "face_too_small" in hints
-    script_steps = [
-        {"progress": line["step"], "hint": line["hint"], "deadline": line["deadline"]}
-        for line in session.progress()
-        if line["hint"] == "too_dark"
-    ][:1] + [{"hang": True}]
-    with running_hub(tmp_path / "hub", runs=[script_steps]) as running:
+    first = {}
+    for line in session.progress():
+        first.setdefault(line["hint"], line)
+    script_steps: list[dict[str, Any]] = []
+    for hint in ("too_dark", "face_too_small"):
+        line = first[hint]
+        script_steps += [
+            {"progress": line["step"], "hint": hint, "deadline": line["deadline"]},
+            {"sleep": 1.0},
+        ]
+    with running_hub(tmp_path / "hub", runs=[[*script_steps, {"hang": True}]]) as running:
         client = running.client
         started = client.post(
             "/guard/verify", {"channel": "tui", "client_id": "c1", "kind": "unlock"}, timeout=5
         )
+        for hint in ("too_dark", "face_too_small"):
 
-        def hinted() -> bool:
-            status = client.get("/guard/status", timeout=5, query={"attempt": started["attempt"]})
-            return (status["attempt"] or {}).get("hint") == "too_dark"
+            def hinted(hint: str = hint) -> bool:
+                query = {"attempt": started["attempt"]}
+                status = client.get("/guard/status", timeout=5, query=query)
+                return (status["attempt"] or {}).get("hint") == hint
 
-        until(hinted)
+            until(hinted)
 
 
 # -- enroll behind LocalAuthentication -----------------------------------------------------------

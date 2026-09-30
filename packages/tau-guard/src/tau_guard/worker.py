@@ -27,7 +27,8 @@ Protocol:
   writes one ``{"type": "explain", ...}`` line per frame with its numbers (detector score, eye
   distance, brightness, sharpness, yaw proxy, similarity). No frame is ever saved.
 - Stderr goes to ``TAU_DATA_DIR/guard/worker.log`` (the caller opens it, 0600). It never gets
-  an embedding or a frame, only what went wrong.
+  an embedding or a frame, only what went wrong: an unexpected exception is logged as its type
+  and traceback frames, never its message, which could quote a value.
 - The hub kills the worker on cancel, lock, timeout or hub stop: SIGTERM, then SIGKILL after
   1 s. SIGTERM raises :class:`Terminated` here, so every ``finally`` runs and the camera is
   released; the worker then exits without a verdict.
@@ -569,11 +570,12 @@ def main(argv: list[str] | None = None, *, stdin: TextIO | None = None) -> int:
     except Terminated:
         log(f"{op} stopped by SIGTERM")
         return 143
-    except Exception as exc:  # the traceback goes to worker.log only
+    except Exception as exc:  # where it failed goes to worker.log; never the message
         import traceback
 
-        traceback.print_exc(file=sys.stderr)
-        log(f"{op} failed: {type(exc).__name__}")
+        frames = "".join(traceback.format_tb(exc.__traceback__))
+        print(frames, file=sys.stderr, end="", flush=True)
+        log(f"{op} failed: {type(exc).__name__}")  # a message could quote a value
         answer = verdict(False, "error")
     finally:
         signal.signal(signal.SIGTERM, previous)

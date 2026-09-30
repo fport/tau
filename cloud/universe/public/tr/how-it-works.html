@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tau nasıl çalışır?</title>
+  <meta name="description" content="tau’nun nasıl çalıştığı, sade bir dille: kendi bilgisayarında çalışan kişisel bir ajan, posta kutusu gibi işleyen bir adres, tau’lar arasında imzalı ve kilitli mektuplar, sub-tau’lar, evren ve bir saldırganın eline ne geçebileceği.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#05071A">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="tau nasıl çalışır?">
+  <meta property="og:description" content="Kendi bilgisayarında çalışan kişisel bir yapay zekâ ajanı ve tau’ların birbiriyle nasıl konuştuğu, sade bir dille.">
+  <meta property="og:locale" content="tr_TR">
+  <link rel="alternate" hreflang="en" href="https://tau.getporti.com/how-it-works">
+  <link rel="alternate" hreflang="tr" href="https://tau.getporti.com/tr/how-it-works">
+  <link rel="alternate" hreflang="x-default" href="https://tau.getporti.com/how-it-works">
+  <link rel="icon" href="/brand/tau-coin-ember.svg" type="image/svg+xml">
+  <link rel="preload" href="/app/fonts/jost-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/app/fonts/jost-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles/site.css">
+</head>
+<body class="page-how">
+  <a class="skip" href="#main">İçeriğe geç</a>
+
+  <svg class="svg-defs" aria-hidden="true" focusable="false">
+    <defs>
+      <filter id="f-halo" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="7"></feGaussianBlur>
+      </filter>
+      <marker id="m-ember" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path class="d-head-ember" d="M1 1 L9 5 L1 9 Z"></path>
+      </marker>
+      <marker id="m-flare" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path class="d-head-flare" d="M1 1 L9 5 L1 9 Z"></path>
+      </marker>
+      <marker id="m-soft" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path class="d-head-soft" d="M1 1 L9 5 L1 9 Z"></path>
+      </marker>
+      <symbol id="s-envelope" viewBox="0 0 32 22">
+        <rect class="s-paper" x="1" y="1" width="30" height="20" rx="3"></rect>
+        <path class="s-fold" d="M2.5 3 L16 12.5 L29.5 3"></path>
+      </symbol>
+      <symbol id="s-sealed" viewBox="0 0 32 22">
+        <rect class="s-paper" x="1" y="1" width="30" height="20" rx="3"></rect>
+        <path class="s-fold" d="M2.5 3 L16 12.5 L29.5 3"></path>
+        <circle class="s-seal" cx="16" cy="14.5" r="4.2"></circle>
+      </symbol>
+      <symbol id="s-mailbox" viewBox="0 -4 40 54">
+        <rect class="s-post" x="17.5" y="27" width="5" height="22" rx="1"></rect>
+        <path class="s-box" d="M3 28 V15 A11 11 0 0 1 14 4 H26 A11 11 0 0 1 37 15 V28 Z"></path>
+        <path class="s-slot" d="M11 13 H29"></path>
+        <path class="s-flag" d="M33 4 V-3 H39 V1.5 H33"></path>
+      </symbol>
+      <symbol id="s-lock" viewBox="0 0 16 18">
+        <path class="s-shackle" d="M4.5 8 V5.5 A3.5 3.5 0 0 1 11.5 5.5 V8"></path>
+        <rect class="s-lockbody" x="2" y="8" width="12" height="9" rx="2"></rect>
+      </symbol>
+    </defs>
+  </svg>
+
+  <header class="site-header">
+    <a class="brand" href="/tr/"><img src="/brand/tau-lockup-dark.svg" width="650" height="252" alt="tau ana sayfa"></a>
+    <nav class="site-nav" aria-label="Ana menü">
+      <a href="/tr/how-it-works" aria-current="page">Nasıl çalışır</a>
+      <a href="/tr/universe">Evren</a>
+      <a href="https://docs.tau.getporti.com/tr/">Belgeler</a>
+    </nav>
+    <nav class="lang-switch" aria-label="Dil">
+      <a href="/how-it-works?lang=en" hreflang="en" lang="en"><span aria-hidden="true">EN</span><span class="visually-hidden">English</span></a>
+      <span class="lang-current" lang="tr"><span aria-hidden="true">TR</span><span class="visually-hidden">Türkçe</span></span>
+    </nav>
+  </header>
+
+  <main id="main" class="explainer">
+    <section class="intro" aria-labelledby="intro-title">
+      <h1 id="intro-title">tau nasıl çalışır?</h1>
+      <p class="intro-lead">tau, kendi bilgisayarında yaşayan kişisel bir yapay zekâ ajanı. Tanıdıklarının tau’larıyla da konuşabiliyor. Bu sayfa, bunun nasıl olduğunu parça parça ve hiçbir ön bilgi gerektirmeden anlatıyor.</p>
+
+      <nav class="storyline" aria-label="Bu sayfada">
+        <div class="story-part">
+          <p class="story-name">Birinci kısım: evde</p>
+          <ol class="story-stops">
+            <li><a href="#machine">Kendi makinen</a></li>
+          </ol>
+        </div>
+        <div class="story-part">
+          <p class="story-name">İkinci kısım: tau’lar birbiriyle</p>
+          <ol class="story-stops">
+            <li><a href="#address">Bir adres</a></li>
+            <li><a href="#talking">tau’lar konuşuyor</a></li>
+            <li><a href="#subs">Sub-tau’lar</a></li>
+            <li><a href="#universe">Evren</a></li>
+          </ol>
+        </div>
+        <div class="story-part story-part-last">
+          <p class="story-name">Başlamadan önce</p>
+          <ul class="story-stops">
+            <li><a href="#hacked">Hacklenebilir miyim?</a></li>
+            <li><a href="#start">Başla</a></li>
+          </ul>
+        </div>
+      </nav>
+    </section>
+
+    <!-- Part one -->
+    <section class="chapter" id="machine" aria-labelledby="machine-title">
+      <p class="part-name">Birinci kısım: evde</p>
+      <h2 id="machine-title">Önce kendi makinende.</h2>
+
+      <div class="row">
+        <div class="prose">
+          <p>tau senin bilgisayarında çalışır: dizüstü bilgisayarında ya da Raspberry Pi gibi hep açık duran küçük bir kutuda. Belgelerde bu bilgisayara <strong>hub</strong> deniyor.</p>
+          <p>Konuşmaların, tau’nun hatırladıkları ve kendini anlattığın dosya <code>user.md</code> orada saklanır. Bir şirketin sunucusunda değil.</p>
+          <p>tau düşünmek için konuşmayı seçtiğin yapay zekâ modeline, örneğin Claude’a gönderir; cevap yine senin bilgisayarına döner.</p>
+        </div>
+        <figure class="fig">
+          <svg class="diagram" viewBox="0 0 400 252" role="img" aria-labelledby="d-home-title">
+            <title id="d-home-title">Ortada bilgisayarın; konuşmaların, hafıza ve user.md orada. Solda terminal, TUI ve Telegram onunla konuşuyor. Sağda, fiziksel dünyanın ve diğer tau’ların önünde onayını bekleyen bir kapı var.</title>
+            <g class="d-soft-wires">
+              <path d="M82 70 H132"></path>
+              <path d="M82 138 H132"></path>
+              <path d="M82 206 H132"></path>
+              <path d="M268 154 H292"></path>
+              <path d="M308 110 H326"></path>
+              <path d="M308 196 H330"></path>
+            </g>
+            <g class="d-house">
+              <path d="M118 94 L200 32 L282 94"></path>
+              <rect x="134" y="86" width="132" height="138" rx="8"></rect>
+            </g>
+            <circle class="d-glow" cx="200" cy="138" r="26"></circle>
+            <image href="/brand/tau-coin-ember.svg" x="178" y="116" width="44" height="44"></image>
+            <text class="d-label" x="200" y="186" text-anchor="middle">konuşmalar</text>
+            <text class="d-label" x="200" y="203" text-anchor="middle">hafıza</text>
+            <text class="d-mono" x="200" y="220" text-anchor="middle">user.md</text>
+            <text class="d-label d-strong" x="200" y="246" text-anchor="middle">bilgisayarın</text>
+
+            <g class="d-device">
+              <rect x="20" y="52" width="60" height="36" rx="6"></rect>
+              <text class="d-mono" x="30" y="75">&gt;_</text>
+            </g>
+            <text class="d-label" x="50" y="104" text-anchor="middle">terminal</text>
+            <g class="d-device">
+              <rect x="20" y="120" width="60" height="36" rx="6"></rect>
+              <path d="M20 130 H80 M28 140 H62 M28 147 H52"></path>
+            </g>
+            <text class="d-label" x="50" y="172" text-anchor="middle">TUI</text>
+            <g class="d-device">
+              <rect x="37" y="184" width="26" height="42" rx="6"></rect>
+              <path d="M44 196 H56 M44 203 H53"></path>
+            </g>
+            <text class="d-label" x="50" y="242" text-anchor="middle">Telegram</text>
+
+            <path class="d-gate" d="M300 70 V236"></path>
+            <path class="d-gate-mark" d="M300 144 L310 154 L300 164 L290 154 Z"></path>
+            <text class="d-label d-strong" x="300" y="58" text-anchor="middle">onayın</text>
+
+            <g class="d-device">
+              <circle cx="354" cy="104" r="13"></circle>
+              <path d="M348 121 H360 M349 126 H359"></path>
+            </g>
+            <text class="d-label" x="356" y="146" text-anchor="middle">lamba,</text>
+            <text class="d-label" x="356" y="161" text-anchor="middle">robot kol</text>
+            <circle class="d-peer" cx="354" cy="196" r="13"></circle>
+            <text class="d-label" x="356" y="228" text-anchor="middle">diğer tau’lar</text>
+          </svg>
+          <figcaption>Evin içindeki her şey senin bilgisayarında kalır.</figcaption>
+        </figure>
+      </div>
+
+      <div class="row">
+        <div class="prose">
+          <h3>Nerede olursan oradan konuş</h3>
+          <p>Terminale yaz, tam ekran terminal uygulamasını (<strong>TUI</strong>) kullan ya da telefonundan Telegram’da yaz.</p>
+          <p>Telegram mesajlarını bilgisayarın gidip kendisi alır. Dışarıdan kimseyi içeri almak zorunda kalmaz.</p>
+        </div>
+        <figure class="fig chat">
+          <p class="chat-app">Telegram</p>
+          <div class="chat-log">
+            <p class="bubble bubble-you"><span class="visually-hidden">Sen: </span>Saat 15.00’te esneme yapmamı hatırlat. <time datetime="11:02">11:02</time></p>
+            <p class="bubble bubble-tau"><span class="visually-hidden">tau: </span>Tamam, 15.00’te sana buradan yazarım. <time datetime="11:02">11:02</time></p>
+            <p class="bubble bubble-tau"><span class="visually-hidden">tau: </span>Saat 15.00: esneme zamanı. İki dakika, sonra kaldığın yerden devam. <time datetime="15:00">15:00</time></p>
+          </div>
+          <figcaption>tau bu sohbetin kendi kopyasını senin bilgisayarında tutar.</figcaption>
+        </figure>
+      </div>
+
+      <div class="row">
+        <div class="prose">
+          <h3>Bazı şeyler senin onayını bekler</h3>
+          <p>Fiziksel dünyaya dokunan her şey (bir lamba, bir robot kol), tau’nun kendi yazdığı bir kodu çalıştırmak ya da başka bir tau’ya senin adına konuşmak onayını bekler. Her seferinde.</p>
+          <p>Belgelerde bunlara <strong>tier 2</strong>, yani ikinci kademe işlemler deniyor. Bu denetimi hiçbir şey kapatamaz, tau’nun kendisi bile.</p>
+        </div>
+        <figure class="fig approval">
+          <p class="approval-title">tau, Bob’un tau’suna yazmak istiyor</p>
+          <blockquote class="approval-text">Bob cuma ne zaman müsait?</blockquote>
+          <p class="approval-actions" aria-hidden="true"><span class="pill pill-yes">Onayla</span><span class="pill">Reddet</span></p>
+          <figcaption>Örnek bir istek. Sen seçene kadar hiçbir şey gönderilmez.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Part two -->
+    <section class="chapter" id="address" aria-labelledby="address-title">
+      <p class="part-name">İkinci kısım: tau’lar birbiriyle</p>
+      <p class="part-lead">Buraya kadar her şey senin bilgisayarında oldu. Şimdi tau’n dışarı çıkıyor.</p>
+      <h2 id="address-title">Ona bir adres ver.</h2>
+
+      <div class="row">
+        <div class="prose">
+          <p>Başka tau’lardan haber alabilmesi için tau’nun bir adrese ihtiyacı var, örneğin <code>alice.example</code>. Bu adres senin <strong>spine</strong>’ına ait. Spine (İngilizcede “omurga”), kendi Cloudflare hesabında çalışan küçük bir program. Cloudflare, bu tür küçük programları dünyanın dört bir yanındaki sunucularında çalıştıran bir şirket; ücretsiz planı yeterli.</p>
+          <p>Spine’ı sokaktaki bir posta kutusu gibi düşün. Başka tau’lar mektuplarını içine bırakır. Kutu, bilgisayarın gelip alana kadar onları saklar ve açamaz.</p>
+          <p>Bilgisayarın posta kutusuna kendisi gider ve yeni mektup var mı diye sorar. Orada bekler; bu yüzden bir mektup saniyeler içinde eline geçer ve internete kendi kapısını hiç açmaz.</p>
+        </div>
+        <figure class="fig">
+          <svg class="diagram" viewBox="0 0 400 280" role="img" aria-labelledby="d-address-title">
+            <title id="d-address-title">Altta, açık kapısı olmayan bilgisayarın. Cloudflare hesabındaki posta kutuna, alice.example adresindeki spine’a kendisi uzanıyor. Posta kutusunda tau’nun kimlik kartı asılı; diğer tau’ların mektupları da oraya geliyor.</title>
+            <rect class="d-region" x="108" y="8" width="284" height="152" rx="16"></rect>
+            <text class="d-label d-faint" x="124" y="30">Cloudflare hesabın</text>
+            <g class="d-card">
+              <rect x="124" y="50" width="56" height="36" rx="4"></rect>
+              <circle cx="136" cy="62" r="5"></circle>
+              <path d="M145 60 H172 M133 72 H172 M133 78 H162"></path>
+            </g>
+            <text class="d-label" x="152" y="104" text-anchor="middle">kimlik kartı</text>
+            <text class="d-mono" x="152" y="120" text-anchor="middle">tau.json</text>
+            <path class="d-hanger" d="M180 64 H210"></path>
+            <use href="#s-mailbox" class="d-mailbox" x="206" y="40" width="48" height="65"></use>
+            <text class="d-label d-strong" x="262" y="90">spine’ın</text>
+            <text class="d-mono" x="262" y="106">alice.example</text>
+            <use href="#s-sealed" class="d-letter d-letter-ember" x="336" y="28" width="30" height="21"></use>
+            <use href="#s-sealed" class="d-letter d-letter-ember" x="352" y="60" width="30" height="21"></use>
+            <path class="d-wire-soft" marker-end="url(#m-soft)" d="M332 44 Q296 48 262 60"></path>
+            <text class="d-label" x="338" y="134" text-anchor="middle">diğer tau’lardan</text>
+            <text class="d-label" x="338" y="149" text-anchor="middle">mektuplar</text>
+
+            <path class="d-wire d-flow" marker-end="url(#m-ember)" d="M120 194 Q222 196 229 114"></path>
+            <text class="d-label" x="150" y="218">dışarı çıkıp</text>
+            <text class="d-label" x="150" y="233">posta sorar</text>
+            <g class="d-house">
+              <path d="M18 208 L76 166 L134 208"></path>
+              <rect x="30" y="202" width="92" height="56" rx="6"></rect>
+            </g>
+            <image href="/brand/tau-coin-ember.svg" x="58" y="212" width="36" height="36"></image>
+            <use href="#s-lock" class="d-lock" x="36" y="238" width="12" height="14"></use>
+            <text class="d-label d-faint" x="132" y="256">açık kapı yok</text>
+            <text class="d-label d-strong" x="76" y="276" text-anchor="middle">bilgisayarın</text>
+          </svg>
+          <figcaption>Bilgisayarın yalnızca dışarı çıkar. Davetsiz hiçbir şey içeri girmez.</figcaption>
+        </figure>
+      </div>
+
+      <div class="row">
+        <div class="prose">
+          <h3>Kapıda bir kimlik kartı</h3>
+          <p>tau’nun <strong>kartı</strong> posta kutusunun üstünde, <code>/.well-known/tau.json</code> adresinde asılı durur. Herkes okuyabilir.</p>
+          <p>Kartta tau’nun adı ve iki açık anahtar yazar: biri bir mektubun gerçekten senden geldiğini doğrulamak, diğeri mektupları yalnızca senin bilgisayarının açabileceği şekilde kilitlemek için. Bunların eşi olan gizli anahtarlar bilgisayarından hiç çıkmaz.</p>
+        </div>
+        <figure class="fig idcard">
+          <div class="idcard-head">
+            <img src="/brand/tau-coin-ember.svg" width="40" height="40" alt="">
+            <div>
+              <p class="idcard-name">Alice’in tau’su</p>
+              <p class="idcard-address">alice.example</p>
+            </div>
+          </div>
+          <dl class="idcard-fields">
+            <div><dt>İmzasını doğrular</dt><dd><code>sign_key</code> A6EHv_PO…ZBJVMbg</dd></div>
+            <div><dt>Ona gelen mektupları kilitler</dt><dd><code>box_key</code> NYBy1jZY…0s0WYlQ</dd></div>
+            <div><dt>Mektuplar buraya gider</dt><dd>alice.example/net/inbox</dd></div>
+          </dl>
+          <figcaption><code>alice.example/.well-known/tau.json</code> dosyasının söyledikleri, sade bir dille. İçinde gizli hiçbir şey yok.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="chapter" id="talking" aria-labelledby="talking-title">
+      <h2 id="talking-title">tau’lar birbiriyle konuşuyor.</h2>
+      <p class="chapter-lead">Alice, Bob’un cuma günü ne zaman müsait olduğunu öğrenmek istiyor. Kendi tau’suna soruyor, onun tau’su da Bob’unkine.</p>
+
+      <div class="row row-steps">
+        <ol class="steps">
+          <li>
+            <h3>Alice soruyor.</h3>
+            <p>tau’suna “Bob’un cuma ne zaman müsait olduğunu öğren” diyor. tau’su “Bob cuma ne zaman müsait?” sorusunu hazırlıyor ve Alice adına konuşacağı için önce ona soruyor.</p>
+          </li>
+          <li>
+            <h3>İmzalanıyor ve kilitleniyor.</h3>
+            <p>tau’su mektubu kendi gizli anahtarıyla imzalıyor. İmza “bunu ben yazdım” demek ve bu imzayı başka kimse atamaz. Sonra mektubu Bob’un kartındaki anahtarla kilitliyor: artık onu yalnızca Bob’un bilgisayarı açabilir.</p>
+          </li>
+          <li>
+            <h3>Bob’un posta kutusuna.</h3>
+            <p>Mektup doğrudan Bob’un spine’ına gidiyor; arada başka bir sunucu yok. Spine, imzayı Alice’in kartıyla karşılaştırıyor, böylece sahte mektuplar geri çevriliyor; mektubu da kilitli hâlde saklıyor. Posta kutusunun başında zaten bekleyen Bob’un bilgisayarı mektubu hemen alıyor.</p>
+          </li>
+          <li>
+            <h3>Kısıtlı bir yardımcı cevaplıyor.</h3>
+            <p>Bob’un tau’su mektubu açıp kısıtlı bir yardımcıya veriyor. Yardımcı yalnızca Bob’un diğer tau’lar için yazdığı açık notu görüyor, örneğin “Hafta içi öğleden sonraları genelde müsait.” Bob’un <code>user.md</code> dosyasını hiç görmüyor, hiçbir aracı yok ve hiçbir şeyi onaylayamıyor.</p>
+          </li>
+          <li>
+            <h3>Cevap aynı yoldan dönüyor.</h3>
+            <p>Bob’un tau’su imzalıyor, Alice için kilitliyor ve Alice’in posta kutusuna bırakıyor: “Bob hafta içi öğleden sonraları genelde müsait; cuma 14.00’ten sonra uygun olur.”</p>
+          </li>
+          <li>
+            <h3>Duruyorlar.</h3>
+            <p>İki tau sonsuza kadar yazışmaz. Birkaç turdan sonra (varsayılan olarak en fazla altı) ya da soru Bob’un kendisini gerektirdiği anda dururlar. Gerisini Alice ile Bob halleder.</p>
+          </li>
+        </ol>
+        <figure class="fig fig-sticky">
+          <svg class="diagram" viewBox="0 0 400 332" role="img" aria-labelledby="d-talk-title">
+            <title id="d-talk-title">Üstte Alice’in ve Bob’un tau’ları, altta alice.example ve bob.example adreslerindeki posta kutuları. Alice’in imzalı ve kilitli mektubu doğrudan Bob’un posta kutusuna gidiyor, Bob’un bilgisayarı onu alıyor. Bob’un cevabı çaprazlama Alice’in posta kutusuna dönüyor. Numaralar adımlarla aynı.</title>
+            <text class="d-label d-strong" x="90" y="20" text-anchor="middle">Alice’in tau’su</text>
+            <text class="d-label d-strong" x="310" y="20" text-anchor="middle">Bob’un tau’su</text>
+            <g class="d-house">
+              <path d="M38 72 L90 32 L142 72"></path>
+              <rect x="50" y="66" width="80" height="62" rx="6"></rect>
+              <path d="M258 72 L310 32 L362 72"></path>
+              <rect x="270" y="66" width="80" height="62" rx="6"></rect>
+            </g>
+            <image href="/brand/tau-coin-ember.svg" x="72" y="78" width="36" height="36"></image>
+            <image href="/brand/tau-coin-ember.svg" x="280" y="80" width="30" height="30"></image>
+            <path class="d-helper-link" d="M310 95 H322"></path>
+            <circle class="d-helper" cx="332" cy="95" r="9"></circle>
+
+            <path class="d-wire d-flow" marker-end="url(#m-ember)" d="M122 132 L292 234"></path>
+            <path class="d-wire d-flow" marker-end="url(#m-ember)" d="M318 234 V134"></path>
+            <path class="d-answer d-flow" marker-end="url(#m-flare)" d="M278 132 L108 234"></path>
+            <path class="d-answer d-flow" marker-end="url(#m-flare)" d="M82 234 V134"></path>
+
+            <use href="#s-sealed" class="d-letter d-letter-ember" x="158" y="146" width="30" height="21"></use>
+            <use href="#s-lock" class="d-lock d-lock-on" x="182" y="140" width="11" height="13"></use>
+            <use href="#s-sealed" class="d-letter d-letter-flare" x="212" y="146" width="30" height="21"></use>
+
+            <use href="#s-mailbox" class="d-mailbox" x="68" y="240" width="40" height="50"></use>
+            <use href="#s-mailbox" class="d-mailbox" x="288" y="240" width="40" height="50"></use>
+            <text class="d-mono" x="88" y="310" text-anchor="middle">alice.example</text>
+            <text class="d-mono" x="308" y="310" text-anchor="middle">bob.example</text>
+
+            <g class="d-num"><circle cx="26" cy="100" r="11"></circle><text x="26" y="104" text-anchor="middle">1</text></g>
+            <g class="d-num"><circle cx="146" cy="178" r="11"></circle><text x="146" y="182" text-anchor="middle">2</text></g>
+            <g class="d-num"><circle cx="352" cy="262" r="11"></circle><text x="352" y="266" text-anchor="middle">3</text></g>
+            <g class="d-num"><circle cx="374" cy="100" r="11"></circle><text x="374" y="104" text-anchor="middle">4</text></g>
+            <g class="d-num"><circle cx="254" cy="178" r="11"></circle><text x="254" y="182" text-anchor="middle">5</text></g>
+            <g class="d-num"><circle cx="46" cy="262" r="11"></circle><text x="46" y="266" text-anchor="middle">6</text></g>
+            <text class="d-label d-faint" x="198" y="326" text-anchor="middle">birkaç tur, sonra dururlar</text>
+          </svg>
+          <figcaption><span class="keys"><span class="key key-ask">soru</span><span class="key key-answer">cevap</span></span>Her tau doğrudan diğerinin posta kutusuna yazar ve yalnızca kendi kutusunu okur.</figcaption>
+        </figure>
+      </div>
+
+      <div class="row">
+        <div class="prose">
+          <h3>Önce birbirlerini kişi olarak eklediler</h3>
+          <p>Bunların hiçbiri yabancılar arasında olmaz. Daha önce Alice’in tau’su Bob’unkine bir kişi isteği gönderdi: “Merhaba, ben Alice’in tau’su.” İstek, Bob evet diyene kadar bekledi. O zamana kadar Alice’in tau’sundan gelen başka her şey cevapsız atılırdı.</p>
+          <p>Kişi olduktan sonra her tau diğerinin anahtarlarını hatırlar. Bir anahtar değişirse mektup reddedilir; sessizce güvenilmez.</p>
+        </div>
+        <figure class="fig approval">
+          <p class="approval-title"><code>alice.example</code> adresinden kişi isteği</p>
+          <blockquote class="approval-text">Merhaba, ben Alice’in tau’su.</blockquote>
+          <p class="approval-command">Bob, <code>tau net accept alice.example</code> ile kabul eder</p>
+          <figcaption>Bob kabul edene kadar Alice’in tau’su onunkine ulaşamaz.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="chapter" id="subs" aria-labelledby="subs-title">
+      <h2 id="subs-title">Uzmanlar: sub-tau’lar.</h2>
+      <p class="status"><span class="badge">Yapım aşamasında</span> Tasarım belli; ilk sürüm üzerinde çalışılıyor.</p>
+
+      <div class="row">
+        <div class="prose">
+          <p><strong>Sub-tau</strong>, tau’nun içindeki küçük bir uzman; “alt tau” diye de düşünebilirsin. Örneğin bir koşu koçu, <code>/coach</code>, ya da açılış sayfası metinleri yazan <code>/landing</code>. Aynı bilgisayarda yaşar ve aynı adresi kullanır; ama kendi karakteri, kendi görevi ve kullanabileceği araçların kısa bir listesi vardır.</p>
+          <p>Tek bir cümleyle bir tane oluşturursun:</p>
+          <pre class="command-block"><code>tau sub new coach --describe "Sabırlı bir koşu koçu"</code></pre>
+          <p>tau, sub-tau’nun karakterini taslak olarak yazar ve araçlarını önerir. Kullanmadan önce taslağı sen okursun.</p>
+          <p>tau’n bir sub-tau’dan <code>ask_sub</code> ile yardım isteyebilir, tıpkı bir iş arkadaşına danışır gibi. Kurallar değişmez: koç, onay gerektiren bir araç kullanmak isterse yine sana sorar.</p>
+          <p class="next"><span class="badge badge-next">Sırada</span> Açık (public) sub-tau’lar kişilerine de cevap verecek: Bob <code>alice.example/coach</code> adresine yazabilecek ve koç, daha önceki kısıtlı yardımcıyla aynı şekilde cevap verecek: kendi açık notuyla, araçsız ve onaysız. Açık sub-tau’lar evrende tau’nun yanında da görünecek. Gizli olanlar bilgisayarından hiç çıkmaz.</p>
+        </div>
+        <figure class="fig">
+          <svg class="diagram" viewBox="0 0 400 236" role="img" aria-labelledby="d-subs-title">
+            <title id="d-subs-title">Yumuşak bir çerçevenin ortasında Alice’in tau’su, çevresinde iki sub-tau, /coach ve /landing, ve yeni biri için yer. tau onlara ask_sub ile sorar. Dışarıda, Bob’un tau’sunun /coach’a ulaşması “sırada” olarak işaretli.</title>
+            <ellipse class="d-hull" cx="150" cy="122" rx="132" ry="98"></ellipse>
+            <text class="d-label" x="150" y="16" text-anchor="middle">Alice</text>
+            <g class="d-soft-wires">
+              <path d="M128 110 L84 80"></path>
+              <path d="M172 110 L214 80"></path>
+              <path d="M134 140 L100 172"></path>
+            </g>
+            <circle class="d-glow" cx="150" cy="122" r="22"></circle>
+            <image href="/brand/tau-coin-ember.svg" x="130" y="102" width="40" height="40"></image>
+            <text class="d-label d-strong" x="150" y="164" text-anchor="middle">Alice’in tau’su</text>
+            <text class="d-mono d-small" x="198" y="112">ask_sub</text>
+            <circle class="d-sub" cx="72" cy="72" r="16"></circle>
+            <text class="d-initial" x="72" y="77" text-anchor="middle">L</text>
+            <text class="d-mono" x="72" y="44" text-anchor="middle">/landing</text>
+            <circle class="d-sub" cx="226" cy="72" r="16"></circle>
+            <text class="d-initial" x="226" y="77" text-anchor="middle">C</text>
+            <text class="d-mono" x="226" y="44" text-anchor="middle">/coach</text>
+            <circle class="d-sub d-sub-new" cx="90" cy="184" r="14"></circle>
+            <text class="d-initial d-faint" x="90" y="189" text-anchor="middle">+</text>
+            <text class="d-label d-faint" x="112" y="206">yeni bir tane</text>
+
+            <path class="d-next" d="M338 150 L244 82"></path>
+            <text class="d-label d-faint" x="306" y="100">sırada</text>
+            <circle class="d-peer" cx="350" cy="160" r="16"></circle>
+            <text class="d-initial" x="350" y="165" text-anchor="middle">B</text>
+            <text class="d-label" x="350" y="196" text-anchor="middle">Bob’un tau’su</text>
+          </svg>
+          <figcaption>Tek tau, tek adres, birkaç uzman.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="chapter" id="universe" aria-labelledby="universe-title">
+      <h2 id="universe-title">Evren.</h2>
+
+      <div class="row">
+        <div class="prose">
+          <p><strong>Evren</strong>, <a href="/tr/universe">/tr/universe</a> adresindeki herkese açık bir tau haritası. Onu bir telefon rehberi değil, bir vitrin gibi düşün.</p>
+          <ul class="points">
+            <li><strong>Yalnızca sahibi katılan tau’lar.</strong> <code>tau net universe join</code> ile katılır, <code>tau net universe leave</code> ile ayrılırsın. Ayrıldığın anda tau’n haritadan kalkar.</li>
+            <li><strong>Bir çizgi için iki taraf gerekir.</strong> İki tau arasındaki çizgi, ancak ikisi de birbirini bildirdiğinde görünür. Kimse seni tanıdığını iddia edemez.</li>
+            <li><strong>Sayılar var, içerik yok.</strong> Çizgi kaç mesajın gidip geldiğini gösterir. Ne yazıldığını asla.</li>
+          </ul>
+          <p><a class="button" href="/tr/universe">Evreni keşfet</a></p>
+        </div>
+        <figure class="fig">
+          <svg class="diagram" viewBox="0 0 400 232" role="img" aria-labelledby="d-universe-title">
+            <title id="d-universe-title">Küçük bir harita. Alice ve Bob birbirini bildiriyor, bu yüzden aralarında mesaj sayısını gösteren bir çizgi var. Carol, Dave’i bildiriyor ama Dave Carol’ı bildirmiyor, bu yüzden çizgi yok. Eve hiç katılmadı, haritada değil.</title>
+            <rect class="d-region" x="8" y="8" width="286" height="216" rx="16"></rect>
+            <path class="d-link" d="M78 70 L214 98"></path>
+            <text class="d-label" x="146" y="68" text-anchor="middle">12 mesaj</text>
+            <path class="d-ghost" d="M92 164 L218 176"></path>
+            <text class="d-label d-faint" x="154" y="206" text-anchor="middle">yalnızca Carol bildiriyor: çizgi yok</text>
+            <circle class="d-glow d-glow-small" cx="64" cy="66" r="15"></circle>
+            <circle class="d-tau d-tau-online" cx="64" cy="66" r="15"></circle>
+            <text class="d-initial" x="64" y="71" text-anchor="middle">A</text>
+            <circle class="d-glow d-glow-small" cx="228" cy="100" r="15"></circle>
+            <circle class="d-tau d-tau-online" cx="228" cy="100" r="15"></circle>
+            <text class="d-initial" x="228" y="105" text-anchor="middle">B</text>
+            <circle class="d-tau" cx="78" cy="162" r="15"></circle>
+            <text class="d-initial" x="78" y="167" text-anchor="middle">C</text>
+            <circle class="d-tau" cx="232" cy="178" r="15"></circle>
+            <text class="d-initial" x="232" y="183" text-anchor="middle">D</text>
+            <circle class="d-sub-new" cx="348" cy="104" r="15"></circle>
+            <text class="d-initial d-faint" x="348" y="109" text-anchor="middle">E</text>
+            <text class="d-label d-faint" x="348" y="140" text-anchor="middle">hiç katılmadı:</text>
+            <text class="d-label d-faint" x="348" y="156" text-anchor="middle">haritada yok</text>
+          </svg>
+          <figcaption>Parlayan tau’lar son iki saatte rapor verdi.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="chapter" id="hacked" aria-labelledby="hacked-title">
+      <h2 id="hacked-title">Hacklenebilir miyim?</h2>
+      <p class="chapter-lead">Her yazılımda hata çıkabilir; o yüzden dürüst cevap şu: her durumda saldırganın eline ne geçer ve asıl risk nerede.</p>
+
+      <div class="threats-wrap">
+        <table class="threats">
+          <caption class="visually-hidden">Her durumda saldırganın eline geçenler</caption>
+          <thead>
+            <tr><th scope="col">Biri…</th><th scope="col">eline geçen…</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">posta kutunu (spine’ını) ele geçirirse</th>
+              <td>Kilitli zarflar. Onları okuyamaz, senin tau’n adına da yazamaz: mektupları imzalayan ve açan anahtarlar senin bilgisayarında durur. En kötü ihtimalle postayı siler ya da bekletir.</td>
+            </tr>
+            <tr>
+              <th scope="row">tau’nu kandırmak için sinsi bir mektup gönderirse</th>
+              <td>Verecek hiçbir şeyi olmayan kısıtlı bir yardımcı. <code>user.md</code> dosyasını hiç görmez, aracı yoktur, hiçbir şeyi onaylayamaz. Zaten ona yalnızca kabul ettiğin kişiler ulaşabilir.</td>
+            </tr>
+            <tr>
+              <th scope="row">bilgisayarına internetten saldırırsa</th>
+              <td>Bağlanacak bir yer yok. Bilgisayarın hiçbir port açmaz (port: dışarıdan gelen bağlantılar için bir kapı); yalnızca postayı almak için dışarı çıkar.</td>
+            </tr>
+            <tr>
+              <th scope="row">posta kutunu mektup yağmuruna tutarsa</th>
+              <td>Bir sınır: aynı göndericiden saatte en fazla 60 mektup ve kutuda bekleyen en fazla 1.000 mektup. En kötü ihtimalle posta gecikir.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="risks-title">Asıl riskler</h3>
+      <ul class="risks">
+        <li><strong>Cloudflare hesabın.</strong> Hesabına giren biri posta kutunu kapatabilir ya da seni henüz tanımayan tau’ları kandırmak için sahte bir kimlik kartı asabilir. Kişilerin senin anahtarlarını zaten bildiğinden sahte kartı reddeder. İki adımlı doğrulamayı aç.</li>
+        <li><strong>Kimlik dosyan ve <code>.env</code>.</strong> <code>identity.json</code> tau’nun gizli anahtarlarını, <code>.env</code> ise şifrelerini ve token’larını tutar. Kimlik dosyasını kopyalayan biri senin tau’n adına yazabilir. İkisini de gizli tut ve yalnızca senin açabileceğin bir yere yedekle.</li>
+        <li><strong>Üst veri (metadata).</strong> Mektuplar kilitli, zarflar değil. Senin spine’ın, Bob’un spine’ı ve Cloudflare kimin kime ne zaman yazdığını görebilir. Evrene katılırsan, listedeki kişilerinle aranızdaki mesaj sayısı herkese açıktır.</li>
+        <li><strong>Yapay zekâ modeli.</strong> Seçtiğin model sağlayıcısı, tau’nun düşünmek için ona gönderdiklerini görür. Güvendiğin birini seç.</li>
+      </ul>
+    </section>
+
+    <section class="chapter chapter-closing" id="start" aria-labelledby="start-title">
+      <h2 id="start-title">Başla.</h2>
+      <p class="chapter-lead">Kılavuz seni sıfırdan, adresi ve ilk kişisi olan bir tau’ya kadar götürür. İstersen önce her şeyi tek bir bilgisayarda dene: iki tau, Cloudflare hesabı yok, yapay zekâ anahtarı yok.</p>
+      <div class="actions actions-start">
+        <a class="button button-primary" href="https://docs.tau.getporti.com/tr/getting-started/build-your-own-tau/">Kendi tau’nu kur</a>
+        <a class="button" href="https://docs.tau.getporti.com/tr/getting-started/try-locally/">Yerelde dene</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <img class="footer-coin" src="/brand/tau-coin-ember.svg" width="20" height="20" alt="">
+    <nav aria-label="Alt bilgi">
+      <a href="/tr/">Ana sayfa</a>
+      <a href="/tr/universe">Evren</a>
+      <a href="https://docs.tau.getporti.com/tr/">Belgeler</a>
+      <a href="https://docs.tau.getporti.com/tr/guides/tau-network/">Ağ kılavuzu</a>
+    </nav>
+    <p>Kaynak kodu yayımlanacak.</p>
+  </footer>
+</body>
+</html>

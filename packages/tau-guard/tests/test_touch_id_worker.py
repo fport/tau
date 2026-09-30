@@ -225,13 +225,20 @@ def test_an_enrollment_without_a_pin_never_passes_touch_id_only(session: Session
     assert answer["reason"] == "touch_id_failed" and auth.calls == []
 
 
-def test_touch_id_needs_an_enrollment_and_a_readable_template(session: Session) -> None:
-    request = touch_request(session, settings={"unlock_fallback": "touch_id"})
+@pytest.mark.parametrize("fallback", ["touch_id", "touch_id_or_password"])
+def test_touch_id_needs_an_enrollment_and_a_readable_template(
+    session: Session, fallback: str
+) -> None:
+    request = touch_request(session, settings={"unlock_fallback": fallback})
     assert session.run("touch_id", request)["reason"] == "not_enrolled"
     session.enroll()
     (guard_dir(session) / TEMPLATE_FILE).write_bytes(b"TAUG1" + b"\0" * 40)
     assert session.run("touch_id", request)["reason"] == "template_invalid"
-    assert session.auth.calls[1:] == []
+    from tau_guard.store import MemoryKeyStore
+
+    failing = MemoryKeyStore(fail=True)
+    assert session.run("touch_id", request, keys=failing)["reason"] == "key_unavailable"
+    assert session.auth.calls[1:] == []  # no prompt for a broken enrollment
 
 
 @pytest.mark.parametrize(

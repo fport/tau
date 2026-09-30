@@ -58,9 +58,11 @@ Operations:
 - ``touch_id`` (issue 114): the Touch ID unlock fallback (``kind`` ``unlock`` or ``recheck``:
   ``unlock_fallback = "touch_id"`` is Touch ID only with the pinned fingerprint set,
   ``touch_id_or_password`` the device-owner policy) and the ``step_up = "touch_id"`` step-up
-  (Touch ID only, pinned). It never opens the camera. An enrollment without a pinned set gives
-  ``touch_id_failed`` for Touch ID only; ``touch_id_unavailable`` when the lid is closed, there
-  is no sensor or the policy cannot be evaluated. A success is ``method: "touch_id"``.
+  (Touch ID only, pinned). It never opens the camera. The template must decrypt for either
+  policy (``key_unavailable``, ``template_invalid``, ...). An enrollment without a pinned set
+  gives ``touch_id_failed`` for Touch ID only; ``touch_id_unavailable`` when the lid is
+  closed, there is no sensor or the policy cannot be evaluated. A success is ``method:
+  "touch_id"``.
 - ``verify`` for a step-up with ``step_up = "face_or_touch_id"``: when the face check fails
   for a reason that does not count (:data:`TOUCH_ID_AFTER`: ``too_dark``, ``no_face``, a
   ``camera_*`` verdict, ...), the camera is released and Touch ID (pinned) is asked instead.
@@ -672,16 +674,16 @@ def touch_id_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, An
     if policy is None:
         log("touch_id: the settings or the policy do not allow Touch ID here")
         return verdict(False, "touch_id_unavailable")
-    pin = None
-    if policy == BIOMETRICS:
-        try:
-            pin = read_pin(data_dir / "guard", deps.keys)
-        except StoreError as exc:
-            log(f"touch_id: the template cannot be used ({exc.reason})")
-            return verdict(False, exc.reason)
-        if pin is None:
-            log("touch_id: the enrollment pinned no fingerprint set; enroll again to pin it")
-            return verdict(False, "touch_id_failed")
+    try:  # the enrollment must be intact for either policy; Touch ID only needs its pin
+        pin = read_pin(data_dir / "guard", deps.keys)
+    except StoreError as exc:
+        log(f"touch_id: the template cannot be used ({exc.reason})")
+        return verdict(False, exc.reason)
+    if policy != BIOMETRICS:
+        pin = None  # the device-owner policy takes the password: no pin applies
+    elif pin is None:
+        log("touch_id: the enrollment pinned no fingerprint set; enroll again to pin it")
+        return verdict(False, "touch_id_failed")
     _Progress(emit, deps).step("touch_id")
     refused, auth = _authenticate(request, deps, policy, pin=pin)
     if refused is not None:

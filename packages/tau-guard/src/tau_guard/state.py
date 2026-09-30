@@ -49,7 +49,7 @@ Rules the table in the ADR leaves to the implementation:
   count and its success resets nothing.
 - A verdict with ``camera_ms`` also writes a ``camera_open`` audit record (``reason`` is the
   attempt kind, ``duration_ms`` how long the camera was on).
-- **Touch ID (issue 114).** An attempt has a ``method``: ``face`` or ``touch_id``.
+- **Touch ID (issue 114).** An attempt has a ``factor``: ``face`` or ``touch_id``.
 
   - *The unlock fallback* (``request("unlock", method="touch_id")``) is offered only while
     ``locked`` and ``unlock_fallback`` is not ``none``, after :data:`FALLBACK_AFTER` failed face

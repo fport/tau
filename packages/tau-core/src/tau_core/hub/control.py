@@ -11,13 +11,15 @@ uses ``asyncio.run_coroutine_threadsafe(coro, hub.loop)``. Later issues add rout
 ``Hub.add_status_source``.
 
 Routes are protected by default (ADR 0008): only ``GET /health`` and ``GET /status`` are open.
-The HTTP handler refuses a protected request with 403 before dispatch when the token file
-``hub_dir/control.token`` is missing, empty or not this hub's, when ``X-Tau-Token`` does not
-match, when an ``Origin`` header is present, or when a body-carrying request is not
-``application/json``. A protected answer to a request with ``X-Tau-Nonce`` carries
-``X-Tau-Proof`` (:func:`response_proof`), so a client can tell the real hub from a process that
-bound the port while the hub was down. :meth:`ControlApi.handle` itself does not check, so unit
-tests route requests without a token.
+The token in ``hub_dir/control.token`` never travels: a client signs each protected request
+with it (``X-Tau-Nonce`` plus ``X-Tau-Auth``, :func:`request_auth`) and the hub signs its answer
+(``X-Tau-Proof``, :func:`response_proof`, a separate HMAC domain). The HTTP handler refuses a
+protected request with 403 before dispatch when the token file is missing, empty or not this
+hub's, when the nonce or ``X-Tau-Auth`` is missing or wrong, when an ``Origin`` header is
+present, or when a body-carrying request is not ``application/json``. A process that binds the
+port while the hub is down (a stale token file after a crash) therefore learns nothing it can
+sign with, and a client refuses its unproven answers. :meth:`ControlApi.handle` itself does not
+check, so unit tests route requests without a token.
 """
 
 from __future__ import annotations
@@ -56,6 +58,9 @@ OPEN_PATHS = frozenset({"/health", "/status"})
 """The only paths served without the token."""
 MAX_NONCE_LENGTH = 128
 BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
+NONCE_HEADER = "X-Tau-Nonce"
+AUTH_HEADER = "X-Tau-Auth"
+PROOF_HEADER = "X-Tau-Proof"
 
 
 @dataclass(frozen=True)
@@ -88,13 +93,30 @@ def _host_allowed(host: str | None) -> bool:
     return name in LOOPBACK_NAMES
 
 
+def _mac(token: str, domain: bytes, fields: tuple[str, ...], tail: bytes | None = None) -> str:
+    message = b"|".join((domain, *(value.encode("utf-8") for value in fields)))
+    if tail is not None:
+        message += b"|" + tail
+    return hmac.new(token.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def request_auth(token: str, nonce: str, method: str, path: str) -> str:
+    """``hex(HMAC-SHA256(token, "req" | nonce | method | path))``, the ``X-Tau-Auth`` of a
+    protected request; ``method`` is upper case and ``path`` has no query string."""
+    return _mac(token, b"req", (nonce, method.upper(), path))
+
+
 def response_proof(token: str, nonce: str, method: str, path: str, status: int, body: bytes) -> str:
-    """``hex(HMAC-SHA256(token, nonce | method | path | status | body))``; ``path`` has no
-    query string."""
-    message = b"|".join(
-        (nonce.encode("utf-8"), method.encode("ascii"), path.encode("utf-8"), str(status).encode())
-    )
-    return hmac.new(token.encode("utf-8"), message + b"|" + body, hashlib.sha256).hexdigest()
+    """``hex(HMAC-SHA256(token, "resp" | nonce | method | path | status | body))``, the
+    ``X-Tau-Proof`` of a protected answer; ``path`` has no query string. The ``resp`` domain
+    keeps a request's ``X-Tau-Auth`` from ever passing as a proof."""
+    return _mac(token, b"resp", (nonce, method.upper(), path, str(status)), body)
+
+
+def auth_headers(token: str, method: str, path: str, *, nonce: str | None = None) -> dict[str, str]:
+    """``X-Tau-Nonce`` (fresh unless given) and ``X-Tau-Auth`` for one protected request."""
+    nonce = secrets.token_hex(16) if nonce is None else nonce
+    return {NONCE_HEADER: nonce, AUTH_HEADER: request_auth(token, nonce, method, path)}
 
 
 def read_token(path: Path) -> str | None:
@@ -133,16 +155,16 @@ def _handler_class(api: ControlApi) -> type[BaseHTTPRequestHandler]:
                 self._send(403, {"error": "local access only"})
                 return
             url = urlsplit(self.path)
-            token: str | None = None
-            if not api.is_open(method, url.path):
-                token = api.authorize(method, self.headers)
-                if token is None:
-                    self._send(403, {"error": "forbidden"})
-                    return
-            nonce = self.headers.get("X-Tau-Nonce")
+            nonce = self.headers.get(NONCE_HEADER)
             if nonce is not None and not 0 < len(nonce) <= MAX_NONCE_LENGTH:
                 self._send(400, {"error": "bad nonce"})
                 return
+            token: str | None = None
+            if not api.is_open(method, url.path):
+                token = api.authorize(method, url.path, self.headers)
+                if token is None:
+                    self._send(403, {"error": "forbidden"})
+                    return
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
@@ -175,7 +197,7 @@ def _handler_class(api: ControlApi) -> type[BaseHTTPRequestHandler]:
             if proof is not None:
                 token, nonce, method, path = proof
                 self.send_header(
-                    "X-Tau-Proof", response_proof(token, nonce, method, path, status, data)
+                    PROOF_HEADER, response_proof(token, nonce, method, path, status, data)
                 )
             self.end_headers()
             self.wfile.write(data)
@@ -241,9 +263,9 @@ class ControlApi:
         """Register ``handler`` for ``method path``. Routes are additive only: a ``(method,
         path)`` that exists raises ``ValueError``, so a ``tau.hub_services`` component can
         neither replace ``GET /health`` / ``GET /status`` (which ``tau hub status``, ``tau
-        doctor`` and TauBar trust) nor another component's route. A route is protected (token,
-        no ``Origin``, JSON bodies, response proof) unless ``open`` is set; only ``/health``
-        and ``/status`` are open in tau-core."""
+        doctor`` and TauBar trust) nor another component's route. A route is protected
+        (signed requests, no ``Origin``, JSON bodies, response proof) unless ``open`` is set;
+        only ``/health`` and ``/status`` are open in tau-core."""
         key = (method.upper(), path)
         if key in self.routes:
             raise ValueError(
@@ -290,19 +312,25 @@ class ControlApi:
             with suppress(FileNotFoundError):
                 path.unlink()
 
-    def authorize(self, method: str, headers: Mapping[str, str]) -> str | None:
+    def authorize(self, method: str, path: str, headers: Mapping[str, str]) -> str | None:
         """The token when a protected request may pass, else ``None`` (the caller answers 403).
 
-        Refused: no token of this hub in the token file, a missing or wrong ``X-Tau-Token``,
-        any ``Origin`` header, a body-carrying request that is not ``application/json``."""
+        Refused: no token of this hub in the token file, a missing ``X-Tau-Nonce``, a missing
+        or wrong ``X-Tau-Auth`` (:func:`request_auth` over this method and path), any
+        ``Origin`` header, a body-carrying request that is not ``application/json``. The raw
+        token is never accepted in a header."""
         token = self._token
-        path = self.token_path
-        if token is None or path is None or read_token(path) != token:
+        token_path = self.token_path
+        if token is None or token_path is None or read_token(token_path) != token:
             return None
         if headers.get("Origin") is not None:
             return None
-        given = headers.get("X-Tau-Token") or ""
-        if not hmac.compare_digest(given.encode("utf-8"), token.encode("utf-8")):
+        nonce = headers.get(NONCE_HEADER)
+        if not nonce or len(nonce) > MAX_NONCE_LENGTH:
+            return None
+        given = headers.get(AUTH_HEADER) or ""
+        expected = request_auth(token, nonce, method, path)
+        if not hmac.compare_digest(given.encode("utf-8"), expected.encode("utf-8")):
             return None
         if method.upper() in BODY_METHODS and not _is_json(headers.get("Content-Type")):
             return None

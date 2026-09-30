@@ -221,6 +221,8 @@ def test_spend_needs_the_control_token_over_http(
     import urllib.error
     import urllib.request
 
+    from tau_core.hub.control import auth_headers
+
     config = proxy_config(tmp_path)
     for name, value in ENV.items():
         monkeypatch.setenv(name, value)
@@ -251,6 +253,7 @@ def test_spend_needs_the_control_token_over_http(
 
     try:
         assert get({}) == 403
-        assert get({"X-Tau-Token": token}) == 200
+        assert get({"X-Tau-Token": token}) == 403  # the raw token is never accepted
+        assert get(auth_headers(token, "GET", "/spend")) == 200
     finally:
         api.shutdown()

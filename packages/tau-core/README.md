@@ -497,14 +497,17 @@ non-loopback `Host` header get 403.
 Every other route is **protected** (ADR 0008): `add_route(method, path, handler, open=False)`,
 and only `/health` and `/status` are open. At start, while it holds the hub lock, the hub writes
 a random token to `<TAU_DATA_DIR>/hub/control.token` (0600, `hub/` chmod 0700) and deletes it
-on a clean stop if it is still its own. The server answers 403 before dispatch when that file is
-missing, empty or not the hub's, when `X-Tau-Token` does not match, when any `Origin` header is
-present, or when a POST is not `application/json`. A request with `X-Tau-Nonce` gets
-`X-Tau-Proof = hex(HMAC-SHA256(token, nonce|method|path|status|body))` on a protected answer, so
-a client can tell the hub from a process that bound the port while it was down. `GET /spend` is
-protected too. Other processes call protected routes with `tau_core.hub.HubClient(config)`:
-loopback only, no proxy, the token re-read on every request and once more after a 403, a nonce
-on every request and the proof checked; it raises `HubUnavailable` (`reason`: `no_hub`,
+on a clean stop if it is still its own. The token never travels: a protected request carries
+`X-Tau-Nonce` and `X-Tau-Auth = hex(HMAC-SHA256(token, "req"|nonce|method|path))`, and the
+answer carries `X-Tau-Proof = hex(HMAC-SHA256(token, "resp"|nonce|method|path|status|body))`
+(`tau_core.hub.control.auth_headers`, `request_auth`, `response_proof`). The server answers 403
+before dispatch when the token file is missing, empty or not the hub's, when the nonce or
+`X-Tau-Auth` is missing or wrong, when any `Origin` header is present, or when a POST is not
+`application/json`. A process that binds the port after a hard hub exit (a stale token file)
+sees nothing it can sign with, so clients refuse its answers. `GET /spend` is protected too.
+Other processes call protected routes with `tau_core.hub.HubClient(config)`: loopback only, no
+proxy, no redirects, the token re-read on every request and once more after a 403, every
+request signed and every proof checked; it raises `HubUnavailable` (`reason`: `no_hub`,
 `timeout`, `bad_proof`, `bad_response`) or `HubError(status, payload)`.
 
 Extending the hub: a `HubService` has a `name`, `async start(hub)` and `async stop()`; services

@@ -114,15 +114,19 @@ Out of scope, stated plainly:
 
    No path produces `APPROVED` from the guard. The human still gives the approval; the step-up is an extra factor, never a replacement.
 
-8. **Control routes are protected by default, with a token and a response proof.** `ControlApi.add_route` takes `open=False` by default, and only `/health` and `/status` are open. Before dispatch, the HTTP handler refuses a protected request with 403 JSON when:
-   - the token file is missing or empty;
-   - `X-Tau-Token` does not match (`hmac.compare_digest` on bytes);
+8. **Control routes are protected by default, with signed requests and a response proof.** `ControlApi.add_route` takes `open=False` by default, and only `/health` and `/status` are open. The token never travels: a client signs every protected request with it, and the hub signs every protected answer.
+   - **Request.** `X-Tau-Nonce` (fresh per request) and `X-Tau-Auth = hex(HMAC-SHA256(token, "req" | nonce | method | path))`, with the method in upper case and the path without its query string.
+   - **Answer.** `X-Tau-Proof = hex(HMAC-SHA256(token, "resp" | nonce | method | path | status | body))`. The `req` and `resp` domains keep a request's auth value from ever passing as a proof.
+
+   Before dispatch, the HTTP handler refuses a protected request with 403 JSON when:
+   - the token file is missing or empty, or no longer holds this hub's token;
+   - the nonce or `X-Tau-Auth` is missing or wrong (`hmac.compare_digest`); a raw token in a header is never accepted;
    - any `Origin` header is present;
    - a POST's media type is not `application/json` (parameters allowed).
 
    The hub writes `hub_dir/control.token` in `start()`, after it holds the hub lock. The token is 32 random bytes, urlsafe, in a file created exclusively, renamed into place and kept at mode 0600, and `hub_dir` is chmod 0700. On stop, the hub deletes the file only if it still holds its own token.
 
-   When a request carries `X-Tau-Nonce`, a protected answer carries `X-Tau-Proof = hex(HMAC-SHA256(token, nonce | method | path | status | body))`. A client can then tell the real hub from any process that bound the port while the hub was down. `HubClient` in tau-core is loopback-only and ignores proxies. It re-reads the token on every request, retries once after a 403, always sends a nonce and verifies the proof. Clients never cache the token.
+   After a hard hub exit (`kill -9`, a crash, a power loss) the token file stays behind, and any local process can bind the free port. Such a squatter sees only nonces and HMAC values it cannot sign with, so its answers fail the proof, and every client treats them as "no hub". The proof alone tells the real hub from a squatter; the enrollment id in the marker is public and is no secret. `HubClient` in tau-core is loopback-only, ignores proxies and refuses redirects (a 3xx is a bad answer). It re-reads the token on every request, retries once after a 403, and checks the proof. Clients never cache the token.
 
    The existing `GET /spend` becomes protected. The open `/status` gains only `guard: {state, enrolled, available, reason}`: timestamps would tell other local accounts when the owner left.
 

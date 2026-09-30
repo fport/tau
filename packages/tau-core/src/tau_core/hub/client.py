@@ -1,9 +1,12 @@
 """``HubClient``: a caller of the hub's control API that checks who answered (ADR 0008).
 
-Loopback only, never through a proxy. For a protected path it reads ``hub_dir/control.token``
-on every request (a restarted hub writes a new one; clients never cache it), retries once
-after a 403, always sends a fresh ``X-Tau-Nonce`` and verifies the ``X-Tau-Proof`` of the
-answer, so a process that bound the port while the hub was down cannot answer for it.
+Loopback only, never through a proxy, and redirects are refused (a 3xx is a bad answer). For a
+protected path it reads ``hub_dir/control.token`` on every request (a restarted hub writes a
+new one; clients never cache it) and retries once after a 403. The token itself is never sent:
+each request carries a fresh ``X-Tau-Nonce`` and ``X-Tau-Auth``, an HMAC of the nonce, method
+and path keyed with the token, and the answer must carry a matching ``X-Tau-Proof`` (a separate
+HMAC domain). A process that bound the port while the hub was down, reading a stale token file
+left by a crash, sees only values it cannot sign with, so its answers fail the proof.
 """
 
 from __future__ import annotations
@@ -19,7 +22,15 @@ from typing import Any
 from urllib.parse import urlencode
 
 from tau_core.config import Config
-from tau_core.hub.control import HOST, OPEN_PATHS, TOKEN_FILE, read_token, response_proof
+from tau_core.hub.control import (
+    HOST,
+    OPEN_PATHS,
+    PROOF_HEADER,
+    TOKEN_FILE,
+    auth_headers,
+    read_token,
+    response_proof,
+)
 
 __all__ = ["HubClient", "HubError", "HubUnavailable"]
 
@@ -42,13 +53,20 @@ class HubError(Exception):
         super().__init__(f"the hub answered {status}: {payload!r}"[:300])
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: the 3xx comes back as an answer, which the client refuses."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
 class HubClient:
     """JSON over HTTP to ``127.0.0.1:<[hub] control_port>``; blocking (run it in a thread)."""
 
     def __init__(self, config: Config, *, port: int | None = None) -> None:
         self.port = config.hub.control_port if port is None else port
         self.token_path = config.hub_dir / TOKEN_FILE
-        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
     def get(self, path: str, *, timeout: float, query: Mapping[str, str] | None = None) -> Any:
         """``GET path`` → the JSON payload of a 2xx answer."""
@@ -77,14 +95,16 @@ class HubClient:
             if protected and token is None:
                 raise HubUnavailable("no_hub", f"no control token in {self.token_path}")
             nonce = secrets.token_hex(16)
-            headers = {"Accept": "application/json", "X-Tau-Nonce": nonce}
+            headers = {"Accept": "application/json"}
             if token is not None:
-                headers["X-Tau-Token"] = token
+                headers.update(auth_headers(token, method, path, nonce=nonce))
             if data is not None:
                 headers["Content-Type"] = "application/json"
             status, raw, proof = self._send(url, method, data, headers, timeout)
             if not (protected and status == 403 and attempt == 0):
                 break  # a 403 on the first try: the hub may have restarted; re-read the token
+        if 300 <= status < 400:
+            raise HubUnavailable("bad_response", f"the answer to {method} {path} is a redirect")
         payload = self._parse(raw)
         if protected and status == 403:
             raise HubError(status, None if isinstance(payload, _Unparsable) else payload)
@@ -107,10 +127,10 @@ class HubClient:
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
             with self._opener.open(request, timeout=timeout) as response:
-                return response.status, response.read(), response.headers.get("X-Tau-Proof")
+                return response.status, response.read(), response.headers.get(PROOF_HEADER)
         except urllib.error.HTTPError as exc:
             with exc:
-                return exc.code, exc.read(), exc.headers.get("X-Tau-Proof")
+                return exc.code, exc.read(), exc.headers.get(PROOF_HEADER)
         except TimeoutError as exc:
             raise HubUnavailable("timeout", f"the hub did not answer {method} in time") from exc
         except urllib.error.URLError as exc:

@@ -12,9 +12,11 @@ import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from tau_core.hub import ControlApi, ControlRequest
+from tau_core.hub.control import auth_headers, request_auth, response_proof
 
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # never via a proxy
 
@@ -30,7 +32,8 @@ def call(
     data = json.dumps(body).encode("utf-8") if body is not None else None
     headers = dict(headers or {})
     if token is not None:
-        headers.setdefault("X-Tau-Token", token)
+        for name, value in auth_headers(token, method, urlsplit(url).path).items():
+            headers.setdefault(name, value)
     if data is not None:
         headers.setdefault("Content-Type", "application/json")
     request = urllib.request.Request(url, data=data, method=method, headers=headers)
@@ -184,22 +187,39 @@ def raw_call(
         return exc.code, dict(exc.headers), exc.read()
 
 
+SIGNED = {"X-Tau-Nonce": "n-1", "X-Tau-Auth": "<auth>"}
+
+
 @pytest.mark.parametrize(
     ("change", "headers"),
     [
         ("none", {}),
-        ("none", {"X-Tau-Token": "wrong"}),
-        ("none", {"X-Tau-Token": "<token>", "Origin": "https://evil.example"}),
-        ("none", {"X-Tau-Token": "<token>", "Origin": "null"}),
-        ("none", {"X-Tau-Token": "<token>", "Content-Type": "text/plain"}),
-        ("none", {"X-Tau-Token": "<token>", "Content-Type": "application/x-www-form-urlencoded"}),
-        ("missing", {"X-Tau-Token": "<token>"}),
-        ("empty", {"X-Tau-Token": "<token>"}),
-        ("replaced", {"X-Tau-Token": "<token>"}),
+        ("none", {"X-Tau-Nonce": "n-1", "X-Tau-Auth": "0" * 64}),
+        ("none", {"X-Tau-Token": "<token>"}),
+        ("none", {"X-Tau-Token": "<token>", "X-Tau-Nonce": "n-1"}),
+        ("none", {"X-Tau-Auth": "<auth>"}),
+        ("none", {"X-Tau-Nonce": "n-2", "X-Tau-Auth": "<auth>"}),
+        ("none", {"X-Tau-Nonce": "n-1", "X-Tau-Auth": "<auth-other-path>"}),
+        ("none", {"X-Tau-Nonce": "n-1", "X-Tau-Auth": "<auth-other-method>"}),
+        ("none", {"X-Tau-Nonce": "n-1", "X-Tau-Auth": "<proof-as-auth>"}),
+        ("none", {**SIGNED, "Origin": "https://evil.example"}),
+        ("none", {**SIGNED, "Origin": "null"}),
+        ("none", {**SIGNED, "Content-Type": "text/plain"}),
+        ("none", {**SIGNED, "Content-Type": "application/x-www-form-urlencoded"}),
+        ("missing", SIGNED),
+        ("empty", SIGNED),
+        ("replaced", SIGNED),
     ],
     ids=[
-        "no-token",
-        "wrong-token",
+        "unsigned",
+        "wrong-auth",
+        "raw-token",
+        "raw-token-with-nonce",
+        "no-nonce",
+        "other-nonce",
+        "auth-for-another-path",
+        "auth-for-another-method",
+        "proof-as-auth",
         "origin",
         "origin-null",
         "text-plain",
@@ -218,7 +238,14 @@ def test_a_protected_route_refuses(api: ControlApi, change: str, headers: dict[s
         api.token_path.write_text("")
     elif change == "replaced":
         api.token_path.write_text("someone-elses-token")
-    headers = {k: (token if v == "<token>" else v) for k, v in headers.items()}
+    values = {
+        "<token>": token,
+        "<auth>": request_auth(token, "n-1", "POST", "/echo"),
+        "<auth-other-path>": request_auth(token, "n-1", "POST", "/boom"),
+        "<auth-other-method>": request_auth(token, "n-1", "GET", "/echo"),
+        "<proof-as-auth>": response_proof(token, "n-1", "POST", "/echo", 201, b""),
+    }
+    headers = {k: values.get(v, v) for k, v in headers.items()}
     headers.setdefault("Content-Type", "application/json")
     status, head, raw = raw_call(f"{api.url}/echo", method="POST", data=b"{}", headers=headers)
     assert (status, json.loads(raw)) == (403, {"error": "forbidden"})
@@ -228,7 +255,10 @@ def test_a_protected_route_refuses(api: ControlApi, change: str, headers: dict[s
 
 
 def test_a_protected_route_accepts_json_with_parameters(api: ControlApi) -> None:
-    headers = {"X-Tau-Token": token_of(api), "Content-Type": "application/json; charset=utf-8"}
+    headers = {
+        **auth_headers(token_of(api), "POST", "/echo"),
+        "Content-Type": "application/json; charset=utf-8",
+    }
     status, _, raw = raw_call(f"{api.url}/echo", method="POST", data=b'{"a": 1}', headers=headers)
     assert status == 201 and json.loads(raw)["got"] == {"a": 1}
     headers["Content-Type"] = "Application/JSON"
@@ -244,23 +274,40 @@ def test_only_health_and_status_are_open(api: ControlApi) -> None:
 
 
 def test_the_response_proof(api: ControlApi) -> None:
-    from tau_core.hub.control import response_proof
-
     token = token_of(api)
-    headers = {"X-Tau-Token": token, "X-Tau-Nonce": "n-123", "Content-Type": "application/json"}
+    headers = {**auth_headers(token, "POST", "/echo", nonce="n-123")}
+    headers["Content-Type"] = "application/json"
     status, head, raw = raw_call(f"{api.url}/echo?x=1", method="POST", data=b"{}", headers=headers)
     assert status == 201
     assert head["X-Tau-Proof"] == response_proof(token, "n-123", "POST", "/echo", 201, raw)
     assert head["X-Tau-Proof"] != response_proof(token, "n-124", "POST", "/echo", 201, raw)
+    headers = auth_headers(token, "GET", "/boom", nonce="n-123")
     status, head, raw = raw_call(f"{api.url}/boom", headers=headers)
     assert status == 500
     assert head["X-Tau-Proof"] == response_proof(token, "n-123", "GET", "/boom", 500, raw)
-    del headers["X-Tau-Nonce"]
-    assert "X-Tau-Proof" not in raw_call(f"{api.url}/boom", headers=headers)[1]
     open_head = raw_call(f"{api.url}/status", headers={"X-Tau-Nonce": "n-1"})[1]
     assert "X-Tau-Proof" not in open_head  # open routes never prove anything
     status, _, _ = raw_call(f"{api.url}/status", headers={"X-Tau-Nonce": "n" * 129})
     assert status == 400
+
+
+def test_request_auth_and_proof_are_separate_hmac_domains() -> None:
+    import hashlib
+    import hmac
+
+    def mac(message: bytes) -> str:
+        return hmac.new(b"tok", message, hashlib.sha256).hexdigest()
+
+    # pinned, so other clients (TauBar's Rust side, 115) can implement the same bytes
+    assert request_auth("tok", "n", "get", "/guard/status") == mac(b"req|n|GET|/guard/status")
+    assert response_proof("tok", "n", "GET", "/guard/status", 200, b"{}") == mac(
+        b"resp|n|GET|/guard/status|200|{}"
+    )
+    headers = auth_headers("tok", "POST", "/guard/lock")
+    assert set(headers) == {"X-Tau-Nonce", "X-Tau-Auth"}
+    assert len(headers["X-Tau-Nonce"]) == 32
+    assert headers != auth_headers("tok", "POST", "/guard/lock")  # a fresh nonce every time
+    assert "tok" not in "".join(headers.values())
 
 
 def run_hub_in_thread(hub: Any) -> tuple[threading.Thread, list[int]]:

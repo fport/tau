@@ -27,9 +27,9 @@ The menu also gains a guard line and a "Lock now" item. The decisions are in [AD
 
 - **Guard line.** The menu and the window show a guard line from the open `/status` `guard` block (`{state, enrolled, available, reason}`), such as "Guard: locked" or "Guard: unavailable (camera denied)". The line is hidden when there is no guard block or the state is `off`.
 - **"Lock now".** It sends `POST /guard/lock` with `{channel: "taubar", client_id, trigger: "command"}` through a new `http_post` next to `http_get` in `src-tauri/src/hub/probe.rs`.
-  - It reads `hub_dir/control.token` on every request and sends it as `X-Tau-Token` with `Content-Type: application/json` and no `Origin`.
+  - It reads `hub_dir/control.token` on every request and never sends it. It signs the request instead: a fresh `X-Tau-Nonce` and `X-Tau-Auth = hex(HMAC-SHA256(token, "req" | nonce | method | path))`, with `Content-Type: application/json` and no `Origin` (ADR 0008 decision 8; the exact bytes are pinned in tau-core's `test_request_auth_and_proof_are_separate_hmac_domains`).
   - It retries once after reading the token again on a 403.
-  - It always sends `X-Tau-Nonce` and checks `X-Tau-Proof`: HMAC-SHA256 over nonce | method | path | status | body, keyed with the token. A bad proof is treated as "hub unavailable".
+  - It checks `X-Tau-Proof = hex(HMAC-SHA256(token, "resp" | nonce | method | path | status | body))`. A bad proof or a redirect is treated as "hub unavailable"; redirects are never followed.
 - **Camera denied.** On `reason` `camera_denied` or `camera_unavailable`, a "Grant camera access…" item opens `x-apple.systempreferences:com.apple.preference.security?Privacy_Camera`.
 - **Language.** The chrome stays English until 086 moves TauBar to the message table.
 
@@ -42,7 +42,7 @@ The menu also gains a guard line and a "Lock now" item. The decisions are in [AD
 - [ ] The built `TauBar.app` Info.plist contains `NSCameraUsageDescription` and `NSMicrophoneUsageDescription`; `codesign -d --entitlements -` on the built app shows the camera and audio-input entitlements
 - [ ] Every webview media permission request is denied (a unit test on the permission handler, or a documented manual check with `getUserMedia` in the window returning `NotAllowedError`)
 - [ ] The guard line follows the `/status` guard block (tests with canned `/status` bodies: absent, `off`, `locked`, `unlocked`, `unavailable` with a reason), and is hidden without a guard
-- [ ] "Lock now" posts `/guard/lock` with the token read from the file, retries once after a 403 with a re-read token, and treats a missing or wrong proof as unavailable (tests against a local fake server)
+- [ ] "Lock now" posts `/guard/lock` signed with the token read from the file (the token itself never leaves TauBar), retries once after a 403 with a re-read token, and treats a missing or wrong proof or a redirect as unavailable (tests against a local fake server)
 - [ ] On `camera_denied` the "Grant camera access…" item appears and opens the Privacy_Camera pane
 - [ ] The README documents the stable signing identity and the re-grant steps with example values only; no personal identity name is committed
 - [ ] `cargo test`, `cargo clippy` and `pnpm test` are green

@@ -27,7 +27,12 @@ OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # never v
 
 
 def get_json(url: str, timeout: float = 5, token: str | None = None) -> tuple[int, Any]:
-    request = urllib.request.Request(url, headers={"X-Tau-Token": token} if token else {})
+    from urllib.parse import urlsplit
+
+    from tau_core.hub.control import auth_headers
+
+    headers = auth_headers(token, "GET", urlsplit(url).path) if token else {}
+    request = urllib.request.Request(url, headers=headers)
     try:
         with OPENER.open(request, timeout=timeout) as response:
             return response.status, json.loads(response.read().decode("utf-8"))

@@ -181,6 +181,23 @@ def test_client_without_a_listener(tmp_path: Path) -> None:
     assert caught.value.reason == "no_hub"
 
 
+def test_client_never_sends_the_token_and_signs_each_request(hub: FakeHub) -> None:
+    seen: list[dict[str, str]] = []
+    hub.api.add_route(
+        "GET", "/headers", lambda request: (seen.append(dict(request.headers)) or 200, {})
+    )
+    client = HubClient(hub.config)
+    client.get("/headers", timeout=5)
+    client.get("/headers", timeout=5)
+    assert hub.api.token_path is not None
+    token = hub.api.token_path.read_text()
+    first, second = seen
+    assert "x-tau-token" not in first
+    assert not any(token in value for request in seen for value in request.values())
+    assert first["x-tau-auth"] != second["x-tau-auth"]  # a fresh nonce signs every request
+    assert first["x-tau-nonce"] != second["x-tau-nonce"]
+
+
 # -- a raw listener: no proof, a wrong proof, bad JSON ------------------------------------------
 
 
@@ -271,6 +288,137 @@ def test_a_proven_raw_answer_admits(tmp_path: Path) -> None:
         assert asyncio.run(guard.admit(TURN)) == Admission(True, "ok")
     finally:
         raw.close()
+
+
+class Squatter:
+    """A process that bound the port after a hard hub exit left a stale ``control.token``.
+
+    It knows nothing up front: it records every request and signs each answer with whatever
+    the request carried that could be a key (the raw token of the old scheme, the auth value,
+    the nonce), and it answers exactly what an unlocked guard for ``enrollment`` would say."""
+
+    def __init__(self, enrollment: str) -> None:
+        squatter = self
+        self.requests: list[bytes] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def _answer(self) -> None:
+                length = int(self.headers.get("Content-Length") or 0)
+                body = self.rfile.read(length) if length else b""
+                squatter.requests.append(
+                    self.requestline.encode() + b"\n" + bytes(self.headers) + body
+                )
+                path = self.path.split("?", 1)[0]
+                if path == "/guard/verify":
+                    status, payload = 202, {"attempt": "a1", "seq": 1}
+                else:
+                    done = {"id": "a1", "step": "done", "seq": 2, "done": True, "ok": True}
+                    status, payload = (
+                        200,
+                        {
+                            "allowed": True,
+                            "reason": "ok",
+                            "state": "unlocked",
+                            "enrollment": enrollment,
+                            "seq": 2,
+                            "attempt": {**done, "reason": "match", "method": "face"},
+                        },
+                    )
+                data = json.dumps(payload).encode()
+                key = (
+                    self.headers.get("X-Tau-Token")
+                    or self.headers.get("X-Tau-Auth")
+                    or self.headers.get("X-Tau-Nonce")
+                    or ""
+                )
+                nonce = self.headers.get("X-Tau-Nonce") or ""
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                proof = response_proof(key, nonce, self.command, path, status, data)
+                self.send_header("X-Tau-Proof", proof)
+                self.end_headers()
+                self.wfile.write(data)
+
+            do_GET = do_POST = _answer
+
+            def log_message(self, format: str, *args: Any) -> None:
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def test_a_squatter_with_a_stale_token_file_learns_nothing_and_never_admits(
+    tmp_path: Path,
+) -> None:
+    squatter = Squatter(enrollment="E1")  # it even knows the enrollment id
+    try:
+        base = test_config(tmp_path)
+        base.hub_dir.mkdir(parents=True)
+        stale = "stale-token-of-a-crashed-hub"
+        (base.hub_dir / TOKEN_FILE).write_text(stale)
+        config = base.with_overrides(hub=HubConfig(control_port=squatter.port))
+        write_marker(config, "E1")
+        guard = HubGuard(config)
+        assert asyncio.run(guard.admit(TURN)) == Admission(False, "unavailable")
+        assert asyncio.run(guard.unlock(channel="tui", client_id="c1")) == GuardVerdict(
+            False, "unavailable"
+        )
+        assert asyncio.run(guard.step_up(REQUEST, client_id="c1")) is False
+        assert asyncio.run(guard.status()) == GuardStatus("unavailable", reason="bad_proof")
+        with pytest.raises(HubUnavailable) as caught:
+            HubClient(config).post("/guard/admit", {}, timeout=5)
+        assert caught.value.reason == "bad_proof"
+        assert squatter.requests
+        assert not any(stale.encode() in request for request in squatter.requests)
+    finally:
+        squatter.close()
+
+
+def test_client_refuses_a_redirect_and_sends_nothing_to_its_target(tmp_path: Path) -> None:
+    target = RawHub(tmp_path / "unused", 200, b"{}", "missing")
+    location = f"http://127.0.0.1:{target.port}/guard/admit".encode()
+
+    class Redirecting(BaseHTTPRequestHandler):
+        def _answer(self) -> None:
+            self.send_response(307)
+            self.send_header("Location", location.decode())
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        do_GET = do_POST = _answer
+
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Redirecting)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        base = test_config(tmp_path)
+        base.hub_dir.mkdir(parents=True)
+        (base.hub_dir / TOKEN_FILE).write_text("a-token")
+        config = base.with_overrides(hub=HubConfig(control_port=server.server_address[1]))
+        client = HubClient(config)
+        for call in (
+            lambda: client.post("/guard/admit", {}, timeout=5),
+            lambda: client.get("/status", timeout=5),
+        ):
+            with pytest.raises(HubUnavailable) as caught:
+                call()
+            assert caught.value.reason == "bad_response"
+        assert target.requests == 0
+    finally:
+        server.shutdown()
+        server.server_close()
+        target.close()
 
 
 # -- HubGuard.admit ---------------------------------------------------------------------------

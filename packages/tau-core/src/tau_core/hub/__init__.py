@@ -4,8 +4,9 @@
   SIGTERM/SIGINT; the next start turns an unclean exit into a :class:`CrashReport`.
 - :class:`HubLock` keeps it to one hub per machine (:class:`AlreadyRunning` otherwise).
 - :class:`ControlApi` is the local-only JSON API (``/health``, ``/status``) on 127.0.0.1; every
-  other route needs the control token and answers with a proof (ADR 0008).
-- :class:`HubClient` calls it from another process: token, nonce and proof checked, raising
+  other route needs a request signed with the control token and answers with a proof
+  (ADR 0008).
+- :class:`HubClient` calls it from another process: requests signed, proofs checked, raising
   :class:`HubUnavailable` or :class:`HubError`.
 - :func:`render_plist` / :func:`render_systemd_unit` render the service definitions;
   launchd is driven through the :class:`Launchctl` protocol (:class:`FakeLaunchctl` in tests).

@@ -148,15 +148,15 @@ class Guard(Protocol):
 
 - **Protected by default.** `ControlApi.add_route(method, path, handler, *, open: bool = False)`; `/health` and `/status` are registered `open=True`. The HTTP request handler enforces the protection before dispatch, so unit tests that call `api.handle(ControlRequest(...))` keep working. It refuses a protected request with 403 JSON when:
   - the token file is empty or missing;
-  - `X-Tau-Token` does not match (`hmac.compare_digest` on bytes);
+  - `X-Tau-Nonce` is missing, or `X-Tau-Auth` does not equal `hex(HMAC-SHA256(token, "req" | nonce | method | path))` (`hmac.compare_digest`); the raw token is never sent or accepted in a header;
   - an `Origin` header is present;
   - a POST's parsed media type is not `application/json` (parameters allowed).
 - **Token.** `start()` writes the token after it holds the hub lock: `hub_dir/control.token`, 32 random bytes, urlsafe. The file is created with `O_CREAT|O_EXCL` (or mkstemp plus rename) at mode 0600, and `hub_dir` is chmod 0700 explicitly. On stop, the hub deletes the file only if it still holds this hub's token.
-- **Response proof.** When a request carries `X-Tau-Nonce`, a protected answer carries `X-Tau-Proof = hex(HMAC-SHA256(token, nonce | method | path | status | body))`.
+- **Response proof.** A protected answer carries `X-Tau-Proof = hex(HMAC-SHA256(token, "resp" | nonce | method | path | status | body))`; the `req` and `resp` domains never overlap.
 - **`HubClient(config)`**, in `tau_core/hub/client.py` and exported from `tau_core.hub`, offers `get(path, *, timeout, query=None)` and `post(path, body, *, timeout)`.
-  - It is loopback only and ignores proxies (`ProxyHandler({})`).
+  - It is loopback only, ignores proxies (`ProxyHandler({})`) and refuses redirects.
   - It reads the token file on every request and retries once after a 403.
-  - It always sends a nonce and verifies the proof on protected paths.
+  - It signs every protected request (nonce and `X-Tau-Auth`) and verifies the proof.
   - It raises `HubUnavailable` (no hub, bad proof) or `HubError(status, payload)`.
 - **`GET /spend` becomes protected.** Update its test and any other caller.
 - **Log permissions.** If it is a one-line change, `hub/logs` becomes 0700 and new log files 0600; otherwise leave it to 111.
@@ -180,7 +180,7 @@ It never approves anything.
 - [x] `STOP_REASONS` contains `locked`; the `TurnEnd` docstring, `test_stream_contract.py` and the README stop-reason table agree
 - [x] `TauAgent.ask()` raises `GuardLocked`; `compaction.summarize` raises `GuardLocked` before any model call when the guard refuses
 - [x] With a guard that refuses, a tier-1 or tier-2 call is refused without an approver prompt and its `tool_call` event says `locked`; a failed step-up records `step_up: failed` and returns the fixed refusal note to the model
-- [x] Against a real `ControlApi` on port 0, a protected route answers 403 on a missing or empty token file, a missing or wrong `X-Tau-Token`, any `Origin` header and a `text/plain` POST; `application/json; charset=utf-8` is accepted; `/health` and `/status` answer without a token; `GET /spend` needs it
+- [x] Against a real `ControlApi` on port 0, a protected route answers 403 on a missing or empty token file, a missing nonce, a missing or wrong `X-Tau-Auth` (including a raw token), any `Origin` header and a `text/plain` POST; `application/json; charset=utf-8` is accepted; `/health` and `/status` answer without a token; `GET /spend` needs it
 - [x] The token file is created only after the hub lock is held, with mode 0600, and `hub_dir` is 0700; a second hub that loses the lock race leaves the live token alone; stop removes the file only when it still holds its own token
 - [x] A protected answer without a valid proof is `unavailable`: a fake listener on port 0 that answers `{"state": "unlocked"}` without a proof makes `HubGuard.admit` refuse
 - [x] `HubGuard` refuses (`unavailable`) on `off`, 404, 403 twice, 5xx, a timeout, bad JSON, a missing proof and an enrollment mismatch (parametrized against a fake hub), and admits only `unlocked` with a proof and the matching enrollment

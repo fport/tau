@@ -179,7 +179,7 @@ fn on_menu(app: &AppHandle, id: &str) {
                     "Launch at login",
                     &format!(
                         "macOS refused to change the login item: {err}\n\nLaunch at login works \
-                         for the TauBar.app bundle (not for `pnpm tauri dev`)."
+                         for the TauBar.app bundle (not for `bun run tauri dev`)."
                     ),
                 );
             }

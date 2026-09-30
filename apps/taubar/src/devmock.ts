@@ -1,4 +1,4 @@
-// `pnpm dev` in a plain browser: a stand-in for TauBar's Rust side, so the settings window
+// `bun run dev` in a plain browser: a stand-in for TauBar's Rust side, so the settings window
 // (http://localhost:1420/) and the panel (http://localhost:1420/#panel) can be looked at without
 // the app. main.tsx imports it only in development and outside Tauri, so no build contains it.
 

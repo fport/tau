@@ -16,7 +16,7 @@
   --ember: #ff7a3d;
   --flare: #ffb25c;
   --signal: #ff2e63;
-  /* Only without the material (a browser during `pnpm dev`). */
+  /* Only without the material (a browser during `bun run dev`). */
   --plain-panel: #f6f3ee;
   --plain-desk: #d9d3cb;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;

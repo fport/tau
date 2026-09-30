@@ -1,5 +1,5 @@
 //! SIGTERM, SIGINT and SIGHUP quit TauBar the same way the Quit item does, so `kill <pid>`,
-//! Ctrl-C in `pnpm tauri dev` and a logout still release the sleep assertion, reset
+//! Ctrl-C in `bun run tauri dev` and a logout still release the sleep assertion, reset
 //! `disablesleep` and stop the hub TauBar started. (A `kill -9` cannot be caught: macOS drops
 //! the assertion with the process, and the next start resets `disablesleep`.)
 

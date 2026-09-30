@@ -32,13 +32,13 @@ Quit TauBar                                 ⌘Q
 
 ## Build and install
 
-You need macOS 13 or later, Rust (`rustup`), Node 20+ with pnpm, and the Xcode command line
+You need macOS 13 or later, Rust (`rustup`), [Bun](https://bun.sh), and the Xcode command line
 tools.
 
 ```sh
 cd apps/taubar
-pnpm install
-pnpm tauri build
+bun install
+bun run tauri build
 cp -R src-tauri/target/release/bundle/macos/TauBar.app /Applications/
 open -a TauBar
 ```

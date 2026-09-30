@@ -35,13 +35,13 @@ Quit TauBar                                 ⌘Q
 
 ## Derle ve kur
 
-macOS 13 veya daha yenisine, Rust'a (`rustup`), pnpm ile Node 20+'ya ve Xcode komut satırı
+macOS 13 veya daha yenisine, Rust'a (`rustup`), [Bun](https://bun.sh)'a ve Xcode komut satırı
 araçlarına ihtiyacın var.
 
 ```sh
 cd apps/taubar
-pnpm install
-pnpm tauri build
+bun install
+bun run tauri build
 cp -R src-tauri/target/release/bundle/macos/TauBar.app /Applications/
 open -a TauBar
 ```

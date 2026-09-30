@@ -55,15 +55,15 @@ in its log). Transparent windows use a private macOS API (`app.macOSPrivateApi` 
 
 ## Build
 
-Needs macOS 13 or later, Rust (`rustup`), Node 20+ with pnpm, and the Xcode command line tools.
+Needs macOS 13 or later, Rust (`rustup`), [Bun](https://bun.sh), and the Xcode command line tools.
 
 ```sh
 cd apps/taubar
-pnpm install
-pnpm tauri build          # → src-tauri/target/release/bundle/macos/TauBar.app
+bun install
+bun run tauri build       # → src-tauri/target/release/bundle/macos/TauBar.app
 ```
 
-`pnpm tauri dev` runs it with hot reload for development. Launch at login needs the built
+`bun run tauri dev` runs it with hot reload for development. Launch at login needs the built
 `.app` installed in `/Applications` (see below), so test that part with an installed build.
 
 Only one TauBar runs at a time (`tauri-plugin-single-instance`, keyed by the bundle id): a
@@ -87,7 +87,7 @@ An ad-hoc signature changes with every build, so macOS sees each build as a new 
 replacing TauBar.app with a new build, check that "Launch at login" is still ticked.
 
 For a Developer ID signature and notarization, set `APPLE_SIGNING_IDENTITY` (and `APPLE_ID`,
-`APPLE_PASSWORD`, `APPLE_TEAM_ID` for notarization) before `pnpm tauri build`; see Tauri's
+`APPLE_PASSWORD`, `APPLE_TEAM_ID` for notarization) before `bun run tauri build`; see Tauri's
 [macOS code signing](https://v2.tauri.app/distribute/sign/macos/) guide.
 
 ## Install
@@ -170,7 +170,7 @@ gone). To go back: untick the switch, then `uv run tau hub install`.
 
 The choice is saved and applied again at the next start. **Quitting restores normal sleep:**
 TauBar releases the assertion and, if it set it, runs `pmset -a disablesleep 0`. The same
-happens on SIGTERM, SIGINT and SIGHUP (logout, `kill <pid>`, Ctrl-C in `pnpm tauri dev`). A
+happens on SIGTERM, SIGINT and SIGHUP (logout, `kill <pid>`, Ctrl-C in `bun run tauri dev`). A
 `kill -9` cannot be caught: macOS drops the assertion with the process, and `disablesleep` stays
 until TauBar's next start resets it (or `sudo pmset -a disablesleep 0`).
 
@@ -250,12 +250,12 @@ nobody logged out while this was built; check it after your next login.
 ## Development
 
 ```sh
-pnpm test                          # vitest: the display and form logic of the panel and window
-pnpm build                         # tsc + vite
+bun run test                       # vitest: the display and form logic of the panel and window
+bun run build                      # tsc + vite
 (cd src-tauri && cargo test)       # Rust: supervisor, restart policy, sleep modes, settings, …
 ```
 
-To work on the UI without the app, run `pnpm dev` and open http://localhost:1420/ (the settings
+To work on the UI without the app, run `bun run dev` and open http://localhost:1420/ (the settings
 window) or http://localhost:1420/#panel (the panel) in a browser: outside Tauri a development
 build answers the commands from `src/devmock.ts`, a stand-in with example values. No build
 contains it.

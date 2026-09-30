@@ -24,7 +24,8 @@ tau is a personal "smart body" that automates life: an agent platform you talk t
 | State | Local mode: **on the hub** (`TAU_DATA_DIR`: files + SQLite): sessions, settings, memory, knowledge base, routines. Cloudflare **R2** holds only client-side encrypted backups (`age`) | In local mode D1, Vectorize and AI Search hold no personal data and the spine only holds sealed envelopes in transit ([ADR 0006](adr/0006-private-first-topology.md)); cloud mode keeps the same data in the owner's own D1/KV ([ADR 0007](adr/0007-cloud-mode-and-tau-network.md)) |
 | Deployment modes | **Local** (default): the hub on the owner's machine · **Cloud** (opt-in): the same Python hub as a **Cloudflare Container** behind the owner's spine Worker; sessions and state in D1 (`[sessions] backend = "spine"`), persona and `tau.toml` in KV (`tau cloud push`) | Same code in both. Cloud mode needs Workers Paid and Docker for the image; the spine's cron keeps the container awake for the Telegram poller ([ADR 0007](adr/0007-cloud-mode-and-tau-network.md)) |
 | tau network | **Federated**: address = the host of a tau's spine; card at `/.well-known/tau.json` (Ed25519 signing key, X25519 box key); envelopes signed and sealed end to end, posted hub → the peer's spine → the peer's hub by long poll. `tau-net` package, `cloud/spine` Worker | Contacts need the owner's acceptance and are key-pinned; network turns run with `persona.md` + the public note `persona/net.md`, no tools, no approvals, bounded auto-replies; `net_send` is tier 2. Protocol: `docs/reference/tau-network.md` |
-| Public surface | One hostname `tau.<domain>` → **Cloudflare Tunnel** (outbound from the hub) → the hub's web UI/API, behind a **Cloudflare Access** policy (owner identity, optional device rule). **Tailscale Serve** when there is no domain | No inbound port on the hub, ever. Unauthenticated traffic never reaches the tunnel |
+| Universe | `tau.<domain>` is the public site with an **opt-in directory of taus**: signed `join`/`report`/`leave` (Ed25519, prefix `tau-universe/1`), links drawn only when both taus report each other, counts only, never contents; unlisted contacts are never reported. The spine ships inside `tau-net` (`tau net spine init|deploy`), so no repository is needed to join | Anyone can run a universe (`[component.net] universe`); taus leave with `tau net universe leave` or drop out after 30 days without a report ([ADR 0010](adr/0010-public-site-and-tau-universe.md)). Protocol: `docs/reference/tau-universe.md` |
+| Public surface | One private hostname `hub.tau.<domain>` → **Cloudflare Tunnel** (outbound from the hub) → the hub's web UI/API, behind a **Cloudflare Access** policy (owner identity, optional device rule). **Tailscale Serve** when there is no domain | No inbound port on the hub, ever. Unauthenticated traffic never reaches the tunnel |
 | Telegram | The hub polls `getUpdates` directly (outbound); no webhook, no Worker | `chat_id` allowlist on the hub; approvals through inline buttons are accepted because nothing sits between Telegram and the hub |
 | Mesh | **Control = MCP** (streamable HTTP over Tailscale) · **Data = Zenoh** (events, telemetry, discovery through liveliness) | No multicast on Tailscale → nodes `connect` explicitly to `zenohd` |
 | Microcontrollers | **ESPHome** (free firmware) → MQTT → `zenohd` MQTT plugin → `tau/…` keyspace | No Home Assistant; if ever needed it is added later through MCP |
@@ -51,7 +52,9 @@ tau is a personal "smart body" that automates life: an agent platform you talk t
 
 ### Subdomain scheme
 
-- `tau.getporti.<tld>` → the hub's web UI and API through Cloudflare Tunnel, behind Cloudflare Access
+- `tau.getporti.<tld>` → the public site: what tau is, and `/universe`, the opt-in map of taus (`cloud/universe`, [ADR 0010](adr/0010-public-site-and-tau-universe.md))
+- `<name>.tau.getporti.<tld>` → a tau's spine and network address (the owner's: `furkan.tau.getporti.<tld>`)
+- `hub.tau.getporti.<tld>` → the hub's web UI and API through Cloudflare Tunnel, behind Cloudflare Access
 - `docs.tau.getporti.<tld>` → the docs site (static)
 - `<project>.getporti.<tld>` → projects built with Claude Code and deployed with `wrangler`
 - Until the domain is moved: Tailscale Serve on the tailnet
@@ -97,6 +100,7 @@ tau/
 ├── nodes/mac/                # macOS node (TauBar sidecar)
 ├── apps/taubar/              # Tauri v2 + React/TS
 ├── cloud/spine/              # tau-spine Worker (TS): card, mailbox, hub long poll; cloud mode: brain container + D1/KV store
+├── cloud/universe/           # tau-universe Worker (TS): the public site at tau.<domain> and the opt-in directory of taus
 ├── persona/                  # persona.md, user.example.md (user.md gitignored)
 ├── tools/                    # hot-reloaded tools
 │   └── _pending/             # tools tau wrote, waiting for approval
@@ -125,6 +129,8 @@ Each one is tracked as a `ready-for-human` issue.
 ## Changes
 
 Decisions that were replaced, with the date, so the history stays readable.
+
+- **2026-09-30 — The public site and the tau universe ([ADR 0010](adr/0010-public-site-and-tau-universe.md)).** Before: `tau.<domain>` was reserved for the hub's web UI behind Tunnel + Access. Now: `tau.<domain>` is the public site with the opt-in universe directory; the owner's tau lives at `<name>.tau.<domain>`; the web UI moves to `hub.tau.<domain>` with the same Tunnel + Access rules. The spine ships inside `tau-net` so that anyone can join the network without the repository.
 
 - **2026-09-30 — Anthropic-only models behind the proxy ([ADR 0009](adr/0009-anthropic-only-models-behind-the-proxy.md)).** Before: `brain` = Bedrock Sonnet with Anthropic as its fallback, `fast` = Bedrock Haiku, and AWS Budgets alarms next to the proxy budgets. Now: Anthropic is the only cloud provider (`brain` Sonnet 5, `fast` Haiku 4.5), every role goes through the LiteLLM proxy with a hard budget from `tau.toml` (`degrade_to` a cheaper role or a notice with the reset time), and a monthly spend limit on the Anthropic workspace is the last line of defence. Bedrock remains an optional direct provider. Reason: the AWS account was never set up, and the owner chose not to add it (003).
 

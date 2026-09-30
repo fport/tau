@@ -38,6 +38,9 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Envelope** — one message between taus: signed by the sender, sealed end to end to the recipient's box key. Kinds: `contact_request`, `contact_accept`, `message`.
 - **Contact** — another tau the owner accepted; only contacts reach the model. States: `pending_in`, `pending_out`, `accepted`, `blocked`. Keys are pinned on acceptance.
 - **Mailbox** — the spine's store-and-forward queue of envelopes waiting for the hub; an envelope is deleted once the hub acknowledges it.
+- **Universe** — an opt-in public directory of taus, at `tau.<domain>/universe` by default: a tau joins with `tau net universe join`, reports its links every hour and leaves with `tau net universe leave`. A link between two taus shows only when both report it; only counts are published, never contents ([ADR 0010](docs/adr/0010-public-site-and-tau-universe.md)). *Avoid: social network, registry.*
+- **Public site** — `tau.<domain>`, served by the `tau-universe` Worker (`cloud/universe`): the landing page and the universe. It holds nothing private.
+- **Spine kit** — the spine Worker bundled inside `tau-net`; `tau net spine init|deploy` sets up a spine without the repository.
 - **Network turn** — a turn the hub runs for a message from a contact: its own session per contact, `persona.md` plus the owner's **public note** (`persona/net.md`) instead of `user.md`, no tools, no approvals, the text framed as untrusted, auto-replies bounded by `hops` and an hourly cap.
 
 ## Models and cost

@@ -1,6 +1,6 @@
 # L9 · Cloud mode and the tau network
 
-**Goal:** tau runs where its owner wants it and talks to other taus ([ADR 0007](../../docs/adr/0007-cloud-mode-and-tau-network.md)). Local mode stays the private default of ADR 0006. Cloud mode runs the same hub as a Cloudflare Container in the owner's own account. Every tau can have a spine Worker that gives it an address on a federated network of taus, with signed and end-to-end sealed envelopes.
+**Goal:** tau runs where its owner wants it and talks to other taus ([ADR 0007](../../docs/adr/0007-cloud-mode-and-tau-network.md)), and opted-in taus show on the public map at `tau.<domain>/universe` ([ADR 0010](../../docs/adr/0010-public-site-and-tau-universe.md)). Local mode stays the private default of ADR 0006. Cloud mode runs the same hub as a Cloudflare Container in the owner's own account. Every tau can have a spine Worker that gives it an address on a federated network of taus, with signed and end-to-end sealed envelopes.
 
 **Done when:**
 
@@ -29,5 +29,11 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 106 | [Network turns without the owner's profile: a context option in `build_agent`](106-network-turn-context.md) | AFK | 093 |
 | 107 | [`tau doctor` checks from components](107-component-doctor-checks.md) | AFK | 093 |
 | 108 | [Move sessions and network state between local and cloud mode](108-move-between-modes.md) | AFK | 094 |
+| 140 | [Public site at `tau.<domain>` with the tau universe page](140-public-site-universe.md) | AFK | – |
+| 141 | [tau-net universe client: join, leave, status and hourly reports](141-universe-client.md) | AFK | – |
+| 142 | [Spine kit: `tau net spine init\|deploy` from the tau-net wheel](142-spine-kit.md) | AFK | – |
+| 143 | [Go live: `tau.getporti.com`, the owner's tau in the universe, the docs](143-go-live-site-and-universe.md) | AFK | 140, 141, 142 |
+| 144 | [Docs: build your own tau from zero, verified on a clean home](144-build-your-own-tau-docs.md) | AFK | 141, 142 |
+| 145 | [Publish tau-net and tau-cloud on PyPI](145-publish-tau-net-tau-cloud.md) | HITL | 142 |
 
 Live status: `python3 roadmap/board.py --layer L9`

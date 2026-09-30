@@ -1,6 +1,6 @@
 # 095 · Deploy your spine and exchange a first message with another tau
 
-Status: ready-for-human
+Status: in-progress
 Type: HITL
 Layer: L9 · Cloud mode and the tau network
 Packages: cloud/spine, tau-net
@@ -38,3 +38,4 @@ The first live tau network exchange. Steps for the user (the guide "Join the tau
 ## Comments
 
 - 2026-09-30: opened with ADR 0007.
+- 2026-09-30: the owner asked the agent to do it. Per ADR 0010 the address is `furkan.tau.getporti.com`; the second tau for the live exchange is a temporary test spine (143).

@@ -42,5 +42,6 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 150 | [Public sub-taus over the network and in the universe](150-sub-taus-network-universe.md) | AFK | 149, 105, 146 |
 | 151 | [Sub-taus from `tau chat`, the TUI and Telegram: `/sub NAME …`](151-sub-tau-slash-commands.md) | AFK | 149 |
 | 152 | [Generated interfaces in the web UI](152-generated-ui.md) | AFK | 074 |
+| 153 | [A persistent spend ledger and every provider key in cloud mode](153-cloud-spend-ledger.md) | AFK | 094 |
 
 Live status: `python3 roadmap/board.py --layer L9`

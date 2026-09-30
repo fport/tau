@@ -2,7 +2,7 @@
 
 # CLI
 
-Her `tau` alt komutu bir bileşendir: `tau-core`; `chat`, `components`, `doctor`, `hub`, `init`, `spend`, `telegram` ve `version` komutlarıyla gelir; `tau-tui` `tui` komutunu, `tau-guard` `guard` komutunu ([Sahip koruması](../guides/guard.md)), `tau-net` `net` komutunu, `tau-cloud` `cloud` komutunu (bkz. [tau ağına katıl](../guides/tau-network.md)), `tau-sub` da `sub` komutunu ekler. Kurulu herhangi bir dağıtım, `tau.commands` entry point grubu (Python paketlerinin eklenti kayıt noktası) üzerinden başka komutlar da ekleyebilir. Bu sayfa her birinin `--help` çıktısını aynen verir.
+Her `tau` alt komutu bir bileşendir: `tau-core`; `chat`, `components`, `doctor`, `hub`, `init`, `setup`, `spend`, `telegram` ve `version` komutlarıyla gelir; `tau-tui` `tui` komutunu, `tau-guard` `guard` komutunu ([Sahip koruması](../guides/guard.md)), `tau-net` `net` komutunu, `tau-cloud` `cloud` komutunu (bkz. [tau ağına katıl](../guides/tau-network.md)), `tau-sub` da `sub` komutunu ekler. Kurulu herhangi bir dağıtım, `tau.commands` entry point grubu (Python paketlerinin eklenti kayıt noktası) üzerinden başka komutlar da ekleyebilir. Bu sayfa her birinin `--help` çıktısını aynen verir.
 
 Bir depo checkout'unun (deponun yerel kopyası) içindeysen her komutun başına `uv run` ekle.
 
@@ -35,6 +35,7 @@ Commands:
   hub         Run and manage tau as a long-lived service in the hub role.
   init        Create tau.toml and the persona files.
   net         Talk to other taus (identity, contacts, messages).
+  setup       Pick, install and set up tau's features.
   spend       Show the spend per model role.
   sub         Specialists of your tau (/coach, /landing, ...).
   telegram    Pair your Telegram chat and show the channel's state.
@@ -43,6 +44,76 @@ Commands:
 ```
 
 Üç global seçenek alt komuttan **önce** gelir: `tau --home ~/other --lang tr chat`. `--profile` ve `--lang`, çalıştırma boyunca `TAU_PROFILE` ve `TAU_LANG` olarak export edilir; böylece başka bir paketteki alt komut da onları görür. `-v`, yalnızca `WARNING` yerine `INFO` seviyesini de stderr'e gönderir.
+
+## `tau setup`
+
+```text
+Usage: tau setup [OPTIONS] [COMMAND] [ARGS]...
+
+  Pick tau's features, install their packages and set them up: an interactive
+  checklist, then one `uv tool install` pinned to this tau-core, then `tau
+  init` when there is no configuration, a short 'about you', each chosen
+  feature's steps and `tau doctor`. Run it again to add a feature; what is set
+  up is never asked again. --yes --features tui,sub asks nothing. `tau setup
+  status|install|run --json` is the line protocol of the Mac app
+  (docs/reference/setup.md).
+
+Options:
+  -h, --help        Show this help and exit.
+  --features IDS    Comma-separated feature ids to set up (see `tau setup
+                    status`); skips the checklist.
+  -y, --yes         Ask nothing: defaults, no optional steps.
+  --no-install      Install nothing; set up what is installed.
+  --remove FEATURE  Uninstall a feature's package (its settings and data
+                    stay).
+  --upgrade         Reinstall tau-core and the installed feature packages at
+                    their newest releases.
+
+Commands:
+  install  Install the packages of features.
+  run      Run the steps of one feature.
+  status   Show the features and their state.
+```
+
+```text
+Usage: tau setup status [OPTIONS]
+
+  Show every feature: whether this platform has it, whether its package is
+  installed and whether it is set up. --json prints the object the Mac app
+  reads.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one JSON object.
+```
+
+```text
+Usage: tau setup install [OPTIONS]
+
+  Install the packages of the given features with one `uv tool install`
+  (pinned to this tau-core) and configure nothing. --json streams JSON lines.
+
+Options:
+  -h, --help      Show this help and exit.
+  --features IDS  Comma-separated feature ids; what they require is added.
+                  [required]
+  --json          Stream JSON lines.
+```
+
+```text
+Usage: tau setup run [OPTIONS] FEATURE
+
+  Run the steps of one feature, or of init, about or doctor. With --json the
+  inputs come as one JSON object on stdin ({"steps": [...], "inputs": {...}}),
+  never in argv, and a step that needs its own UI is reported as needs_ui
+  instead of run. Without --json the wizard's steps run for that feature.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      JSON input on stdin, JSON lines out.
+```
+
+Sihirbaz, özellik kataloğu ve Mac uygulamasının kullandığı JSON protokolü [`tau setup` ve JSON protokolü](setup.md) sayfasında tanımlıdır. Tek satırlık kurucu, `curl -fsSL https://tau.getporti.com/install.sh | sh`, uv'yi ve tau'yu kurar, sonra `tau setup`'ı başlatır.
 
 ## `tau init`
 

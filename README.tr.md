@@ -57,7 +57,13 @@ tau henüz erken geliştirme aşamasında. Bugün neyin çalıştığını, neyi
 
 Bu bölümdeki her şey kendi bilgisayarında olur. macOS ya da Linux ve [uv](https://docs.astral.sh/uv/) yeterli; Python 3.12 yoksa uv onu da getirir.
 
-**1. Kur.** Hepsi PyPI'da: ajan ve `tau` komutu (`tau-core`), TUI (`tau-tui`), ağ (`tau-net`) ve sub-tau'lar (`tau-sub`):
+**1. Kur.** Tek bir komut, yoksa önce uv'yi, sonra tau'yu kurar ve `tau setup`'ı başlatır; o da hangi özellikleri istediğini sorar (TUI, sub-tau'lar, Telegram, sahip koruması, ağ, …) ve onları ayarlar. Hiçbir zaman `sudo` çalıştırmaz; önce `curl -fsSL https://tau.getporti.com/install.sh | less` ile okuyabilirsin:
+
+```sh
+curl -fsSL https://tau.getporti.com/install.sh | sh
+```
+
+Elle kurmak istersen hepsi PyPI'da: ajan ve `tau` komutu (`tau-core`), TUI (`tau-tui`), ağ (`tau-net`) ve sub-tau'lar (`tau-sub`):
 
 ```sh
 uv tool install tau-core --with tau-tui --with tau-net --with tau-sub

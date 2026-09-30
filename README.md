@@ -55,7 +55,13 @@ tau is in early development. The status table under [Where things are](#where-th
 
 Everything in this part happens on your computer. You need macOS or Linux and [uv](https://docs.astral.sh/uv/), which brings Python 3.12 if you have none.
 
-**1. Install.** Everything is on PyPI: the agent and the `tau` command (`tau-core`), the TUI (`tau-tui`), the network (`tau-net`) and sub-taus (`tau-sub`):
+**1. Install.** One command installs uv when it is missing, then tau, and starts `tau setup`, which asks which features you want (the TUI, sub-taus, Telegram, the owner guard, the network, …) and sets them up. It never runs `sudo`; read it first with `curl -fsSL https://tau.getporti.com/install.sh | less`:
+
+```sh
+curl -fsSL https://tau.getporti.com/install.sh | sh
+```
+
+By hand, everything is on PyPI: the agent and the `tau` command (`tau-core`), the TUI (`tau-tui`), the network (`tau-net`) and sub-taus (`tau-sub`):
 
 ```sh
 uv tool install tau-core --with tau-tui --with tau-net --with tau-sub

@@ -2,6 +2,20 @@
 
 tau is a set of Python packages. `tau-core` holds the agent and the `tau` command; `tau-tui` adds the Textual interface. You install them once, create a configuration root with `tau init`, check it with `tau doctor`, and talk.
 
+## The one-line installer
+
+On macOS and Linux, including a Raspberry Pi, one command installs tau and asks what you want:
+
+```sh
+curl -fsSL https://tau.getporti.com/install.sh | sh
+```
+
+- **What it installs.** It installs [uv](https://docs.astral.sh/uv/) when it is missing, then tau with `uv tool install tau-core --with tau-tui`, and starts `tau setup`. It never runs `sudo`. Read it first with `curl -fsSL https://tau.getporti.com/install.sh | less`.
+- **What `tau setup` does.** It shows a checklist of features: the terminal UI, sub-taus, Telegram, remote access, the owner guard, the tau network, start at login and cloud mode. It installs their packages with one command, then sets them up: `tau init` (the provider and its key, below), a short "about you" for `persona/user.md`, each feature's steps and `tau doctor`.
+- **Later.** Run `tau setup` again to add a feature; what is set up is never asked again. `tau setup --upgrade` upgrades tau.
+
+[`tau setup`](../reference/setup.md) lists every feature and option. The rest of this page is the manual way, one step at a time.
+
 ## Requirements
 
 - **Python 3.12 or newer.** Nothing older works; the packages declare `requires-python = ">=3.12"`.
@@ -48,7 +62,7 @@ uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
 tau --help
 ```
 
-`uv tool install` keeps tau in its own virtual environment and never touches your system Python. Upgrade later with `uv tool upgrade tau-core`.
+`uv tool install` keeps tau in its own virtual environment and never touches your system Python. Upgrade later with `tau setup --upgrade`. `uv tool upgrade tau-core` works too, as long as `tau setup` has not installed anything: `tau setup` pins the packages to one version.
 
 ## Create a configuration root
 

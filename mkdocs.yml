@@ -81,6 +81,7 @@ plugins:
             Deploy your own host: Kendi kurulumunu yap
             Run tau in Cloudflare (cloud mode): tau'yu Cloudflare'de çalıştır (bulut modu)
             Reference: Referans
+            Setup and its JSON protocol: Kurulum ve JSON protokolü
             Slash commands: Slash komutları
             Environment variables: Ortam değişkenleri
             Components and plugins: Bileşenler ve eklentiler
@@ -167,6 +168,7 @@ nav:
       - Run tau in Cloudflare (cloud mode): guides/cloud-mode.md
   - Reference:
       - CLI: reference/cli.md
+      - Setup and its JSON protocol: reference/setup.md
       - Slash commands: reference/slash-commands.md
       - tau.toml: reference/tau-toml.md
       - Environment variables: reference/environment.md

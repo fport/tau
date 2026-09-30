@@ -4,6 +4,20 @@
 
 tau bir Python paketleri kümesidir. `tau-core` ajanı ve `tau` komutunu barındırır; `tau-tui` ise Textual arayüzünü ekler. Onları bir kez kurarsın, `tau init` ile bir yapılandırma kökü oluşturursun, `tau doctor` ile kontrol edersin ve konuşmaya başlarsın.
 
+## Tek satırlık kurucu
+
+macOS ve Linux'ta, Raspberry Pi dahil, tek bir komut tau'yu kurar ve ne istediğini sorar:
+
+```sh
+curl -fsSL https://tau.getporti.com/install.sh | sh
+```
+
+- **Ne kurar.** [uv](https://docs.astral.sh/uv/) yoksa önce onu, sonra `uv tool install tau-core --with tau-tui` ile tau'yu kurar ve `tau setup`'ı başlatır. Hiçbir zaman `sudo` çalıştırmaz. Çalıştırmadan önce `curl -fsSL https://tau.getporti.com/install.sh | less` ile okuyabilirsin.
+- **`tau setup` ne yapar.** Özelliklerin bir kontrol listesini gösterir: terminal arayüzü, alt-tau'lar, Telegram, uzaktan erişim, sahip koruması, tau ağı, oturum açılınca başlatma ve bulut modu. Paketlerini tek bir komutla kurar, sonra onları ayarlar: `tau init` (sağlayıcı ve anahtarı, aşağıda), `persona/user.md` için kısa bir "senin hakkında", her özelliğin adımları ve `tau doctor`.
+- **Sonra.** Bir özellik eklemek için `tau setup`'ı yeniden çalıştır; kurulu olanlar bir daha sorulmaz. `tau setup --upgrade` tau'yu yükseltir.
+
+[`tau setup`](../reference/setup.md) her özelliği ve seçeneği listeler. Bu sayfanın geri kalanı elle kurulumu adım adım anlatır.
+
 ## Gereksinimler
 
 - **Python 3.12 veya daha yenisi.** Daha eskisi çalışmaz; paketler `requires-python = ">=3.12"` bildirir.
@@ -50,7 +64,7 @@ uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
 tau --help
 ```
 
-`uv tool install`, tau'yu kendi sanal ortamında tutar ve sistem Python'una asla dokunmaz. Sonradan `uv tool upgrade tau-core` ile yükselt.
+`uv tool install`, tau'yu kendi sanal ortamında tutar ve sistem Python'una asla dokunmaz. Sonradan `tau setup --upgrade` ile yükselt. `tau setup` henüz bir şey kurmadıysa `uv tool upgrade tau-core` de çalışır: `tau setup` paketleri tek bir sürüme sabitler.
 
 ## Bir yapılandırma kökü oluştur
 

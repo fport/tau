@@ -1,6 +1,6 @@
 # CLI
 
-Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init`, `spend`, `telegram` and `version`; `tau-tui` adds `tui`, `tau-guard` adds `guard` ([Owner guard](../guides/guard.md)), `tau-net` adds `net`, `tau-cloud` adds `cloud` (see [Join the tau network](../guides/tau-network.md)) and `tau-sub` adds `sub`; any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
+Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init`, `setup`, `spend`, `telegram` and `version`; `tau-tui` adds `tui`, `tau-guard` adds `guard` ([Owner guard](../guides/guard.md)), `tau-net` adds `net`, `tau-cloud` adds `cloud` (see [Join the tau network](../guides/tau-network.md)) and `tau-sub` adds `sub`; any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
 
 Inside a repository checkout, prefix each command with `uv run`.
 
@@ -33,6 +33,7 @@ Commands:
   hub         Run and manage tau as a long-lived service in the hub role.
   init        Create tau.toml and the persona files.
   net         Talk to other taus (identity, contacts, messages).
+  setup       Pick, install and set up tau's features.
   spend       Show the spend per model role.
   sub         Specialists of your tau (/coach, /landing, ...).
   telegram    Pair your Telegram chat and show the channel's state.
@@ -41,6 +42,76 @@ Commands:
 ```
 
 The three global options go **before** the subcommand: `tau --home ~/other --lang tr chat`. `--profile` and `--lang` are exported as `TAU_PROFILE` and `TAU_LANG` for the run, so a subcommand in another package sees them too. `-v` sends `INFO` to stderr instead of only `WARNING`.
+
+## `tau setup`
+
+```text
+Usage: tau setup [OPTIONS] [COMMAND] [ARGS]...
+
+  Pick tau's features, install their packages and set them up: an interactive
+  checklist, then one `uv tool install` pinned to this tau-core, then `tau
+  init` when there is no configuration, a short 'about you', each chosen
+  feature's steps and `tau doctor`. Run it again to add a feature; what is set
+  up is never asked again. --yes --features tui,sub asks nothing. `tau setup
+  status|install|run --json` is the line protocol of the Mac app
+  (docs/reference/setup.md).
+
+Options:
+  -h, --help        Show this help and exit.
+  --features IDS    Comma-separated feature ids to set up (see `tau setup
+                    status`); skips the checklist.
+  -y, --yes         Ask nothing: defaults, no optional steps.
+  --no-install      Install nothing; set up what is installed.
+  --remove FEATURE  Uninstall a feature's package (its settings and data
+                    stay).
+  --upgrade         Reinstall tau-core and the installed feature packages at
+                    their newest releases.
+
+Commands:
+  install  Install the packages of features.
+  run      Run the steps of one feature.
+  status   Show the features and their state.
+```
+
+```text
+Usage: tau setup status [OPTIONS]
+
+  Show every feature: whether this platform has it, whether its package is
+  installed and whether it is set up. --json prints the object the Mac app
+  reads.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one JSON object.
+```
+
+```text
+Usage: tau setup install [OPTIONS]
+
+  Install the packages of the given features with one `uv tool install`
+  (pinned to this tau-core) and configure nothing. --json streams JSON lines.
+
+Options:
+  -h, --help      Show this help and exit.
+  --features IDS  Comma-separated feature ids; what they require is added.
+                  [required]
+  --json          Stream JSON lines.
+```
+
+```text
+Usage: tau setup run [OPTIONS] FEATURE
+
+  Run the steps of one feature, or of init, about or doctor. With --json the
+  inputs come as one JSON object on stdin ({"steps": [...], "inputs": {...}}),
+  never in argv, and a step that needs its own UI is reported as needs_ui
+  instead of run. Without --json the wizard's steps run for that feature.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      JSON input on stdin, JSON lines out.
+```
+
+The wizard, the feature catalog and the JSON protocol the Mac app drives are specified in [`tau setup` and its JSON protocol](setup.md). The one-line installer, `curl -fsSL https://tau.getporti.com/install.sh | sh`, installs uv and tau and then starts `tau setup`.
 
 ## `tau init`
 

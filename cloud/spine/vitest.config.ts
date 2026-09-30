@@ -10,6 +10,10 @@
  *   Docker, which the tests never touch.
  *
  * Bindings set here win over wrangler.example.jsonc and over a developer's `.dev.vars`.
+ *
+ * The inbox's Rate Limiting bindings are simulated locally, with counters shared by every
+ * test in a project. Their limits are raised here so tests that post many envelopes from one
+ * sender stay independent; test/flood.test.ts checks the limits with its own bindings.
  */
 
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
@@ -28,11 +32,17 @@ export default defineConfig(async () => {
     HUB_TOKEN: TEST_HUB_TOKEN,
   });
 
+  const unlimited = { simple: { limit: 1_000_000, period: 60 as const } };
+  const ratelimits = {
+    INBOX_IP_LIMIT: { namespace_id: "10501", ...unlimited },
+    INBOX_SENDER_LIMIT: { namespace_id: "10502", ...unlimited },
+  };
+
   const local = {
     plugins: [
       cloudflareTest({
         wrangler: { configPath: "./wrangler.example.jsonc" },
-        miniflare: { bindings: bindings("local") },
+        miniflare: { bindings: bindings("local"), ratelimits },
       }),
     ],
     test: { name: "local", include: ["test/*.test.ts"] },
@@ -44,6 +54,7 @@ export default defineConfig(async () => {
         wrangler: { configPath: "./wrangler.example.jsonc" },
         miniflare: {
           d1Databases: { DB: "tau-spine" },
+          ratelimits,
           bindings: { ...bindings("cloud"), TEST_MIGRATIONS: migrations },
         },
       }),

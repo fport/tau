@@ -2,7 +2,7 @@
   "name": "tau-spine",
   "version": "0.1.0",
   "private": true,
-  "description": "tau spine 0.1.0+6a7001bcab76, deployed from the tau-net spine kit",
+  "description": "tau spine 0.1.0+dd717dc3fae4, deployed from the tau-net spine kit",
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev"

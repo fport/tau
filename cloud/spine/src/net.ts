@@ -5,8 +5,15 @@
  * The inbox checks every envelope in the order the reference prescribes and hands the ones
  * with a valid signature to the Mailbox Durable Object, which judges duplicates, the rate
  * limit and the mailbox cap, stores the envelope as it is (the spine never opens a box) and
- * wakes the hub's long poll. It answers every sender the same way, whether or not the owner
- * knows them.
+ * wakes the hub's long poll or rings its doorbell. It answers every sender the same way,
+ * whether or not the owner knows them.
+ *
+ * Flood hardening (the Workers Free plan has 100 000 Worker and Durable Object requests and
+ * 1 000 KV writes a day): everything that costs more than CPU (the card fetch, KV, the
+ * Mailbox) runs only after the cheap checks and after two Rate Limiting bindings, one keyed
+ * by the client IP and one by the claimed sender. Anyone with a wildcard domain has endless
+ * valid senders, so the per-sender limits alone would not stop a flood. A failing KV write
+ * (the daily quota) never turns into an error: the card cache is only a cache.
  */
 
 import { baseUrl, insecurePeersAllowed, isAddress, ownAddress } from "./address";
@@ -15,6 +22,7 @@ import type { SpineEnv } from "./env";
 import {
   badRequest,
   error,
+  isJsonRequest,
   isObject,
   json,
   nowSeconds,
@@ -22,6 +30,7 @@ import {
   readLimited,
   utf8,
 } from "./http";
+import { clientKey, warnOnce, withinLimit } from "./limits";
 import { mailboxOf } from "./mailbox";
 import { SOFTWARE } from "./version";
 
@@ -165,7 +174,7 @@ async function senderSignKey(
     return own === null ? null : b64uKey(own.sign_key);
   }
   const cacheKey = `peer:${from}`;
-  const cached = await env.TAU.get(cacheKey, "json");
+  const cached = await cachedCard(env, cacheKey);
   const cachedKey = cached === null ? null : peerSignKey(cached, from);
   if (cachedKey !== null) return cachedKey;
 
@@ -194,8 +203,30 @@ async function senderSignKey(
   }
   const key = peerSignKey(card, from);
   if (key === null) return null;
-  await env.TAU.put(cacheKey, JSON.stringify(card), { expirationTtl: PEER_CACHE_TTL_SECONDS });
+  await cacheCard(env, cacheKey, card);
   return key;
+}
+
+/** A cached peer card; a failing KV read counts as a miss. */
+async function cachedCard(env: SpineEnv, cacheKey: string): Promise<unknown> {
+  try {
+    return await env.TAU.get(cacheKey, "json");
+  } catch (err) {
+    warnOnce("card_cache_read_failed", { error: String(err) });
+    return null;
+  }
+}
+
+/**
+ * Caches a peer card for an hour. A failing write is ignored: the Free plan allows 1 000 KV
+ * writes a day, and a flood of new senders must not turn the quota into failed deliveries.
+ */
+async function cacheCard(env: SpineEnv, cacheKey: string, card: unknown): Promise<void> {
+  try {
+    await env.TAU.put(cacheKey, JSON.stringify(card), { expirationTtl: PEER_CACHE_TTL_SECONDS });
+  } catch (err) {
+    warnOnce("card_cache_write_failed", { error: String(err) });
+  }
 }
 
 /** POST /net/inbox */
@@ -204,6 +235,12 @@ export async function receiveEnvelope(
   env: SpineEnv,
   url: URL,
 ): Promise<Response> {
+  // 0. Media type: only a JSON body is read at all.
+  if (!isJsonRequest(request)) {
+    await request.body?.cancel();
+    return error(415, "unsupported_media_type");
+  }
+
   // 1. Size.
   const body = await readLimited(
     request.body,
@@ -236,6 +273,16 @@ export async function receiveEnvelope(
   // 4. Freshness.
   const now = nowSeconds();
   if (Math.abs(now - payload.ts) > MAX_CLOCK_SKEW_SECONDS) return error(400, "stale");
+
+  // 4a. Flood guards, before anything that costs a subrequest, KV or the Mailbox: the
+  // client IP first (a wildcard domain makes senders free), then the claimed sender.
+  const ip = clientKey(request.headers.get("cf-connecting-ip"));
+  if (ip !== null && !(await withinLimit(env, "INBOX_IP_LIMIT", ip))) {
+    return error(429, "rate_limited");
+  }
+  if (!(await withinLimit(env, "INBOX_SENDER_LIMIT", payload.from))) {
+    return error(429, "rate_limited");
+  }
 
   // 5. The sender's card.
   const signKey = await senderSignKey(env, payload.from, self);

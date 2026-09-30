@@ -42,6 +42,15 @@ export function upgradeRequired(): Response {
 }
 
 /**
+ * Whether the request declares a JSON body: `Content-Type: application/json`, parameters
+ * such as `charset` allowed.
+ */
+export function isJsonRequest(request: Request): boolean {
+  const type = (request.headers.get("content-type") ?? "").split(";", 1)[0] ?? "";
+  return type.trim().toLowerCase() === "application/json";
+}
+
+/**
  * Reads a body of at most `max` bytes. Returns null as soon as it is larger (the stream is
  * cancelled, so an oversized body is never buffered in full).
  */

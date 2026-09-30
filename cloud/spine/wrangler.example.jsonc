@@ -44,6 +44,19 @@
   // SQLite-backed classes are the kind the Free plan allows. The cloud configuration adds
   // v2 (TauBrain) after this tag, so a spine deployed in local mode can switch later.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Mailbox"] }],
+  // Flood guards for POST /net/inbox, checked before any card fetch, KV or Durable Object
+  // call: per client IP (an IPv6 address counts by its /64) and per claimed sender. Counters
+  // are per Cloudflare location and approximate. A namespace_id is shared by every Worker
+  // on the account that uses it; change both when two spines share one account and should
+  // not share counters. Without these bindings the spine skips the checks.
+  "ratelimits": [
+    { "name": "INBOX_IP_LIMIT", "namespace_id": "10501", "simple": { "limit": 60, "period": 60 } },
+    {
+      "name": "INBOX_SENDER_LIMIT",
+      "namespace_id": "10502",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ],
   // `wrangler dev` only: the address a local hub and other local spines use.
   "dev": { "ip": "127.0.0.1", "port": 8787 },
   "triggers": {

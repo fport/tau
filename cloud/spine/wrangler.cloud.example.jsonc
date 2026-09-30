@@ -62,6 +62,15 @@
     // A separate tag, so a spine deployed in local mode first can switch to cloud mode.
     { "tag": "v2", "new_sqlite_classes": ["TauBrain"] }
   ],
+  // The inbox's flood guards, as in local mode (see wrangler.example.jsonc).
+  "ratelimits": [
+    { "name": "INBOX_IP_LIMIT", "namespace_id": "10501", "simple": { "limit": 60, "period": 60 } },
+    {
+      "name": "INBOX_SENDER_LIMIT",
+      "namespace_id": "10502",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ],
   "containers": [
     {
       "class_name": "TauBrain",

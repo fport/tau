@@ -9,7 +9,9 @@
 //!
 //! TauBar never unlocks: the check runs in the hub (under TauBar's camera grant), and no
 //! route takes a verdict. The open `/status` can come from any local process that holds the
-//! port, so its text is filtered before it reaches the menu, and "Lock now" trusts only a
+//! port, so the supervisor passes its guard block on only while the hub itself answers
+//! (TauBar's own hub is up, or the pid that answers holds the hub lock), the state must be
+//! one of [`STATES`] and the reason must have tau-core's shape, and "Lock now" trusts only a
 //! proven answer.
 
 use super::control::ControlClient;

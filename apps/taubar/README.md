@@ -237,9 +237,14 @@ the window show it under the hub lines, from the `guard` block of the hub's open
 | `Guard: unavailable (camera denied)` | the guard cannot check; the reason says why |
 | `Guard: locked (not enrolled)` | no face is enrolled yet (`tau guard setup`) |
 
-The whole section is hidden when the hub reports no guard or the state `off`. **Grant camera
-access…** appears when the reason is `camera_denied` or `camera_unavailable` and opens System
-Settings → Privacy & Security → Camera.
+The whole section is hidden when the hub reports no guard or the state `off`. It is also hidden
+while TauBar cannot tell that the hub itself answers: `/status` is open and unsigned, so any
+local process that binds the free port can answer it. TauBar shows the guard block only when
+its own hub is up, or when the pid that answers `/health` holds the hub lock (checked once per
+pid); not while its hub is still starting. The state must be one TauBar knows and the reason
+must look like tau-core's (`a-z`, `0-9`, `_`, at most 48 characters); anything else is dropped.
+**Grant camera access…** appears when the reason is `camera_denied` or `camera_unavailable`
+and opens System Settings → Privacy & Security → Camera.
 
 **Lock now** asks the hub to lock (`POST /guard/lock`, `{"channel": "taubar", "client_id": …,
 "trigger": "command"}`). TauBar reads `<TAU_DATA_DIR>/hub/control.token` for every request and

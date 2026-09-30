@@ -181,6 +181,9 @@ pub struct Supervisor<P: Probe> {
     spawn_error: Option<String>,
     health: Option<Value>,
     status: Option<Value>,
+    /// With no hub of TauBar's own: the pid `/health` reported and whether that pid held the
+    /// hub lock when it was checked (once per pid; cleared when `/health` stops answering).
+    lock_holder: Option<(u32, bool)>,
     next_poll: Option<Instant>,
 }
 
@@ -208,6 +211,7 @@ impl<P: Probe> Supervisor<P> {
             spawn_error: None,
             health: None,
             status: None,
+            lock_holder: None,
             next_poll: None,
         }
     }
@@ -364,6 +368,16 @@ impl<P: Probe> Supervisor<P> {
             HubState::Off
         };
         let answering = matches!(state, HubState::Up | HubState::Elsewhere);
+        // Any local process that holds the port can answer the open /status. Its guard block
+        // reaches the menu only when the hub itself answers: TauBar's own hub (Up), or a hub
+        // elsewhere whose pid holds the hub lock. Not while TauBar's hub is still starting.
+        let hub_answers = match state {
+            HubState::Up => true,
+            HubState::Elsewhere => {
+                health_pid.is_some_and(|pid| self.lock_holder == Some((pid, true)))
+            }
+            _ => false,
+        };
         let uptime = |v: &Value| v.get("uptime_s").and_then(Value::as_f64);
         HubView {
             switch_on: self.desired,
@@ -395,7 +409,9 @@ impl<P: Probe> Supervisor<P> {
                 .as_ref()
                 .and_then(|s| s.get("telegram"))
                 .cloned(),
-            guard: self.status.as_ref().and_then(guard::parse),
+            guard: hub_answers
+                .then(|| self.status.as_ref().and_then(guard::parse))
+                .flatten(),
             control_url: self.resolved.as_ref().map(Resolved::control_url),
             hub_log: self
                 .resolved
@@ -693,6 +709,7 @@ impl<P: Probe> Supervisor<P> {
         let Some(resolved) = self.ensure_resolved(now) else {
             self.health = None;
             self.status = None;
+            self.lock_holder = None;
             return;
         };
         let port = resolved.control_port;
@@ -713,9 +730,19 @@ impl<P: Probe> Supervisor<P> {
                     secs(after)
                 ));
             }
-        } else if health_pid.is_some() {
+            self.lock_holder = None;
+        } else if let Some(pid) = health_pid {
             // Someone else's hub answers: learn whether launchd runs it (for the menu).
             self.launchd_cached(&resolved.data_dir, now);
+            // And whether the pid it names holds the hub lock, so a process that only bound
+            // the port cannot put guard text in the menu. A hub takes its lock and writes its
+            // pid before it opens the control API, so one check per pid is enough.
+            if self.lock_holder.map(|(checked, _)| checked) != Some(pid) {
+                let lock = self.probe.lock(&resolved.lock);
+                self.lock_holder = Some((pid, lock.held && lock.pid == Some(pid)));
+            }
+        } else {
+            self.lock_holder = None;
         }
     }
 }
@@ -924,6 +951,67 @@ mod tests {
         rig.sup.poll_soon();
         rig.sup.tick(Instant::now());
         assert_eq!(rig.sup.view(Instant::now()).guard, None);
+    }
+
+    fn answer_guard(rig: &Rig, pid: u32) {
+        rig.answer_health(pid);
+        rig.probe.answers.lock().unwrap().insert(
+            "/status".into(),
+            serde_json::json!({"pid": pid, "guard": {"state": "unlocked", "enrolled": true,
+                "available": true, "reason": null}}),
+        );
+    }
+
+    #[test]
+    fn a_guard_block_from_a_process_without_the_hub_lock_is_not_shown() {
+        // Something bound the port while no hub runs and claims a guard.
+        let mut rig = Rig::new("squatter", LONG);
+        answer_guard(&rig, 777);
+        rig.run_until(Duration::from_millis(200), |_| false);
+        let view = rig.sup.view(Instant::now());
+        assert_eq!(view.state, HubState::Elsewhere);
+        assert_eq!(view.guard, None, "no hub lock, no guard line");
+        // A hub now holds the lock, but the answer still names another pid: hidden. Once the
+        // lock holder answers, the line shows.
+        let holder = rig.hold_lock(778);
+        rig.run_until(Duration::from_millis(200), |_| false);
+        assert_eq!(rig.sup.view(Instant::now()).guard, None);
+        answer_guard(&rig, 778);
+        rig.run_until(Duration::from_secs(1), |s| {
+            s.view(Instant::now()).guard.is_some()
+        });
+        let guard = rig
+            .sup
+            .view(Instant::now())
+            .guard
+            .expect("the lock holder answers");
+        assert_eq!(guard.state, "unlocked");
+        // The hub goes away and another process answers with the same pid: checked again.
+        drop(holder);
+        rig.probe.answers.lock().unwrap().clear();
+        rig.run_until(Duration::from_millis(200), |_| false);
+        answer_guard(&rig, 778);
+        rig.run_until(Duration::from_millis(200), |_| false);
+        assert_eq!(rig.state(), HubState::Elsewhere);
+        assert_eq!(rig.sup.view(Instant::now()).guard, None);
+    }
+
+    #[test]
+    fn a_guard_block_is_not_shown_while_taubars_hub_is_starting() {
+        let mut rig = Rig::new("starting", LONG);
+        rig.sup.set_desired(true, Instant::now());
+        let pid = rig.sup.own_pid().expect("started");
+        // Another process answers on the port before TauBar's hub does.
+        answer_guard(&rig, pid + 1);
+        rig.run_until(Duration::from_millis(200), |_| false);
+        let view = rig.sup.view(Instant::now());
+        assert_eq!(view.state, HubState::Starting);
+        assert_eq!(view.guard, None);
+        answer_guard(&rig, pid);
+        rig.run_until(Duration::from_secs(1), |s| {
+            s.view(Instant::now()).state == HubState::Up
+        });
+        assert!(rig.sup.view(Instant::now()).guard.is_some());
     }
 
     #[test]

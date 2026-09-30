@@ -111,7 +111,8 @@ The [owner guard](../guides/guard.md) has no variable of its own that changes po
 
 | Variable | Effect |
 |---|---|
-| `SSH_CONNECTION` | set by sshd; `tau guard setup`, `enroll` and `forget` refuse to run while it is set (exit 2) |
+| `SSH_CONNECTION` | set by sshd; `tau guard setup`, `enroll` and `forget` refuse to run while it is set (exit 2), and a worker started with it shows no guard window |
+| `TAU_GUARD_WINDOW` | `0` keeps the guard window off for every worker started under it (a hub, a `tau guard` command; the guard's own tests set it); display only, it changes no verdict |
 | `PYTHONPATH`, `PYTHON_KEYRING_BACKEND`, `KEYCHAIN_PATH` | never reach the guard's worker: no module path can shadow it, and the template key always goes through keyring's macOS Keychain backend |
 | `TAU_GUARD_TEST_CACHE` | tests only: where the opt-in real-model tests cache SFace and public-domain portraits (default `~/.cache/tau-guard-tests`) |
 | `TAU_GUARD_SFACE` | tests only: a local SFace file for the opt-in real-model tests instead of a download |

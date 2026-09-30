@@ -191,6 +191,7 @@ nodes = ["mac", "arm"]
 | `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` |
 | `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` |
 | `camera` | `"builtin"` | `builtin` ya da bir kameranın AVFoundation uniqueID'si |
+| `window` | `true` | bool |
 
 Her anahtarın ne yaptığı [koruma referansında](guard.md#componentguard).
 

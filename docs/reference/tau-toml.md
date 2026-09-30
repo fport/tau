@@ -189,6 +189,7 @@ The [owner guard](../guides/guard.md)'s table is the one exception to "not valid
 | `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` |
 | `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` |
 | `camera` | `"builtin"` | `builtin` or a camera's AVFoundation uniqueID |
+| `window` | `true` | bool |
 
 What each key does is in the [guard reference](guard.md#componentguard).
 

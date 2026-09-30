@@ -49,7 +49,7 @@ The guard runs inside the hub and does not need a model or the internet. Your fa
     It does four things in order, and stops at the first one that fails:
 
     - **Downloads SFace** from a URL pinned to one OpenCV Zoo commit and checks its sha256. Offline, pass the file yourself: `tau guard setup --model-file ~/Downloads/face_recognition_sface_2021dec.onnx`. The file is checked against the same sha256.
-    - **Enrolls your face.** macOS first asks for Touch ID or your Mac password, then for camera access if this app has never had it. Then follow the hints for 15 to 20 seconds: look at the camera, turn left, turn right, tilt up, tilt down. Sit in normal light, about an arm's length away, alone in the picture.
+    - **Enrolls your face.** macOS first asks for Touch ID or your Mac password, then for camera access if this app has never had it. Then follow the [guard window](#the-guard-window) for 15 to 20 seconds: look at the camera, turn left, turn right, tilt up, tilt down. Sit in normal light, about an arm's length away, alone in the picture.
     - **Runs one check,** exactly like an unlock: look at the camera, then two head turns.
     - **Switches the guard on:** it writes `[component.guard] enabled = true` to `tau.toml`. The enrollment marker in `TAU_DATA_DIR/guard/` keeps the guard on even if that line is later removed.
 
@@ -63,6 +63,25 @@ The guard runs inside the hub and does not need a model or the internet. Your fa
     uv run tau guard status    # the state as the hub reports it
     uv run tau doctor          # its guard line: active; the hub reports it unlocked
     ```
+
+## The guard window
+
+While a check runs, tau covers the Mac's screen, all but the menu bar, with a dark window, so you do not have to follow text in a terminal:
+
+- **Your camera picture**, mirrored like a mirror, in the middle of the τ ring. Turn the way the triangle points: for "turn left" your face moves left in the picture.
+- **What to do now**, as a large triangle and one line: `LOOK AT THE CAMERA` (a hollow triangle pointing up at the camera), `TURN LEFT`, `TURN RIGHT`, `BACK TO CENTER`, and during enrollment `TILT UP`, `TILT DOWN`, `TURN FURTHER` with the samples collected so far (`6/10 SAMPLES`).
+- **The time left** for the current step, as a bright comet running down the ring; it turns red near the end.
+- **A hint** when something is off: `TOO DARK · FIND MORE LIGHT`, `MOVE CLOSER`, `ONE FACE ONLY`.
+- **The result:** `UNLOCKED` (or `CONFIRMED`, `ENROLLED`) with a check, or `NOT VERIFIED` with the reason. The window closes itself about a second later.
+
+It appears for every check, whichever window asked for it: the TUI lock screen, `tau chat`, tau Desktop, a step-up before a tier-2 action, a presence recheck, and `tau guard setup`, `enroll` and `verify`. The terminal lines stay as they were.
+
+- **Esc**, or a click on `ESC · CANCEL`, cancels the check. As on the lock screen, cancelling while a head-turn prompt is up counts as a failed attempt.
+- **Touch ID or the Mac password** (enrollment, the Touch ID fallback, a Touch ID step-up): the window shrinks to a small panel at the top of the screen, so the macOS prompt is free.
+- **Privacy:** the picture stays inside the worker that holds the camera. Nothing is recorded or saved, and the window asks macOS to keep it out of screenshots and screen recordings.
+- It follows your UI language (`[ui] language`), and it stops moving when System Settings → Accessibility → Display → **Reduce motion** is on.
+- **See it first:** `uv run tau guard window --demo` plays a scripted check in it without the camera. `uv run tau guard window` says whether it can open from where you are.
+- **Turn it off** with `[component.guard] window = false` in `tau.toml` (restart the hub), or for one command with `--no-window` (`setup`, `enroll`, `verify`; a check that runs through the hub follows the hub's setting). Over SSH, or when the hub has no GUI session (a launchd job, a hub started over SSH), checks run without it.
 
 ## The camera permission: TauBar or the terminal
 
@@ -86,7 +105,7 @@ macOS grants the camera to an app, not to a program. The guard's checks run in a
 
 The TUI opens on an opaque lock screen, so nothing of your sessions shows through.
 
-- **Enter** on an empty line starts a check. Look at the camera, then follow the prompts ("Turn your head left.", "Look straight at the camera again."). Each prompt gives you 3.5 seconds.
+- **Enter** on an empty line starts a check. Look at the camera, then follow the prompts ("Turn your head left.", "Look straight at the camera again."); the [guard window](#the-guard-window) shows them large, with your camera picture. Each prompt gives you 3.5 seconds.
 - **Esc** cancels a running check, and **ctrl+q** quits. Only `/help`, `/lang`, `/guard` and `/quit` work while tau is locked. Anything else you type is not sent and stays in the field.
 - After a successful check you see `Unlocked (face). Failed attempts since the last unlock: 0.` A number above 0 means someone, or something, tried while you were away. `tau guard log` shows when.
 

@@ -39,6 +39,7 @@ unlock_liveness = "challenge"
 step_up = "face"
 unlock_fallback = "touch_id"
 camera = "builtin"
+window = true
 ```
 
 | Key | Default | Range or values | Meaning |
@@ -56,6 +57,7 @@ camera = "builtin"
 | `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` | what a tier-2 step-up asks for: `face_or_touch_id` falls back to Touch ID after a face check that could not run (too dark, no face, timeout, a camera problem); `touch_id` never opens the camera; `none` applies only when the client's and the hub's configs both say `none` |
 | `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` | offered after two face failures in the attempt window or a `camera_*` verdict: `t` on the TUI lock screen, `t` + Enter at the terminal's `locked>` prompt; a pass unlocks with `method = "touch_id"`; `touch_id_or_password` is the opt-in for a closed lid |
 | `camera` | `"builtin"` | `builtin` or a camera's AVFoundation uniqueID | `builtin` picks the device of type `AVCaptureDeviceTypeBuiltInWideAngleCamera` on transport `bltn`; the doctor warns when an id names anything else |
+| `window` | `true` | bool | the [guard window](#the-guard-window): the worker shows the mirrored camera picture, the step and the hint full-screen during a check; `false` keeps checks in the terminal lines only. Display only, it never changes a verdict |
 
 A client sends its own `step_up` and `unlock_liveness` with every check, and the hub applies the stricter of its own value and the client's (strictest first: `face` or `touch_id`, then `face_or_touch_id`, then `none`; `challenge` before `none`).
 
@@ -63,16 +65,31 @@ A client sends its own `step_up` and `unlock_liveness` with every check, and the
 
 | Command | What it does | Where it runs |
 |---|---|---|
-| `tau guard setup [--model-file FILE]` | installs SFace (download pinned by sha256, or `FILE`), enrolls, runs one check, writes `[component.guard] enabled = true` | at the Mac only (macOS, no `SSH_CONNECTION`); through the hub when a guarded hub runs, else a local worker |
-| `tau guard enroll [--add]` | enrolls again behind Touch ID (the Mac password only without Touch ID) and pins the fingerprint set; `--add` adds samples to the template (other light) | at the Mac only |
-| `tau guard verify [--explain]` | one check with the head-turn challenge; `--explain` runs it in a local worker and prints each frame's numbers (no frame is saved); exit 1 when it fails | macOS (exit 2 elsewhere); through the hub when a guarded hub runs, so a passed check unlocks tau, else a local worker |
+| `tau guard setup [--model-file FILE] [--no-window]` | installs SFace (download pinned by sha256, or `FILE`), enrolls, runs one check, writes `[component.guard] enabled = true` | at the Mac only (macOS, no `SSH_CONNECTION`); through the hub when a guarded hub runs, else a local worker |
+| `tau guard enroll [--add] [--no-window]` | enrolls again behind Touch ID (the Mac password only without Touch ID) and pins the fingerprint set; `--add` adds samples to the template (other light) | at the Mac only |
+| `tau guard verify [--explain] [--no-window]` | one check with the head-turn challenge; `--explain` runs it in a local worker and prints each frame's numbers (no frame is saved; the guard window shows too); exit 1 when it fails | macOS (exit 2 elsewhere); through the hub when a guarded hub runs, so a passed check unlocks tau, else a local worker |
 | `tau guard forget` | removes the template, the marker and the Keychain key behind Touch ID (the Mac password only without Touch ID), and writes `enabled = false`; exit 1 when the Keychain kept the key (run it again) | at the Mac only, always a local worker |
 | `tau guard doctor` | checks platform, worker, OpenCV, the YuNet and SFace files, enrollment, template, Keychain, modes, liveness, camera, the terminal's camera permission, failures and the app holding the hub's camera grant; exit 1 on a `fail` | anywhere |
 | `tau guard status [--json]` | the state as the running hub reports it (`GET /guard/status`); without an active guard prints `off`; exit 0 when no hub runs, 1 on a hub error | anywhere |
 | `tau guard lock` | locks every guarded channel (`POST /guard/lock`, trigger `command`) | anywhere; also over SSH |
 | `tau guard log [--since WHEN] [--json]` | the audit log; `WHEN` is a duration (`30m`, `2h`, `7d`) or an ISO date or time | anywhere |
+| `tau guard window [--demo]` | whether the guard window is on and could open from this session; `--demo` plays a scripted unlock, a failed step-up and an enrollment in it on a synthetic picture (no camera, nothing unlocks; Esc closes it) | at the Mac |
+
+`--no-window` keeps the guard window off for a check the command runs in its own local worker; a check through the hub follows the hub's `[component.guard] window`, and the command says so.
 
 After `setup` or `forget`, restart the hub and any open `tau chat`, `tau tui` or tau Desktop window. The [CLI reference](cli.md#tau-guard) has the `--help` texts.
+
+## The guard window
+
+While a check runs, the worker that holds the camera draws a window over the main screen, below the menu bar (issue 126). The frames never leave that process.
+
+- **When.** For the `verify`, `enroll` and `touch_id` worker operations whose request carries a `window` object: the hub adds it with `[component.guard] window = true` (the default), the CLI for its local workers unless `--no-window` is given. The object is `{purpose, language, texts}`, every line already in the owner's UI language, since the worker never imports tau-core; a step-up's request adds `tool`.
+- **No window** (the check runs as before, with the reason in `worker.log`): not macOS, `SSH_CONNECTION` set, `TAU_GUARD_WINDOW=0`, no GUI session (no window server: a hub started over SSH or as a launchd job outside the login session), or pyobjc's AppKit missing.
+- **What it shows.** The mirrored picture in a circle inside the τ ring, at most 20 frames per second (the check itself uses every frame); the step as a triangle and an uppercase line (`LOOK AT THE CAMERA`, `TURN LEFT`, `TURN RIGHT`, `BACK TO CENTER`, and for enrollment `TILT UP`, `TILT DOWN`, `TURN FURTHER`); the time left in the step as a comet on the ring; the live hint (`TOO DARK`, `MOVE CLOSER`, `ONE FACE ONLY`); the purpose (unlock, presence check, step-up with the tool, enrollment with `n/10 SAMPLES`); then the result for 1.2 s (`UNLOCKED`, `CONFIRMED`, `ENROLLED`, or `NOT VERIFIED` with the reason).
+- **Touch ID.** While LocalAuthentication asks, the window is a small panel at the top of the screen and the worker's app steps back, so the macOS prompt is never covered.
+- **Esc**, or a click on `ESC · CANCEL`, cancels: the worker writes `{"type": "cancel"}` and no verdict. The hub then withdraws every client from the attempt, the same path as a channel's cancel, so it ends `cancelled`, or `spoof` (counted) when a head-turn prompt was up. The CLI answers `cancelled`.
+- **SIGTERM** (a cancel, a lock or a timeout in the hub) closes the window, stops the check at its next frame so the camera is released, and the worker exits within 0.5 s. A LocalAuthentication prompt goes away with the process.
+- **Privacy.** Nothing is recorded or written; the window asks macOS to keep it out of screenshots and screen recordings (`NSWindowSharingNone`, best effort). macOS "Reduce motion" stops its animations.
 
 ## States
 

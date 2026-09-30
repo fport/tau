@@ -11,7 +11,7 @@ of `tau-core`, whose `tau_core.guard` owns the `Guard` protocol, the reason list
 | group | name | what |
 |---|---|---|
 | `tau.hub_services` | `guard` | the guard service inside `tau hub run` |
-| `tau.commands` | `guard` | `tau guard setup`, `enroll`, `verify`, `forget`, `doctor`, `status`, `lock` and `log` |
+| `tau.commands` | `guard` | `tau guard setup`, `enroll`, `verify`, `forget`, `doctor`, `status`, `lock`, `log` and `window` |
 
 Channels never import this package: they talk to the hub through tau-core's `HubGuard`, so no
 camera library ever loads in a channel process.
@@ -175,6 +175,24 @@ addition to the human approval.
 | YuNet 2023mar (`face_detection_yunet_2023mar.onnx`, sha256 `8f2383e4...52fa4`) | MIT, © 2020 Shiqi Yu (`tau_guard/models/LICENSE-yunet`) | in the wheel |
 | SFace 2021dec (`face_recognition_sface_2021dec.onnx`, sha256 `0ba9fbfa...34e79`) | Apache-2.0 (OpenCV Zoo) | `tau guard setup` downloads it from opencv_zoo at commit `47534e2`, or `--model-file PATH` |
 
+## The guard window
+
+While a check runs, the worker that holds the camera covers the main screen (below the menu
+bar) with a window drawn in the tau brand: the mirrored picture inside the neon τ ring, the
+step as a large triangle and an uppercase line (`TURN LEFT`), the countdown as a comet on the
+ring, the live hint, the purpose, then the result for 1.2 s (`tau_guard/overlay.py`, pyobjc
+AppKit imported lazily). Frames never leave the worker; the verifier gets every frame and the
+window at most 20 a second (`tau_guard.window.WatchedSource`). During a Touch ID prompt the
+window is a small panel at the top, so the macOS prompt stays uncovered. Esc (or a click on
+the chip) writes `{"type": "cancel"}`, and the hub cancels the attempt through its usual path.
+
+The hub and the CLI ask for it with a `window` object in the request (the lines already in
+the owner's UI language: the worker never imports tau-core), from `[component.guard] window`
+and, for the CLI's local checks, `--no-window`. Not on macOS, over SSH, without a GUI session,
+without pyobjc's AppKit or with `TAU_GUARD_WINDOW=0` the worker runs headless and logs why.
+`tau guard window --demo` plays a scripted check in it without the camera. The seam is
+`tau_guard.window.GuardView`; `tau_guard.testing.RecordingView` records its calls in tests.
+
 ## Routes
 
 All routes are protected control routes. `ControlApi` checks each request's signature and
@@ -217,6 +235,7 @@ unlock_liveness = "challenge"       # or "none" (the doctor warns: a photo could
 step_up = "face"                    # face | face_or_touch_id | touch_id | none (both configs)
 unlock_fallback = "touch_id"        # touch_id | touch_id_or_password | none (both configs)
 camera = "builtin"                  # or a camera's AVFoundation uniqueID
+window = true                       # the guard window during a check (display only)
 ```
 
 A client sends its own `step_up`, `unlock_liveness` and `unlock_fallback` values with every
@@ -231,6 +250,8 @@ a client's request as that default, never as agreement. The hub's own channels f
 tau guard setup [--model-file PATH] # model, enrollment, one check, [component.guard] enabled = true
 tau guard enroll [--add]            # enroll again, or add samples under other light
 tau guard verify [--explain]        # one check; --explain prints each frame's numbers
+                                    # (setup, enroll, verify: --no-window for their own checks)
+tau guard window [--demo]           # can the guard window open here; --demo plays a scripted check
 tau guard forget                    # remove template, marker and key; the guard is off
                                     # (exit 1 if the Keychain kept the key; run it again)
 tau guard doctor                    # everything the guard depends on, Touch ID included
@@ -248,11 +269,11 @@ are away from the Mac, remote `tau tui` and `tau chat` and `tau ask` stay locked
 
 `tau_guard.testing` has `FakeClock`, `FakePresence`, a fake worker
 (`fake_worker_command(script)`) that speaks the worker protocol from a JSON script, and fakes
-for the face check: synthetic YuNet rows and embeddings (`face_row`, `identity`, `variant`), a
+for the face check (and `RecordingView`, a guard window that records its calls): synthetic YuNet rows and embeddings (`face_row`, `identity`, `variant`), a
 `FakeEngine`, a `FakeFrameSource`, a `SimulatedUser` who follows the prompts (with switches for
 every way an attempt must fail), `FakeLocalAuth` (Touch ID's state and scripted answers,
 `FINGERPRINTS` and `OTHER_FINGERPRINTS`) and `fake_deps` for running the worker's operations
-in-process. `MacLocalAuth` is tested against a fake `LocalAuthentication` module. No test opens a camera, a microphone, the Keychain or a Touch ID prompt,
+in-process. `MacLocalAuth` is tested against a fake `LocalAuthentication` module. No test opens a camera, a window, a microphone, the Keychain or a Touch ID prompt,
 and every macOS call sits behind a protocol and is imported lazily, so the suite runs on Linux.
 
 The real-model tests are opt-in: they fetch SFace and a few public-domain portraits by pinned

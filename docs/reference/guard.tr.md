@@ -41,6 +41,7 @@ unlock_liveness = "challenge"
 step_up = "face"
 unlock_fallback = "touch_id"
 camera = "builtin"
+window = true
 ```
 
 | Anahtar | Varsayılan | Aralık ya da değerler | Anlamı |
@@ -58,6 +59,7 @@ camera = "builtin"
 | `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` | tier-2 step-up'ın ne istediği: `face_or_touch_id`, çalışamayan bir yüz kontrolünden (çok karanlık, yüz yok, zaman aşımı, kamera sorunu) sonra Touch ID'ye düşer; `touch_id` kamerayı hiç açmaz; `none` yalnızca istemcinin ve hub'ın ayarları ikisi de `none` derse geçerlidir |
 | `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` | deneme penceresindeki iki yüz başarısızlığından ya da bir `camera_*` kararından sonra sunulur: TUI kilit ekranında `t`, terminalin `kilitli>` isteminde `t` + Enter; başarılı olursa `method = "touch_id"` ile açar; kapalı kapak için `touch_id_or_password` seçilebilir |
 | `camera` | `"builtin"` | `builtin` ya da bir kameranın AVFoundation uniqueID'si | `builtin`, `bltn` taşımasındaki `AVCaptureDeviceTypeBuiltInWideAngleCamera` tipindeki aygıtı seçer; bir id başka bir şeyi gösteriyorsa doctor uyarır |
+| `window` | `true` | bool | [koruma penceresi](#the-guard-window): worker bir kontrol sürerken aynalanmış kamera görüntüsünü, adımı ve ipucunu tam ekran gösterir; `false` kontrolleri yalnızca terminal satırlarında bırakır. Yalnızca görüntüdür, hiçbir kararı değiştirmez |
 
 Bir istemci her kontrolde kendi `step_up` ve `unlock_liveness` değerlerini gönderir; hub kendi değeriyle istemcininkinden daha katı olanı uygular (en katıdan başlayarak: `face` ya da `touch_id`, sonra `face_or_touch_id`, sonra `none`; `challenge`, `none`'dan önce).
 
@@ -65,16 +67,31 @@ Bir istemci her kontrolde kendi `step_up` ve `unlock_liveness` değerlerini gön
 
 | Komut | Ne yapar | Nerede çalışır |
 |---|---|---|
-| `tau guard setup [--model-file FILE]` | SFace'i kurar (sha256 ile sabitlenmiş indirme ya da `FILE`), kaydeder, bir kontrol çalıştırır, `[component.guard] enabled = true` yazar | yalnızca Mac'in başında (macOS, `SSH_CONNECTION` yok); korumalı bir hub çalışıyorsa hub üzerinden, yoksa yerel bir worker'da |
-| `tau guard enroll [--add]` | Touch ID'nin arkasında (Touch ID yoksa Mac parolası) yeniden kaydeder ve parmak izi setini sabitler; `--add` şablona örnekler ekler (başka ışık) | yalnızca Mac'in başında |
-| `tau guard verify [--explain]` | baş çevirme sınamasıyla tek kontrol; `--explain` onu yerel bir worker'da çalıştırır ve her karenin sayılarını yazar (hiçbir kare kaydedilmez); başarısızsa 1 ile çıkar | macOS (başka yerde 2 ile çıkar); korumalı bir hub çalışıyorsa hub üzerinden, böylece geçen kontrol tau'nun kilidini açar, yoksa yerel bir worker'da |
+| `tau guard setup [--model-file FILE] [--no-window]` | SFace'i kurar (sha256 ile sabitlenmiş indirme ya da `FILE`), kaydeder, bir kontrol çalıştırır, `[component.guard] enabled = true` yazar | yalnızca Mac'in başında (macOS, `SSH_CONNECTION` yok); korumalı bir hub çalışıyorsa hub üzerinden, yoksa yerel bir worker'da |
+| `tau guard enroll [--add] [--no-window]` | Touch ID'nin arkasında (Touch ID yoksa Mac parolası) yeniden kaydeder ve parmak izi setini sabitler; `--add` şablona örnekler ekler (başka ışık) | yalnızca Mac'in başında |
+| `tau guard verify [--explain] [--no-window]` | baş çevirme sınamasıyla tek kontrol; `--explain` onu yerel bir worker'da çalıştırır ve her karenin sayılarını yazar (hiçbir kare kaydedilmez; koruma penceresi de görünür); başarısızsa 1 ile çıkar | macOS (başka yerde 2 ile çıkar); korumalı bir hub çalışıyorsa hub üzerinden, böylece geçen kontrol tau'nun kilidini açar, yoksa yerel bir worker'da |
 | `tau guard forget` | Touch ID'nin arkasında (Touch ID yoksa Mac parolası) şablonu, işareti ve Keychain anahtarını siler ve `enabled = false` yazar; Keychain anahtarı tuttuysa 1 ile çıkar (yeniden çalıştır) | yalnızca Mac'in başında, her zaman yerel bir worker'da |
 | `tau guard doctor` | platformu, worker'ı, OpenCV'yi, YuNet ve SFace dosyalarını, kaydı, şablonu, Keychain'i, modları, canlılığı, kamerayı, terminalin kamera iznini, başarısızlıkları ve hub'ın kamera iznini tutan uygulamayı denetler; `fail` varsa 1 ile çıkar | her yerde |
 | `tau guard status [--json]` | çalışan hub'ın bildirdiği durum (`GET /guard/status`); etkin koruma yoksa `off` yazar; hub çalışmıyorsa 0, hub hatasında 1 ile çıkar | her yerde |
 | `tau guard lock` | korunan her kanalı kilitler (`POST /guard/lock`, tetikleyici `command`) | her yerde; SSH üzerinden de |
 | `tau guard log [--since WHEN] [--json]` | denetim kaydı; `WHEN` bir süre (`30m`, `2h`, `7d`) ya da ISO tarih veya saattir | her yerde |
+| `tau guard window [--demo]` | koruma penceresinin açık olup olmadığını ve bu oturumdan açılıp açılamayacağını söyler; `--demo` içinde sentetik bir görüntüyle senaryolu bir kilit açma, başarısız bir step-up ve bir kayıt oynatır (kamera yok, hiçbir şey açılmaz; Esc kapatır) | Mac'in başında |
+
+`--no-window`, komutun kendi yerel worker'ında çalıştırdığı bir kontrol için koruma penceresini kapalı tutar; hub üzerinden giden bir kontrol hub'ın `[component.guard] window` ayarını izler ve komut bunu söyler.
 
 `setup` ya da `forget` sonrasında hub'ı ve açık her `tau chat`, `tau tui` ya da tau Desktop penceresini yeniden başlat. `--help` metinleri [CLI referansında](cli.md#tau-guard).
+
+## Koruma penceresi { #the-guard-window }
+
+Bir kontrol sürerken kamerayı tutan worker, ana ekranın üstüne, menü çubuğunun altında kalacak şekilde bir pencere çizer (issue 126). Kareler o süreçten hiç çıkmaz.
+
+- **Ne zaman.** İsteği bir `window` nesnesi taşıyan `verify`, `enroll` ve `touch_id` worker işlemleri için: hub bunu `[component.guard] window = true` (varsayılan) ile ekler, CLI ise `--no-window` verilmedikçe kendi yerel worker'ları için ekler. Nesne `{purpose, language, texts}` biçimindedir; worker tau-core'u hiç içe aktarmadığı için her satır zaten sahibin arayüz dilindedir. Bir step-up isteği `tool` da ekler.
+- **Pencere yok** (kontrol eskisi gibi çalışır, nedeni `worker.log`'a yazılır): macOS değil, `SSH_CONNECTION` ayarlı, `TAU_GUARD_WINDOW=0`, grafik oturum yok (pencere sunucusu yok: SSH üzerinden ya da oturum dışında bir launchd işi olarak başlatılan hub) veya pyobjc'nin AppKit'i eksik.
+- **Ne gösterir.** τ halkasının içindeki bir dairede aynalanmış görüntü, saniyede en fazla 20 kare (kontrolün kendisi her kareyi kullanır); adım, bir üçgen ve büyük harfli bir satır olarak (`KAMERAYA BAK`, `SOLA ÇEVİR`, `SAĞA ÇEVİR`, `ORTAYA DÖN`, kayıtta `YUKARI KALDIR`, `AŞAĞI İNDİR`, `BİRAZ DAHA ÇEVİR`); adımda kalan süre, halkanın üstünde bir kuyruklu yıldız olarak; canlı ipucu (`ÇOK KARANLIK`, `YAKLAŞ`, `YALNIZCA BİR YÜZ`); amaç (kilit açma, varlık kontrolü, aracıyla step-up, `n/10 ÖRNEK` ile kayıt); sonra 1,2 sn boyunca sonuç (`KİLİT AÇILDI`, `ONAYLANDI`, `KAYDEDİLDİ` ya da nedeniyle `DOĞRULANAMADI`).
+- **Touch ID.** LocalAuthentication sorarken pencere ekranın üstünde küçük bir panele dönüşür ve worker'ın uygulaması geri çekilir; macOS istemi hiçbir zaman örtülmez.
+- **Esc** ya da `ESC · İPTAL`'e bir tıklama iptal eder: worker `{"type": "cancel"}` yazar, karar yazmaz. Hub bunun üzerine denemedeki her istemciyi, bir kanalın iptaliyle aynı yoldan geri çeker; deneme `cancelled` ile, bir baş çevirme istemi görünürken de `spoof` (sayılır) ile biter. CLI `cancelled` yanıtını verir.
+- **SIGTERM** (hub'da bir iptal, kilit ya da zaman aşımı) pencereyi kapatır, kamera bırakılsın diye kontrolü bir sonraki karede durdurur ve worker 0,5 sn içinde çıkar. Bir LocalAuthentication istemi süreçle birlikte kaybolur.
+- **Gizlilik.** Hiçbir şey kaydedilmez ya da yazılmaz; pencere macOS'tan ekran görüntülerinin ve ekran kayıtlarının dışında tutulmasını ister (`NSWindowSharingNone`, elden geldiğince). macOS'taki "Hareketi azalt" animasyonlarını durdurur.
 
 ## Durumlar { #states }
 

@@ -51,7 +51,7 @@ Koruma hub'ın (tau'nun çalıştığı, sana ait makine) içinde çalışır; n
     Sırayla dört şey yapar ve ilk başarısız olanda durur:
 
     - **SFace'i indirir:** tek bir OpenCV Zoo commit'ine sabitlenmiş bir adresten indirir ve sha256'sını denetler. Çevrimdışıysan dosyayı kendin ver: `tau guard setup --model-file ~/Downloads/face_recognition_sface_2021dec.onnx`. Dosya aynı sha256 ile denetlenir.
-    - **Yüzünü kaydeder.** macOS önce Touch ID ya da Mac parolanı, bu uygulamanın daha önce hiç izni olmadıysa kamera erişimini ister. Sonra 15-20 saniye ipuçlarını izle: kameraya bak, sola dön, sağa dön, başını hafifçe kaldır, hafifçe indir. Normal ışıkta, yaklaşık bir kol boyu uzakta ve görüntüde yalnız otur.
+    - **Yüzünü kaydeder.** macOS önce Touch ID ya da Mac parolanı, bu uygulamanın daha önce hiç izni olmadıysa kamera erişimini ister. Sonra 15-20 saniye [koruma penceresini](#the-guard-window) izle: kameraya bak, sola dön, sağa dön, başını hafifçe kaldır, hafifçe indir. Normal ışıkta, yaklaşık bir kol boyu uzakta ve görüntüde yalnız otur.
     - **Bir kontrol çalıştırır,** tam bir kilit açma gibi: kameraya bak, sonra iki baş çevirme.
     - **Korumayı açar:** `tau.toml`'a `[component.guard] enabled = true` yazar. `TAU_DATA_DIR/guard/` içindeki kayıt işareti, bu satır daha sonra silinse bile korumayı açık tutar.
 
@@ -65,6 +65,25 @@ Koruma hub'ın (tau'nun çalıştığı, sana ait makine) içinde çalışır; n
     uv run tau guard status    # hub'ın bildirdiği durum
     uv run tau doctor          # guard satırı: active; the hub reports it unlocked
     ```
+
+## Koruma penceresi { #the-guard-window }
+
+Bir kontrol sürerken tau, menü çubuğu dışında Mac'in ekranını koyu bir pencereyle kaplar; böylece bir terminaldeki metni takip etmek zorunda kalmazsın:
+
+- **Kamera görüntün**, bir ayna gibi aynalanmış olarak, τ halkasının ortasında. Üçgenin gösterdiği yöne dön: "sola çevir" dendiğinde yüzün görüntüde sola kayar.
+- **Şimdi ne yapacağın**, büyük bir üçgen ve tek bir satır olarak: `KAMERAYA BAK` (kameraya doğru yukarıyı gösteren içi boş bir üçgen), `SOLA ÇEVİR`, `SAĞA ÇEVİR`, `ORTAYA DÖN`, kayıt sırasında da `YUKARI KALDIR`, `AŞAĞI İNDİR`, `BİRAZ DAHA ÇEVİR` ve o ana kadar toplanan örnekler (`6/10 ÖRNEK`).
+- **Kalan süre**, o anki adım için halkanın üstünde azalan parlak bir kuyruklu yıldız olarak; sona doğru kırmızıya döner.
+- **Bir ipucu**, bir şey ters gidince: `ÇOK KARANLIK · IŞIĞI ARTIR`, `YAKLAŞ`, `YALNIZCA BİR YÜZ`.
+- **Sonuç:** bir onay işaretiyle `KİLİT AÇILDI` (ya da `ONAYLANDI`, `KAYDEDİLDİ`), veya nedeniyle birlikte `DOĞRULANAMADI`. Pencere yaklaşık bir saniye sonra kendini kapatır.
+
+Hangi pencere isterse istesin her kontrolde görünür: TUI kilit ekranı, `tau chat`, tau Desktop, tier-2 bir eylemden önceki step-up, bir varlık yeniden kontrolü ve `tau guard setup`, `enroll` ile `verify`. Terminal satırları olduğu gibi kalır.
+
+- **Esc** ya da `ESC · İPTAL`'e bir tıklama kontrolü iptal eder. Kilit ekranında olduğu gibi, bir baş çevirme istemi görünürken iptal etmek başarısız bir deneme sayılır.
+- **Touch ID ya da Mac parolası** (kayıt, Touch ID yedeği, Touch ID ile step-up): pencere ekranın üstünde küçük bir panele dönüşür; macOS istemi açıkta kalır.
+- **Gizlilik:** görüntü, kamerayı tutan worker'ın içinde kalır. Hiçbir şey kaydedilmez ya da saklanmaz; pencere macOS'tan ekran görüntülerinin ve ekran kayıtlarının dışında tutulmasını ister.
+- Arayüz dilini (`[ui] language`) izler ve Sistem Ayarları → Erişilebilirlik → Ekran → **Hareketi azalt** açıkken hareket etmez.
+- **Önce gör:** `uv run tau guard window --demo` içinde kamera olmadan senaryolu bir kontrol oynatır. `uv run tau guard window` bulunduğun yerden açılıp açılamayacağını söyler.
+- **Kapat:** `tau.toml`'da `[component.guard] window = false` ile (hub'ı yeniden başlat), ya da tek bir komut için `--no-window` ile (`setup`, `enroll`, `verify`; hub üzerinden giden bir kontrol hub'ın ayarını izler). SSH üzerinden ya da hub'ın grafik oturumu yokken (bir launchd işi, SSH üzerinden başlatılmış bir hub) kontroller pencere olmadan çalışır.
 
 ## Kamera izni: TauBar ya da terminal { #the-camera-permission-taubar-or-the-terminal }
 
@@ -88,7 +107,7 @@ macOS kamerayı bir programa değil, bir uygulamaya verir. Korumanın kontroller
 
 TUI opak bir kilit ekranıyla açılır; oturumlarından hiçbir şey arkadan görünmez.
 
-- Boş satırda **Enter** bir kontrol başlatır. Kameraya bak, sonra istemleri izle ("Turn your head left.", "Look straight at the camera again."). Her istem sana 3,5 saniye verir.
+- Boş satırda **Enter** bir kontrol başlatır. Kameraya bak, sonra istemleri izle ("Turn your head left.", "Look straight at the camera again."); [koruma penceresi](#the-guard-window) onları kamera görüntünle birlikte büyük gösterir. Her istem sana 3,5 saniye verir.
 - **Esc** süren bir kontrolü iptal eder, **ctrl+q** çıkar. tau kilitliyken yalnızca `/help`, `/lang`, `/guard` ve `/quit` çalışır. Yazdığın diğer her şey gönderilmez ve alanda kalır.
 - Başarılı bir kontrolden sonra `Unlocked (face). Failed attempts since the last unlock: 0.` görürsün. 0'dan büyük bir sayı, sen yokken birinin ya da bir şeyin denediği anlamına gelir. `tau guard log` ne zaman olduğunu gösterir.
 

@@ -187,20 +187,24 @@ Commands:
   setup   Set up the face guard at the Mac: the face model, your...
   status  Show the guard's state as the running hub reports it.
   verify  Run one face check with the head-turn challenge.
+  window  Say whether the guard window can open here; --demo plays a...
 ```
 
 `tau-guard` ekler, yalnızca macOS'ta çalışır (diğer platformlar yüz komutlarını reddeder). Kurulum, günlük kullanım ve kurtarma [Sahip koruması](../guides/guard.md) rehberinde; anahtarlar, route'lar, durumlar ve denetim kaydı [koruma referansında](guard.md).
 
 | Komut | Ne yapar |
 |---|---|
-| `tau guard setup [--model-file FILE]` | SFace modelini kurar (indirir ve sabitlenmiş sha256 ile doğrular, ya da `FILE`'dan), yüzünü Touch ID ya da Mac parolanın arkasında kaydeder, bir kontrol çalıştırır ve `tau.toml`'a `[component.guard] enabled = true` yazar. Yalnızca Mac'in başında: SSH üzerinden reddedilir |
-| `tau guard enroll [--add]` | Touch ID ya da Mac parolanın arkasında yeniden kaydeder; `--add` şablona başka bir ışıkta örnekler ekler. Yalnızca Mac'in başında |
-| `tau guard verify [--explain]` | Baş çevirme sınamasıyla tek bir yüz kontrolü. Korumalı bir hub çalışıyorsa hub üzerinden (geçen kontrol tau'nun kilidini açar), yoksa yerel bir worker'da; `--explain` her zaman yerelde çalışır ve her karenin sayılarını yazar, hiçbir kareyi kaydetmez. Başarısızsa 1 ile çıkar |
+| `tau guard setup [--model-file FILE] [--no-window]` | SFace modelini kurar (indirir ve sabitlenmiş sha256 ile doğrular, ya da `FILE`'dan), yüzünü Touch ID ya da Mac parolanın arkasında kaydeder, bir kontrol çalıştırır ve `tau.toml`'a `[component.guard] enabled = true` yazar. Yalnızca Mac'in başında: SSH üzerinden reddedilir |
+| `tau guard enroll [--add] [--no-window]` | Touch ID ya da Mac parolanın arkasında yeniden kaydeder; `--add` şablona başka bir ışıkta örnekler ekler. Yalnızca Mac'in başında |
+| `tau guard verify [--explain] [--no-window]` | Baş çevirme sınamasıyla tek bir yüz kontrolü. Korumalı bir hub çalışıyorsa hub üzerinden (geçen kontrol tau'nun kilidini açar), yoksa yerel bir worker'da; `--explain` her zaman yerelde çalışır ve her karenin sayılarını yazar, hiçbir kareyi kaydetmez. Başarısızsa 1 ile çıkar |
 | `tau guard forget` | Şablonu, kayıt işaretini ve Keychain anahtarını Touch ID ya da Mac parolanın arkasında siler ve `enabled = false` yazar. Keychain anahtarı tuttuysa 1 ile çıkar: yeniden çalıştır. Yalnızca Mac'in başında |
 | `tau guard doctor` | Yüz korumasının dayandığı her şeyi denetler; hub'ın kamera iznini hangi uygulamanın tuttuğu da dahil. `fail` varsa 1 ile çıkar |
 | `tau guard status [--json]` | Çalışan hub'ın bildirdiği durum. Etkin koruma yoksa `off`; hub çalışmıyorsa 0, hub hatasında 1 ile çıkar |
 | `tau guard lock` | Korunan her kanalı hemen kilitler (tetikleyici `command`). SSH üzerinden de çalışır |
 | `tau guard log [--since WHEN] [--json]` | Denetim kaydı; `WHEN` bir süre (`30m`, `2h`, `7d`) ya da ISO tarih veya saattir |
+| `tau guard window [--demo]` | Koruma penceresinin açık olup olmadığını ve buradan açılıp açılamayacağını söyler; `--demo` içinde sentetik bir görüntüyle senaryolu bir kontrol oynatır (kamera yok; Esc kapatır) |
+
+Bir kontrol sürerken worker [koruma penceresini](guard.md#the-guard-window) gösterir (`[component.guard] window`, varsayılan olarak açık); `--no-window` komutun kendi çalıştırdığı bir kontrol için onu kapalı tutar, hub üzerinden giden bir kontrol ise hub'ın ayarını izler.
 
 `setup` ya da `forget` sonrasında hub'ı ve açık her `tau chat`, `tau tui` ya da tau Desktop penceresini yeniden başlat.
 

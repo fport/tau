@@ -185,20 +185,24 @@ Commands:
   setup   Set up the face guard at the Mac: the face model, your...
   status  Show the guard's state as the running hub reports it.
   verify  Run one face check with the head-turn challenge.
+  window  Say whether the guard window can open here; --demo plays a...
 ```
 
 Added by `tau-guard`, on macOS only (other platforms refuse the face commands). The setup, daily use and recovery are in [Owner guard](../guides/guard.md); keys, routes, states and the audit log in the [guard reference](guard.md).
 
 | Command | What it does |
 |---|---|
-| `tau guard setup [--model-file FILE]` | Installs the SFace model (downloaded and checked against its pinned sha256, or from `FILE`), enrolls your face behind Touch ID or your Mac password, runs one check and writes `[component.guard] enabled = true` to `tau.toml`. At the Mac only: refused over SSH |
-| `tau guard enroll [--add]` | Enrolls again behind Touch ID or your Mac password; `--add` adds samples under other light to the template. At the Mac only |
-| `tau guard verify [--explain]` | One face check with the head-turn challenge. Through the hub when a guarded hub runs (a passed check unlocks tau), else in a local worker; `--explain` always runs locally and prints each frame's numbers, never saving a frame. Exit 1 when it fails |
+| `tau guard setup [--model-file FILE] [--no-window]` | Installs the SFace model (downloaded and checked against its pinned sha256, or from `FILE`), enrolls your face behind Touch ID or your Mac password, runs one check and writes `[component.guard] enabled = true` to `tau.toml`. At the Mac only: refused over SSH |
+| `tau guard enroll [--add] [--no-window]` | Enrolls again behind Touch ID or your Mac password; `--add` adds samples under other light to the template. At the Mac only |
+| `tau guard verify [--explain] [--no-window]` | One face check with the head-turn challenge. Through the hub when a guarded hub runs (a passed check unlocks tau), else in a local worker; `--explain` always runs locally and prints each frame's numbers, never saving a frame. Exit 1 when it fails |
 | `tau guard forget` | Removes the template, the enrollment marker and the Keychain key behind Touch ID or your Mac password and writes `enabled = false`. Exit 1 when the Keychain kept the key: run it again. At the Mac only |
 | `tau guard doctor` | Checks everything the face guard depends on, including which app holds the hub's camera grant. Exit 1 on a `fail` |
 | `tau guard status [--json]` | The state as the running hub reports it. `off` without an active guard; exit 0 when no hub runs, 1 on a hub error |
 | `tau guard lock` | Locks every guarded channel now (trigger `command`). Works over SSH too |
 | `tau guard log [--since WHEN] [--json]` | The audit log; `WHEN` is a duration (`30m`, `2h`, `7d`) or an ISO date or time |
+| `tau guard window [--demo]` | Whether the guard window is on and could open from here; `--demo` plays a scripted check in it on a synthetic picture (no camera; Esc closes it) |
+
+During a check the worker shows the [guard window](guard.md#the-guard-window) (`[component.guard] window`, on by default); `--no-window` keeps it off for a check the command runs itself, while a check through the hub follows the hub's setting.
 
 After `setup` or `forget`, restart the hub and any open `tau chat`, `tau tui` or tau Desktop window.
 

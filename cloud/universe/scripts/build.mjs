@@ -4,9 +4,9 @@
 //
 // Writes the gitignored public/static/, served at /static/ (`/app` belongs to tau-host,
 // ADR 0013 §6):
-//   universe.js    the universe graph (the landing page's hero and /universe), bundled with
-//                  d3-force and d3-polygon (no CDN: the pages' CSP only allows scripts from
-//                  the site itself)
+//   landing.js     the landing page's hero: the universe on a canvas, opened through the portal
+//   universe.js    the universe graph (/universe), bundled with d3-force and d3-polygon (no
+//                  CDN: the pages' CSP only allows scripts from the site itself)
 //   person.js      the person page (/@handle)
 //   sub.js         the sub-tau page and its visitor chat (/<slug>, /@handle/<name>)
 //   claim.js       the claim page (/claim#…)
@@ -31,7 +31,7 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, "fonts"), { recursive: true });
 
 await build({
-  entryPoints: ["universe", "person", "sub", "claim"].map((name) => ({
+  entryPoints: ["landing", "universe", "person", "sub", "claim"].map((name) => ({
     in: join(root, "client", `${name}.ts`),
     out: name,
   })),

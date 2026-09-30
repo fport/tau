@@ -1,6 +1,7 @@
 /**
- * The universe graph: reads /api/universe and draws the taus as a force-directed graph, on
- * the universe page (`/universe`) and, full screen behind the hero, on the landing page.
+ * The universe graph: reads /api/universe and draws the taus as a force-directed graph on
+ * the universe page (`/universe`). The landing page draws its own universe
+ * (client/landing.ts).
  *
  * - Every tau and sub-tau is drawn as its ember sigil (cloud/shared/character.ts), seeded
  *   with its address (a sub-tau: `<address>/<name>`, burning in its tau's hue).
@@ -17,9 +18,6 @@
  * - The list under the graph is the keyboard path: every tau is a link to `#<address>`.
  * - Under `prefers-reduced-motion` the layout is computed up front and drawn once, and the
  *   characters stand still.
- * - On the landing page (`body.page-home`) there is no list, search or pinned card: a click
- *   opens the tau's person page (or its place on /universe), and the drawing keeps clear of
- *   the hero's text.
  *
  * Everything the directory returns is set with textContent, never parsed as HTML. The
  * page's own strings come from client/messages.ts, in the language of `<html lang>`.
@@ -55,7 +53,7 @@ import {
   tauSubNodes,
 } from "./layout";
 import { MESSAGES, pageLanguage } from "./messages";
-import { HANDLE, personPath, subPath, universePath } from "./paths";
+import { HANDLE, personPath, subPath } from "./paths";
 import type { SiteSnapshot, SnapshotSub, SnapshotTau } from "./types";
 
 type PublicTau = SnapshotTau;
@@ -140,8 +138,6 @@ const t = MESSAGES[language];
 const numberFormat = new Intl.NumberFormat(language, { notation: "compact" });
 const dateFormat = new Intl.DateTimeFormat(language, { dateStyle: "medium" });
 const relative = new Intl.RelativeTimeFormat(language, { numeric: "auto" });
-/** The landing page: the graph is the hero's backdrop. */
-const hero = document.body.classList.contains("page-home");
 
 /** A counted noun: `count(t.taus, 3)` is "3 taus" or "3 tau". */
 function count(message: (count: number, formatted: string) => string, value: number): string {
@@ -191,9 +187,6 @@ const page = {
   rosterCount: maybeId<HTMLParagraphElement>("roster-count"),
   rosterEmpty: maybeId<HTMLParagraphElement>("roster-empty"),
   legend: maybeId<HTMLParagraphElement>("legend"),
-  // The landing page only: the hero's text, which the drawing keeps clear of.
-  heroCopy: maybeId<HTMLElement>("hero-copy"),
-  header: document.querySelector<HTMLElement>(".site-header"),
 };
 
 function layer(name: string): SVGGElement {
@@ -288,7 +281,7 @@ function render(snapshot: Snapshot): void {
   }
   page.message.hidden = true;
   page.graph.toggleAttribute("hidden", false);
-  if (stats.taus < TINY_UNIVERSE && !hero) {
+  if (stats.taus < TINY_UNIVERSE) {
     page.note.replaceChildren(...withCommand(t.fewSoFar(count(t.taus, stats.taus))));
     page.note.hidden = false;
   } else {
@@ -296,7 +289,7 @@ function render(snapshot: Snapshot): void {
   }
 
   buildGraph(state);
-  if (!hero) applyHash();
+  applyHash();
 }
 
 // ---------------------------------------------------------------------------------------
@@ -637,8 +630,7 @@ interface Insets {
 
 /**
  * The parts of the box the drawing keeps clear of, in pixels: a pinned card floating over the
- * graph (wide screens), and on the landing page the header and the hero's text when they
- * lie over the box.
+ * graph (wide screens).
  */
 function insets(s: State, rect: DOMRect): Insets {
   const out: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -648,19 +640,6 @@ function insets(s: State, rect: DOMRect): Insets {
     page.detail.classList.contains("pinned") &&
     window.getComputedStyle(page.detail).position === "absolute";
   if (floating) out.right = Math.min(page.detail.offsetWidth + 24, rect.width * 0.55);
-  if (hero && page.heroCopy !== null) {
-    const copy = page.heroCopy.getBoundingClientRect();
-    const overlapX = Math.min(rect.right, copy.right) - Math.max(rect.left, copy.left);
-    const overlapY = Math.min(rect.bottom, copy.bottom) - Math.max(rect.top, copy.top);
-    if (overlapX > 0 && overlapY > 0) {
-      if (copy.width < rect.width * 0.6) out.left = Math.max(out.left, copy.right - rect.left + 8);
-      else out.bottom = Math.max(out.bottom, rect.bottom - copy.top + 8);
-    }
-  }
-  if (hero && page.header !== null) {
-    const bar = page.header.getBoundingClientRect();
-    if (bar.bottom > rect.top && bar.top < rect.bottom) out.top = bar.bottom - rect.top + 8;
-  }
   return out;
 }
 
@@ -838,35 +817,10 @@ function toGraph(clientX: number, clientY: number): { x: number; y: number } {
 }
 
 /**
- * On the landing page a click leaves for the tau's page: its person page when it has a
- * handle, a sub-tau's page when it has one, and otherwise its place on /universe.
- */
-function leaveFor(target: string): void {
-  const s = state;
-  if (s === null) return;
-  const found = parseTarget(s.snapshot, target);
-  if (found === null) return;
-  const tau = s.byAddress.get(found.address)?.tau;
-  if (tau === undefined) return;
-  const handle = handleOf(tau);
-  const destination =
-    found.sub !== null
-      ? (pageOfSub(tau, found.sub) ?? universePath(target, language))
-      : handle !== null
-        ? personPath(handle, language)
-        : universePath(found.address, language);
-  window.location.assign(destination);
-}
-
-/**
  * Selecting goes through the URL, so a pinned tau can be shared and the back button works.
  * `target` is a tau's address or a sub-tau's id (`<address>/<name>`).
  */
 function select(target: string | null): void {
-  if (hero) {
-    if (target !== null) leaveFor(target);
-    return;
-  }
   if (target === null) {
     if (window.location.hash !== "") {
       history.pushState(null, "", window.location.pathname + window.location.search);
@@ -971,7 +925,7 @@ function openCard(element: SVGGElement, pinned: boolean): HTMLElement {
   // A hover card goes to the side away from the tau, so it never covers it. A pinned card
   // stays on the right, where fit() keeps the graph out of its way.
   let onLeft = false;
-  if (!pinned && !hero) {
+  if (!pinned) {
     const box = page.box.getBoundingClientRect();
     const spot = element.getBoundingClientRect();
     onLeft = spot.left + spot.width / 2 > box.left + box.width / 2;
@@ -1013,7 +967,7 @@ function showSubDetail(s: State, sub: SubNode, pinned: boolean): void {
   const card = openCard(sub.element, pinned);
   const parent = html("p", "detail-parent");
   const back = html("a", undefined, tau.name);
-  back.href = hero ? universePath(tau.address, language) : `#${tau.address}`;
+  back.href = `#${tau.address}`;
   parent.append(`${t.subOf} `, back);
   const addressLine = html("p", "detail-address");
   addressLine.append(html("code", undefined, data.id));
@@ -1057,9 +1011,7 @@ function showDetail(s: State, address: string, pinned: boolean): void {
     const list = html("ul", "detail-subs");
     for (const sub of subs) {
       const chip = html("a", "sub-chip", `/${sub.name}`);
-      chip.href = hero
-        ? (pageOfSub(tau, sub.name) ?? universePath(`${tau.address}/${sub.name}`, language))
-        : `#${tau.address}/${sub.name}`;
+      chip.href = `#${tau.address}/${sub.name}`;
       if (sub.about.trim() !== "") chip.title = sub.about;
       const item = html("li");
       item.append(chip);
@@ -1081,7 +1033,7 @@ function showDetail(s: State, address: string, pinned: boolean): void {
       const peer = s.byAddress.get(entry.peer);
       const item = html("li");
       const anchor = html("a", undefined, peer?.tau.name ?? entry.peer);
-      anchor.href = hero ? universePath(entry.peer, language) : `#${entry.peer}`;
+      anchor.href = `#${entry.peer}`;
       item.append(anchor, html("span", "detail-count", count(t.msgs, entry.messages)));
       list.append(item);
     }
@@ -1221,7 +1173,7 @@ page.graph.addEventListener("pointerdown", (event) => {
   if (event.target === page.graph) select(null);
 });
 
-if (!hero) window.addEventListener("hashchange", applyHash);
+window.addEventListener("hashchange", applyHash);
 
 let resizeFrame = 0;
 new ResizeObserver(() => {

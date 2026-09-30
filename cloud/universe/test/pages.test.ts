@@ -57,6 +57,10 @@ describe("pages", () => {
     expect(page).toContain('href="https://docs.tau.getporti.com/"');
     expect(page).toContain('href="/universe"');
     expect(page).not.toMatch(/github\.com/i);
+    // The hero is the universe on a canvas, drawn by its own script (client/landing.ts).
+    expect(page).toContain('<canvas class="hero-cosmos" id="cosmos" aria-hidden="true"></canvas>');
+    expect(page).toContain('<script type="module" src="/static/landing.js"></script>');
+    expect(page).not.toContain("/static/universe.js");
   });
 
   it("serves the universe page at /universe with the security headers", async () => {

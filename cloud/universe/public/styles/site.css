@@ -15,7 +15,6 @@
 
 /* A clipped chamfer: top-left and bottom-right corners cut, the cut edges drawn in `--edge`. */
 .chamfer,
-.way,
 .detail,
 .claim-panel,
 .sub-details,
@@ -446,110 +445,84 @@ a.crumb:hover {
 
 /* ---- landing: the universe as the hero -------------------------------------------- */
 
-/* The landing page runs wider than the reading pages: the hero is a graph. */
+/* The landing page runs wider than the reading pages, and on black: the universe needs a
+   black sky. Fire burns only on what is alive; everything else is grey. */
 .page-home {
   --page: var(--page-wide);
+  --bg: #000;
+  --bg-2: #0a0a0b;
+  --bg-3: #121214;
+  --line: #1c1c1f;
+  --line-2: #2c2c31;
+  --muted: #a4a4ab;
+  --faint: #6f6f77;
+  --code: #151517;
+  --on-accent: #000;
+  background: #000;
+}
+
+html:has(> body.page-home) {
+  background: #000;
 }
 
 .page-home .site-header {
   position: absolute;
   inset: 0 0 auto;
   border-bottom-color: transparent;
-  background: linear-gradient(180deg, rgba(5, 7, 26, 0.95), rgba(5, 7, 26, 0));
+  background: none;
 }
 
+.page-home .button:not(.button-primary) {
+  --fill: rgba(10, 10, 11, 0.78);
+}
+
+/* The hero: client/landing.ts draws the universe on the canvas behind the text. */
 .hero {
   position: relative;
   isolation: isolate;
   display: grid;
-  min-height: max(42rem, 100svh);
+  align-items: end;
+  min-height: max(40rem, 100svh);
   overflow: hidden;
-  border-bottom: 1px solid var(--line);
-  background-image:
-    radial-gradient(ellipse 60% 55% at 70% 62%, rgba(255, 90, 31, 0.12), transparent 70%),
-    radial-gradient(ellipse 80% 70% at 60% 70%, rgba(194, 24, 60, 0.1), transparent 75%),
-    linear-gradient(180deg, var(--void) 0%, #0b0a1f 65%, #12061a 100%);
+  background: #000;
 }
 
-.hero-bg {
+.hero-cosmos {
   position: absolute;
   inset: 0;
   z-index: -2;
-  pointer-events: none;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.hero-texture,
-.hero-beams,
-.hero-grid {
+.hero-cosmos.is-pointing {
+  cursor: pointer;
+}
+
+/* Dark under the header, black at the bottom edge, a vignette around the rest. */
+.hero-shade {
   position: absolute;
   inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.75) 0, transparent 9rem),
+    linear-gradient(180deg, transparent 75%, #000 100%),
+    radial-gradient(ellipse 85% 80% at 55% 50%, transparent 55%, rgba(0, 0, 0, 0.7) 100%);
 }
 
-.hero-grid {
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 48px 48px;
-  background-position: -1px -1px;
-  -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 95%);
-  mask-image: linear-gradient(180deg, #000 30%, transparent 95%);
-}
-
-.hero-texture {
-  opacity: 0.55;
-  -webkit-mask-image: radial-gradient(ellipse 60% 70% at 70% 45%, #000 10%, transparent 70%);
-  mask-image: radial-gradient(ellipse 60% 70% at 70% 45%, #000 10%, transparent 70%);
-}
-
-.hero-beams {
-  opacity: 0.75;
-  -webkit-mask-image:
-    linear-gradient(0deg, #000 0%, rgba(0, 0, 0, 0.5) 40%, transparent 85%),
-    linear-gradient(90deg, transparent 20%, #000 60%);
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(0deg, #000 0%, rgba(0, 0, 0, 0.5) 40%, transparent 85%),
-    linear-gradient(90deg, transparent 20%, #000 60%);
-  mask-composite: intersect;
-}
-
-/* Two columns that never collapse: the text between a floor and a ceiling of widths, the
-   graph taking the rest. (The old layout sized the text column as a share of the viewport
-   and padded it by half the free width, so at ~2000 px the padding ate the column.) */
 .hero-inner {
-  display: grid;
-  grid-template-columns: minmax(25rem, min(34rem, 38vw)) minmax(0, 1fr);
-  gap: clamp(1.5rem, 3vw, 3.5rem);
   width: 100%;
   max-width: calc(var(--page) + 2 * var(--gutter));
   margin: 0 auto;
-  padding: 6rem var(--gutter) 2.5rem;
+  padding: 7rem var(--gutter) clamp(3.5rem, 8vh, 5.5rem);
+  pointer-events: none;
 }
 
 .hero-copy {
-  position: relative;
-  z-index: 2;
-  align-self: center;
-  min-width: 0;
-}
-
-.hero-sky {
-  position: relative;
-  isolation: isolate;
-  min-width: 0;
-  min-height: 30rem;
-}
-
-.hero-sky .graph-box {
-  position: absolute;
-  inset: 0;
-}
-
-/* The floor the hero stands on runs out to the page's right edge. */
-.hero-floor {
-  right: -50vw;
-  left: -2rem;
-  background: linear-gradient(90deg, transparent, var(--signal) 12%, var(--flare) 35%, var(--signal) 65%, transparent);
+  max-width: 48rem;
+  pointer-events: auto;
 }
 
 .hero-live {
@@ -557,8 +530,8 @@ a.crumb:hover {
 }
 
 .hero h1 {
-  max-width: 15ch;
-  font-size: clamp(2.3rem, 1.3rem + 2.5vw, 3.9rem);
+  max-width: 16ch;
+  font-size: clamp(2.3rem, 1.2rem + 3vw, 4.4rem);
   font-weight: 600;
   line-height: 1.02;
   letter-spacing: -0.015em;
@@ -572,33 +545,29 @@ a.crumb:hover {
   text-wrap: pretty;
 }
 
+/* Three ways side by side: a tag, the button, one line on who can read it. */
 .ways {
   display: grid;
-  gap: 0.55rem;
-  margin-top: 1.75rem;
+  grid-template-columns: repeat(3, minmax(0, 15rem));
+  gap: 1rem 1.25rem;
+  margin-top: 2rem;
   padding: 0;
   list-style: none;
 }
 
 .way {
-  --cut: 12px;
   display: grid;
-  grid-template-columns: 7rem minmax(0, 1fr);
-  align-items: center;
-  gap: 0.4rem 1rem;
-  padding: 0.85rem 1rem;
-  background-color: rgba(10, 13, 36, 0.86);
-}
-
-.way-hosted {
-  --edge: var(--accent-line);
-  background-color: rgba(26, 10, 34, 0.9);
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
+  gap: 0.55rem;
 }
 
 .way-tag {
-  grid-row: span 2;
-  align-self: start;
-  padding-top: 0.75rem;
+  color: var(--faint);
+}
+
+.way-hosted .way-tag {
+  color: var(--text);
 }
 
 .way .button {
@@ -607,7 +576,7 @@ a.crumb:hover {
 
 .way-note {
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   line-height: 1.45;
 }
 
@@ -616,9 +585,142 @@ a.crumb:hover {
 }
 
 .hero-more {
-  margin-top: 1.25rem;
+  margin-top: 1.5rem;
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.hero-readout {
+  position: absolute;
+  right: var(--gutter);
+  bottom: 1.6rem;
+  margin: 0;
+}
+
+.hero-skip {
+  position: absolute;
+  right: var(--gutter);
+  bottom: 1.4rem;
+  padding: 0.5rem 0;
+  border: 0;
+  background: #000;
+  cursor: pointer;
+}
+
+.hero-skip:hover {
+  color: var(--text);
+}
+
+/* The opening: with scripts on, the text waits for the universe to open (client/landing.ts
+   sets .is-open), and shows by itself after a few seconds if the script never runs. */
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  .hero-copy > *,
+  .hero-readout {
+    opacity: 0;
+    transform: translateY(14px);
+    animation: hero-arrive 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 5s forwards;
+  }
+
+  .hero.is-open .hero-copy > *,
+  .hero.is-open .hero-readout {
+    opacity: 1;
+    transform: none;
+    animation: none;
+    transition:
+      opacity 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
+      transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  .hero.is-open .hero-copy > :nth-child(3) {
+    transition-delay: 0.12s;
+  }
+
+  .hero.is-open .hero-copy > :nth-child(n + 4) {
+    transition-delay: 0.24s;
+  }
+
+  .hero.is-open .hero-copy > :last-child,
+  .hero.is-open .hero-readout {
+    transition-delay: 0.4s;
+  }
+}
+
+@keyframes hero-arrive {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A tau's card, on hover. */
+.cosmos-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  width: max-content;
+  max-width: 19rem;
+  padding: 0.8rem 0.95rem 0.85rem;
+  border: 1px solid var(--line-2);
+  background: rgba(0, 0, 0, 0.88);
+  pointer-events: none;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+
+.cosmos-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.cosmos-card-head svg {
+  flex: none;
+}
+
+.cosmos-card-name {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.cosmos-card-address,
+.cosmos-card-facts {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.cosmos-card-state {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.cosmos-card-state.is-live {
+  color: var(--accent-hot);
+}
+
+.cosmos-card-facts {
+  margin-top: 0.35rem;
+  color: var(--faint);
+}
+
+.cosmos-card-open {
+  margin-top: 0.6rem;
+  color: var(--accent-hot);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 /* ---- landing: below the fold ------------------------------------------------------ */
@@ -1174,11 +1276,6 @@ a.crumb:hover {
   overflow: auto;
   padding: 1rem 1.1rem 1.1rem;
   background-color: rgba(10, 13, 36, 0.97);
-}
-
-.page-home .detail {
-  top: 1rem;
-  right: 0;
 }
 
 /* A card shown on hover never catches the pointer, so it cannot steal the hover. */
@@ -3231,44 +3328,18 @@ a.sub-chip:hover {
 
 /* ---- narrow screens --------------------------------------------------------------- */
 
-/* Below 72rem the landing stacks: the graph on top, the text under it. */
+/* Below 72rem the universe no longer fits beside the text: it gets the top of the hero
+   (client/cosmos.ts `frame` makes the same call from the text's width). */
 @media (max-width: 72rem) {
-  .hero {
-    min-height: 0;
-  }
-
   .hero-inner {
+    padding-top: max(18rem, 42svh);
+  }
+}
+
+@media (max-width: 50rem) {
+  .ways {
     grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-    padding-top: 4.5rem;
-  }
-
-  .hero-sky {
-    order: -1;
-    min-height: 0;
-    height: clamp(20rem, 54svh, 36rem);
-  }
-
-  .hero-copy {
-    max-width: 46rem;
-    padding-top: 1rem;
-  }
-
-  .hero h1 {
-    max-width: 20ch;
-  }
-
-  .hero-beams {
-    bottom: auto;
-    height: calc(4.5rem + clamp(20rem, 54svh, 36rem));
-  }
-
-  .hero-floor {
-    right: -2rem;
-  }
-
-  .page-home .detail {
-    display: none !important;
+    max-width: 30rem;
   }
 }
 
@@ -3309,27 +3380,13 @@ a.sub-chip:hover {
   }
 }
 
-/* Phones: the graph sits at the top of the hero, the text follows it. */
 @media (max-width: 44rem) {
-  .hero-sky {
-    height: max(19rem, 46svh);
-  }
-
-  .hero-beams {
-    height: calc(4.5rem + max(19rem, 46svh));
-  }
-
-  .way {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .way-tag {
-    grid-row: auto;
-    padding-top: 0;
-  }
-
   .way .button {
     justify-self: stretch;
+  }
+
+  .hero-readout {
+    display: none;
   }
 
   .traits,

@@ -6,7 +6,7 @@
   <title>tau: a personal agent on your own machine</title>
   <meta name="description" content="tau is a personal agent that lives on your own machine, or in your browser, or in your own Cloudflare account. Every way needs only your own model key. Its public side is a live universe of taus and their small specialists.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#05071a">
+  <meta name="theme-color" content="#000000">
   <meta property="og:type" content="website">
   <meta property="og:title" content="tau">
   <meta property="og:description" content="A personal agent that lives on your own machine.">
@@ -18,7 +18,7 @@
   <link rel="preload" href="/static/fonts/chakra-petch-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/styles/site.css">
-  <script type="module" src="/static/universe.js"></script>
+  <script type="module" src="/static/landing.js"></script>
 </head>
 <body class="page-home">
   <a class="skip" href="#main">Skip to content</a>
@@ -38,12 +38,9 @@
   </header>
 
   <main id="main">
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-bg" aria-hidden="true">
-        <div class="hero-grid"></div>
-        <div class="hero-texture code-bg"></div>
-        <div class="hero-beams beams"></div>
-      </div>
+    <section class="hero" id="hero" aria-labelledby="hero-title">
+      <canvas class="hero-cosmos" id="cosmos" aria-hidden="true"></canvas>
+      <div class="hero-shade" aria-hidden="true"></div>
       <div class="hero-inner">
         <div class="hero-copy" id="hero-copy">
           <p class="kicker hero-live"><span class="pip pip-live" aria-hidden="true"></span><span>Live universe</span><span class="kicker-sep" aria-hidden="true">·</span><span id="sky-count" aria-live="polite">Loading…</span></p>
@@ -70,56 +67,10 @@
           </ol>
           <p class="hero-more">New here? <a href="/how-it-works">Read how tau works</a>, or <a href="/universe">open the whole universe</a>.</p>
         </div>
-
-        <div class="hero-sky sky" id="sky">
-          <div class="graph-box" id="graph-box">
-            <svg class="hud" viewBox="-300 -300 600 600" aria-hidden="true" focusable="false">
-              <defs>
-                <linearGradient id="hud-floor" gradientUnits="userSpaceOnUse" x1="-300" y1="0" x2="300" y2="0">
-                  <stop offset="0" stop-color="#ff2e63" stop-opacity="0"></stop>
-                  <stop offset="0.5" stop-color="#ffb25c"></stop>
-                  <stop offset="1" stop-color="#ff2e63" stop-opacity="0"></stop>
-                </linearGradient>
-              </defs>
-              <path class="hud-tri" d="M0 -262L262 192H-262Z"></path>
-              <path class="hud-tri hud-tri-inner" d="M0 -120L180 192H-180Z"></path>
-              <path class="hud-tri hud-reflect" d="M-262 192L-138 300M262 192L138 300"></path>
-              <line class="hud-floor" x1="-300" y1="192" x2="300" y2="192" stroke="url(#hud-floor)"></line>
-              <g class="hud-spin">
-                <circle class="hud-ticks" r="286"></circle>
-                <rect class="hud-frag" x="244" y="-6" width="10" height="4"></rect>
-                <rect class="hud-frag" x="-262" y="40" width="6" height="6"></rect>
-              </g>
-              <g class="hud-spin-back">
-                <circle class="hud-ring" r="236"></circle>
-                <path class="hud-arc" d="M-160 173A236 236 0 0 1 -230 -52"></path>
-                <rect class="hud-frag" x="150" y="170" width="8" height="8"></rect>
-                <rect class="hud-frag" x="-40" y="-240" width="14" height="3"></rect>
-              </g>
-              <g class="hud-think">
-                <path class="hud-tail" d="M-90.7 -236.2A253 253 0 0 1 0 -253"></path>
-                <path class="hud-comet" d="M-30.8 -251.1A253 253 0 0 1 0 -253"></path>
-                <rect class="hud-head" x="-3" y="-256" width="6" height="6"></rect>
-              </g>
-            </svg>
-            <div class="hero-floor floor-line" aria-hidden="true"></div>
-            <svg class="graph" id="graph" role="img" aria-label="Map of the listed taus and their links" hidden>
-              <defs></defs>
-              <g class="layer-hulls"></g>
-              <g class="layer-links"></g>
-              <g class="layer-subs"></g>
-              <g class="layer-nodes"></g>
-            </svg>
-            <div class="stage-message" id="stage-message">
-              <p>Loading the universe…</p>
-            </div>
-            <p class="stage-note" id="stage-note" hidden></p>
-          </div>
-          <p class="readout readout-tl hud-label" aria-hidden="true">Signal map</p>
-          <p class="readout readout-br hud-label" aria-hidden="true">Mutual links only</p>
-          <aside class="detail" id="detail" aria-live="polite" aria-label="Selected tau" hidden></aside>
-        </div>
       </div>
+      <p class="hero-readout hud-label" aria-hidden="true">Signal map · mutual links only</p>
+      <button class="hero-skip hud-label" id="hero-skip" type="button" hidden>Skip</button>
+      <aside class="cosmos-card" id="cosmos-card" aria-hidden="true" hidden></aside>
     </section>
 
     <section class="band" aria-labelledby="what-title">

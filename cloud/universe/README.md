@@ -2,7 +2,7 @@
 
 The universe is the Cloudflare Worker behind tau's public site. It serves:
 
-- **the landing page** at `/`: what tau is, how it works, what stays private, and links to the docs;
+- **the landing page** at `/`: the live universe as its hero, opened through the brand's portal, then what tau is, what stays private, and links to the docs;
 - **how it works** at `/how-it-works`: the whole picture for a newcomer, from the brain at home to taus talking to each other, sub-taus, the universe and what an attacker could get;
 - **the universe page** at `/universe`: a live map of the taus whose owners chose to list them, and the ones that talk to each other;
 - **the same three pages in Turkish** under `/tr/` (see [Two languages](#two-languages));
@@ -64,14 +64,19 @@ src/address.ts     addresses and the http/https rule (copied from cloud/spine)
 src/http.ts        small HTTP helpers (a verbatim copy of cloud/spine's)
 ../shared/net/     the protocol's TypeScript half (envelopes, seal, identity, cards), imported
                    by relative path for the visitor relay (cloud/shared/README.md)
-client/            the universe page's script (TypeScript, bundled with d3-force and d3-polygon)
+client/            the pages' scripts (TypeScript, bundled by scripts/build.mjs)
+client/landing.ts  the landing page's hero: the live universe on a canvas, opened through the
+                   portal, a tau's card on hover
+client/cosmos.ts   the landing's universe without the DOM: stars, where taus float, the camera,
+                   where the universe sits beside the text, the portal's timeline
+client/universe.ts the universe page's graph, bundled with d3-force and d3-polygon
 client/layout.ts   the page's layout data without the DOM: sub-tau orbits, search, the `#` target
 client/messages.ts the script's strings in English and Turkish
 public/            the English site: index.html, how-it-works.html, universe.html, 404.html,
                    styles/, _headers
 public/tr/         the Turkish site: the same four files, translated
 public/brand/      copies of docs/brand files (`bun run sync-brand`; a test keeps them exact)
-public/static/     build output, gitignored: universe.js, theme.css and the web fonts
+public/static/     build output, gitignored: the page scripts, theme.css and the web fonts
 scripts/           configure.mjs, identity.mjs, build.mjs, sync-brand.mjs, dev-taus.mjs
 ```
 

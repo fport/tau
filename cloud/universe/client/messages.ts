@@ -1,7 +1,7 @@
 /**
- * The site's script strings, in English (the source) and Turkish: the universe graph (on
- * the landing page and /universe), the person page, the sub-tau page and its visitor chat,
- * and the claim page.
+ * The site's script strings, in English (the source) and Turkish: the landing page's
+ * universe, the universe graph (/universe), the person page, the sub-tau page and its
+ * visitor chat, and the claim page.
  *
  * A page picks a table by `<html lang>`. Numbers, dates and relative times come
  * formatted from Intl in the same language; a message only puts them in place. `{cmd}`
@@ -22,6 +22,8 @@ export interface Messages {
   /** Contains `{cmd}`. */
   runOnHub: string;
   empty: string;
+  /** The empty universe's placeholder tau on the landing page. */
+  yourTau: string;
   /** Contains `{cmd}`. */
   fewSoFar: (taus: string) => string;
   /** The line under the title, e.g. "14 msgs · 3 of 7 taus". */
@@ -125,6 +127,7 @@ const en: Messages = {
   tryAgain: "Try again",
   runOnHub: "Run {cmd} on your hub.",
   empty: "No taus yet. Yours could be the first.",
+  yourTau: "Your tau",
   fewSoFar: (taus) => `${taus} so far — yours could be next. Run {cmd}.`,
   skyCount: (messages, online, taus) => `${messages} · ${online} of ${taus}`,
   msgs: (count, n) => `${n} ${count === 1 ? "msg" : "msgs"}`,
@@ -218,6 +221,7 @@ const tr: Messages = {
   tryAgain: "Tekrar dene",
   runOnHub: "Hub’ında {cmd} komutunu çalıştır.",
   empty: "Henüz hiç tau yok. İlki seninki olabilir.",
+  yourTau: "Senin tau’n",
   fewSoFar: (taus) =>
     `Şimdilik ${taus} var; sıradaki seninki olabilir. {cmd} komutunu çalıştır.`,
   skyCount: (messages, online, taus) => `${messages} · ${taus}, ${online} çevrimiçi`,

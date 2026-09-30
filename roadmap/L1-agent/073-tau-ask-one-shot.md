@@ -27,3 +27,4 @@ None - can start immediately; 054 (channel in the dynamic context) is independen
 ## Comments
 
 - 2026-09-29: opened for ADR 0006 (private-first): "a one-shot `tau ask` command exists for scripts and iOS Shortcuts over SSH/Tailscale; it never approves tier-2 calls".
+- 2026-09-30: ADR 0008 (owner guard): with a guard active, `TauAgent.ask()` raises `GuardLocked`; `tau ask` catches it, prints the guard notice (`guard.refused.<reason>`) on stderr and exits 2, and `--json` reports stop reason `locked`. Over SSH it is admitted only while the owner is verified at the Mac, so remote use needs 117's per-client grants.

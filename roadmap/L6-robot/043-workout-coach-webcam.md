@@ -23,3 +23,5 @@ A stand-in for the necklace: a vision node reads the Mac webcam, runs MediaPipe 
 - [042 · Decide the workout alert channel and target exercises](042-decide-workout-alert-channel.md)
 
 ## Comments
+
+- 2026-09-30: ADR 0008 (owner guard): reuse `tau_guard`'s built-in camera source (the `FrameSource` protocol, built-in device selection by type and transport, re-enumeration after the open) instead of a second camera picker, and use `opencv-python-headless`, the one cv2 distribution in the workspace. If MediaPipe is added, override `opencv-contrib-python` (and `sounddevice` unless voice needs it) in the workspace `[tool.uv] override-dependencies`, and pin `mediapipe==1.0.0`, because 1.0.1 aborts on macOS 26 on Apple Silicon.

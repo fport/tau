@@ -28,3 +28,4 @@ The always-listening mode of tau-voice (075): openWakeWord with the custom phras
 ## Comments
 
 - 2026-09-29: rewritten for ADR 0006 (private-first), §7: the voice pipeline is the separate `tau-voice` package (075), not TauBar's sidecar; this issue adds the wake word on top of it and keeps TauBar as the desk-side indicator and mute switch.
+- 2026-09-30: ADR 0008 (owner guard): the wake-word loop opens the microphone only while `GuardService.face_fresh()` holds and the screen is unlocked, the voice routes (listen, mute, status) are protected control routes that TauBar calls with the control token, and replies follow `reply_mode = "text" | "speech" | "both"` (075, 118). Hands-free turns build their agent with the in-hub guard, never with `guard=None`.

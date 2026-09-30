@@ -28,3 +28,4 @@ None - can start immediately; the hub service contract (065) and the TUI (063) a
 ## Comments
 
 - 2026-09-29: opened for ADR 0006 (private-first): "the web UI is a new package (`tau-web`), served by the hub; first slice: the existing TUI in the browser through `textual-serve`, behind Access". Voice from the phone (browser microphone) is 080.
+- 2026-09-30: ADR 0008 (owner guard): every browser tab runs `tau tui`, so its turns are guarded as `tui` and locked while the owner is not verified at the Mac. Never add a `--channel` flag, an environment variable or a config key that selects a channel, because anyone at the Mac could use it to skip the guard (T7); a tab that should get in while the owner is away needs a hub-issued per-client grant (117).

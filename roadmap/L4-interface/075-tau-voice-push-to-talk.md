@@ -31,3 +31,4 @@ First run needs a human step: macOS asks for microphone permission for the proce
 ## Comments
 
 - 2026-09-29: opened for ADR 0006 (private-first), §7: voice is a separate package, a hub service and a channel; the TUI shows the microphone only when the service is present. Blocked by 054 so the persona sees `Channel: voice` and applies the brevity rule. The last criterion is the user's (microphone permission).
+- 2026-09-30: ADR 0008 (owner guard): the microphone opens only while `GuardService.face_fresh()` holds, checked in the hub before `POST /voice/listen` opens it, so a transcript sent through the composer cannot skip it; the voice routes are protected control routes (register them with the default `open=False`). Please add an acceptance criterion for `reply_mode = "text" | "speech" | "both"`; 118 builds the guard side.

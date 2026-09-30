@@ -22,3 +22,5 @@ TauBar listens to macOS screen lock/unlock notifications and publishes `tau/desk
 - [032 · zenohd on the hub, node liveliness and `tau nodes`](032-zenoh-router-and-liveliness.md)
 
 ## Comments
+
+- 2026-09-30: ADR 0008 (owner guard): the guard's hub service (111) already reads the screen-lock state (`CGSessionCopyCurrentDictionary`, inline and every 2 s) for its reflex locks; reuse that signal, through `GuardService.subscribe` or a shared presence source, instead of adding a second listener. The guard keeps its own reading, because reflex locks cannot depend on the mesh.

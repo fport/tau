@@ -25,6 +25,7 @@ Life data lives on the hub (ADR 0006 §3); the only copy that leaves it is a cli
 - [ ] The scheduled backup runs from the hub and reports its last run in `/status`; a failed upload is a warning in the log and the status, never a crash
 - [ ] Retention is configuration; local data is never deleted by the backup code
 - [ ] `infra/backup/` holds the launchd example and the drill notes; the docs guide covers keygen, first backup and restore without any personal value
+- [ ] `TAU_DATA_DIR/guard/` (the guard's encrypted face template, audit log and worker log; ADR 0008) is never in an archive; a test backs up a data dir that has one and finds no `guard/` entry
 
 ## Blocked by
 
@@ -34,3 +35,4 @@ Life data lives on the hub (ADR 0006 §3); the only copy that leaves it is a cli
 
 - 2026-09-29: reworded `/devam` → `/resume` (Turkish aliases stay accepted, see 062). Backend choice (D1-backed `SessionRepository` vs Strands `Storage`/`SnapshotSessionManager`) is decided in 071 before this starts.
 - 2026-09-29: rewritten for ADR 0006 (private-first). Before: a D1 session backend behind the `tau-cloud` Worker API with `/resume` on Telegram. Now: the file session store on the hub (ADR 0003) is the record, and this issue is the encrypted backup of the whole data dir to R2 plus the restore drill; `/resume` on Telegram comes with 014 through the shared command spec. 071 is closed as wontfix (no remote backend to decide for). The file keeps its old slug so links stay stable.
+- 2026-09-30: ADR 0008 (owner guard): `TAU_DATA_DIR/guard/` holds the encrypted face template, the guard's audit log and its worker log, and must never be in an archive; it is now an acceptance criterion. The template's key lives in the macOS Keychain, so a restored template would not decrypt anyway, and re-enrolling takes about a minute.

@@ -1,0 +1,37 @@
+name: cloud-shared
+
+# cloud/shared holds TypeScript the Workers import by relative path: the tau network protocol's
+# TypeScript half (net/, issue 158). Its tests run in workerd and in Node, and check it against
+# the vectors tau-net wrote (net/vectors.json). The Python half of the check, including the
+# freshness of vectors.json and tau-net's check of net/ts-vectors.json, runs in ci.yml's
+# pytest.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/shared
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: cloud/shared/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - name: A Worker bundles the shared modules (wrangler dry run)
+        run: pnpm run bundle-check

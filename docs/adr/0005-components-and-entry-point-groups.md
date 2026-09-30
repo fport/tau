@@ -131,3 +131,5 @@ vended `Plugin` class bundles hooks and tools. tau does not adopt them for compo
   route; the offending service fails to start and is skipped.
 - The group names are fixed here; ADR 0002 keeps `tau.tools`/`tau.commands` and the
   `tau.channels` reservation.
+
+Amended by ADR 0008 (owner guard).

@@ -89,3 +89,5 @@ provider; the mitigation there is data minimization and the `local` role.
   the hub. Tailscale Serve stays as the no-domain default.
 - **Cloud vector search (Vectorize, AI Search):** they cannot search encrypted data, so using
   them means storing life data in clear. Local search on a personal corpus is small and fast.
+
+Amended by ADR 0008 (owner guard).

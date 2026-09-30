@@ -149,3 +149,5 @@ outlive the process.
   through `AfterToolCallEvent` and UIs read `tool_call` agent events, but the claim that the
   Strands stream has no tool-result event is dropped (`tool_stream_event` is mapped to a
   `ToolProgress` turn event).
+
+Amended by ADR 0008 (owner guard).

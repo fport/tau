@@ -1,6 +1,6 @@
 # 146 · The public site explains how tau works, in English and Turkish
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L9 · Cloud mode and the tau network
 Packages: cloud/universe
@@ -19,9 +19,9 @@ The whole site becomes bilingual: English at `/`, `/universe`, `/how-it-works`, 
 
 ## Acceptance criteria
 
-- [ ] `/how-it-works` and `/tr/how-it-works` exist, with the two steps, the examples and the security section; linked from the landing page and the nav
-- [ ] Every page has an EN/TR switcher; the Turkish pages are complete and correct
-- [ ] The CSP and tests stay green; the pages work at 360 px
+- [x] `/how-it-works` and `/tr/how-it-works` exist, with the two steps, the examples and the security section; linked from the landing page and the nav
+- [x] Every page has an EN/TR switcher; the Turkish pages are complete and correct
+- [x] The CSP and tests stay green; the pages work at 360 px
 
 ## Blocked by
 
@@ -30,3 +30,7 @@ None - can start immediately.
 ## Comments
 
 - 2026-09-30: opened at the owner's request.
+- 2026-09-30: done.
+  - Commits: 08e9216..0739106; 4c0351c makes the chat example one that works today and marks sub-taus available.
+  - Live: https://tau.getporti.com/how-it-works and `/tr/how-it-works`, with the EN · TR switcher on every page and `/` redirecting to `/tr/` for Turkish browsers unless a choice is stored.
+  - Tests: 145.

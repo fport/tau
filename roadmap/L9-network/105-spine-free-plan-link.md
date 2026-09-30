@@ -1,6 +1,6 @@
 # 105 · Keep the hub link within the Workers Free plan: WebSocket hibernation instead of a DO-held long poll
 
-Status: needs-triage
+Status: ready-for-human
 Type: AFK
 Layer: L9 · Cloud mode and the tau network
 Packages: cloud/spine, tau-net
@@ -26,7 +26,7 @@ Measure the real usage on a deployed spine (095) before choosing.
 ## Acceptance criteria
 
 - [ ] The dashboard numbers of a spine polled for 24 h are recorded under Comments
-- [ ] The chosen link keeps a 24/7 hub under half of the Free plan's Durable Object budget, or the README says plainly what it costs
+- [x] The chosen link keeps a 24/7 hub under half of the Free plan's Durable Object budget, or the README says plainly what it costs
 
 ## Blocked by
 
@@ -36,3 +36,9 @@ Measure the real usage on a deployed spine (095) before choosing.
 ## Comments
 
 - 2026-09-30: filed from the 092 report (the Free-plan estimate came from the spine agent).
+- 2026-09-30: built and deployed.
+  - Commits: 5640680..3e829ee; fcd7cfd adds the Turkish twins.
+  - The link: the hub now waits on a WebSocket doorbell to the `Mailbox` Durable Object, written with the standard library only. Keepalive pings are auto-answered, so the object hibernates between envelopes; the long poll is the fallback. The estimate for a 24/7 hub is about 2 000 of the 100 000 Durable Object requests a day and well under 1% of the 13 000 GB-s, against about 10 800 GB-s for the long poll.
+  - Flood guards: a Rate Limiting binding answers 429 above 60/min per IP and 30/min per sender, before any card fetch or Durable Object call. A non-JSON body gets 415, and a KV write over the quota is tolerated.
+  - The owner's spine is redeployed with the `ratelimits` block. Live checks: `/hub/ws` answers 401 without a token, and a `text/plain` inbox request gets 415.
+  - Left for the owner: after the hub has run 24 h on the doorbell, restarted from TauBar, record the dashboard numbers (Workers & Pages → tau-spine → Metrics, and the Durable Objects usage) under Comments. That is the first criterion.

@@ -257,7 +257,7 @@ The spine runs every minute (`* * * * *`):
 
 ## 6. Hub behaviour (`tau-net`)
 
-1. **Poll.** The `net` hub service long-polls `GET /hub/updates?after=<last>&timeout=25`. For each update, in order, it handles the envelope and then acknowledges it, so a crash re-handles rather than loses. Network errors back off exponentially, up to 60 s. The service never crashes the hub, and it stays idle, reporting `net: {configured: false}` in `/status`, without `TAU_SPINE_URL`, `TAU_SPINE_TOKEN` or an identity.
+1. **Poll.** The `net` hub service long-polls `GET /hub/updates?after=0&timeout=25`. For each update, in order, it handles the envelope and then acknowledges it, so a crash re-handles rather than loses. Network errors back off exponentially, up to 60 s. The service never crashes the hub, and it stays idle, reporting `net: {configured: false}` in `/status`, without `TAU_SPINE_URL`, `TAU_SPINE_TOKEN` or an identity.
 2. **Verify again.** The hub does not trust its spine:
    - It re-verifies the signature: with the contact's pinned `sign_key` when the sender is a known contact, otherwise with a freshly fetched card.
    - It checks `to` against its own address, the one `GET /hub/health` returns.
@@ -322,7 +322,7 @@ The spine runs every minute (`* * * * *`):
 
    - A `401` from the spine stops polling (state `failed`), because the token is only read at start.
    - Other errors back off exponentially, up to 60 s.
-   - The cursor is saved after a successful ack. A failed ack leaves the cursor where it was, and the envelope that comes back is dropped as already handled.
+   - The poll always asks from `after=0`: the spine deletes what the hub acknowledges, so the mailbox itself is the queue. The saved cursor only records the last seq taken. A cursor used as `after` would skip mail after a move to another spine, because a fresh spine counts from 1 again. An envelope whose ack failed comes back, is dropped as already handled and is acknowledged again.
    - The hub reaches its own spine over `http` only when the spine is on `localhost` or `127.0.0.1`. Peers need `TAU_NET_ALLOW_INSECURE=1` for `http`.
 8. **Storage.** `[component.net] store = "file"` (default) keeps identity-independent state under `TAU_DATA_DIR/net/`: `contacts.json`, `sessions.json`, `seen.json`, `log.jsonl` and `cursor`. `store = "spine"` keeps the same documents in the spine's state API (`net.contacts`, `net.sessions`, `net.seen`, `net.log`, `net.cursor`), which is the spine's D1 database and exists only in cloud mode; cloud mode uses this store.
 

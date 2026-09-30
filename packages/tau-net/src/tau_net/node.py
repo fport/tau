@@ -647,12 +647,18 @@ class NetNode:
         limit: int = 50,
         blocking: Callable[[Callable[[], Any]], Awaitable[Any]] = run_blocking,
     ) -> list[Handled]:
-        """Fetch what the spine holds after the cursor (waiting up to ``timeout`` s) and take
-        every update in order."""
+        """Fetch everything the spine still holds (waiting up to ``timeout`` s) and take every
+        update in order.
+
+        The spine deletes what the hub acknowledges, so the mailbox itself is the queue: the poll
+        always starts at ``after=0``. The saved cursor is only a record of the last seq taken. A
+        cursor used as ``after`` would skip mail after a switch to another spine (a fresh one
+        counts from 1 again), and the only extra updates ``after=0`` returns are those whose
+        acknowledgement failed, which are dropped as already handled and acknowledged again.
+        """
         spine = self.require_spine()
         self.require_identity()
-        after = await blocking(self.store.cursor)
-        updates = await blocking(lambda: spine.updates(after=after, timeout=timeout, limit=limit))
+        updates = await blocking(lambda: spine.updates(after=0, timeout=timeout, limit=limit))
         return [await self.take(update, blocking=blocking) for update in updates]
 
     # -- the universe (ADR 0010) ---------------------------------------------------------------

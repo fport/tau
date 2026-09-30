@@ -18,13 +18,24 @@ Rules the table in the ADR leaves to the implementation:
   unlock or recheck (same attempt id, same verdict). Everything else queues (at most
   :data:`MAX_QUEUE`), and a queued attempt that has not started within the attempt timeout
   finishes with ``timeout``.
+- An unlock joins only when its merged policy is not stricter than the running attempt's
+  (a client that asks for the challenge never gets a passive verdict); otherwise it queues.
 - A step-up or a recheck while ``locked`` (or while an unlock from ``locked`` runs) is refused
-  with ``locked`` and never starts a worker.
+  with ``locked`` and never starts a worker. Every kind is refused with ``locked`` while the
+  screen is locked, so the camera never opens on a locked Mac.
 - **Strict attempts.** A recheck, a step-up, an unlock started while ``unlocked`` (a re-unlock)
   and any attempt a recheck joined lock with trigger ``step_up_failed`` ("locked after a
   failed identity check") when they fail with a counted reason: any check that sees someone
   else while tau is unlocked locks. tau-core's lock triggers have no separate recheck value.
   An unlock from ``locked`` that fails goes back to ``locked``.
+- **Policy.** A worker success the attempt's merged policy excludes (a Touch ID step-up when
+  ``step_up`` is ``face``, Touch ID when ``unlock_fallback`` is ``none``, a face unlock without
+  ``liveness: "challenge"`` when ``unlock_liveness`` is ``challenge``, a face step-up without
+  the challenge outside the freshness window, a face step-up when ``step_up`` is
+  ``touch_id``) finishes as ``error``. The worker enforces the policy first; this is the
+  hub's second line.
+- **Challenge freshness.** Only an unlock or a step-up that passed the challenge starts the
+  ``challenge_fresh`` window, and every lock ends it.
 - Cooldown: three counted failures within :data:`FAILURE_WINDOW` start a cooldown of
   :data:`COOLDOWN_START` seconds. From then on every counted failure starts the next cooldown
   at twice the length, up to :data:`COOLDOWN_MAX`, until a match or a quiet window (no failure
@@ -46,6 +57,7 @@ __all__ = [
     "ATTEMPT_EVENTS",
     "COUNTED_REASONS",
     "KINDS",
+    "STRICTNESS",
     "Attempt",
     "Clock",
     "Effects",
@@ -84,6 +96,18 @@ MAX_QUEUE = 8
 
 _JOINS = {"unlock": frozenset({"unlock"}), "recheck": frozenset({"unlock", "recheck"})}
 """Which running kind an incoming kind joins."""
+STRICTNESS: dict[str, dict[str, int]] = {
+    "step_up": {"none": 0, "face_or_touch_id": 1, "face": 2, "touch_id": 2},
+    "unlock_liveness": {"none": 0, "challenge": 1},
+}
+"""Higher is stricter; two different values of the same rank keep the hub's."""
+_STEP_UP_METHODS = {
+    "face": frozenset({"face"}),
+    "touch_id": frozenset({"touch_id"}),
+    "face_or_touch_id": frozenset({"face", "touch_id"}),
+    "none": frozenset({"face", "touch_id"}),
+}
+"""The success methods each ``step_up`` policy accepts (an unknown value: face only)."""
 _CAMERA = {
     "camera_denied": "denied",
     "camera_unavailable": "unavailable",
@@ -119,9 +143,17 @@ def iso(moment: datetime | None) -> str | None:
     return moment.astimezone(UTC).isoformat(timespec="seconds")
 
 
+def _rank(key: str, policy: Mapping[str, str]) -> int:
+    """How strict ``policy[key]`` is (a missing or unknown value counts as the strictest)."""
+    ranks = STRICTNESS[key]
+    value = policy.get(key)
+    return ranks[value] if value in ranks else max(ranks.values())
+
+
 @dataclass(frozen=True)
 class Limits:
-    """The reflex and attempt knobs, in seconds (``[component.guard]``, validated)."""
+    """The reflex and attempt knobs in seconds, and the hub's Touch ID fallback
+    (``[component.guard]``, validated)."""
 
     max_unlock: float = 8 * 3600.0
     idle_lock: float = 10 * 60.0
@@ -129,6 +161,7 @@ class Limits:
     presence_recheck: float = 30 * 60.0
     attempt_timeout: float = 30.0
     challenge_fresh: float = 120.0
+    unlock_fallback: str = "touch_id"
 
 
 @dataclass(frozen=True)
@@ -349,19 +382,27 @@ class GuardMachine:
         if kind not in KINDS:
             raise ValueError(f"unknown attempt kind {kind!r}")
         self._prune()
+        if self.screen == "locked":
+            return Refusal("locked")  # the camera never opens on a locked Mac
         if kind != "enroll":
             left = self.cooldown_left()
             if left is not None:
                 return Refusal("cooldown", left)
         if kind in ("step_up", "recheck") and self.state != "unlocked":
             return Refusal("locked")
+        merged = dict(policy or {})
         joins = _JOINS.get(kind, frozenset())
         for candidate in [self.running, *self.queue]:
-            if candidate is not None and not candidate.done and candidate.kind in joins:
-                candidate.clients.add(client_id)
-                if kind == "recheck":
-                    candidate.strict = True
-                return candidate
+            if candidate is None or candidate.done or candidate.kind not in joins:
+                continue
+            if kind == "unlock" and _rank("unlock_liveness", merged) > _rank(
+                "unlock_liveness", candidate.policy
+            ):
+                continue  # a stricter unlock never takes a weaker verdict: it queues
+            candidate.clients.add(client_id)
+            if kind == "recheck":
+                candidate.strict = True
+            return candidate
         if self.running is not None and len(self.queue) >= MAX_QUEUE:
             return Refusal("busy")
         attempt = Attempt(
@@ -371,7 +412,7 @@ class GuardMachine:
             client_id=client_id,
             request_id=request_id,
             tool=tool,
-            policy=dict(policy or {}),
+            policy=merged,
             clients={client_id},
             created=self.clock.monotonic(),
             strict=kind in ("recheck", "step_up"),
@@ -399,6 +440,8 @@ class GuardMachine:
         attempt = self.running
         if attempt is None or attempt.id != attempt_id or attempt.done:
             return False
+        if outcome.ok and not self._policy_allows(attempt, outcome):
+            outcome = Outcome(False, "error", score=outcome.score, liveness=outcome.liveness)
         self._conclude(attempt, outcome)
         self._start_next()
         return True
@@ -437,6 +480,7 @@ class GuardMachine:
         self.since = None
         self.expires_at = None
         self.step_up_active = False
+        self._challenge_passed = None  # freshness lives inside one unlocked session
         self._bump()
         self._audit("lock", channel=channel, client_id=client_id, trigger=trigger)
         return True
@@ -616,7 +660,7 @@ class GuardMachine:
             self._cooldown_level = 0
             self._last_failure = None
             self._cooldown_end = None
-            if outcome.liveness == "challenge":
+            if outcome.liveness == "challenge" and attempt.kind in ("unlock", "step_up"):
                 self._challenge_passed = now
         duration = None if attempt.started is None else int((now - attempt.started) * 1000)
         self._mark_done(attempt, outcome)
@@ -648,6 +692,27 @@ class GuardMachine:
     def _face_seen(self, wall: datetime) -> None:
         self.face_seen_at = wall
         self.max_idle_since_face = 0.0
+
+    def _policy_allows(self, attempt: Attempt, outcome: Outcome) -> bool:
+        """Whether a worker success fits the attempt's merged policy (the worker checks it
+        first; this is the hub's second line)."""
+        method, liveness, policy = outcome.method, outcome.liveness, attempt.policy
+        if attempt.kind == "enroll":
+            return True
+        if attempt.kind == "step_up":
+            mode = policy.get("step_up", "face")
+            if method not in _STEP_UP_METHODS.get(mode, _STEP_UP_METHODS["face"]):
+                return False
+            if method == "face" and mode != "none":
+                return liveness == "challenge" or (
+                    attempt.challenge_fresh and liveness == "passive"
+                )
+            return True
+        if method == "touch_id":
+            return self.limits.unlock_fallback != "none"
+        if attempt.kind == "unlock" and _rank("unlock_liveness", policy) > 0:
+            return liveness == "challenge"
+        return True
 
     def _count_failure(self, now: float, wall: datetime) -> None:
         self.failures += 1

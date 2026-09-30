@@ -85,6 +85,10 @@ def test_defaults() -> None:
     assert limits.max_unlock == 8 * 3600 and limits.idle_lock == 600
     assert limits.recheck_after_idle == 180 and limits.presence_recheck == 1800
     assert limits.attempt_timeout == 30 and limits.challenge_fresh == 120
+    assert limits.unlock_fallback == "touch_id"
+    assert parse_settings(
+        {"enabled": True, "unlock_fallback": "none"}
+    ).limits().unlock_fallback == ("none")
     assert settings.policy() == {"step_up": "face", "unlock_liveness": "challenge"}
     assert settings.worker()["unlock_threshold"] == 0.5
     assert settings.camera == DEFAULTS["camera"] == "builtin"

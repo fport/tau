@@ -34,7 +34,7 @@ from typing import Any
 from tau_core.guard import config_problem
 from tau_core.i18n import DEFAULT_LANGUAGE, t
 
-from tau_guard.state import Limits
+from tau_guard.state import STRICTNESS, Limits
 
 __all__ = [
     "ATTEMPT_GRACE",
@@ -76,11 +76,6 @@ CHOICES: dict[str, tuple[str, ...]] = {
     "step_up": ("face", "face_or_touch_id", "touch_id", "none"),
     "unlock_fallback": ("touch_id", "touch_id_or_password", "none"),
 }
-STRICTNESS: dict[str, dict[str, int]] = {
-    "step_up": {"none": 0, "face_or_touch_id": 1, "face": 2, "touch_id": 2},
-    "unlock_liveness": {"none": 0, "challenge": 1},
-}
-"""Higher is stricter; two different values of the same rank keep the hub's."""
 ATTEMPT_GRACE = 15.0
 """Seconds a worker gets beyond ``verify_timeout_seconds`` (start-up, camera warm-up)."""
 MAX_CAMERA_ID = 256
@@ -122,6 +117,7 @@ class GuardSettings:
             presence_recheck=self.presence_recheck_minutes * 60.0,
             attempt_timeout=self.attempt_timeout,
             challenge_fresh=self.step_up_challenge_fresh_seconds,
+            unlock_fallback=self.unlock_fallback,
         )
 
     def policy(self) -> dict[str, str]:

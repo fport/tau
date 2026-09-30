@@ -173,6 +173,21 @@ def test_a_recheck_joined_to_a_queued_unlock_makes_it_strict(clock: FakeClock) -
     assert (m.state, m.lock_trigger) == ("locked", "step_up_failed")
 
 
+def test_a_stricter_unlock_queues_instead_of_joining(clock: FakeClock) -> None:
+    m = machine(clock)
+    passive = {"step_up": "face", "unlock_liveness": "none"}
+    first = m.request("unlock", channel="desktop", client_id="a", policy=passive)
+    same = m.request("unlock", channel="chat", client_id="b", policy=passive)
+    strict = m.request(
+        "unlock", channel="tui", client_id="c", policy={**passive, "unlock_liveness": "challenge"}
+    )
+    assert not isinstance(first, Refusal) and not isinstance(strict, Refusal)
+    assert same is first and strict is not first and m.queue == [strict]
+    m.finish(first.id, Outcome(True, "match", "face", 0.6, "passive"))
+    assert m.state == "unlocked" and m.running is strict  # runs next, with the challenge
+    assert strict.policy["unlock_liveness"] == "challenge"
+
+
 def test_step_up_while_unlocked_stays_unlocked_and_queues_behind_a_running_check(
     clock: FakeClock,
 ) -> None:
@@ -590,3 +605,87 @@ def test_seq_grows_on_every_change(clock: FakeClock) -> None:
     assert seen == sorted(set(seen))
     record = m.record(attempt.id)
     assert record is not None and record["seq"] <= m.seq
+
+
+def test_nothing_starts_while_the_screen_is_locked(clock: FakeClock) -> None:
+    m = unlocked(clock)
+    m.observe(Reading(idle_seconds=0.0, screen_locked=True))
+    assert (m.state, m.lock_trigger) == ("locked", "screen_lock")
+    m.drain()
+    for kind in ("unlock", "recheck", "step_up", "enroll"):
+        assert m.request(kind, channel="ssh", client_id="c1") == Refusal("locked")
+    assert m.drain().spawn == [] and m.running is None
+    m.observe(PRESENT)
+    assert not isinstance(m.request("unlock", channel="tui", client_id="c1"), Refusal)
+
+
+# -- defence in depth: the policy and the challenge window ---------------------------------------
+
+
+def run_kind(m: GuardMachine, kind: str, outcome: Outcome, **policy: str) -> dict:
+    attempt = m.request(kind, channel="tui", client_id="c1", policy=policy or None)
+    assert not isinstance(attempt, Refusal)
+    m.finish(attempt.id, outcome)
+    record = m.record(attempt.id)
+    assert record is not None
+    return record
+
+
+TOUCH_ID = Outcome(True, "match", "touch_id")
+PASSIVE = Outcome(True, "match", "face", 0.8, "passive")
+
+
+@pytest.mark.parametrize(
+    ("kind", "outcome", "policy", "fallback", "ok"),
+    [
+        ("step_up", TOUCH_ID, {"step_up": "face"}, "touch_id", False),
+        ("step_up", TOUCH_ID, {"step_up": "face_or_touch_id"}, "none", True),
+        ("step_up", MATCH, {"step_up": "touch_id"}, "touch_id", False),
+        ("step_up", PASSIVE, {}, "touch_id", False),
+        ("step_up", Outcome(True, "match", "face", 0.8, None), {}, "touch_id", False),
+        ("step_up", MATCH, {"step_up": "face"}, "touch_id", True),
+        ("unlock", PASSIVE, {}, "touch_id", False),
+        ("unlock", PASSIVE, {"unlock_liveness": "none"}, "touch_id", True),
+        ("unlock", TOUCH_ID, {}, "none", False),
+        ("unlock", TOUCH_ID, {}, "touch_id_or_password", True),
+        ("recheck", PASSIVE, {}, "touch_id", True),
+        ("recheck", TOUCH_ID, {}, "none", False),
+    ],
+)
+def test_a_success_the_policy_excludes_is_an_error(
+    clock: FakeClock, kind: str, outcome: Outcome, policy: dict, fallback: str, ok: bool
+) -> None:
+    m = unlocked(clock, unlock_fallback=fallback)  # type: ignore[arg-type]
+    clock.advance(600)  # outside the challenge window of the unlock
+    m.observe(PRESENT, tick=True)
+    record = run_kind(m, kind, outcome, **policy)
+    assert (record["ok"], record["reason"]) == ((True, "match") if ok else (False, "error"))
+    assert m.state == "unlocked"  # an error is not a counted failure
+
+
+def test_a_passive_step_up_passes_only_inside_the_challenge_window(clock: FakeClock) -> None:
+    m = unlocked(clock, challenge_fresh=120)
+    assert run_kind(m, "step_up", PASSIVE)["ok"] is True
+    clock.advance(121)
+    m.observe(PRESENT, tick=True)
+    assert run_kind(m, "step_up", PASSIVE)["reason"] == "error"
+
+
+def test_challenge_freshness_ends_with_a_lock(clock: FakeClock) -> None:
+    m = unlocked(clock)  # passed the challenge just now
+    step_up = m.request("step_up", channel="tui", client_id="c1")
+    assert not isinstance(step_up, Refusal) and step_up.challenge_fresh
+    m.finish(step_up.id, MATCH)
+    m.lock("screen_lock")
+    run_kind(m, "unlock", Outcome(True, "match", "face", 0.8, "none"), unlock_liveness="none")
+    assert m.state == "unlocked"
+    step_up = m.request("step_up", channel="tui", client_id="c1")
+    assert not isinstance(step_up, Refusal) and not step_up.challenge_fresh
+    m.finish(step_up.id, MATCH)
+    m.lock("command")
+    enroll = m.request("enroll", channel="enroll", client_id="c1")
+    assert not isinstance(enroll, Refusal)
+    m.finish(enroll.id, MATCH)  # an enrollment never opens the window
+    run_kind(m, "unlock", TOUCH_ID)
+    step_up = m.request("step_up", channel="tui", client_id="c1")
+    assert not isinstance(step_up, Refusal) and not step_up.challenge_fresh

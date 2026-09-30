@@ -53,15 +53,48 @@ Every value below goes in with `wrangler secret put <NAME>`, which prompts for i
 On the machine that has your `tau.toml` and `persona/`, put `TAU_SPINE_URL` (the spine URL) and `TAU_SPINE_TOKEN` (the `HUB_TOKEN`) in `.env`, then:
 
 ```sh
-tau cloud push      # tau.toml, persona.md, net.md; asks before uploading user.md
-tau cloud status    # spine health and the brain container's health
+tau cloud push      # tau.toml, persona.md, net.md; shows the list and asks first
+tau cloud status    # spine health and mode, the files it holds, the brain container's health
 ```
 
-`tau cloud pull` downloads the same files, for example onto a new machine. `.env` is never uploaded.
+- The file set is exactly `tau.toml`, `persona/persona.md`, `persona/user.md` and `persona/net.md`. Nothing else is read or sent, and `.env` is never uploaded.
+- `persona/user.md` holds what tau knows about you, so it has its own question, and the default answer is no. `tau cloud push --include-user` uploads it without the question.
+- In a script (no terminal), `tau cloud push --yes` uploads without asking; `persona/user.md` then goes up only with `--include-user` as well.
+- The brain reads these files when it starts. After a push, the running brain keeps the old ones until its next start (a redeploy restarts it).
+- `tau cloud pull` downloads the same files, for example onto a new machine. It never replaces a local file that differs unless you pass `--force`.
 
 ## 4. Talk to it
 
 Write to your bot on Telegram. The container's hub answers, and tier-2 approvals arrive as inline buttons exactly as in local mode. Sessions are stored in D1, so they survive a container restart. `/resume` works as usual.
+
+## What the brain container runs
+
+The image (`cloud/spine/container/Dockerfile`) starts `tau cloud run`, which:
+
+1. checks that `TAU_SPINE_URL` and `TAU_SPINE_TOKEN` are set and that the spine runs in cloud mode (otherwise it exits with one line);
+2. pulls the files into `TAU_HOME` and changes two keys of the pulled `tau.toml`: `[sessions] backend = "spine"` and `[component.net] store = "spine"`. Everything else, comments included, stays as you wrote it;
+3. answers `GET /health` on port 8080 with `{"ok": true, "version": ..., "hub": <the hub's /status or null>}`, which the spine's `GET /hub/brain` passes on;
+4. runs `tau hub run` in the same process, until the container runtime sends SIGTERM, which stops the hub cleanly.
+
+`tau cloud run` refuses a `TAU_HOME` that holds a `tau.toml` it did not write, so it never overwrites your own configuration.
+
+## Try it locally, without a container
+
+`pnpm run dev:cloud` runs the spine in cloud mode with containers off, so you can check the files and the `spine` session backend without Docker or a Cloudflare account:
+
+```sh
+(cd cloud/spine && pnpm install && pnpm run configure && pnpm run dev:cloud)
+# another terminal; TAU_SPINE_URL=http://127.0.0.1:8787 and TAU_SPINE_TOKEN from cloud/spine/.dev.vars in .env
+tau cloud push && tau cloud status      # the brain shows as unavailable: containers are off
+# play the container: the spine variables in the environment, an empty TAU_HOME and TAU_DATA_DIR,
+# and another hub port in case your own hub runs on 7877
+export TAU_SPINE_URL=http://127.0.0.1:8787 TAU_SPINE_TOKEN=<HUB_TOKEN from cloud/spine/.dev.vars>
+export TAU_HOME=/tmp/brain/tau TAU_DATA_DIR=/tmp/brain/data TAU_HUB_PORT=7977
+TAU_CLOUD_HEALTH_HOST=127.0.0.1 tau cloud run
+curl http://127.0.0.1:8080/health       # a third terminal
+```
+
+A `tau chat` with the same variables then stores its session in the local spine's D1.
 
 ## Going back to local mode
 

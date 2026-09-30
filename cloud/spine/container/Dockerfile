@@ -32,6 +32,11 @@ RUN useradd --system --create-home --home-dir /home/tau tau \
 USER tau
 WORKDIR /tau
 
-# The spine talks to the brain on this port (TauBrain.defaultPort); `GET /health` answers.
+# The spine talks to the brain on this port (TauBrain.defaultPort); `GET /health` answers
+# {"ok": true, "version", "hub"} (TAU_CLOUD_HEALTH_PORT overrides the port).
 EXPOSE 8080
+# `tau cloud run` is PID 1: it pulls tau.toml and the persona files into /tau, then runs
+# `tau hub run` in the same process. SIGTERM stops the hub cleanly (exit 0); it needs
+# TAU_SPINE_URL and TAU_SPINE_TOKEN, which the spine sets, and exits 1 without them.
+STOPSIGNAL SIGTERM
 CMD ["tau", "cloud", "run"]

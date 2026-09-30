@@ -145,10 +145,19 @@ The container gets `TAU_SPINE_URL`, `TAU_SPINE_TOKEN` and each of these secrets 
 Then, from the hub machine (with `TAU_SPINE_URL` and `TAU_SPINE_TOKEN` in its `.env`), copy config and persona into the spine:
 
 ```sh
-uv run tau cloud push
+uv run tau cloud push           # tau.toml, persona/persona.md, persona/net.md; asks first
+uv run tau cloud push --include-user   # persona/user.md too (it then lives in your account)
+uv run tau cloud status         # the spine, the files it holds, the brain
 ```
 
-`GET /hub/brain` (with the token) answers the container's health. With `KEEP_AWAKE=1` (the default in the cloud config) the cron pings the brain every minute so the Telegram poller inside it never sleeps.
+The brain reads the files when it starts, so a push applies from its next start. The image runs `tau cloud run`: it pulls the files into `/tau`, sets `[sessions] backend = "spine"` and `[component.net] store = "spine"` in the pulled `tau.toml`, answers `GET /health` on port 8080 and runs `tau hub run` until SIGTERM. `GET /hub/brain` (with the token) answers that health JSON, `{"ok": true, "version", "hub": <the hub's /status or null>}`. With `KEEP_AWAKE=1` (the default in the cloud config) the cron pings the brain every minute so the Telegram poller inside it never sleeps.
+
+To build and try the image by hand (from the repository root):
+
+```sh
+docker build -f cloud/spine/container/Dockerfile -t tau-brain .
+docker run --rm tau-brain tau cloud --help
+```
 
 **Back to local mode.** `pnpm run configure --force` writes the local config again (ids kept). The deployed Worker still has the `TauBrain` Durable Object class, which a deploy cannot drop silently, so extend `migrations` in your `wrangler.jsonc` before `pnpm run deploy`:
 

@@ -3,8 +3,9 @@
 tau ships as three PyPI distributions, `tau-core`, `tau-tui` and `tau-guard`, released
 together with the same version. A release is one tag away: push `vX.Y.Z` and the `release`
 workflow builds the packages, smoke-tests the wheels, publishes them to PyPI through trusted publishing and creates
-the GitHub release with the files attached. The docs site deploys itself on every push to
-`main`. This is the "installable by anyone" half of
+the GitHub release with the files attached. For the same tag the `app` workflow builds the Mac
+app, signs it and attaches `tau.dmg` and the updater's files to that release. The docs site
+deploys itself on every push to `main`. This is the "installable by anyone" half of
 [ADR 0006](../adr/0006-private-first-topology.md).
 
 ## Versioning
@@ -43,6 +44,9 @@ the GitHub release with the files attached. The docs site deploys itself on ever
    `tau --help`, `tau version`, `tau init --yes`, `tau doctor`, `tau components`, a scripted
    `tau chat`, `tau tui --help` and `tau guard status`, then repeats the documented `uv tool install`. `publish`
    uploads each package (one job per package) and `github-release` creates the release.
+   Next to it, **Actions → app** builds the universal `tau.app` (Apple silicon and Intel) with
+   the same version, signs it and attaches `tau.dmg`, `tau.app.tar.gz`, its `.sig` and
+   `latest.json` to the release; whichever workflow gets there first creates the release.
 
 4. Write the changelog. The release is created with notes generated from the pull requests
    and commits since the previous tag. Open it under **Releases**, edit the notes into a few
@@ -89,6 +93,39 @@ printf '/status\nhello\n/quit\n' | /tmp/tau-venv/bin/tau --home /tmp/tau-home ch
 The `fake` provider answers "Okay." and needs no credentials.
 
 ## One-time setup
+
+### The Mac app: code signing and updates
+
+`app.yml` signs every build of `tau.app` with one self-signed code-signing identity, so macOS
+keeps the app's camera and notification permissions across updates: a permission belongs to
+the app's *designated requirement*, and with one certificate that requirement names the
+certificate rather than the build. It also signs the updater archive, which installed apps
+check against the public key in `apps/tau/src-tauri/tauri.conf.json`. The app is not
+notarised ([ADR 0014](../adr/0014-one-installer-and-onboarding.md) §6).
+
+Create both once, on your own Mac, from the checkout:
+
+```sh
+apps/tau/scripts/make-signing-identity.sh
+```
+
+It writes a certificate named "tau (self-signed)" as a p12 and the updater's key pair into
+`apps/tau/.signing/` (gitignored, owner-only), puts the updater's public key into
+`tauri.conf.json` (commit that), and prints the commands that set the four repository secrets
+from those files on stdin:
+
+```sh
+gh secret set MACOS_SIGNING_P12 < apps/tau/.signing/tau-signing.p12.base64
+gh secret set MACOS_SIGNING_PASSWORD < apps/tau/.signing/tau-signing.p12.password
+gh secret set TAURI_SIGNING_PRIVATE_KEY < apps/tau/.signing/updater.key
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD < apps/tau/.signing/updater.key.password
+```
+
+Keep a copy of `.signing/` in your password manager. A new certificate costs every user one
+more camera prompt after the update that brings it; a new updater key needs a release with the
+new public key before older installs can update past it. Without the secrets (a fork) the
+workflow signs ad hoc and skips the updater files, with warnings. `gh workflow run app.yml
+--ref main` is a dry run: build, sign and pack, with the files as the `tau-app` artifact.
 
 ### PyPI: trusted publishing
 
@@ -177,3 +214,4 @@ code runs at the edge; the Worker `tau-docs` only serves the uploaded files.
 | tag ↔ version | `release.yml` | the tag is not `v<tau-core version>`, or `tau-tui` has another version |
 | wheel smoke test | `release.yml` | the `tau` command, its `tui` subcommand, the templates `tau init` writes or the entry points are missing from the wheels |
 | setup smoke test | `release.yml` | `tau setup --yes --features tui,sub --no-install` fails in a fresh virtualenv, `tau setup status --json` does not parse, or `install.sh` with the real uv and a `tau setup` that adds a feature (one `uv tool install`, then the re-execution) fail |
+| the Mac app | `ci.yml` (job `app`, macOS) and `app.yml` | a vitest, Rust test or clippy lint fails; the tag is not `v<tau-core version>`; the app is not universal; the signed app has no camera entitlement; the updater key is set but `tauri.conf.json` has no public key |

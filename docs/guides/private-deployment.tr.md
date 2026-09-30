@@ -14,7 +14,7 @@ Neyi koruyorsun: tau'nun senin hakkında bildiği bilgileri, konuşmalarını ve
 Ardından gelen kararların hepsi [ADR 0006](../adr/0006-private-first-topology.md)'dan:
 
 1. **Tek bir herkese açık yüzey, kimlik doğrulaması kenarda.** Hub'ın web arayüzünü tam olarak tek bir hostname sunar. Hub'a *dışa doğru* bir tünel üzerinden ulaşır, böylece hub asla dışarıdan gelen bağlantılara port açmaz. Önündeki bir Access politikası, kimliği doğrulanmamış isteklerin tünele hiç ulaşmaması demektir.
-2. **Hiçbir aracı onay veremez.** Tier-2 bir onay (her zaman onay isteyen izin seviyesi) yalnızca TUI'den, TauBar'dan, Access arkasındaki ve cihaz başına bir anahtarla korunan web arayüzünden ve doğrudan yoklanan Telegram'dan kabul edilir. Arada bir aktarıcı (relay) sunucu yoktur, dolayısıyla seninle hub arasında ele geçirilecek bir şey de yoktur.
+2. **Hiçbir aracı onay veremez.** Tier-2 bir onay (her zaman onay isteyen izin seviyesi) yalnızca TUI'den, tau uygulamasından, Access arkasındaki ve cihaz başına bir anahtarla korunan web arayüzünden ve doğrudan yoklanan Telegram'dan kabul edilir. Arada bir aktarıcı (relay) sunucu yoktur, dolayısıyla seninle hub arasında ele geçirilecek bir şey de yoktur.
 3. **Yaşam verisi hub'da kalır.** Cloudflare yalnızca istemci tarafında şifrelenmiş yedekleri alır. Access e-postanı görür, verini değil.
 4. **Dışarıdan gelen her metin güvenilmezdir.** Kabuk, dosya ve diğer yazma araçları tier 2'dir ya da sandbox içinde çalışır; web'den içerik çeken araçlar bir izin listesi kullanır.
 

@@ -2,7 +2,7 @@
 
 # Sahip koruması
 
-Sahip koruması (owner guard), tau'nun yalnızca senin için çalışmasını sağlar. Kurduktan sonra `tau tui`, `tau chat` ve tau Desktop **kilitli** açılır. Mac'in yerleşik kamerası yüzünü gördüğünde ve başını ekranın istediği yöne çevirdiğinde kilit açılır. tau, sen yanından ayrıldığında, ekran kilitlendiğinde, Mac uyuduğunda ve sekiz saat sonra kendiliğinden yeniden kilitlenir. Tier-2 bir eylem (fiziksel dünyaya dokunan, her zaman onay isteyen eylem) çalışmadan önce onu her zamanki gibi onaylarsın; ardından koruma yüzünü bir kez daha kontrol eder (bir **step-up**, yani ek kimlik kontrolü).
+Sahip koruması (owner guard), tau'nun yalnızca senin için çalışmasını sağlar. Kurduktan sonra `tau tui`, `tau chat` ve tau uygulamasının sohbet pencereleri **kilitli** açılır. Mac'in yerleşik kamerası yüzünü gördüğünde ve başını ekranın istediği yöne çevirdiğinde kilit açılır. tau, sen yanından ayrıldığında, ekran kilitlendiğinde, Mac uyuduğunda ve sekiz saat sonra kendiliğinden yeniden kilitlenir. Tier-2 bir eylem (fiziksel dünyaya dokunan, her zaman onay isteyen eylem) çalışmadan önce onu her zamanki gibi onaylarsın; ardından koruma yüzünü bir kez daha kontrol eder (bir **step-up**, yani ek kimlik kontrolü).
 
 Koruma hub'ın (tau'nun çalıştığı, sana ait makine) içinde çalışır; ne bir modele ne de internete ihtiyaç duyar. Yüz şablonun Mac'ten asla çıkmaz ve veri klasörünün bir kopyası ya da bir yedek onu okuyamaz. Karar ve tüm tehdit modeli [ADR 0008](../adr/0008-owner-guard.md)'de. Her anahtar, route ve kayıt alanı [koruma referansında](../reference/guard.md) listelenir.
 
@@ -14,7 +14,7 @@ Koruma hub'ın (tau'nun çalıştığı, sana ait makine) içinde çalışır; n
 ## Sade sözlerle ne yapar { #what-it-does-in-plain-words }
 
 - **Bir kapı, gözcü değil.** Kamera yalnızca bir kontrol sürerken, birkaç saniyeliğine açıktır. Kontroller arasında koruma klavye ve fare boşta kalma süresine, ekran kilidine ve arada bir yapılan kısa bir yeniden kontrole dayanır.
-- **Yalnızca tau'nun kendi pencereleri için.** Koruma TUI'yi (Terminal'de, SSH üzerinden, tau Desktop'ta ya da bir web sekmesinde), `tau chat`'i ve ileride sesi kapsar. Bunlar **korunan kanallar**dır. Telegram ve başka tau'lardan gelen mesajlar başka yollarla tanınır (chat id'in, bir kişinin anahtarı); bu yüzden Mac kilitliyken de çalışmaya devam ederler. Bunlar **tanınan kanallar**dır.
+- **Yalnızca tau'nun kendi pencereleri için.** Koruma TUI'yi (Terminal'de, SSH üzerinden, tau uygulamasının bir sohbet penceresinde ya da bir web sekmesinde), `tau chat`'i ve ileride sesi kapsar. Bunlar **korunan kanallar**dır. Telegram ve başka tau'lardan gelen mesajlar başka yollarla tanınır (chat id'in, bir kişinin anahtarı); bu yüzden Mac kilitliyken de çalışmaya devam ederler. Bunlar **tanınan kanallar**dır.
 - **Yalnızca daraltır.** Koruma bir turu ya da bir eylemi reddedebilir. Asla onaylayamaz: tier-2 bir eylem hâlâ senin evetini ister, step-up bunun üstüne gelir.
 - **Kapalı başarısız olur.** Çalışan bir hub olmaması, bozuk bir ayar ya da okunamayan bir şablon hep "kilitli" demektir, asla "açık" değil.
 
@@ -27,13 +27,13 @@ Koruma hub'ın (tau'nun çalıştığı, sana ait makine) içinde çalışır; n
     uv tool install tau-core --with tau-tui --with tau-guard
     ```
 
-- Koruma servisini çalıştıran bir hub. [TauBar](taubar.md)'ın **Run the hub** seçeneği en iyisidir, çünkü o zaman kamera iznini TauBar tutar. Bir terminalde `tau hub run` de çalışır; o zaman izni o terminal uygulaması tutar. Bkz. [tau'yu servis olarak çalıştır](hub-service.md).
+- Koruma servisini çalıştıran bir hub. [tau uygulamasının](taubar.md) **Run the hub** seçeneği en iyisidir, çünkü o zaman kamera iznini tau uygulaması tutar. Bir terminalde `tau hub run` de çalışır; o zaman izni o terminal uygulaması tutar. Bkz. [tau'yu servis olarak çalıştır](hub-service.md).
 - Bir kerelik yaklaşık 40 MB indirme: yüz tanıma modeli (SFace). Sonrasında internet gerekmez.
 - Mac'in başında sen. `tau guard setup`, `enroll` ve `forget` SSH üzerinden çalışmayı reddeder.
 
 ## Kurulum { #set-it-up }
 
-1. **Hub'ı başlat.** TauBar'da **Run the hub**'ı işaretle ya da bir terminalde `uv run tau hub run` çalıştır.
+1. **Hub'ı başlat.** tau uygulamasında **Run the hub**'ı işaretle ya da bir terminalde `uv run tau hub run` çalıştır.
 2. **Ön koşulları denetle:**
 
     ```sh
@@ -57,8 +57,8 @@ Koruma hub'ın (tau'nun çalıştığı, sana ait makine) içinde çalışır; n
 
     Sonunda, sen Mac'in başında değilken uzaktan kullanımın (SSH, mosh) duracağı konusunda uyarır.
 
-4. **Hub'ı yeniden başlat** (TauBar: **Run the hub** işaretini kaldırıp yeniden koy; ya da `tau hub run`'ı durdurup yeniden başlat) ve açık her `tau chat`, `tau tui` ya da tau Desktop penceresini kapat. Koruma bir sonraki hub ile, kilitli olarak başlar.
-5. **Bir kez kilidi aç.** `uv run tau tui`'yi aç ve kilit ekranında Enter'a bas. Hub TauBar altında çalışıyorsa macOS şimdi **TauBar**'ın kamerayı kullanıp kullanamayacağını sorar. İzin ver. Nedeni bir sonraki bölümde.
+4. **Hub'ı yeniden başlat** (tau uygulaması: **Run the hub** işaretini kaldırıp yeniden koy; ya da `tau hub run`'ı durdurup yeniden başlat) ve açık her `tau chat`, `tau tui` ya da tau uygulamasının sohbet penceresini kapat. Koruma bir sonraki hub ile, kilitli olarak başlar.
+5. **Bir kez kilidi aç.** `uv run tau tui`'yi aç ve kilit ekranında Enter'a bas. Hub tau uygulaması altında çalışıyorsa macOS şimdi **tau**'nun kamerayı kullanıp kullanamayacağını sorar. İzin ver. Nedeni bir sonraki bölümde.
 6. **Denetle:**
 
     ```sh
@@ -76,7 +76,7 @@ Bir kontrol sürerken tau, menü çubuğu dışında Mac'in ekranını koyu bir 
 - **Bir ipucu**, bir şey ters gidince: `ÇOK KARANLIK · IŞIĞI ARTIR`, `YAKLAŞ`, `YALNIZCA BİR YÜZ`.
 - **Sonuç:** bir onay işaretiyle `KİLİT AÇILDI` (ya da `ONAYLANDI`, `KAYDEDİLDİ`), veya nedeniyle birlikte `DOĞRULANAMADI`. Pencere yaklaşık bir saniye sonra kendini kapatır.
 
-Hangi pencere isterse istesin her kontrolde görünür: TUI kilit ekranı, `tau chat`, tau Desktop, tier-2 bir eylemden önceki step-up, bir varlık yeniden kontrolü ve `tau guard setup`, `enroll` ile `verify`. Terminal satırları olduğu gibi kalır.
+Hangi pencere isterse istesin her kontrolde görünür: TUI kilit ekranı, `tau chat`, tau uygulamasının bir sohbet penceresi, tier-2 bir eylemden önceki step-up, bir varlık yeniden kontrolü ve `tau guard setup`, `enroll` ile `verify`. Terminal satırları olduğu gibi kalır.
 
 - **Esc** ya da `ESC · İPTAL`'e bir tıklama kontrolü iptal eder. Kilit ekranında olduğu gibi, bir baş çevirme istemi görünürken iptal etmek başarısız bir deneme sayılır.
 - **Touch ID ya da Mac parolası** (kayıt, Touch ID yedeği, Touch ID ile step-up): pencere ekranın üstünde küçük bir panele dönüşür; macOS istemi açıkta kalır.
@@ -85,25 +85,26 @@ Hangi pencere isterse istesin her kontrolde görünür: TUI kilit ekranı, `tau 
 - **Önce gör:** `uv run tau guard window --demo` içinde kamera olmadan senaryolu bir kontrol oynatır. `uv run tau guard window` bulunduğun yerden açılıp açılamayacağını söyler.
 - **Kapat:** `tau.toml`'da `[component.guard] window = false` ile (hub'ı yeniden başlat), ya da tek bir komut için `--no-window` ile (`setup`, `enroll`, `verify`; hub üzerinden giden bir kontrol hub'ın ayarını izler). SSH üzerinden ya da hub'ın grafik oturumu yokken (bir launchd işi, SSH üzerinden başlatılmış bir hub) kontroller pencere olmadan çalışır.
 
-## Kamera izni: TauBar ya da terminal { #the-camera-permission-taubar-or-the-terminal }
+## Kamera izni: tau uygulaması ya da terminal { #the-camera-permission-the-tau-app-or-the-terminal }
 
 macOS kamerayı bir programa değil, bir uygulamaya verir. Korumanın kontrolleri hub'ın başlattığı küçük bir worker'da çalışır; bu yüzden izin **hub'ı hangi uygulama başlattıysa** ona aittir:
 
 | Hub nasıl çalışıyor | Kamera iznini kim tutar |
 |---|---|
-| TauBar'ın **Run the hub** seçeneği (önerilen) | TauBar |
+| tau uygulamasının **Run the hub** seçeneği (önerilen) | tau uygulaması ("tau", `com.tau.app`) |
 | Terminal, iTerm ya da başka bir terminalde `uv run tau hub run` | o terminal uygulaması |
-| TauBar'ın `bun run tauri dev` ile çalıştırılması | onu çalıştıran terminal |
+| tau uygulamasının `bun run tauri dev` ile çalıştırılması | onu çalıştıran terminal |
 | `com.tau.hub` launchd agent'ı ya da SSH üzerinden veya ayrılmış bir tmux'ta başlatılan hub | kimse; kamera reddedilir |
 
-- `tau guard setup` sırasında henüz korumalı bir hub çalışmıyorsa kontrol yerel bir worker'da çalışır; bu yüzden kamerayı **terminalin** de ister. Bu izin TauBar'ınkinden ayrıdır; ilk kilit açmanın yeniden sormasının nedeni budur.
-- İzin System Settings → Privacy & Security → **Camera** altında durur. Hub kameranın reddedildiğini bildirdiğinde TauBar menüsünde **Grant camera access…** görünür.
-- TauBar'ı sabit bir imza kimliğiyle derle. Ad hoc imzalı bir derleme her yeniden derlemeden sonra macOS için yeni bir uygulamadır ve izin her seferinde kaybolur. [TauBar README](https://github.com/fport/tau/blob/main/apps/taubar/README.md#a-stable-signing-identity-for-the-camera-grant) adım adım anlatır.
-- tau Desktop kameraya hiç ihtiyaç duymaz. `tau tui`'yi çalıştırır; kontrol yine hub'da yapılır.
+- `tau guard setup` sırasında henüz korumalı bir hub çalışmıyorsa kontrol yerel bir worker'da çalışır; bu yüzden kurulumu çalıştıran uygulama da kamerayı ister: **terminalin** ya da kurulumu tau uygulamasının bir sohbet penceresinde çalıştırıyorsan **tau**. Bir terminalin izni tau uygulamasınınkinden ayrıdır; o durumda ilk kilit açmanın yeniden sormasının nedeni budur.
+- İzin System Settings → Privacy & Security → **Camera** altında durur. Hub kameranın reddedildiğini bildirdiğinde tau uygulamasının menüsünde **Grant camera access…** görünür.
+- İzin tau uygulamasının güncellemelerinden sonra da kalır: her sürüm aynı sertifikayla imzalanır ve macOS izni o sertifikanın tanımladığı uygulama için saklar. Checkout'tan bir derleme ad hoc imzalanır ve her yeniden derlemeden sonra macOS için yeni bir uygulamadır, bu yüzden izin her seferinde kaybolur; [uygulamanın README'si](https://github.com/fport/tau/blob/main/apps/tau/README.md#why-a-stable-identity-keeps-the-camera-permission) imzalamayı anlatır.
+- TauBar'dan geçerken macOS bir kez daha sorar: TauBar'ın izni TauBar'a (`com.tau.taubar`) aitti ve tau uygulaması yeni bir uygulamadır.
+- tau uygulamasının pencerelerindeki sayfalar kamerayı asla alamaz: her webview izin isteği reddedilir ve kontrol hub'da yapılır.
 
 ## Günlük kullanım { #daily-use }
 
-### `tau tui` ve tau Desktop'ta
+### `tau tui`'de ve tau uygulamasının sohbet pencerelerinde
 
 TUI opak bir kilit ekranıyla açılır; oturumlarından hiçbir şey arkadan görünmez.
 
@@ -111,7 +112,7 @@ TUI opak bir kilit ekranıyla açılır; oturumlarından hiçbir şey arkadan g�
 - **Esc** süren bir kontrolü iptal eder, **ctrl+q** çıkar. tau kilitliyken yalnızca `/help`, `/lang`, `/guard` ve `/quit` çalışır. Yazdığın diğer her şey gönderilmez ve alanda kalır.
 - Başarılı bir kontrolden sonra `Unlocked (face). Failed attempts since the last unlock: 0.` görürsün. 0'dan büyük bir sayı, sen yokken birinin ya da bir şeyin denediği anlamına gelir. `tau guard log` ne zaman olduğunu gösterir.
 
-tau Desktop penceresinde aynı `tau tui`'yi çalıştırır, bu yüzden aynı kilit ekranını gösterir. Bir web sekmesi (issue 074) de gösterecek.
+tau uygulamasının bir sohbet penceresi aynı `tau tui`'yi çalıştırır, bu yüzden aynı kilit ekranını gösterir. Bir web sekmesi (issue 074) de gösterecek.
 
 ### `tau chat`'te
 
@@ -125,7 +126,7 @@ tau Desktop penceresinde aynı `tau tui`'yi çalıştırır, bu yüzden aynı ki
 | Ekran kilidi | Mac'in ekranı kilitlenir |
 | Uyku | Mac uyudu |
 | Azami süre | kilit açıldıktan `max_unlock_hours` (8) sonra, ne yaparsan yap |
-| Komut | TUI'de ya da `tau chat`'te `/guard lock`, `tau guard lock`, TauBar'ın **Lock now** seçeneği |
+| Komut | TUI'de ya da `tau chat`'te `/guard lock`, `tau guard lock`, tau uygulamasının **Lock now** seçeneği |
 | Telegram | Telegram sohbetinden `/guard lock` |
 | Başarısız step-up | bir step-up başka bir yüz, bir sahtecilik ya da iki yüz gördü |
 | Hub başlangıcı | her hub başlangıcı kilitli başlar; açık bir kilit asla geri yüklenmez |
@@ -154,7 +155,7 @@ tau fiziksel ya da dışa dönük bir şey yapmak istediğinde onu her zamanki g
 | terminal | `tau guard status` | hub'ın bildirdiği durum |
 | terminal | `tau guard lock` | hemen kilitle |
 | terminal | `tau guard log --since 2h` | denetim kaydı: kontroller, kilitler, bekleme süreleri |
-| TauBar | **Lock now** | hemen kilitle; TauBar kilidi asla açmaz |
+| tau uygulaması | **Lock now** | hemen kilitle; uygulama kilidi asla açmaz |
 
 ## Telegram'dan kilitleme { #locking-from-telegram }
 
@@ -196,16 +197,16 @@ Bu yüzden koruma her zaman yalnızca kendi onayına **ek olarak** istenir, asla
 
 ## Kilitli mi kaldın? { #locked-out }
 
-**Kamera reddedildi ya da hiç sorulmadı.** System Settings'in Camera bölmesini aç ve hub'ı çalıştıran uygulamayı (TauBar ya da terminalin) etkinleştir:
+**Kamera reddedildi ya da hiç sorulmadı.** System Settings'in Camera bölmesini aç ve hub'ı çalıştıran uygulamayı (tau ya da terminalin) etkinleştir:
 
 ```sh
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera"
 ```
 
-TauBar'ın **Grant camera access…** seçeneği aynı bölmeyi açar. macOS'un en baştan yeniden sormasını istersen izni sıfırla ve hub'ı TauBar'dan yeniden başlat (**Run the hub** işaretini kaldırıp yeniden koy):
+tau uygulamasının **Grant camera access…** seçeneği aynı bölmeyi açar. macOS'un en baştan yeniden sormasını istersen izni sıfırla ve hub'ı tau uygulamasından yeniden başlat (**Run the hub** işaretini kaldırıp yeniden koy):
 
 ```sh
-tccutil reset Camera com.tau.taubar     # TauBar's bundle id
+tccutil reset Camera com.tau.app       # the tau app's bundle id
 tccutil reset Camera com.apple.Terminal # if Terminal runs the hub instead
 ```
 
@@ -216,7 +217,7 @@ uv run tau guard doctor
 uv run tau doctor          # guard satırı hub'ın korumayı çalıştırıp çalıştırmadığını söyler
 ```
 
-**"The guard cannot be reached."** Hiçbir hub çalışmıyor ya da koruma servisi olmadan çalışıyor. Başlat (TauBar → Run the hub ya da `tau hub run`) ve `tau.toml`'daki `[components.hub] services` listesinin boş olduğunu ya da `guard` içerdiğini denetle.
+**"The guard cannot be reached."** Hiçbir hub çalışmıyor ya da koruma servisi olmadan çalışıyor. Başlat (tau uygulaması → Run the hub ya da `tau hub run`) ve `tau.toml`'daki `[components.hub] services` listesinin boş olduğunu ya da `guard` içerdiğini denetle.
 
 **Seni tanımıyor.** Daha iyi ışık dene, kameraya dön, şapkanı çıkar. `tau guard verify --explain` her istemi vurgulu bir satır olarak (`>>> TURN YOUR HEAD LEFT <<<`) gösterir ve her üç kareden birinin sayılarını (yüzler, dedektör puanı, göz mesafesi, parlaklık, netlik, derece cinsinden baş yaw'ı ve dönüşün, benzerlik) hiçbir kareyi kaydetmeden yazar; `--explain=all` her kareyi yazar. Baş çevirmeler başarısız olursa geçilemeyen kuralı söyler, örneğin dönüş yeterince büyük değilse `no_turn`. Sonra başarısız olan ışıkta örnek ekle: `tau guard enroll --add`. Yüz modeli değiştiyse `tau guard enroll` ile yeniden kaydol.
 

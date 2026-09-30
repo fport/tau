@@ -14,7 +14,7 @@ Phone (Termius) ──▶ Tailscale ──▶ OpenSSH on the hub ──▶ mosh 
 | **OpenSSH** (macOS Remote Login) | Yalnızca anahtarla, yalnızca senin kullanıcın olarak, yalnızca tailnet'ten giriş. |
 | **mosh** | Bağlantı ağ değişikliklerinden ve kilitli telefondan sağ çıkar. |
 | **tmux** | Bağlantı koptuğunda oturum ve içinde çalışan her şey çalışmaya devam eder. |
-| **keep-awake agent'ı** | Mac fişe takılıyken uyumaz (`caffeinate -s`). [TauBar](taubar.md) kurulduktan sonra `setup.sh` onu kaldırır ve işi TauBar yapar. |
+| **keep-awake agent'ı** | Mac fişe takılıyken uyumaz (`caffeinate -s`). [tau uygulaması](taubar.md) kurulduktan sonra `setup.sh` onu kaldırır ve işi uygulama yapar. |
 
 Betikler deponun [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/remote) dizininde; macOS ve Linux için (Raspberry Pi hub dahil). `tau setup` seni bunlardan adım adım geçirir; ondan sonraki bölümler aynısını elle yapar.
 
@@ -207,7 +207,7 @@ Başka hiçbir şey onay veremez. Burada güvenilen kanal tmux oturumudur: hub'd
 
 **`mosh-server not found`.** `./infra/remote/setup.sh` betiğini yeniden çalıştır. Etkileşimsiz SSH oturumları yalnızca `~/.zshenv` dosyasını okur; betik `PATH` girdisini de oraya koyar.
 
-**Hub'a ulaşamıyorum.** Sırayla kontrol et: telefonda Tailscale açık mı, hub uykuda mı, `tau remote status` (ya da `doctor.sh`) ne diyor. Bir MacBook kapağı kapalıyken uyur; fişe tak ve kapağı açık bırak, harici bir ekranla kapalı kapak (clamshell) modunu kullan ya da TauBar'ın "Keep awake with the lid closed" modunu seç (bir kerelik bir sudoers kuralı gerektirir, bkz. [TauBar](taubar.md#set-up-the-lid-closed-mode)).
+**Hub'a ulaşamıyorum.** Sırayla kontrol et: telefonda Tailscale açık mı, hub uykuda mı, `tau remote status` (ya da `doctor.sh`) ne diyor. Bir MacBook kapağı kapalıyken uyur; fişe tak ve kapağı açık bırak, harici bir ekranla kapalı kapak (clamshell) modunu kullan ya da tau uygulamasının "Keep awake with the lid closed" modunu seç (bir kerelik bir sudoers kuralı gerektirir, bkz. [tau uygulaması](taubar.md#set-up-the-lid-closed-mode)).
 
 **TUI siyah beyaz.** mosh üzerinden Termius 24 bit renk kaçış dizilerini düşürür; 256 renk ise geçer. Bu yüzden `infra/remote/tmux/tau.tmux.conf`, `xterm-256color` istemcileri için truecolor'ı (`RGB`) zorlamaz; böylece tmux, TUI'nin renklerini telefon için 256 renklik paletle eşler. Kendi `~/.tmux.conf` dosyanda böyle bir ezme ayarladıysan onu kaldır, `Ctrl-b r` ile yeniden yükle ve Termius'ta yeniden bağlan (tmux bir istemcinin renklerine o bağlandığında karar verir). tmux dışında `TEXTUAL_COLOR_SYSTEM=256 uv run tau tui` tek bir çalıştırma için aynısını yapar.
 
@@ -222,7 +222,7 @@ Başka hiçbir şey onay veremez. Burada güvenilen kanal tmux oturumudur: hub'd
 ## Bir iOS Kestirmesi'nden tek seferlik sorular
 
 !!! info "Planlanan (yol haritası issue 073)"
-    `tau ask "…"`, betikler ve iOS Kestirmeleri (Shortcuts) için tek seferlik bir komut olacak: Tailscale üzerinden bir SSH Kestirme eylemi `tau ask "what is on my desk?"` çalıştırır ve yanıtı gösterir. Aynı persona ve oturum deposuyla yanıt verir ve **tier-2 bir çağrıyı asla onaylamaz**: böyle bir çağrı, güvenilen bir kanala (TUI, TauBar, web arayüzü ya da Telegram) yönlendirmeyle reddedilir. Komut henüz yok; tarif şöyle olacak:
+    `tau ask "…"`, betikler ve iOS Kestirmeleri (Shortcuts) için tek seferlik bir komut olacak: Tailscale üzerinden bir SSH Kestirme eylemi `tau ask "what is on my desk?"` çalıştırır ve yanıtı gösterir. Aynı persona ve oturum deposuyla yanıt verir ve **tier-2 bir çağrıyı asla onaylamaz**: böyle bir çağrı, güvenilen bir kanala (TUI, tau uygulaması, web arayüzü ya da Telegram) yönlendirmeyle reddedilir. Komut henüz yok; tarif şöyle olacak:
 
     1. Kestirmeler → yeni Kestirme → **Dictate Text**.
     2. **Run Script Over SSH** ekle. Host: hub'ın MagicDNS adı (`my-mac.tailXXXXXX.ts.net`); kullanıcı: seninki; kimlik doğrulama: Kestirme'nin SSH anahtarı, Termius anahtarı gibi `authorized_keys` dosyasına eklenmiş. Betik: `tau ask "<Dictated Text>"`.

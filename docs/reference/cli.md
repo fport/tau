@@ -236,7 +236,7 @@ Options:
 
 `--profile` here is the same setting as the global one; either place works. A broken config or an unknown session id end the command with a plain English message and exit code 2 before the interface opens. With no `tau.toml` at all the setup screen opens first and creates one (the same code as `tau init`; Esc there is exit code 2 too); with a config whose role has no credentials the interface opens on its settings screen and the chat starts once a key is saved ([First run](../getting-started/first-run.md#in-the-interface-tau-tui)). While it runs, logging goes only to `<TAU_DATA_DIR>/logs/tau.log`.
 
-With the [owner guard](../guides/guard.md) active, the interface opens on an opaque lock screen before any session loads, and the setup and settings screens stay closed until a face check passes (Enter starts one, Esc cancels it, ctrl+q quits). tau Desktop runs this same command in its windows.
+With the [owner guard](../guides/guard.md) active, the interface opens on an opaque lock screen before any session loads, and the setup and settings screens stay closed until a face check passes (Enter starts one, Esc cancels it, ctrl+q quits). The tau app's chat windows run this same command.
 
 ## `tau guard`
 
@@ -277,7 +277,7 @@ Added by `tau-guard`, on macOS only (other platforms refuse the face commands). 
 
 During a check the worker shows the [guard window](guard.md#the-guard-window) (`[component.guard] window`, on by default); `--no-window` keeps it off for a check the command runs itself, while a check through the hub follows the hub's setting.
 
-After `setup` or `forget`, restart the hub and any open `tau chat`, `tau tui` or tau Desktop window.
+After `setup` or `forget`, restart the hub and any open `tau chat`, `tau tui` or chat window of the tau app.
 
 ## `tau hub`
 

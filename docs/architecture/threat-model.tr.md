@@ -31,11 +31,11 @@ Bu, [ADR 0006](../adr/0006-private-first-topology.md)'nın, [ADR 0008](../adr/00
 | 2 | Aracısız Telegram | Hub `getUpdates` çağrısını kendisi yoklar; webhook yok, Worker yok; hub üzerinde bir `chat_id` izin listesi. |
 | 3 | Yaşam verisi hub'da yaşar | Oturumlar, ayarlar, hafıza, bilgi tabanı ve rutinler `TAU_DATA_DIR` altında; vektör arama yerel; Cloudflare yalnızca özel bir R2 bucket'ında `age` ile şifrelenmiş yedekleri tutar. |
 | 4 | Ayarlar yerel veridir | `TAU_DATA_DIR` altında, anında yeniden yüklenen bir dosya; asla üçüncü bir tarafa eşitlenmez. |
-| 5 | Onaylar yalnızca güvenilen kanallardan | TUI, TauBar, Access arkasındaki ve cihaz başına bir anahtarla korunan web arayüzü ve doğrudan yoklanan Telegram. Hiçbir aracı yok, dolayısıyla hiçbiri onay veremez. |
+| 5 | Onaylar yalnızca güvenilen kanallardan | TUI, tau uygulaması, Access arkasındaki ve cihaz başına bir anahtarla korunan web arayüzü ve doğrudan yoklanan Telegram. Hiçbir aracı yok, dolayısıyla hiçbiri onay veremez. |
 | 6 | Araçlar girdinin düşmanca olduğunu varsayar | Kabuk, dosya ve yazma araçları tier 2 ya da sandbox içinde; içerik çeken araçlar izin listesine tabi; tau'nun yazdığı araçlar `tools/_pending/` içinde bekler; mesh ve sshd yalnızca tailnet'te kalır. |
 | 7 | Ses ayrı bir paket | Mikrofon, STT ve TTS hub'da; uyandırma ifadesinden önce hiçbir şey dışarı çıkmaz; telefondan ses, web arayüzünün mikrofonu üzerinden hub'a gider. |
 | 8 | Herkes kurabilir | PyPI paketleri, `tau init`, `tau doctor`, bu doküman sitesi; kurmak ya da okumak için kişisel hiçbir şey gerekmez. |
-| 9 | Mac'in başındaki sahip | Korumalı bir hub'da TUI, `tau chat` ve tau Desktop kilitli açılır, bir yüz kontrolü ve baş çevirme sınamasıyla açılır; boşta kalma, ekran kilidi, uyku ve azami süre refleks kilitleri; her tier-2 onayından sonra bir step-up; Telegram ve ağ turları bunun yerine chat id ve kişi anahtarlarıyla tanınır; şablon Mac'ten asla çıkmaz. |
+| 9 | Mac'in başındaki sahip | Korumalı bir hub'da TUI, `tau chat` ve tau uygulamasının sohbet pencereleri kilitli açılır, bir yüz kontrolü ve baş çevirme sınamasıyla açılır; boşta kalma, ekran kilidi, uyku ve azami süre refleks kilitleri; her tier-2 onayından sonra bir step-up; Telegram ve ağ turları bunun yerine chat id ve kişi anahtarlarıyla tanınır; şablon Mac'ten asla çıkmaz. |
 
 ## X ele geçirilirse saldırgan ne elde eder
 

@@ -20,12 +20,12 @@ Gerekçe [ADR 0006](adr/0006-private-first-topology.md)'da yazılı; sade anlat�
 - **`tau chat`** ve **`tau tui`**: satır tabanlı bir REPL ve eksiksiz bir Textual arayüzü; akan yanıtlar, araç kartları, oturum geçmişi ve yerinde onaylarla.
 - **Tier'lar** (izin seviyeleri): her araç okuma mı yaptığını, dijital durumu mu değiştirdiğini, yoksa dünyada mı eylemde bulunduğunu bildirir. Sonuncusu her zaman önce sana sorar.
 - **Oturumlar**: her konuşma diske kaydedilir; `/sessions` ile listelenir, `/resume` ile sürdürülür, `/compact` ile özetlenir.
-- **`tau hub`**: TauBar, launchd ya da systemd altında uzun ömürlü bir servis olarak tau; yeniden başlatmada bir çökme raporuyla.
+- **`tau hub`**: tau uygulaması, launchd ya da systemd altında uzun ömürlü bir servis olarak tau; yeniden başlatmada bir çökme raporuyla.
 - **Telegram**: hub, botunu kendisi, dışa doğru bağlanarak yoklar (poll); yalnızca senin chat id'lerine yanıt verir ve onayları satır içi butonlarla ister.
 - **tau ağı**: tau'n bir adres alır, yani kendi Cloudflare hesabında küçük bir Worker (Cloudflare'in sunucusuz fonksiyonu); başka tau'larla uçtan uca imzalı ve mühürlü mesajlarla konuşur. İstersen herkese açık tau haritasında, [tau.getporti.com](https://tau.getporti.com/universe) adresindeki **evrende** (universe) görünür; evren kimin listelendiğini ve kimin kiminle konuştuğunu gösterir, ne konuştuklarını asla göstermez.
 - **Bileşenler**: araçlar, sağlayıcılar, oturum arka uçları, bağlam kaynakları ve hub servisleri entry point'ler (Python paketlerinin eklenti kayıt noktaları) üzerinden takılır; `tau components` hepsini listeler.
 - **Telefondan erişim**: Tailscale, sıkılaştırılmış SSH, mosh ve tmux; böylece telefonun kilitlense de TUI ayakta kalır.
-- **Sahip koruması** (macOS): TUI, `tau chat` ve TUI'yi kendi pencerelerinde çalıştıran Mac uygulaması **tau Desktop** kilitli açılır ve Mac'in başında bir yüz kontrolüyle açılır; tier-2 bir eylem, onayından sonra yeni bir kontrol ister. Bkz. [Sahip koruması](guides/guard.md).
+- **Sahip koruması** (macOS): TUI, `tau chat` ve TUI'yi kendi pencerelerinde çalıştıran Mac uygulaması **tau**'nun sohbet pencereleri kilitli açılır ve Mac'in başında bir yüz kontrolüyle açılır; tier-2 bir eylem, onayından sonra yeni bir kontrol ister. Bkz. [Sahip koruması](guides/guard.md).
 
 !!! info "Planlanan"
     Cloudflare Access arkasındaki web arayüzü, ses, yerel hafıza ve şifreli R2 yedekleme işi yol haritasında. Her sayfa planlanan şeyleri bunun gibi bir kutuyla işaretler ve ilgili yol haritası issue'sunu belirtir; böylece bir planı asla hazır bir özellik sanmazsın.

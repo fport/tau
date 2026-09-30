@@ -79,7 +79,7 @@ Bir istemci her kontrolde kendi `step_up` ve `unlock_liveness` değerlerini gön
 
 `--no-window`, komutun kendi yerel worker'ında çalıştırdığı bir kontrol için koruma penceresini kapalı tutar; hub üzerinden giden bir kontrol hub'ın `[component.guard] window` ayarını izler ve komut bunu söyler.
 
-`setup` ya da `forget` sonrasında hub'ı ve açık her `tau chat`, `tau tui` ya da tau Desktop penceresini yeniden başlat. `--help` metinleri [CLI referansında](cli.md#tau-guard).
+`setup` ya da `forget` sonrasında hub'ı ve açık her `tau chat`, `tau tui` ya da tau uygulamasının sohbet penceresini yeniden başlat. `--help` metinleri [CLI referansında](cli.md#tau-guard).
 
 ## Koruma penceresi { #the-guard-window }
 
@@ -208,7 +208,7 @@ Dikey eksen etrafında döndürülen düz bir fotoğraf 50°'ye kadar döndürü
 
 | | Korunan: kabul ve step-up | Başka yolla tanınan: `guard=None` |
 |---|---|---|
-| **Güvenilen** (tier 2 onaylayabilir) | TUI (yerel, SSH ya da mosh, tau Desktop, bir web sekmesi), `tau chat` | Telegram (chat-id izin listesi, doğrudan yoklanır) |
+| **Güvenilen** (tier 2 onaylayabilir) | TUI (yerel, SSH ya da mosh, tau uygulamasının sohbet pencereleri, bir web sekmesi), `tau chat` | Telegram (chat-id izin listesi, doğrudan yoklanır) |
 | **Güvenilmeyen** (asla onaylamaz) | `tau ask`, ses (ileride) | ağ turları (`net`: araç yok, onaylar reddedilir) |
 
 Varsayılan `build_agent(guard=DISCOVER)`'dır: hiçbir şey geçmeyen bir çağıran, bir koruma etkinse korunur; bu yüzden bilinmeyen ve gelecekteki kanallar (MCP sunucusu, devreden turun koruması altında `ask_sub` ile çalışan sub-tau'lar) korunan sütuna düşer. Yalnızca `TelegramService` ve tau-net'in ağ turları `guard=None` geçer; `packages/*/src` içindeki başka her `guard=None` bir repo kuralı testini başarısız kılar. Hiçbir bayrak, değişken ya da yapılandırma anahtarı bir kanal seçmez.

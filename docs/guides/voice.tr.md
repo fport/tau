@@ -39,7 +39,7 @@ Issue 031 ile hub, bir uyandırma ifadesini sürekli dinler ve onu duyana kadar 
 
 - normal masa gürültüsünde saatte birden az yanlış tetikleme, ölçülmüş olarak;
 - uyandırma ifadesinden önce hiç ağ trafiği yok, doğrulanmış olarak;
-- görünür bir mikrofon durumu ve bir sessize alma düğmesi (Mac'te TauBar).
+- görünür bir mikrofon durumu ve bir sessize alma düğmesi (Mac'te tau uygulaması).
 
 Uyandırma ifadesi üç ya da dört heceli olmalı; onu seçmek ve örnek kaydetmek [issue 030](https://github.com/fport/tau/blob/main/roadmap/L4-interface/030-pick-wake-phrase.md), yani bir insanın yapması gereken bir iş.
 
@@ -56,7 +56,7 @@ Uyandırma ifadesi üç ya da dört heceli olmalı; onu seçmek ve örnek kaydet
 ## Mikrofon izni
 
 !!! warning "macOS'ta mikrofon izni"
-    macOS mikrofon erişimini uygulama kimliği başına verir. Terminalden başlatılan bir Python süreci terminalin iznini devralır (ya da onu ister), bir launchd agent'ının hiç izni yoktur ve bir Tauri uygulamasının kendi izni vardır. **Mikrofon izni TauBar'ındır**: hub'ı o çalıştırır ve issue 115'ten beri mikrofon kullanım açıklamasını ve ses girişi yetkisini (entitlement) taşır; böylece hub içindeki ses servisi TauBar adına ister ve izin, **System Settings → Privacy & Security → Microphone** altında görebileceğin imzalı bir uygulamaya ait olur. Hiçbir TauBar ya da tau Desktop penceresi mikrofonu kendisi kullanamaz: her webview izin isteği reddedilir. Bir terminalden başlatılan hub (`tau hub run`) ise o terminal uygulaması adına ister. İzni orada ver, istemediğinde de orada geri al.
+    macOS mikrofon erişimini uygulama kimliği başına verir. Terminalden başlatılan bir Python süreci terminalin iznini devralır (ya da onu ister), bir launchd agent'ının hiç izni yoktur ve bir Tauri uygulamasının kendi izni vardır. **Mikrofon izni tau uygulamasınındır**: hub'ı o çalıştırır ve issue 115'ten beri mikrofon kullanım açıklamasını ve ses girişi yetkisini (entitlement) taşır; böylece hub içindeki ses servisi uygulama adına ister ve izin, **System Settings → Privacy & Security → Microphone** altında görebileceğin imzalı bir uygulamaya ait olur. tau uygulamasının hiçbir penceresi mikrofonu kendisi kullanamaz: her webview izin isteği reddedilir. Bir terminalden başlatılan hub (`tau hub run`) ise o terminal uygulaması adına ister. İzni orada ver, istemediğinde de orada geri al.
 
     Raspberry Pi'de bir izin sistemi yoktur; mikrofon bir aygıt dosyasıdır. Bu senin için önemliyse donanımsal sessize alma düğmesi olan bir USB mikrofon seç.
 

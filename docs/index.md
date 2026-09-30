@@ -18,12 +18,12 @@ The reasoning is written down in [ADR 0006](adr/0006-private-first-topology.md);
 - **`tau chat`** and **`tau tui`**: a line-based REPL and a full Textual interface, with streamed replies, tool cards, session history and in-place approvals.
 - **Tiers**: every tool declares whether it reads, writes digital state or acts on the world. The last kind always asks you first.
 - **Sessions**: every conversation is recorded on disk, listed with `/sessions`, continued with `/resume`, summarized with `/compact`.
-- **`tau hub`**: tau as a long-lived service under TauBar, launchd or systemd, with a crash report on restart.
+- **`tau hub`**: tau as a long-lived service under the tau app, launchd or systemd, with a crash report on restart.
 - **Telegram**: the hub polls your bot itself, outbound, answers only your chat ids and asks for approvals with inline buttons.
 - **The tau network**: your tau gets an address, a small Cloudflare Worker in your own account, and talks to other taus in messages signed and sealed end to end. If you opt in, it appears on the public map of taus, the **universe** at [tau.getporti.com](https://tau.getporti.com/universe), which shows who is listed and who talks to whom, never what they say.
 - **Components**: tools, providers, session backends, context sources and hub services plug in through entry points; `tau components` lists them.
 - **Phone access**: Tailscale, hardened SSH, mosh and tmux, so the TUI survives a locked phone.
-- **Owner guard** (macOS): the TUI, `tau chat` and **tau Desktop**, the Mac app that runs the TUI in its own windows, open locked and unlock with a face check at the Mac; a tier-2 action needs a fresh check after your approval. See [Owner guard](guides/guard.md).
+- **Owner guard** (macOS): the TUI, `tau chat` and the chat windows of the **tau app**, the Mac app that runs the TUI in its own windows, open locked and unlock with a face check at the Mac; a tier-2 action needs a fresh check after your approval. See [Owner guard](guides/guard.md).
 
 !!! info "Planned"
     The web UI behind Cloudflare Access, voice, local memory and the encrypted R2 backup job are on the roadmap. Every page marks what is planned with a box like this one and names the roadmap issue, so you never mistake a plan for a feature.

@@ -105,7 +105,7 @@ tau hub run          # in the foreground; Ctrl-C or `tau hub stop` ends it
 tau hub status       # from another terminal
 ```
 
-On a Mac, **TauBar**, tau's menu bar app, runs the hub for you, restarts it after a crash and keeps the Mac awake. It is built from source and still in progress ([TauBar](https://docs.tau.getporti.com/guides/taubar/)). The alternatives are a launchd agent (`tau hub install`) and, on Linux or a Raspberry Pi, a systemd unit (`tau hub systemd-unit`).
+On a Mac, the **tau app** runs the hub for you from the menu bar, restarts it after a crash, keeps the Mac awake and opens chat windows with `tau tui`. Each release attaches it as `tau.dmg`, or it builds from source ([the tau app](https://docs.tau.getporti.com/guides/taubar/)). The alternatives are a launchd agent (`tau hub install`) and, on Linux or a Raspberry Pi, a systemd unit (`tau hub systemd-unit`).
 
 **5. Telegram.** Make a bot with [@BotFather](https://t.me/botfather), add two lines to `~/.tau/.env` and restart the hub:
 
@@ -251,8 +251,7 @@ Also true: your model provider sees what tau sends it to think, and if you join 
 | [`cloud/universe`](cloud/universe/README.md) | The public site at tau.getporti.com, the universe, and the visitor chats of public sub-taus |
 | [`cloud/host`](cloud/host/README.md) | tau-host: hosted taus in the browser, with GitHub sign-in; the same Worker is your own host |
 | [`cloud/shared`](cloud/shared/README.md) | TypeScript shared by the Workers: the protocol's TypeScript half and the character generator |
-| [`apps/taubar`](apps/taubar/README.md) | TauBar, the macOS menu bar app (Tauri) |
-| [`apps/tau-desktop`](apps/tau-desktop/README.md) | tau Desktop: `tau tui` in its own Mac windows (Tauri, xterm.js) |
+| [`apps/tau`](apps/tau/README.md) | the tau app for macOS: the menu bar, the hub's supervisor and chat windows running `tau tui` (Tauri, xterm.js) |
 
 Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name>`) and plugs in through entry points; `tau components` lists what is installed. The docs site lives in `docs/`, the issues in `roadmap/`, phone access over Tailscale in [`infra/remote`](infra/remote/README.md).
 
@@ -268,8 +267,8 @@ Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name
 | The tau network: spine, card, contacts, sealed envelopes, network turns, the spine kit | Works | [L9](roadmap/L9-network/README.md) |
 | The public site and the universe | Works | [L9](roadmap/L9-network/README.md) |
 | Sub-taus from the command line and through `ask_sub` | Works | [L9](roadmap/L9-network/README.md) |
-| TauBar: runs the hub, sleep modes | In progress, built from source | [L4](roadmap/L4-interface/README.md) |
-| Owner guard (face check at the Mac, step-up after approvals) and tau Desktop | Built; live test on a Mac pending; Touch ID and remote unlock planned | [L10](roadmap/L10-guard/README.md) |
+| The tau app: menu bar, runs the hub, sleep modes, chat windows | Built; a signed `tau.dmg` with each release from the next tag | [L4](roadmap/L4-interface/README.md) |
+| Owner guard (face check at the Mac, step-up after approvals) | Built; live test on a Mac pending; Touch ID and remote unlock planned | [L10](roadmap/L10-guard/README.md) |
 | Cloud mode: the hub in a Cloudflare Container | Built; first live run pending | [L9](roadmap/L9-network/README.md) |
 | PyPI releases | `tau-core` and `tau-tui` 0.4.0, `tau-net`, `tau-cloud` and `tau-sub` 0.1.0 published; `tau-guard` next | [L8](roadmap/L8-distribution/README.md) |
 | Public sub-taus, their web pages with visitor chats, handles | Works | [L9](roadmap/L9-network/README.md) |

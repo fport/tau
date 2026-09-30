@@ -12,7 +12,7 @@ Phone (Termius) ──▶ Tailscale ──▶ OpenSSH on the hub ──▶ mosh 
 | **OpenSSH** (macOS Remote Login) | Login by key only, only as your user, only from the tailnet. |
 | **mosh** | The connection survives network changes and a locked phone. |
 | **tmux** | The session, and whatever runs in it, keeps running when the connection drops. |
-| **keep-awake agent** | The Mac does not sleep while on AC power (`caffeinate -s`). Once [TauBar](taubar.md) is installed, `setup.sh` removes it and TauBar does the job. |
+| **keep-awake agent** | The Mac does not sleep while on AC power (`caffeinate -s`). Once the [tau app](taubar.md) is installed, `setup.sh` removes it and the app does the job. |
 
 The scripts live in [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/remote) of the repository, for macOS and Linux (a Raspberry Pi hub included). `tau setup` walks you through them; the sections after it do the same by hand.
 
@@ -205,7 +205,7 @@ Nothing else can approve. The tmux session is the trusted channel here: it runs 
 
 **`mosh-server not found`.** Run `./infra/remote/setup.sh` again. Non-interactive SSH sessions read only `~/.zshenv`, which is where the script puts the `PATH` entry.
 
-**I cannot reach the hub.** Check in order: is Tailscale on on the phone, is the hub asleep, what does `tau remote status` (or `doctor.sh`) say. A MacBook sleeps with the lid closed; plug it in and leave the lid open, use clamshell mode with an external display, or pick TauBar's "Keep awake with the lid closed" mode (it needs a one-time sudoers rule, see [TauBar](taubar.md#set-up-the-lid-closed-mode)).
+**I cannot reach the hub.** Check in order: is Tailscale on on the phone, is the hub asleep, what does `tau remote status` (or `doctor.sh`) say. A MacBook sleeps with the lid closed; plug it in and leave the lid open, use clamshell mode with an external display, or pick the tau app's "Keep awake with the lid closed" mode (it needs a one-time sudoers rule, see [the tau app](taubar.md#set-up-the-lid-closed-mode)).
 
 **The TUI is black and white.** Termius over mosh drops 24-bit colour escapes; 256 colours come through. `infra/remote/tmux/tau.tmux.conf` therefore does not force truecolor (`RGB`) for `xterm-256color` clients, so tmux maps the TUI's colours to the 256-colour palette for the phone. If you set such an override in your own `~/.tmux.conf`, remove it, reload with `Ctrl-b r` and reconnect in Termius (tmux decides a client's colours when it attaches). Outside tmux, `TEXTUAL_COLOR_SYSTEM=256 uv run tau tui` does the same for one run.
 
@@ -220,7 +220,7 @@ Nothing else can approve. The tmux session is the trusted channel here: it runs 
 ## One-shot questions from an iOS Shortcut
 
 !!! info "Planned (roadmap issue 073)"
-    `tau ask "…"` will be a one-shot command for scripts and iOS Shortcuts: an SSH Shortcut action over Tailscale runs `tau ask "what is on my desk?"` and shows the reply. It answers with the same persona and session store, and it **never approves a tier-2 call**: such a call is refused with a pointer to a trusted channel (the TUI, TauBar, the web UI or Telegram). The command does not exist yet; the recipe will be:
+    `tau ask "…"` will be a one-shot command for scripts and iOS Shortcuts: an SSH Shortcut action over Tailscale runs `tau ask "what is on my desk?"` and shows the reply. It answers with the same persona and session store, and it **never approves a tier-2 call**: such a call is refused with a pointer to a trusted channel (the TUI, the tau app, the web UI or Telegram). The command does not exist yet; the recipe will be:
 
     1. Shortcuts → new Shortcut → **Dictate Text**.
     2. Add **Run Script Over SSH**. Host: the hub's MagicDNS name (`my-mac.tailXXXXXX.ts.net`); user: yours; authentication: the Shortcut's SSH key, added to `authorized_keys` like the Termius key. Script: `tau ask "<Dictated Text>"`.

@@ -74,7 +74,7 @@ plugins:
             Backups (encrypted, R2): Yedekler (şifreli, R2)
             Run tau as a service: tau'yu servis olarak çalıştır
             Models and budgets: Modeller ve bütçeler
-            TauBar (macOS menu bar): TauBar (macOS menü çubuğu)
+            The tau app (macOS): tau uygulaması (macOS)
             Move the hub to a Raspberry Pi: Hub'ı Raspberry Pi'ye taşı
             Join the tau network: tau ağına katıl
             Public sub-taus with a web page: Web sayfalı açık sub-tau'lar
@@ -161,7 +161,7 @@ nav:
       - Backups (encrypted, R2): guides/backups.md
       - Run tau as a service: guides/hub-service.md
       - Models and budgets: guides/models-and-budgets.md
-      - TauBar (macOS menu bar): guides/taubar.md
+      - The tau app (macOS): guides/taubar.md
       - Move the hub to a Raspberry Pi: guides/raspberry-pi.md
       - Join the tau network: guides/tau-network.md
       - Public sub-taus with a web page: guides/public-sub-taus.md

@@ -2,7 +2,7 @@
 
 # tau'yu servis olarak çalıştır
 
-`tau hub run`, tau'yu **hub** rolünde (tau'nun çalıştığı, sana ait tek makine) uzun ömürlü bir süreç olarak çalıştırır. Tek örnek kilidini tutar, bir heartbeat'i (canlılık sinyali) tazeler, loopback üzerinde küçük bir kontrol API'si sunar ve etkin her hub servisini başlatır (Telegram, ses ve mesh'in hepsi hub servisi olacak). Bir gözetmen (supervisor) altında çalışırken bir çökmeden sonra geri gelir, temiz bir durdurmadan sonra ise kapalı kalır: macOS'ta bu gözetmen [TauBar](taubar.md) (varsayılan) ya da bir launchd agent'ı, Linux'ta ise bir systemd kullanıcı birimidir.
+`tau hub run`, tau'yu **hub** rolünde (tau'nun çalıştığı, sana ait tek makine) uzun ömürlü bir süreç olarak çalıştırır. Tek örnek kilidini tutar, bir heartbeat'i (canlılık sinyali) tazeler, loopback üzerinde küçük bir kontrol API'si sunar ve etkin her hub servisini başlatır (Telegram, ses ve mesh'in hepsi hub servisi olacak). Bir gözetmen (supervisor) altında çalışırken bir çökmeden sonra geri gelir, temiz bir durdurmadan sonra ise kapalı kalır: macOS'ta bu gözetmen [tau uygulaması](taubar.md) (varsayılan) ya da bir launchd agent'ı, Linux'ta ise bir systemd kullanıcı birimidir.
 
 Bugün hub'ın kendine ait bir kanalı yok: `tau chat` ve `tau tui` ajanlarını kendi süreçlerinin içinde kurar ve çalışan bir hub olsa da olmasa da çalışır. Altyapının yerinde olmasını, çökme raporlarını ve hub'ın ayakta olduğunu söyleyen `/status` satırını istiyorsan servisi şimdi kur; ona ihtiyaç duyan hub servisleri sonraki katmanlarla geliyor.
 
@@ -39,7 +39,7 @@ tau hub is not running.
   launchd: not installed (to install: tau hub install)
 ```
 
-Çalışırken pid'i, çalışma süresini, heartbeat'in yaşını, sürümü, rolü, profili, son çökmeyi ve launchd durumunu gösterir. `--json` ayrıca yapılandırmanın neye çözümlendiğini de taşır (`control_port`, `data_dir`, `hub_dir`, `lock`); TauBar, çalıştırdığı hub'ın kilidini ve kontrol API'sini bu yolla bulur. `tau hub stop` SIGTERM gönderir ve `--timeout` saniyeye kadar bekler (varsayılan 15); bu, launchd ve systemd'nin çökme **saymadığı** temiz durdurmadır.
+Çalışırken pid'i, çalışma süresini, heartbeat'in yaşını, sürümü, rolü, profili, son çökmeyi ve launchd durumunu gösterir. `--json` ayrıca yapılandırmanın neye çözümlendiğini de taşır (`control_port`, `data_dir`, `hub_dir`, `lock`); tau uygulaması, çalıştırdığı hub'ın kilidini ve kontrol API'sini bu yolla bulur. `tau hub stop` SIGTERM gönderir ve `--timeout` saniyeye kadar bekler (varsayılan 15); bu, launchd ve systemd'nin çökme **saymadığı** temiz durdurmadır.
 
 ## Kontrol API'si
 
@@ -62,34 +62,34 @@ curl -s 127.0.0.1:7877/status | python3 -c 'import json, sys; print(json.dumps(j
 uv run python -c 'from tau_core import Config; from tau_core.hub import HubClient; print(HubClient(Config.load()).get("/spend", timeout=5))'
 ```
 
-## macOS: TauBar (varsayılan) { #macos-taubar-default }
+## macOS: tau uygulaması (varsayılan) { #macos-taubar-default }
 
-tau'nun menü çubuğu uygulaması [TauBar](taubar.md), hub'ı kendisi çalıştırır. Menüsünde (ya da penceresinde) **Run the hub** kutusunu işaretle, TauBar da şunları yapsın:
+tau'nun Mac uygulaması, [tau uygulaması](taubar.md) hub'ı kendisi çalıştırır. Menüsünde (ya da ayarlar penceresinde) **Run the hub** kutusunu işaretle, uygulama da şunları yapsın:
 
 - `<python> -m tau_core hub run` komutunu kendi alt süreci olarak, `TAU_HOME` içinde; `TAU_HOME`, `TAU_ROLE=hub`, sade bir `PATH` ve ayarlarının eklediği diğer her şeyle (`TAU_DATA_DIR`, `TAU_HUB_PORT`, ek ortam değişkenleri) başlatır;
 - temiz olmayan bir çıkıştan (bir çökme, bir `kill -9`, başarısız bir başlangıç) sonra onu 1 sn sonra, başarısız olmaya devam ettikçe 2, 4 … en fazla 60 sn sonra yeniden başlatır; bir çalıştırma bir dakika sürdüğünde yeniden 1 sn'ye döner;
-- kendisinin istemediği temiz bir çıkıştan (`tau hub stop`) sonra onu durmuş hâlde bırakır: sen yeniden işaretleyene ya da TauBar yeniden başlayana kadar anahtar kapalı görünür, tıpkı launchd agent'ının bir sonraki girişe kadar beklemesi gibi;
-- anahtarın işaretini kaldırdığında ya da TauBar'dan çıktığında onu SIGTERM ile durdurur (15 sn sonra, TauBar çıkarken ise 10 sn sonra hâlâ durmamışsa SIGKILL);
-- asla ikinci bir hub başlatmaz. Her başlatmadan önce `tau hub status --json` komutunun çözümlediği veri dizininin hub kilidini yoklar. Kendi başlatmadığı bir hub menüde gösterilir (`started outside TauBar` ya da `run by launchd`) ve kendi hâline bırakılır; bu durumda anahtarın işaretini kaldırmak sana onu nasıl durduracağını söyler. Yüklenmiş bir `com.tau.hub` launchd agent'ı aynı veri dizinine sahipken TauBar hub'ı launchd'ye bırakır.
+- kendisinin istemediği temiz bir çıkıştan (`tau hub stop`) sonra onu durmuş hâlde bırakır: sen yeniden işaretleyene ya da uygulama yeniden başlayana kadar anahtar kapalı görünür, tıpkı launchd agent'ının bir sonraki girişe kadar beklemesi gibi;
+- anahtarın işaretini kaldırdığında ya da uygulamadan çıktığında onu SIGTERM ile durdurur (15 sn sonra, uygulama çıkarken ise 10 sn sonra hâlâ durmamışsa SIGKILL);
+- asla ikinci bir hub başlatmaz. Her başlatmadan önce `tau hub status --json` komutunun çözümlediği veri dizininin hub kilidini yoklar. Kendi başlatmadığı bir hub menüde gösterilir (`started outside the app` ya da `run by launchd`) ve kendi hâline bırakılır; bu durumda anahtarın işaretini kaldırmak sana onu nasıl durduracağını söyler. Yüklenmiş bir `com.tau.hub` launchd agent'ı aynı veri dizinine sahipken uygulama hub'ı launchd'ye bırakır.
 
-Menü, kontrol API'sinden gelen üç satır gösterir: `Hub: up 2 h 5 min · pid 1234`, Telegram poller'ı (`Telegram: polling as @your_bot`) ve son çökme. **Launch at login**, oturum açtığında TauBar'ı, onunla birlikte de hub'ı başlatır.
+Menü, kontrol API'sinden gelen üç satır gösterir: `Hub: up 2 h 5 min · pid 1234`, Telegram poller'ı (`Telegram: polling as @your_bot`) ve son çökme. **Launch at login**, oturum açtığında uygulamayı, onunla birlikte de hub'ı başlatır.
 
-TauBar'ın hangi Python'u ve hangi `TAU_HOME` değerini kullanacağını bilmesi gerekir. İlk açılışta bunları kurulu bir `com.tau.hub` launchd agent'ından kopyalar; yoksa penceresinde checkout'u (deponun yerel kopyası) seç (**Use a tau checkout…**, `<checkout>/.venv/bin/python` yolunu ve `TAU_HOME` olarak checkout'u doldurur). Hub'ın stdout ve stderr çıktıları `<TAU_DATA_DIR>/hub/logs/taubar.{out,err}.log` dosyalarına, logu her zamanki gibi `<TAU_DATA_DIR>/logs/tau.log` dosyasına gider (menü → **Open Hub Log**); TauBar'ın kendi logu da her başlatmayı, çıkışı ve yeniden başlatmayı kaydeder.
+Uygulamanın hangi Python'u ve hangi `TAU_HOME` değerini kullanacağını bilmesi gerekir. İlk açılışta bunları TauBar'dan (yerini aldığı uygulama) devralır ya da kurulu bir `com.tau.hub` launchd agent'ından kopyalar; yoksa ayarlar penceresinde checkout'u (deponun yerel kopyası) seç (**Use a tau checkout…**, `<checkout>/.venv/bin/python` yolunu ve `TAU_HOME` olarak checkout'u doldurur). Hub'ın stdout ve stderr çıktıları `<TAU_DATA_DIR>/hub/logs/app.{out,err}.log` dosyalarına, logu her zamanki gibi `<TAU_DATA_DIR>/logs/tau.log` dosyasına gider (menü → **Open Hub Log**); uygulamanın kendi logu da her başlatmayı, çıkışı ve yeniden başlatmayı kaydeder.
 
-launchd agent'ından TauBar'a geçmek için:
+launchd agent'ından tau uygulamasına geçmek için:
 
 ```sh
 cd /path/to/tau
-uv run tau hub uninstall     # the launchd hub stops; TauBar may now run it
+uv run tau hub uninstall     # the launchd hub stops; the tau app may now run it
 ```
 
-sonra **Run the hub** kutusunu işaretle. (Anahtar zaten açıksa TauBar, launchd hub'ı gider gitmez kendi hub'ını başlatır.)
+sonra **Run the hub** kutusunu işaretle. (Anahtar zaten açıksa uygulama, launchd hub'ı gider gitmez kendi hub'ını başlatır.)
 
-Varsayılan neden launchd değil de TauBar: bunun üzerinde geliştirildiği Mac'te (macOS 26.3.1) launchd, oturumdaki kullanıcı agent'larının her otomatik başlatmasını bekletti: `RunAtLoad`, bir `kill -9` sonrasında `KeepAlive` ve hatta `StartInterval` hiç tetiklenmedi, yalnızca `launchctl kickstart` işe yaradı (yol haritası issue 057 ve 052). Görebildiğin bir uygulamanın içindeki gözetmen buna bağımlı değildir.
+Varsayılan neden launchd değil de uygulama: bunun üzerinde geliştirildiği Mac'te (macOS 26.3.1) launchd, oturumdaki kullanıcı agent'larının her otomatik başlatmasını bekletti: `RunAtLoad`, bir `kill -9` sonrasında `KeepAlive` ve hatta `StartInterval` hiç tetiklenmedi, yalnızca `launchctl kickstart` işe yaradı (yol haritası issue 057 ve 052). Görebildiğin bir uygulamanın içindeki gözetmen buna bağımlı değildir.
 
 ## macOS alternatifi: launchd kullanıcı agent'ı { #macos-alternative-launchd-user-agent }
 
-TauBar bir seçenek değilse bunu kullan (GUI uygulaması istemiyorsan ya da launchd'nin otomatik başlatmalarının çalıştığı bir Mac'teysen). Kurulumdan sonra hub'ın gerçekten çalıştığını kontrol et (`tau hub status`); bazı Mac'lerde launchd agent'ı yükler ama hiç başlatmaz (yukarıya bak), `launchctl kickstart gui/$UID/com.tau.hub` ise onu elle başlatır.
+tau uygulaması bir seçenek değilse bunu kullan (GUI uygulaması istemiyorsan ya da launchd'nin otomatik başlatmalarının çalıştığı bir Mac'teysen). Kurulumdan sonra hub'ın gerçekten çalıştığını kontrol et (`tau hub status`); bazı Mac'lerde launchd agent'ı yükler ama hiç başlatmaz (yukarıya bak), `launchctl kickstart gui/$UID/com.tau.hub` ise onu elle başlatır.
 
 Oturum açmış kullanıcının bir Terminal'inden çalıştır. `gui/<uid>` launchd alanı bir GUI oturumu gerektirir, dolayısıyla GUI oturumu olmayan bir SSH oturumu onu bootstrap edemez.
 
@@ -126,7 +126,7 @@ Loglar: stdout ve stderr `<TAU_DATA_DIR>/hub/logs/launchd.{out,err}.log` içinde
 !!! warning "Checkout'u taşıdıktan ya da `.venv`'i yeniden oluşturduktan sonra"
     plist, venv'in Python'unu mutlak yoluyla gösterir. Depoyu taşıdıktan, sanal ortamı yeniden oluşturduktan ya da Python'u yükselttikten sonra `tau hub install` komutunu yeniden çalıştır; yoksa launchd hub'ı başlatamaz.
 
-Kendi kendini iyileştirmeyi bir kez elle kontrol et (aynı kontrol TauBar için de geçerli):
+Kendi kendini iyileştirmeyi bir kez elle kontrol et (aynı kontrol tau uygulaması için de geçerli):
 
 ```sh
 curl -s 127.0.0.1:7877/health                  # note the pid
@@ -165,7 +165,7 @@ Hub'ın tuttuğu her şey `<TAU_DATA_DIR>/hub/` altındadır:
 | `crash.json` | başarısız olan bir hub'ın kapanırken yazdığı neden; bir sonraki başlangıç onu tüketir |
 | `crash_reports.jsonl` | bir sonraki başlangıcın fark ettiği her çökme, en eskisi önce |
 | `last_crash.json` | en son çökme raporu (`tau hub status` ve `/status` bunu gösterir) |
-| `logs/` | gözetmenin yakaladığı stdout ve stderr: `launchd.{out,err}.log` ya da `taubar.{out,err}.log` |
+| `logs/` | gözetmenin yakaladığı stdout ve stderr: `launchd.{out,err}.log` ya da `app.{out,err}.log` |
 
 ## Hub servisleri
 
@@ -173,4 +173,4 @@ Hub servisi; bir `name`, `async start(hub)` ve `async stop()` içeren ve `tau.hu
 
 ## Makineyi uyanık tutmak
 
-Uyuyan bir hub, düşünmeyen bir hub'dır. Bir MacBook'ta [TauBar](taubar.md), Mac'i fişe takılıyken (varsayılan) ya da kapak kapalıyken bile uyanık tutar ve çıktığında normal uykuyu geri getirir. TauBar olmadan, uzaktan erişim kurulumu `com.tau.keepawake` agent'ını kurar; bu, Mac'i fişe takılıyken uyanık tutmak için `caffeinate -s` çalıştıran bir launch agent'ıdır; bu durumda kapağın açık kalması (ya da harici bir ekranın bağlı olması) gerekir. Raspberry Pi'de böyle bir soru ortaya çıkmaz; Pi'nin uzun vadede doğal hub olmasının nedenlerinden biri de bu. Bkz. [Hub'ı Raspberry Pi'ye taşı](raspberry-pi.md).
+Uyuyan bir hub, düşünmeyen bir hub'dır. Bir MacBook'ta [tau uygulaması](taubar.md), Mac'i fişe takılıyken (varsayılan) ya da kapak kapalıyken bile uyanık tutar ve çıktığında normal uykuyu geri getirir. Uygulama olmadan, uzaktan erişim kurulumu `com.tau.keepawake` agent'ını kurar; bu, Mac'i fişe takılıyken uyanık tutmak için `caffeinate -s` çalıştıran bir launch agent'ıdır; bu durumda kapağın açık kalması (ya da harici bir ekranın bağlı olması) gerekir. Raspberry Pi'de böyle bir soru ortaya çıkmaz; Pi'nin uzun vadede doğal hub olmasının nedenlerinden biri de bu. Bkz. [Hub'ı Raspberry Pi'ye taşı](raspberry-pi.md).

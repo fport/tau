@@ -12,7 +12,7 @@ What you protect: the facts tau knows about you, your conversations and memory (
 The decisions that follow, all from [ADR 0006](../adr/0006-private-first-topology.md):
 
 1. **One public surface, identity at the edge.** Exactly one hostname serves the hub's web UI. It reaches the hub through an *outbound* tunnel, so the hub opens no inbound port, ever. An Access policy in front of it means unauthenticated requests never reach the tunnel.
-2. **No intermediary can approve.** A tier-2 approval is accepted only from the TUI, TauBar, the web UI behind Access with a per-device key, and Telegram polled directly. There is no relay server, so there is nothing to compromise between you and the hub.
+2. **No intermediary can approve.** A tier-2 approval is accepted only from the TUI, the tau app, the web UI behind Access with a per-device key, and Telegram polled directly. There is no relay server, so there is nothing to compromise between you and the hub.
 3. **Life data stays on the hub.** Cloudflare receives only client-side encrypted backups. Access sees your email, not your data.
 4. **Every inbound text is untrusted.** Shell, file and other write tools are tier 2 or sandboxed; web-fetching tools use an allowlist.
 

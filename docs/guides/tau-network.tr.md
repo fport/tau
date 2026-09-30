@@ -124,7 +124,7 @@ tau net publish   # puts your card on the spine
 tau net status    # identity, spine health, card, contacts
 ```
 
-Hub'ı yeniden başlat (`tau hub stop`, ardından `tau hub run`; ya da TauBar'da **Run the hub** kutusunun işaretini kaldırıp yeniden işaretle): hub `.env` dosyasını başlarken okur ve `net` servisi spine'ını ancak o zaman dinlemeye başlar.
+Hub'ı yeniden başlat (`tau hub stop`, ardından `tau hub run`; ya da tau uygulamasında **Run the hub** kutusunun işaretini kaldırıp yeniden işaretle): hub `.env` dosyasını başlarken okur ve `net` servisi spine'ını ancak o zaman dinlemeye başlar.
 
 Kimlik dosyası tau'nun pasaportudur. `TAU_DATA_DIR/net/` dizininin tamamını veri dizininin geri kalanıyla birlikte yedekle ([Yedekler](backups.md)). Kimliği kaybedersen kişilerinin seni yeniden eklemesi gerekir.
 

@@ -1,6 +1,6 @@
 # Development setup
 
-The repository is a uv workspace of independently publishable Python packages plus TypeScript parts (`cloud/`, `apps/taubar`, `apps/tau-desktop`) managed with bun. This page gets you to a green test run and explains the checks CI enforces.
+The repository is a uv workspace of independently publishable Python packages plus TypeScript parts (`cloud/`, `apps/tau`) managed with bun. This page gets you to a green test run and explains the checks CI enforces.
 
 ## Requirements
 
@@ -111,7 +111,7 @@ Each package builds on its own from its `pyproject.toml` (hatchling). Publishing
 
 ## The TypeScript parts
 
-The Workers under `cloud/`, the TauBar app in `apps/taubar` and tau Desktop in `apps/tau-desktop` are TypeScript, each with its own `package.json` and lockfile. They need [bun](https://bun.sh) 1.3 and Node.js 24. bun installs the packages and runs the scripts; Vitest, its Workers pool and Wrangler still run on Node, because `bun run` and `bunx` start a program with the `node` its `#!/usr/bin/env node` line names. Without Node on `PATH`, bun runs them itself, and then the Workers pool times out and `wrangler dev` answers no requests.
+The Workers under `cloud/` and the Mac app in `apps/tau` (with a Rust core; see its README) are TypeScript, each with its own `package.json` and lockfile. They need [bun](https://bun.sh) 1.3 and Node.js 24. bun installs the packages and runs the scripts; Vitest, its Workers pool and Wrangler still run on Node, because `bun run` and `bunx` start a program with the `node` its `#!/usr/bin/env node` line names. Without Node on `PATH`, bun runs them itself, and then the Workers pool times out and `wrangler dev` answers no requests.
 
 ```sh
 cd cloud/spine
@@ -163,7 +163,7 @@ The site is bilingual through [mkdocs-static-i18n](https://ultrabug.github.io/mk
 ## Conventions
 
 - **Language.** Code, identifiers, comments, commit messages, issues and docs are English; the docs site adds Turkish twins of its guides (see [above](#english-pages-and-their-turkish-twins)). tau's own persona is Turkish by default and mirrors the user; the UI chrome follows `[ui] language`.
-- **Commits.** [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary`, scopes such as `core`, `tui`, `remote`, `roadmap`, `docs`, `cloud`, `taubar`. Small, logical commits; reference the issue id in the body (`Refs: 004`).
+- **Commits.** [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary`, scopes such as `core`, `tui`, `remote`, `roadmap`, `docs`, `cloud`, `app`. Small, logical commits; reference the issue id in the body (`Refs: 004`).
 - **Privacy.** Nothing personal in tracked files: no hostnames, tailnet names, IPs, emails, account ids or key fingerprints. Use `my-mac.tailXXXXXX.ts.net`, `100.x.y.z`, `SHA256:...`. Real values go into the gitignored `.env`, with the name and an example value in `.env.example`.
 - **Models.** Code asks for a role, never a model id; ids and prices are data (`tau.toml`, `templates/models.toml`, `templates/prices.toml`). Providers are called directly and tau enforces the budgets itself ([ADR 0011](../adr/0011-budgets-in-tau-no-litellm.md)); `litellm` is never added in any form.
 - **Vocabulary.** [`CONTEXT.md`](https://github.com/fport/tau/blob/main/CONTEXT.md) is the glossary; use its terms exactly. Decisions are in [ARCHITECTURE.md](../ARCHITECTURE.md) and the ADRs; a new decision gets a new ADR.

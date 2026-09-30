@@ -125,7 +125,7 @@ How tau keeps it:
 - **Every provider.** Budgets work the same on `anthropic`, `openai`, `gemini` and `bedrock`; `ollama` and `fake` calls cost $0.
 - **Only roles with a `budget` or a `failover` are metered.** A role with neither is called without the ledger; `tau spend` shows it as `no budget (its calls are not counted)`. To count a role's spend without really limiting it, give it a high cap.
 
-**Change a cap:** edit the number in `tau.toml` and restart what runs tau. A running hub, `tau chat` or `tau tui` read the file when they start, so restart the hub (`tau hub stop`, then start it again, or untick and tick **Run the hub** in TauBar) and reopen the terminal channels. `tau spend` and `tau doctor` read the file each time, so they show the new cap at once. The spend itself is never reset by a change: a new cap applies to what the role already spent this period.
+**Change a cap:** edit the number in `tau.toml` and restart what runs tau. A running hub, `tau chat` or `tau tui` read the file when they start, so restart the hub (`tau hub stop`, then start it again, or untick and tick **Run the hub** in the tau app) and reopen the terminal channels. `tau spend` and `tau doctor` read the file each time, so they show the new cap at once. The spend itself is never reset by a change: a new cap applies to what the role already spent this period.
 
 ## When a budget is spent
 

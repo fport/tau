@@ -67,9 +67,9 @@ A channel implements `Approver` (a `name` and `async decide(request) -> Decision
 | `AutoRejectApprover` | the default when a channel passes none | never | – |
 | `ScriptedApprover` | tests only | a scripted list of decisions | – |
 | `TelegramApprover` | Telegram | the **Approve** inline button, pressed in an allowlisted chat | `approval_timeout_seconds`, then rejected |
-| TauBar, web UI | planned (issues 025, 074) | a button on an enrolled device | yes, as rejected |
+| The tau app, web UI | planned (issues 025, 074) | a button on an enrolled device | yes, as rejected |
 
-On a guarded channel (the TUI, `tau chat`, tau Desktop) the approver's yes is followed by the guard's step-up; Telegram and network turns are identified in other ways and have no step-up. The step-up never replaces the approval and never produces one.
+On a guarded channel (the TUI, `tau chat`, the tau app's chat windows) the approver's yes is followed by the guard's step-up; Telegram and network turns are identified in other ways and have no step-up. The step-up never replaces the approval and never produces one.
 
 The terminal prompt:
 
@@ -106,7 +106,7 @@ undo = agent.gate.add_exemption(fn)
 
 - **Tier-2 actions always go through approval.** Never bypassed, never auto-approved, also in tests: tests script decisions with `ScriptedApprover([Decision.APPROVED])` and simulate silence with `UnansweredApprover`.
 - **The guard only narrows.** It can refuse a call or turn an approval into a rejection, never approve. Tests use `FakeGuard`, which never approves anything; `guard=None` appears only in the two identified in-hub channels (Telegram, network turns), and every `TierGate(` passes `guard=` explicitly.
-- **Approvals come only from trusted channels**: the TUI, TauBar, the web UI behind Access with a per-device key, Telegram polled directly. No intermediary server can produce one, because none exists ([ADR 0006](../adr/0006-private-first-topology.md)).
+- **Approvals come only from trusted channels**: the TUI, the tau app, the web UI behind Access with a per-device key, Telegram polled directly. No intermediary server can produce one, because none exists ([ADR 0006](../adr/0006-private-first-topology.md)).
 - **Approval requests carry no jokes.** The persona states what it will do, with which arguments, and the real-world effect, in plain sentences.
 - **Robot: simulation by default.** Real mode is an explicit opt-in per session and every motion is tier 2.
 - **Tools tau writes itself** land in `tools/_pending/` and wait for approval before they can run (issue 034).

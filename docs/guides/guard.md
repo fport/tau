@@ -1,6 +1,6 @@
 # Owner guard
 
-The owner guard makes tau work only for you. After you set it up, `tau tui`, `tau chat` and tau Desktop open **locked**. They unlock when the Mac's built-in camera sees your face and you turn your head the way the screen asks. tau locks again by itself when you walk away, when the screen locks, when the Mac sleeps and after eight hours. Before a tier-2 action runs, you still approve it as always, and then the guard checks your face once more (a **step-up**).
+The owner guard makes tau work only for you. After you set it up, `tau tui`, `tau chat` and the tau app's chat windows open **locked**. They unlock when the Mac's built-in camera sees your face and you turn your head the way the screen asks. tau locks again by itself when you walk away, when the screen locks, when the Mac sleeps and after eight hours. Before a tier-2 action runs, you still approve it as always, and then the guard checks your face once more (a **step-up**).
 
 The guard runs inside the hub and does not need a model or the internet. Your face template never leaves the Mac, and a copy of the data folder or a backup cannot read it. The decision and its full threat model are in [ADR 0008](../adr/0008-owner-guard.md). Every key, route and log field is listed in the [guard reference](../reference/guard.md).
 
@@ -12,7 +12,7 @@ The guard runs inside the hub and does not need a model or the internet. Your fa
 ## What it does, in plain words
 
 - **A door, not a watcher.** The camera is on only while a check runs, a few seconds at a time. Between checks the guard relies on keyboard and mouse idle time, the screen lock and a short recheck now and then.
-- **Only for tau's own windows.** The guard covers the TUI (in Terminal, over SSH, in tau Desktop or in a web tab), `tau chat` and, later, voice. These are the **guarded channels**. Telegram and messages from other taus are identified in other ways (your chat id, a contact's key), so they keep working while the Mac is locked. These are the **identified channels**.
+- **Only for tau's own windows.** The guard covers the TUI (in Terminal, over SSH, in a chat window of the tau app or in a web tab), `tau chat` and, later, voice. These are the **guarded channels**. Telegram and messages from other taus are identified in other ways (your chat id, a contact's key), so they keep working while the Mac is locked. These are the **identified channels**.
 - **It only ever narrows.** The guard can refuse a turn or an action. It can never approve one: a tier-2 action still needs your yes, and the step-up comes on top of it.
 - **It fails closed.** No hub running, a broken setting or an unreadable template all mean "locked", never "open".
 
@@ -25,13 +25,13 @@ The guard runs inside the hub and does not need a model or the internet. Your fa
     uv tool install tau-core --with tau-tui --with tau-guard
     ```
 
-- A hub that runs the guard service. [TauBar](taubar.md)'s **Run the hub** is the best choice, because TauBar then holds the camera permission. `tau hub run` in a terminal works too, and then that terminal app holds it. See [Run tau as a service](hub-service.md).
+- A hub that runs the guard service. The **Run the hub** switch of the [tau app](taubar.md) is the best choice, because the app then holds the camera permission. `tau hub run` in a terminal works too, and then that terminal app holds it. See [Run tau as a service](hub-service.md).
 - About 40 MB to download once: the face-recognition model (SFace). No internet is needed after that.
 - You, at the Mac. `tau guard setup`, `enroll` and `forget` refuse to run over SSH.
 
 ## Set it up
 
-1. **Start the hub.** In TauBar tick **Run the hub**, or run `uv run tau hub run` in a terminal.
+1. **Start the hub.** In the tau app tick **Run the hub**, or run `uv run tau hub run` in a terminal.
 2. **Check the prerequisites:**
 
     ```sh
@@ -55,8 +55,8 @@ The guard runs inside the hub and does not need a model or the internet. Your fa
 
     At the end it warns you that remote use (SSH, mosh) stops while you are away from the Mac.
 
-4. **Restart the hub** (TauBar: untick and tick **Run the hub**; or stop and start `tau hub run`) and close any open `tau chat`, `tau tui` or tau Desktop window. The guard starts with the next hub, locked.
-5. **Unlock once.** Open `uv run tau tui` and press Enter on the lock screen. If the hub runs under TauBar, macOS now asks whether **TauBar** may use the camera. Allow it. The next section explains why.
+4. **Restart the hub** (the tau app: untick and tick **Run the hub**; or stop and start `tau hub run`) and close any open `tau chat`, `tau tui` or chat window of the tau app. The guard starts with the next hub, locked.
+5. **Unlock once.** Open `uv run tau tui` and press Enter on the lock screen. If the hub runs under the tau app, macOS now asks whether **tau** may use the camera. Allow it. The next section explains why.
 6. **Check it:**
 
     ```sh
@@ -74,7 +74,7 @@ While a check runs, tau covers the Mac's screen, all but the menu bar, with a da
 - **A hint** when something is off: `TOO DARK · FIND MORE LIGHT`, `MOVE CLOSER`, `ONE FACE ONLY`.
 - **The result:** `UNLOCKED` (or `CONFIRMED`, `ENROLLED`) with a check, or `NOT VERIFIED` with the reason. The window closes itself about a second later.
 
-It appears for every check, whichever window asked for it: the TUI lock screen, `tau chat`, tau Desktop, a step-up before a tier-2 action, a presence recheck, and `tau guard setup`, `enroll` and `verify`. The terminal lines stay as they were.
+It appears for every check, whichever window asked for it: the TUI lock screen, `tau chat`, a chat window of the tau app, a step-up before a tier-2 action, a presence recheck, and `tau guard setup`, `enroll` and `verify`. The terminal lines stay as they were.
 
 - **Esc**, or a click on `ESC · CANCEL`, cancels the check. As on the lock screen, cancelling while a head-turn prompt is up counts as a failed attempt.
 - **Touch ID or the Mac password** (enrollment, the Touch ID fallback, a Touch ID step-up): the window shrinks to a small panel at the top of the screen, so the macOS prompt is free.
@@ -83,25 +83,26 @@ It appears for every check, whichever window asked for it: the TUI lock screen, 
 - **See it first:** `uv run tau guard window --demo` plays a scripted check in it without the camera. `uv run tau guard window` says whether it can open from where you are.
 - **Turn it off** with `[component.guard] window = false` in `tau.toml` (restart the hub), or for one command with `--no-window` (`setup`, `enroll`, `verify`; a check that runs through the hub follows the hub's setting). Over SSH, or when the hub has no GUI session (a launchd job, a hub started over SSH), checks run without it.
 
-## The camera permission: TauBar or the terminal
+## The camera permission: the tau app or the terminal
 
 macOS grants the camera to an app, not to a program. The guard's checks run in a small worker that the hub starts, so the grant belongs to **whatever app started the hub**:
 
 | How the hub runs | Who holds the camera grant |
 |---|---|
-| TauBar's **Run the hub** (recommended) | TauBar |
+| the tau app's **Run the hub** (recommended) | the tau app ("tau", `com.tau.app`) |
 | `uv run tau hub run` in Terminal, iTerm or another terminal | that terminal app |
-| `bun run tauri dev` of TauBar | the terminal that runs it |
+| `bun run tauri dev` of the tau app | the terminal that runs it |
 | the `com.tau.hub` launchd agent, or a hub started over SSH or in a detached tmux | nobody, so the camera is refused |
 
-- During `tau guard setup` with no guarded hub running yet, the check runs in a local worker, so your **terminal** asks for the camera too. That grant is separate from TauBar's, which is why the first unlock asks again.
-- The grant lives in System Settings → Privacy & Security → **Camera**. TauBar's menu has **Grant camera access…** when the hub reports the camera as denied.
-- Build TauBar with a stable signing identity. An ad-hoc signed build looks like a new app to macOS after every rebuild, and the grant is lost each time. The [TauBar README](https://github.com/fport/tau/blob/main/apps/taubar/README.md#a-stable-signing-identity-for-the-camera-grant) walks through it.
-- tau Desktop never needs the camera. It runs `tau tui`, and the check still runs in the hub.
+- During `tau guard setup` with no guarded hub running yet, the check runs in a local worker, so the app that runs the setup asks for the camera too: your **terminal**, or **tau** when you run it in a chat window of the tau app. A terminal's grant is separate from the tau app's, which is why the first unlock then asks again.
+- The grant lives in System Settings → Privacy & Security → **Camera**. The tau app's menu has **Grant camera access…** when the hub reports the camera as denied.
+- The grant survives the tau app's updates: every release is signed with the same certificate, and macOS keeps a grant for the app that certificate identifies. A build from the checkout is signed ad hoc and is a new app to macOS after every rebuild, so the grant is lost each time; the [app's README](https://github.com/fport/tau/blob/main/apps/tau/README.md#why-a-stable-identity-keeps-the-camera-permission) explains the signing.
+- Coming from TauBar, macOS asks once more: TauBar's grant belonged to TauBar (`com.tau.taubar`), and the tau app is a new app.
+- The pages of the tau app's windows never get the camera: every webview permission request is denied, and the check runs in the hub.
 
 ## Daily use
 
-### In `tau tui` and tau Desktop
+### In `tau tui` and the tau app's chat windows
 
 The TUI opens on an opaque lock screen, so nothing of your sessions shows through.
 
@@ -109,7 +110,7 @@ The TUI opens on an opaque lock screen, so nothing of your sessions shows throug
 - **Esc** cancels a running check, and **ctrl+q** quits. Only `/help`, `/lang`, `/guard` and `/quit` work while tau is locked. Anything else you type is not sent and stays in the field.
 - After a successful check you see `Unlocked (face). Failed attempts since the last unlock: 0.` A number above 0 means someone, or something, tried while you were away. `tau guard log` shows when.
 
-tau Desktop runs the same `tau tui` in its window, so it shows the same lock screen. A web tab (issue 074) will too.
+A chat window of the tau app runs the same `tau tui`, so it shows the same lock screen. A web tab (issue 074) will too.
 
 ### In `tau chat`
 
@@ -123,7 +124,7 @@ tau Desktop runs the same `tau tui` in its window, so it shows the same lock scr
 | Screen lock | the Mac's screen locks |
 | Sleep | the Mac slept |
 | Max age | `max_unlock_hours` (8) after the unlock, whatever you do |
-| Command | `/guard lock` in the TUI or `tau chat`, `tau guard lock`, TauBar's **Lock now** |
+| Command | `/guard lock` in the TUI or `tau chat`, `tau guard lock`, the tau app's **Lock now** |
 | Telegram | `/guard lock` from your Telegram chat |
 | Failed step-up | a step-up saw another face, a spoof or two faces |
 | Hub start | every hub start begins locked; an unlock is never restored |
@@ -152,7 +153,7 @@ Three failed checks within 10 minutes (a face that did not match, a failed head-
 | terminal | `tau guard status` | the state as the hub reports it |
 | terminal | `tau guard lock` | lock now |
 | terminal | `tau guard log --since 2h` | the audit log: checks, locks, cooldowns |
-| TauBar | **Lock now** | lock now; TauBar never unlocks |
+| the tau app | **Lock now** | lock now; the app never unlocks |
 
 ## Locking from Telegram
 
@@ -194,16 +195,16 @@ That is why the guard is only ever required **in addition** to your own approval
 
 ## Locked out?
 
-**The camera is denied or never asked.** Open the Camera pane of System Settings and switch on the app that runs the hub (TauBar, or your terminal):
+**The camera is denied or never asked.** Open the Camera pane of System Settings and switch on the app that runs the hub (tau, or your terminal):
 
 ```sh
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera"
 ```
 
-TauBar's **Grant camera access…** opens the same pane. To make macOS ask again from scratch, reset the grant and restart the hub from TauBar (untick and tick **Run the hub**):
+The tau app's **Grant camera access…** opens the same pane. To make macOS ask again from scratch, reset the grant and restart the hub from the tau app (untick and tick **Run the hub**):
 
 ```sh
-tccutil reset Camera com.tau.taubar     # TauBar's bundle id
+tccutil reset Camera com.tau.app       # the tau app's bundle id
 tccutil reset Camera com.apple.Terminal # if Terminal runs the hub instead
 ```
 
@@ -214,7 +215,7 @@ uv run tau guard doctor
 uv run tau doctor          # its guard line says whether the hub runs the guard at all
 ```
 
-**"The guard cannot be reached."** No hub runs, or it runs without the guard service. Start it (TauBar → Run the hub, or `tau hub run`) and check that `[components.hub] services` in `tau.toml` is empty or lists `guard`.
+**"The guard cannot be reached."** No hub runs, or it runs without the guard service. Start it (the tau app → Run the hub, or `tau hub run`) and check that `[components.hub] services` in `tau.toml` is empty or lists `guard`.
 
 **It does not recognize you.** Try better light, face the camera, take off a cap. `tau guard verify --explain` shows each prompt as a highlighted line (`>>> TURN YOUR HEAD LEFT <<<`) and prints the numbers of every third frame (faces, detector score, eye distance, brightness, sharpness, head yaw and your turn in degrees, similarity) without saving a frame; `--explain=all` prints every frame. When the head turns fail, it names the rule that failed, for example `no_turn` when the turn was not big enough. Then add samples under the light that fails: `tau guard enroll --add`. After a change of face model, enroll again with `tau guard enroll`.
 

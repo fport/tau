@@ -12,13 +12,13 @@ tau is built in layers; each becomes useful on its own before the next starts. T
 | L1 · Agent | Strands agent, persona, tiers, sessions, TUI, hub daemon |
 | L2 · Models | Role routing to the user's provider (Anthropic, OpenAI, Gemini, Ollama) with hard budgets tau enforces itself |
 | L3 · Access and data | Tunnel + Access in front of the web UI, Telegram by direct polling, local settings, memory and KB, encrypted R2 backups (the directory keeps its old name `L3-cloud`) |
-| L4 · Interface | TauBar, the web UI, tau-voice, Claude Code integration, ambient mode |
+| L4 · Interface | The tau app, the web UI, tau-voice, Claude Code integration, ambient mode |
 | L5 · Mesh | Zenoh + MCP nodes, MQTT bridge, reflex routines |
 | L6 · Robot | SO-101 and the workout coach |
 | L7 · Lab | AgentCore and other experiments |
 | L8 · Distribution | PyPI releases and the docs site |
 | L9 · Cloud mode and the tau network | The spine Worker, taus talking to each other, the public site and the universe, and the hub in a Cloudflare Container ([ADR 0007](../adr/0007-cloud-mode-and-tau-network.md)) |
-| L10 · Guard | tau works only for its owner: guarded channels unlock with a face check at the Mac, a step-up after tier-2 approvals, reflex locks, tau Desktop ([ADR 0008](../adr/0008-owner-guard.md)) |
+| L10 · Guard | tau works only for its owner: guarded channels unlock with a face check at the Mac, a step-up after tier-2 approvals, reflex locks, the tau app's chat windows ([ADR 0008](../adr/0008-owner-guard.md)) |
 | Backlog | Waiting on hardware or decisions |
 
 Each layer directory has a `README.md` with the goal, a "done when" sentence and a table of its issues.

@@ -199,7 +199,7 @@ tau tui
 
 ## 6. Çalışır tut { #6-keep-it-running }
 
-<!-- verified: run (tau hub run / status / stop with TAU_HUB_PORT=7921; the default port is shown). tau hub install and TauBar: help/code only -->
+<!-- verified: run (tau hub run / status / stop with TAU_HUB_PORT=7921; the default port is shown). tau hub install and the tau app: help/code only -->
 
 `tau chat` ve `tau tui` hub olmadan çalışır. Telegram ve tau ağı çalışmaz: onlar **hub servisleridir** ve yalnızca `tau hub run` çalışırken çalışırlar.
 
@@ -233,10 +233,10 @@ tau hub stopped.
 
 Hub'ı bir terminal olmadan ayakta tutmak ve bir çökmeden sonra geri gelmesini sağlamak için:
 
-- **macOS:** tau'nun menü çubuğu uygulaması [TauBar](../guides/taubar.md), hub'ı çalıştırır, gözetir ve Mac'i uyanık tutar. Checkout'tan derlenir. Alternatifi bir launchd agent'ıdır: `tau hub install`.
+- **macOS:** tau'nun Mac uygulaması, [tau uygulaması](../guides/taubar.md) hub'ı çalıştırır, gözetir ve Mac'i uyanık tutar. Her sürümle `tau.dmg` olarak gelir ya da checkout'tan derlenir. Alternatifi bir launchd agent'ıdır: `tau hub install`.
 - **Linux ya da bir Raspberry Pi:** `tau hub systemd-unit` komutunun ürettiği bir systemd kullanıcı birimi.
 
-[tau'yu servis olarak çalıştır](../guides/hub-service.md) üçünü de anlatır. Hub `.env` dosyasını başlarken okur; bu yüzden **`.env` dosyasındaki her değişiklikten sonra onu yeniden başlat** (`tau hub stop`, sonra yeniden başlat; ya da TauBar'da **Run the hub** kutusunun işaretini kaldırıp yeniden işaretle).
+[tau'yu servis olarak çalıştır](../guides/hub-service.md) üçünü de anlatır. Hub `.env` dosyasını başlarken okur; bu yüzden **`.env` dosyasındaki her değişiklikten sonra onu yeniden başlat** (`tau hub stop`, sonra yeniden başlat; ya da tau uygulamasında **Run the hub** kutusunun işaretini kaldırıp yeniden işaretle).
 
 ## 7. Telegram
 

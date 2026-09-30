@@ -197,7 +197,7 @@ tau tui
 
 ## 6. Keep it running
 
-<!-- verified: run (tau hub run / status / stop with TAU_HUB_PORT=7921; the default port is shown). tau hub install and TauBar: help/code only -->
+<!-- verified: run (tau hub run / status / stop with TAU_HUB_PORT=7921; the default port is shown). tau hub install and the tau app: help/code only -->
 
 `tau chat` and `tau tui` work without a hub. Telegram and the tau network do not: they are **hub services**, and they run only while `tau hub run` runs.
 
@@ -231,10 +231,10 @@ tau hub stopped.
 
 To keep the hub up without a terminal, and to have it come back after a crash:
 
-- **macOS:** [TauBar](../guides/taubar.md), tau's menu bar app, runs and supervises the hub and keeps the Mac awake. It is built from the checkout. The alternative is a launchd agent, `tau hub install`.
+- **macOS:** the [tau app](../guides/taubar.md), tau's Mac app, runs and supervises the hub and keeps the Mac awake. It comes as `tau.dmg` with each release, or builds from the checkout. The alternative is a launchd agent, `tau hub install`.
 - **Linux or a Raspberry Pi:** a systemd user unit from `tau hub systemd-unit`.
 
-[Run tau as a service](../guides/hub-service.md) covers all three. The hub reads `.env` when it starts, so **restart it after every change to `.env`** (`tau hub stop`, then start it again, or untick and tick **Run the hub** in TauBar).
+[Run tau as a service](../guides/hub-service.md) covers all three. The hub reads `.env` when it starts, so **restart it after every change to `.env`** (`tau hub stop`, then start it again, or untick and tick **Run the hub** in the tau app).
 
 ## 7. Telegram
 

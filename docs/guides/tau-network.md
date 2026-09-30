@@ -122,7 +122,7 @@ tau net publish   # puts your card on the spine
 tau net status    # identity, spine health, card, contacts
 ```
 
-Restart the hub (`tau hub stop`, then `tau hub run`, or untick and tick **Run the hub** in TauBar): it reads `.env` when it starts, and its `net` service starts listening to your spine only then.
+Restart the hub (`tau hub stop`, then `tau hub run`, or untick and tick **Run the hub** in the tau app): it reads `.env` when it starts, and its `net` service starts listening to your spine only then.
 
 The identity file is your tau's passport. Back up the whole `TAU_DATA_DIR/net/` directory with the rest of the data dir ([Backups](backups.md)). If you lose the identity, your contacts have to add you again.
 

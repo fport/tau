@@ -127,7 +127,7 @@ tau bütçeyi şöyle tutar:
 - **Her sağlayıcı.** Bütçeler `anthropic`, `openai`, `gemini` ve `bedrock` üzerinde aynı çalışır; `ollama` ve `fake` çağrılarının maliyeti 0 $'dır.
 - **Yalnızca `budget` ya da `failover` içeren roller ölçülür.** İkisi de olmayan bir rol defter olmadan çağrılır; `tau spend` onu `no budget (its calls are not counted)` olarak gösterir. Bir rolün harcamasını gerçekten sınırlamadan saymak için ona yüksek bir üst sınır ver.
 
-**Bir üst sınırı değiştir:** `tau.toml` içindeki sayıyı düzenle ve tau'yu çalıştıran şeyi yeniden başlat. Çalışan bir hub, `tau chat` ya da `tau tui` dosyayı başlarken okur; o yüzden hub'ı yeniden başlat (`tau hub stop`, sonra yeniden başlat ya da TauBar'da **Run the hub** kutusunun işaretini kaldırıp yeniden işaretle) ve terminal kanallarını yeniden aç. `tau spend` ve `tau doctor` dosyayı her seferinde okur, dolayısıyla yeni sınırı hemen gösterir. Harcamanın kendisi bir değişiklikle asla sıfırlanmaz: yeni bir sınır, rolün bu dönem zaten harcadığına uygulanır.
+**Bir üst sınırı değiştir:** `tau.toml` içindeki sayıyı düzenle ve tau'yu çalıştıran şeyi yeniden başlat. Çalışan bir hub, `tau chat` ya da `tau tui` dosyayı başlarken okur; o yüzden hub'ı yeniden başlat (`tau hub stop`, sonra yeniden başlat ya da tau uygulamasında **Run the hub** kutusunun işaretini kaldırıp yeniden işaretle) ve terminal kanallarını yeniden aç. `tau spend` ve `tau doctor` dosyayı her seferinde okur, dolayısıyla yeni sınırı hemen gösterir. Harcamanın kendisi bir değişiklikle asla sıfırlanmaz: yeni bir sınır, rolün bu dönem zaten harcadığına uygulanır.
 
 ## Bir bütçe bittiğinde
 

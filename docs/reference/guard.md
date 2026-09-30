@@ -77,7 +77,7 @@ A client sends its own `step_up` and `unlock_liveness` with every check, and the
 
 `--no-window` keeps the guard window off for a check the command runs in its own local worker; a check through the hub follows the hub's `[component.guard] window`, and the command says so.
 
-After `setup` or `forget`, restart the hub and any open `tau chat`, `tau tui` or tau Desktop window. The [CLI reference](cli.md#tau-guard) has the `--help` texts.
+After `setup` or `forget`, restart the hub and any open `tau chat`, `tau tui` or chat window of the tau app. The [CLI reference](cli.md#tau-guard) has the `--help` texts.
 
 ## The guard window
 
@@ -206,7 +206,7 @@ A flat photo turned about the vertical axis reads at most about 10° while it is
 
 | | Guarded: admission and step-up | Identified elsewhere: `guard=None` |
 |---|---|---|
-| **Trusted** (may approve tier 2) | TUI (local, SSH or mosh, tau Desktop, a web tab), `tau chat` | Telegram (chat-id allowlist, polled directly) |
+| **Trusted** (may approve tier 2) | TUI (local, SSH or mosh, the tau app's chat windows, a web tab), `tau chat` | Telegram (chat-id allowlist, polled directly) |
 | **Not trusted** (never approves) | `tau ask`, voice (later) | network turns (`net`: no tools, approvals refused) |
 
 `build_agent(guard=DISCOVER)` is the default: a caller that passes nothing is guarded when a guard is active, so unknown and future channels (the MCP server, sub-taus run by `ask_sub` under the delegating turn's guard) land in the guarded column. Only `TelegramService` and tau-net's network turns pass `guard=None`, and a repo-rule test fails on any other `guard=None` in `packages/*/src`. No flag, variable or config key picks a channel.

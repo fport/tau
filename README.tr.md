@@ -105,7 +105,7 @@ tau hub run          # in the foreground; Ctrl-C or `tau hub stop` ends it
 tau hub status       # from another terminal
 ```
 
-`tau hub run` hub'ı ön planda çalıştırır; `Ctrl-C` ya da başka bir terminalden `tau hub stop` onu durdurur. Mac'te tau'nun menü çubuğu uygulaması **TauBar**, hub'ı senin yerine çalıştırır, çökerse yeniden başlatır ve Mac'i uyanık tutar. Kaynaktan derlenir ve hâlâ geliştiriliyor ([TauBar](https://docs.tau.getporti.com/tr/guides/taubar/)). Alternatifler: bir launchd ajanı (`tau hub install`) ve Linux ya da Raspberry Pi'de bir systemd birimi (`tau hub systemd-unit`).
+`tau hub run` hub'ı ön planda çalıştırır; `Ctrl-C` ya da başka bir terminalden `tau hub stop` onu durdurur. Mac'te **tau uygulaması** hub'ı menü çubuğundan senin yerine çalıştırır, çökerse yeniden başlatır, Mac'i uyanık tutar ve `tau tui` ile sohbet pencereleri açar. Her sürüme `tau.dmg` olarak eklenir ya da kaynaktan derlenir ([tau uygulaması](https://docs.tau.getporti.com/tr/guides/taubar/)). Alternatifler: bir launchd ajanı (`tau hub install`) ve Linux ya da Raspberry Pi'de bir systemd birimi (`tau hub systemd-unit`).
 
 **5. Telegram.** [@BotFather](https://t.me/botfather) ile bir bot oluştur, `~/.tau/.env` dosyasına iki satır ekle ve hub'ı yeniden başlat:
 
@@ -255,8 +255,7 @@ Her yazılımda hata olabilir ve tau henüz genç. Dürüst hâli şu:
 | [`cloud/universe`](cloud/universe/README.md) | tau.getporti.com'daki herkese açık site, evren ve açık sub-tau'ların ziyaretçi sohbetleri |
 | [`cloud/host`](cloud/host/README.md) | tau-host: GitHub girişiyle tarayıcıda barındırılan tau'lar; aynı Worker senin kendi kurulumun da olur |
 | [`cloud/shared`](cloud/shared/README.md) | Worker'ların paylaştığı TypeScript: protokolün TypeScript yarısı ve karakter üreticisi |
-| [`apps/taubar`](apps/taubar/README.md) | TauBar, macOS menü çubuğu uygulaması (Tauri) |
-| [`apps/tau-desktop`](apps/tau-desktop/README.md) | tau Desktop: `tau tui` kendi Mac pencerelerinde (Tauri, xterm.js) |
+| [`apps/tau`](apps/tau/README.md) | macOS için tau uygulaması: menü çubuğu, hub'ın gözetmeni ve `tau tui` çalıştıran sohbet pencereleri (Tauri, xterm.js) |
 
 Her paket kendi başına bir PyPI dağıtımıdır (`tau-<name>`, `tau_<name>` olarak import edilir) ve entry point'ler (Python paketlerinin eklenti kayıt noktaları) üzerinden takılır; kurulu olanları `tau components` listeler. Doküman sitesi `docs/`, issue'lar `roadmap/`, Tailscale üzerinden telefon erişimi [`infra/remote`](infra/remote/README.md) içinde. Paket README'leri, ADR'ler ve katkı sayfaları yalnızca İngilizce.
 
@@ -272,8 +271,8 @@ Her paket kendi başına bir PyPI dağıtımıdır (`tau-<name>`, `tau_<name>` o
 | tau ağı: spine, kart, kişiler, mühürlü zarflar, ağdan gelen mesajlara dar yanıtlar, spine kiti | Çalışıyor | [L9](roadmap/L9-network/README.md) |
 | Herkese açık site ve evren | Çalışıyor | [L9](roadmap/L9-network/README.md) |
 | Komut satırından ve `ask_sub` üzerinden sub-tau'lar | Çalışıyor | [L9](roadmap/L9-network/README.md) |
-| TauBar: hub'ı çalıştırır, uyku modları | Geliştiriliyor, kaynaktan derleniyor | [L4](roadmap/L4-interface/README.md) |
-| Sahip koruması (Mac'in başında yüz kontrolü, onaylardan sonra step-up) ve tau Desktop | Hazır; bir Mac'te canlı deneme bekleniyor; Touch ID ve uzaktan kilit açma planlı | [L10](roadmap/L10-guard/README.md) |
+| tau uygulaması: menü çubuğu, hub'ı çalıştırır, uyku modları, sohbet pencereleri | Hazır; bir sonraki etiketten itibaren her sürümle imzalı bir `tau.dmg` | [L4](roadmap/L4-interface/README.md) |
+| Sahip koruması (Mac'in başında yüz kontrolü, onaylardan sonra step-up) | Hazır; bir Mac'te canlı deneme bekleniyor; Touch ID ve uzaktan kilit açma planlı | [L10](roadmap/L10-guard/README.md) |
 | Bulut modu: hub'ın bir Cloudflare Container'ında çalışması | Hazır; ilk canlı çalıştırma bekleniyor | [L9](roadmap/L9-network/README.md) |
 | PyPI sürümleri | `tau-core` ve `tau-tui` 0.4.0, `tau-net`, `tau-cloud` ve `tau-sub` 0.1.0 yayında; sırada `tau-guard` var | [L8](roadmap/L8-distribution/README.md) |
 | Herkese açık sub-tau'lar, ziyaretçi sohbetli web sayfaları, kullanıcı adları | Çalışıyor | [L9](roadmap/L9-network/README.md) |

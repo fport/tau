@@ -93,7 +93,7 @@ Two hubs at once is a configuration error the mesh will refuse once it exists; t
 
 | Topic | On the Pi |
 |---|---|
-| Sleep | none; the keep-awake agent and TauBar's sleep modes are Mac-only concerns |
+| Sleep | none; the keep-awake agent and the tau app's sleep modes are Mac-only concerns |
 | Service manager | systemd user unit with linger, not launchd |
 | Models | nothing extra runs on the Pi: `brain` and `fast` call their provider directly as before, with the same budgets; the `local` role reaches Ollama on the Mac over the tailnet (`TAU_OLLAMA_URL`) and fails over to `fast` within a few seconds while the Mac sleeps or is away; a Pi 5 runs only small models itself |
 | Voice | MLX Whisper is Apple-only; the Pi gets a CPU Whisper build (`tau-voice`, planned) |

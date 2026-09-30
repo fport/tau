@@ -95,7 +95,7 @@ Aynı anda iki hub, mesh var olduğunda onun reddedeceği bir yapılandırma hat
 
 | Konu | Pi'de |
 |---|---|
-| Uyku | yok; keep-awake agent'ı ve TauBar'ın uyku modları yalnızca Mac'i ilgilendirir |
+| Uyku | yok; keep-awake agent'ı ve tau uygulamasının uyku modları yalnızca Mac'i ilgilendirir |
 | Servis yöneticisi | launchd değil, linger ile systemd kullanıcı birimi |
 | Modeller | Pi'de ek bir şey çalışmaz: `brain` ve `fast` eskisi gibi, aynı bütçelerle doğrudan kendi sağlayıcılarını çağırır; `local` rolü Ollama'ya tailnet üzerinden Mac'te ulaşır (`TAU_OLLAMA_URL`) ve Mac uyurken ya da uzaktayken birkaç saniye içinde failover ile (başka bir role devrederek) `fast`'e geçer; bir Pi 5 kendi başına yalnızca küçük modelleri çalıştırır |
 | Ses | MLX Whisper yalnızca Apple'da çalışır; Pi, CPU için bir Whisper derlemesi alır (`tau-voice`, planlanıyor) |

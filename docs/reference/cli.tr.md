@@ -238,7 +238,7 @@ Options:
 
 Buradaki `--profile`, global seçenekle aynı ayardır; ikisinden birini kullanabilirsin. Bozuk bir yapılandırma ya da bilinmeyen bir oturum id'si, arayüz açılmadan önce komutu düz İngilizce bir mesajla ve 2 çıkış koduyla bitirir. Hiç `tau.toml` yoksa önce kurulum ekranı açılır ve bir tane oluşturur (`tau init` ile aynı kod; oradaki Esc de 2 çıkış kodudur). Bir rolünün kimlik bilgileri olmayan bir yapılandırmayla arayüz ayarlar ekranında açılır ve bir anahtar kaydedilince sohbet başlar ([İlk çalıştırma](../getting-started/first-run.md#in-the-interface-tau-tui)). Çalıştığı sürece loglar yalnızca `<TAU_DATA_DIR>/logs/tau.log` dosyasına gider.
 
-[Sahip koruması](../guides/guard.md) etkinken arayüz, hiçbir oturum yüklenmeden önce opak bir kilit ekranıyla açılır; kurulum ve ayarlar ekranları bir yüz kontrolü geçene kadar açılmaz (Enter kontrolü başlatır, Esc iptal eder, ctrl+q çıkar). tau Desktop pencerelerinde bu komutun aynısını çalıştırır.
+[Sahip koruması](../guides/guard.md) etkinken arayüz, hiçbir oturum yüklenmeden önce opak bir kilit ekranıyla açılır; kurulum ve ayarlar ekranları bir yüz kontrolü geçene kadar açılmaz (Enter kontrolü başlatır, Esc iptal eder, ctrl+q çıkar). tau uygulamasının sohbet pencereleri bu komutun aynısını çalıştırır.
 
 ## `tau guard`
 
@@ -279,7 +279,7 @@ Commands:
 
 Bir kontrol sürerken worker [koruma penceresini](guard.md#the-guard-window) gösterir (`[component.guard] window`, varsayılan olarak açık); `--no-window` komutun kendi çalıştırdığı bir kontrol için onu kapalı tutar, hub üzerinden giden bir kontrol ise hub'ın ayarını izler.
 
-`setup` ya da `forget` sonrasında hub'ı ve açık her `tau chat`, `tau tui` ya da tau Desktop penceresini yeniden başlat.
+`setup` ya da `forget` sonrasında hub'ı ve açık her `tau chat`, `tau tui` ya da tau uygulamasının sohbet penceresini yeniden başlat.
 
 ## `tau hub`
 

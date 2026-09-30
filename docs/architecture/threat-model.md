@@ -29,11 +29,11 @@ This is the readable version of [ADR 0006](../adr/0006-private-first-topology.md
 | 2 | Telegram without a middleman | The hub polls `getUpdates` itself; no webhook, no Worker; a `chat_id` allowlist on the hub. |
 | 3 | Life data lives on the hub | Sessions, settings, memory, KB and routines under `TAU_DATA_DIR`; vector search local; Cloudflare holds only `age`-encrypted backups in a private R2 bucket. |
 | 4 | Settings are local data | A hot-reloaded file under `TAU_DATA_DIR`; never synced to a third party. |
-| 5 | Approvals only from trusted channels | The TUI, TauBar, the web UI behind Access with a per-device key, and Telegram polled directly. No intermediary exists, so none can approve. |
+| 5 | Approvals only from trusted channels | The TUI, the tau app, the web UI behind Access with a per-device key, and Telegram polled directly. No intermediary exists, so none can approve. |
 | 6 | Tools assume hostile input | Shell, file and write tools tier 2 or sandboxed; fetch tools allowlisted; tau-written tools wait in `tools/_pending/`; the mesh and sshd stay tailnet-only. |
 | 7 | Voice is a separate package | Microphone, STT and TTS on the hub; nothing leaves before a wake phrase; voice from the phone goes through the web UI's microphone to the hub. |
 | 8 | Installable by anyone | PyPI packages, `tau init`, `tau doctor`, this docs site; nothing personal needed to install or read. |
-| 9 | The owner at the Mac | On a guarded hub the TUI, `tau chat` and tau Desktop open locked and unlock with a face check and a head-turn challenge; reflex locks on idle, screen lock, sleep and max age; a step-up after every tier-2 approval; Telegram and network turns are identified by chat id and contact keys instead; the template never leaves the Mac. |
+| 9 | The owner at the Mac | On a guarded hub the TUI, `tau chat` and the tau app's chat windows open locked and unlock with a face check and a head-turn challenge; reflex locks on idle, screen lock, sleep and max age; a step-up after every tier-2 approval; Telegram and network turns are identified by chat id and contact keys instead; the template never leaves the Mac. |
 
 ## What an attacker gets if X is compromised
 

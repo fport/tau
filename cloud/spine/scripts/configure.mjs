@@ -7,8 +7,8 @@
 // when it is missing. The token is never printed.
 //
 // With --force an existing wrangler.jsonc is replaced; the ids Wrangler provisioned (KV,
-// D1, R2), ADDRESS, SPINE_URL and routes are carried over, and the old file is kept as
-// wrangler.jsonc.bak.
+// and in cloud mode D1 and R2), ADDRESS, SPINE_URL and routes are carried over, and the old
+// file is kept as wrangler.jsonc.bak.
 
 import { randomBytes } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -61,6 +61,7 @@ function parseJsonc(text) {
 /** Carries the values Wrangler and the owner added from `old` into the example text. */
 function carryOver(text, old) {
   const kept = [];
+  const notes = [];
   const kvId = old.kv_namespaces?.find((kv) => kv.binding === "TAU")?.id;
   if (kvId) {
     text = text.replace(
@@ -69,13 +70,20 @@ function carryOver(text, old) {
     );
     kept.push("KV namespace id");
   }
+  // Only the cloud configuration has a D1 database. Going back to local mode drops the
+  // binding; the database itself stays in the account.
   const d1Id = old.d1_databases?.find((db) => db.binding === "DB")?.database_id;
-  if (d1Id) {
+  if (d1Id && text.includes('"database_name": "tau-spine",')) {
     text = text.replace(
       '"database_name": "tau-spine",',
       `"database_name": "tau-spine",\n      "database_id": ${JSON.stringify(d1Id)},`,
     );
     kept.push("D1 database id");
+  } else if (d1Id) {
+    notes.push(
+      "The local-mode config binds no D1 database. The cloud store (state, sessions) stays " +
+        "in your account as the D1 database tau-spine until you delete it.",
+    );
   }
   const bucket = old.r2_buckets?.find((r2) => r2.binding === "MEDIA")?.bucket_name;
   if (bucket && text.includes('{ "binding": "MEDIA" }')) {
@@ -100,7 +108,7 @@ function carryOver(text, old) {
     kept.push("routes");
   }
   parseJsonc(text); // Still valid.
-  return { text, kept };
+  return { text, kept, notes };
 }
 
 // --check-cloud: refuse a cloud deploy that would give the brain no way back to its spine.
@@ -142,11 +150,12 @@ if (existsSync(target) && !force) {
 } else {
   let text = readFileSync(join(root, example), "utf8");
   let kept = [];
+  let notes = [];
   if (existsSync(target)) {
     const oldText = readFileSync(target, "utf8");
     copyFileSync(target, `${target}.bak`);
     try {
-      ({ text, kept } = carryOver(text, parseJsonc(oldText)));
+      ({ text, kept, notes } = carryOver(text, parseJsonc(oldText)));
     } catch (err) {
       console.error(
         `Could not read the old wrangler.jsonc (${err.message}); nothing carried over.`,
@@ -154,6 +163,7 @@ if (existsSync(target) && !force) {
     }
     console.log("Replaced wrangler.jsonc; the old one is wrangler.jsonc.bak.");
     if (kept.length > 0) console.log(`Carried over: ${kept.join(", ")}.`);
+    for (const note of notes) console.log(note);
   }
   writeFileSync(target, text);
   console.log(`Wrote wrangler.jsonc from ${example} (${cloud ? "cloud" : "local"} mode).`);

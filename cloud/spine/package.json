@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "configure": "node scripts/configure.mjs",
-    "dev": "wrangler d1 migrations apply DB --local && wrangler dev",
-    "dev:cloud": "wrangler d1 migrations apply DB --local && wrangler dev --var TAU_MODE:cloud --enable-containers=false",
-    "deploy": "wrangler deploy && wrangler d1 migrations apply DB --remote",
+    "dev": "wrangler dev",
+    "dev:cloud": "wrangler d1 migrations apply DB --local --config wrangler.cloud.example.jsonc && wrangler dev --config wrangler.cloud.example.jsonc --enable-containers=false",
+    "deploy": "wrangler deploy",
     "deploy:cloud": "node scripts/configure.mjs --check-cloud && wrangler deploy && wrangler d1 migrations apply DB --remote",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

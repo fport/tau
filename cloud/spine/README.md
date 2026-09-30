@@ -4,7 +4,7 @@ The spine is a Cloudflare Worker that every tau on the tau network runs in its o
 
 - serves the tau's public **card** at `/.well-known/tau.json` (name, signing key, box key);
 - takes signed, sealed **envelopes** from other taus at `/net/inbox`, checks them (size, shape, recipient, clock, the sender's card and signature, replays, rate limit) and keeps them in a **mailbox** until the hub picks them up;
-- gives the owner's hub a bearer-token API (`/hub/*`) to publish the card, long-poll the mailbox and acknowledge envelopes;
+- gives the owner's hub a bearer-token API (`/hub/*`) to publish the card, wait on a WebSocket **doorbell** (or long-poll) for mail, fetch the mailbox and acknowledge envelopes;
 - in **cloud mode** only, also stores the hub's state, config files and sessions (D1, KV) and runs the hub itself as a Cloudflare Container (the **brain**).
 
 Local mode needs no D1 database: KV, one SQLite-backed Durable Object and a cron are all it uses, and all of them are on the Workers Free plan (see [Storage](#storage)).
@@ -18,8 +18,10 @@ The spine never decrypts anything and holds no contacts: it cannot tell a friend
 ```text
 src/index.ts      fetch router and the cron entry (exports only handlers and classes)
 src/net.ts        the card and POST /net/inbox (the §4 checks, in order)
-src/hub.ts        /hub/*: auth, health, card, updates (long poll), ack
-src/mailbox.ts    Mailbox, the Durable Object that stores envelopes and wakes a waiting long poll
+src/limits.ts     the inbox's flood guards (Rate Limiting bindings, failing open)
+src/hub.ts        /hub/*: auth, health, card, updates (long poll), ws (doorbell), ack
+src/mailbox.ts    Mailbox, the Durable Object that stores envelopes, wakes a waiting long poll
+                  and rings the hub's doorbell (WebSocket Hibernation API)
 src/store.ts      cloud mode: state, files, sessions, brain
 src/brain.ts      TauBrain, the container class (cloud mode)
 src/cron.ts       pruning and keep-awake
@@ -184,16 +186,50 @@ That deletes the brain's own Durable Object storage, not the Mailbox, your D1 da
 | State and sessions (the cloud store) | D1 `DB`, schema in `migrations/` | cloud |
 | Media (reserved) | R2 `MEDIA` | cloud |
 
-The Mailbox creates its tables on first use and records a schema version in its `meta` table. It judges duplicates, the rate limit and the mailbox cap, stores the envelope and wakes a waiting long poll in one step, so a poll can never miss mail that arrived just before it started to wait. The Worker parses the envelope, fetches the sender's card and checks the signature before it calls the Mailbox. The minute cron calls the Mailbox's `prune`, which deletes mailbox rows older than 7 days and `seen` rows older than 1 day.
+The Mailbox creates its tables on first use and records a schema version in its `meta` table. It judges duplicates, the rate limit and the mailbox cap, stores the envelope, wakes a waiting long poll and rings the hub's doorbell in one step, so a poll can never miss mail that arrived just before it started to wait. The Worker parses the envelope, checks the flood guards, fetches the sender's card and checks the signature before it calls the Mailbox. The minute cron calls the Mailbox's `prune`, which deletes mailbox rows older than 7 days and `seen` rows older than 1 day.
+
+The doorbell (`GET /hub/ws`) is a WebSocket the Mailbox accepts with the [Hibernation API](https://developers.cloudflare.com/durable-objects/best-practices/websockets/). It says `{"type": "hello", "depth": n}` when the hub connects and `{"type": "mail", "depth": n}` after every queued envelope, and nothing else: the hub fetches with `GET /hub/updates?timeout=0` and acknowledges over HTTP as before. The hub's keepalive `ping` gets `pong` from `setWebSocketAutoResponse`, which never wakes the object. Between envelopes the object hibernates, with the socket still open.
 
 Local mode binds no D1 database. A Workers Free account allows 10 D1 databases, and other projects often use them all; a Durable Object class does not count against that limit.
 
 ## Costs
 
-- **Local mode** fits the Workers Free plan. A hub long-polling with the 25-second timeout makes about 3 500 Worker requests a day, plus 1 440 cron runs, each of which calls the Mailbox once (about 5 000 of the 100 000 Durable Object requests a day). The `Mailbox` object is active while a poll waits, about 10 800 of the 13 000 GB-s of Durable Object duration the Free plan allows per day. Its SQLite storage stays far below the Free plan's limits (5 GB stored, 5 million rows read and 100 000 rows written a day): an envelope costs fewer than ten written rows from arrival to acknowledgement. KV use stays far below its free limits, and there is no D1 use at all.
+- **Local mode** fits the Workers Free plan, whose daily limits are 100 000 Worker requests, 100 000 Durable Object requests, 13 000 GB-s of Durable Object duration and 1 000 KV writes. Past any of them, that kind of operation fails until 00:00 UTC. A hub that runs around the clock on the doorbell (tau-net's default, `[component.net] link = "auto"`) costs per day:
+
+  | | Worker requests | Durable Object requests | Durable Object duration |
+  |---|---|---|---|
+  | the doorbell: one upgrade per (re)connect, a `ping` every 30 s | a few | a few, plus at most 144 for the 2 880 pings (billed 20:1, if at all) | none: `pong` is an auto-response, and a hibernatable object is not billed while idle |
+  | the hub's safety fetch every 5 minutes | 288 | 288 | a few milliseconds each |
+  | the minute cron (`prune`) | 1 440 runs | 1 440 | a few milliseconds each |
+  | each envelope (inbox, fetch, ack) | 3 | 3 | a few milliseconds each |
+
+  That is about 2 000 of the 100 000 Durable Object requests and well under 1% of the duration. An older hub, or `link = "poll"`, long-polls instead: about 3 500 more Worker and Durable Object requests, and the `Mailbox` stays active while each poll waits inside it, about 10 800 of the 13 000 GB-s a day. A second poller, or a slow network, then pushes the spine over the limit. The Mailbox's SQLite storage stays far below the Free plan's limits (5 GB stored, 5 million rows read and 100 000 rows written a day): an envelope costs fewer than ten written rows from arrival to acknowledgement. KV takes one write per new sender per hour (the card cache); there is no D1 use at all.
 - **Cloud mode** needs Workers Paid ($5 per month). The brain is a `basic` container (1/4 vCPU, 1 GiB memory, 4 GB disk). Kept awake all month, it is billed for about 720 GiB-hours of memory, of which 25 are included: roughly $6 per month, plus a little for disk and for the CPU it actually uses. With `KEEP_AWAKE=0` it sleeps 15 minutes after the last request and costs almost nothing, but then Telegram messages wait until something wakes it.
 
-Check [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/) and [Containers pricing](https://developers.cloudflare.com/containers/pricing/) for current numbers.
+Check [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/) and [Containers pricing](https://developers.cloudflare.com/containers/pricing/) for current numbers.
+
+## Floods
+
+Nobody can read your mail by flooding the inbox: everything stays sealed. A flood can only use up the Free plan's daily budget, and then your tau stops receiving mail until 00:00 UTC. Anyone with a wildcard domain has endless valid addresses and cards, so limits per sender alone do not help. The inbox therefore spends nothing but CPU until an envelope has passed:
+
+1. `Content-Type: application/json` (else `415`), the 64 KiB size cap, the shape, the recipient and the clock;
+2. the `INBOX_IP_LIMIT` [Rate Limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/): 60 envelopes a minute per client IP, an IPv6 address counted by its /64 (else `429 rate_limited`);
+3. the `INBOX_SENDER_LIMIT` binding: 30 a minute per claimed sender (else `429`);
+
+and only then fetches the sender's card, touches KV and calls the Mailbox, which still applies its own 60 an hour per sender and its cap of 1 000. The counters of a Rate Limiting binding are per Cloudflare location and approximate. Without the bindings (a `wrangler.jsonc` from before they existed) the spine skips both checks and logs `rate_limit_unbound` once; add the `ratelimits` block of `wrangler.example.jsonc` to your copy and deploy again. Their `namespace_id`s are shared by every Worker on your account that uses the same ids. A KV write that fails because the day's 1 000 are used up is ignored: the card cache is only a cache.
+
+What these guards cannot stop: every request still invokes the Worker and counts against its 100 000 a day, whatever it is answered. With a custom domain, a Cloudflare WAF rate-limiting rule stops a flood before the Worker runs. The Free plan includes one such rule (it counts by IP, over 10 seconds); a `*.workers.dev` address has no WAF rules.
+
+1. In the [Cloudflare dashboard](https://dash.cloudflare.com/), open the zone of your tau's address (for `tau.example.com`, the zone `example.com`).
+2. Go to **Security** > **Security rules** and select **Create rule** > **Rate limiting rules**.
+3. **Rule name**: `tau inbox`.
+4. **If incoming requests match**: **Field** `URI Path`, **Operator** `equals`, **Value** `/net/inbox`.
+5. **With the same characteristics**: `IP` (the only choice on the Free plan).
+6. **When rate exceeds**: **Requests** `20`, **Period** `10 seconds`.
+7. **Then take action**: `Block`, **Duration** `10 seconds`.
+8. Select **Deploy**.
+
+A legitimate tau sends a few envelopes a minute at most, so 20 in 10 seconds from one IP only trips on a flood. Cloudflare answers blocked requests itself with `429`; a sending hub treats that like any other failed delivery. See [Create a rate limiting rule in the dashboard](https://developers.cloudflare.com/waf/rate-limiting-rules/create-zone-dashboard/).
 
 ## Privacy
 

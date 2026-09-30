@@ -55,8 +55,8 @@ camera = "builtin"
 | `step_up_threshold` | `0.55` | 0.45–0.95 | step-up'lar ve varlık yeniden kontrolleri için aynısı |
 | `step_up_challenge_fresh_seconds` | `120` | 0–600 | baş çevirme sınamasını geçen bir kontrolden sonraki bu süre içinde step-up pasif, katı bir eşleşmedir |
 | `unlock_liveness` | `"challenge"` | `challenge`, `none` | `none` kilit açmadan baş çevirmeleri kaldırır; doctor uyarır, çünkü o zaman bir fotoğraf kilidi açabilir |
-| `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` | tier-2 step-up'ın ne istediği; Touch ID issue 114'e kadar `touch_id_unavailable` yanıtını verir, bu yüzden `touch_id` o zamana kadar her step-up'ı başarısız kılar |
-| `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` | iki yüz başarısızlığından ya da bir `camera_*` kararından sonra sunulur (issue 114) |
+| `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` | tier-2 step-up'ın ne istediği: `face_or_touch_id`, çalışamayan bir yüz kontrolünden (çok karanlık, yüz yok, zaman aşımı, kamera sorunu) sonra Touch ID'ye düşer; `touch_id` kamerayı hiç açmaz; `none` yalnızca istemcinin ve hub'ın ayarları ikisi de `none` derse geçerlidir |
+| `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` | deneme penceresindeki iki yüz başarısızlığından ya da bir `camera_*` kararından sonra sunulur: TUI kilit ekranında `t`, terminalin `kilitli>` isteminde `t` + Enter; başarılı olursa `method = "touch_id"` ile açar; kapalı kapak için `touch_id_or_password` seçilebilir |
 | `camera` | `"builtin"` | `builtin` ya da bir kameranın AVFoundation uniqueID'si | `builtin`, `bltn` taşımasındaki `AVCaptureDeviceTypeBuiltInWideAngleCamera` tipindeki aygıtı seçer; bir id başka bir şeyi gösteriyorsa doctor uyarır |
 
 Bir istemci her kontrolde kendi `step_up` ve `unlock_liveness` değerlerini gönderir; hub kendi değeriyle istemcininkinden daha katı olanı uygular (en katıdan başlayarak: `face` ya da `touch_id`, sonra `face_or_touch_id`, sonra `none`; `challenge`, `none`'dan önce).
@@ -66,9 +66,9 @@ Bir istemci her kontrolde kendi `step_up` ve `unlock_liveness` değerlerini gön
 | Komut | Ne yapar | Nerede çalışır |
 |---|---|---|
 | `tau guard setup [--model-file FILE]` | SFace'i kurar (sha256 ile sabitlenmiş indirme ya da `FILE`), kaydeder, bir kontrol çalıştırır, `[component.guard] enabled = true` yazar | yalnızca Mac'in başında (macOS, `SSH_CONNECTION` yok); korumalı bir hub çalışıyorsa hub üzerinden, yoksa yerel bir worker'da |
-| `tau guard enroll [--add]` | Touch ID ya da Mac parolasının arkasında yeniden kaydeder; `--add` şablona örnekler ekler (başka ışık) | yalnızca Mac'in başında |
+| `tau guard enroll [--add]` | Touch ID'nin arkasında (Touch ID yoksa Mac parolası) yeniden kaydeder ve parmak izi setini sabitler; `--add` şablona örnekler ekler (başka ışık) | yalnızca Mac'in başında |
 | `tau guard verify [--explain]` | baş çevirme sınamasıyla tek kontrol; `--explain` onu yerel bir worker'da çalıştırır ve her karenin sayılarını yazar (hiçbir kare kaydedilmez); başarısızsa 1 ile çıkar | macOS (başka yerde 2 ile çıkar); korumalı bir hub çalışıyorsa hub üzerinden, böylece geçen kontrol tau'nun kilidini açar, yoksa yerel bir worker'da |
-| `tau guard forget` | Touch ID ya da Mac parolasının arkasında şablonu, işareti ve Keychain anahtarını siler ve `enabled = false` yazar; Keychain anahtarı tuttuysa 1 ile çıkar (yeniden çalıştır) | yalnızca Mac'in başında, her zaman yerel bir worker'da |
+| `tau guard forget` | Touch ID'nin arkasında (Touch ID yoksa Mac parolası) şablonu, işareti ve Keychain anahtarını siler ve `enabled = false` yazar; Keychain anahtarı tuttuysa 1 ile çıkar (yeniden çalıştır) | yalnızca Mac'in başında, her zaman yerel bir worker'da |
 | `tau guard doctor` | platformu, worker'ı, OpenCV'yi, YuNet ve SFace dosyalarını, kaydı, şablonu, Keychain'i, modları, canlılığı, kamerayı, terminalin kamera iznini, başarısızlıkları ve hub'ın kamera iznini tutan uygulamayı denetler; `fail` varsa 1 ile çıkar | her yerde |
 | `tau guard status [--json]` | çalışan hub'ın bildirdiği durum (`GET /guard/status`); etkin koruma yoksa `off` yazar; hub çalışmıyorsa 0, hub hatasında 1 ile çıkar | her yerde |
 | `tau guard lock` | korunan her kanalı kilitler (`POST /guard/lock`, tetikleyici `command`) | her yerde; SSH üzerinden de |
@@ -134,7 +134,7 @@ Reddedilen bir tur bir bildirim ve `TurnEnd("locked")` üretir: geçmişe hiçbi
 
 | Neden | Anlamı | Sayılır |
 |---|---|---|
-| `match` | doğrulandı; `method` `face` (ya da issue 114 ile `touch_id`) | – |
+| `match` | doğrulandı; `method` `face` ya da `touch_id` | – |
 | `no_match` | kaliteli bir kare şablonla eşleşmedi | evet |
 | `no_face` | hiç yüz görülmedi | hayır |
 | `multiple_faces` | sayılacak kadar büyük ikinci bir yüz | evet |
@@ -148,7 +148,7 @@ Reddedilen bir tur bir bildirim ve `TurnEnd("locked")` üretir: geçmişe hiçbi
 | `key_unavailable` | Keychain anahtarı okunamadı | hayır |
 | `cooldown` | bekleme süresinde reddedildi; `retry_after` ayarlı | – |
 | `locked` | kilitliyken bir step-up | – |
-| `touch_id_unavailable`, `touch_id_failed` | Touch ID yok (kapalı kapak, sensör yok, 114'e kadar) ya da doğrulamadı | hayır |
+| `touch_id_unavailable`, `touch_id_failed` | Touch ID yok (kapalı kapak, sensör yok, kilitlenme) ya da doğrulamadı; değişmiş bir parmak izi seti de `tau guard enroll --add` yeniden sabitleyene kadar `touch_id_failed` verir | hayır |
 | `unsupported_platform`, `unavailable`, `busy`, `error` | macOS değil; hub yok ya da kötü yanıt; başka bir kontrol sürüyor; başka her şey | hayır |
 
 ### İlerleme adımları { #progress-steps }

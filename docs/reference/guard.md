@@ -53,8 +53,8 @@ camera = "builtin"
 | `step_up_threshold` | `0.55` | 0.45–0.95 | the same for step-ups and presence rechecks |
 | `step_up_challenge_fresh_seconds` | `120` | 0–600 | within this time after a check that passed the head-turn challenge, a step-up is a passive strict match |
 | `unlock_liveness` | `"challenge"` | `challenge`, `none` | `none` drops the head turns from an unlock; the doctor warns, because a photo could then unlock |
-| `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` | what a tier-2 step-up asks for; Touch ID answers `touch_id_unavailable` until issue 114, so `touch_id` fails every step-up until then |
-| `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` | offered after two face failures or a `camera_*` verdict (issue 114) |
+| `step_up` | `"face"` | `face`, `face_or_touch_id`, `touch_id`, `none` | what a tier-2 step-up asks for: `face_or_touch_id` falls back to Touch ID after a face check that could not run (too dark, no face, timeout, a camera problem); `touch_id` never opens the camera; `none` applies only when the client's and the hub's configs both say `none` |
+| `unlock_fallback` | `"touch_id"` | `touch_id`, `touch_id_or_password`, `none` | offered after two face failures in the attempt window or a `camera_*` verdict: `t` on the TUI lock screen, `t` + Enter at the terminal's `locked>` prompt; a pass unlocks with `method = "touch_id"`; `touch_id_or_password` is the opt-in for a closed lid |
 | `camera` | `"builtin"` | `builtin` or a camera's AVFoundation uniqueID | `builtin` picks the device of type `AVCaptureDeviceTypeBuiltInWideAngleCamera` on transport `bltn`; the doctor warns when an id names anything else |
 
 A client sends its own `step_up` and `unlock_liveness` with every check, and the hub applies the stricter of its own value and the client's (strictest first: `face` or `touch_id`, then `face_or_touch_id`, then `none`; `challenge` before `none`).
@@ -64,9 +64,9 @@ A client sends its own `step_up` and `unlock_liveness` with every check, and the
 | Command | What it does | Where it runs |
 |---|---|---|
 | `tau guard setup [--model-file FILE]` | installs SFace (download pinned by sha256, or `FILE`), enrolls, runs one check, writes `[component.guard] enabled = true` | at the Mac only (macOS, no `SSH_CONNECTION`); through the hub when a guarded hub runs, else a local worker |
-| `tau guard enroll [--add]` | enrolls again behind Touch ID or the Mac password; `--add` adds samples to the template (other light) | at the Mac only |
+| `tau guard enroll [--add]` | enrolls again behind Touch ID (the Mac password only without Touch ID) and pins the fingerprint set; `--add` adds samples to the template (other light) | at the Mac only |
 | `tau guard verify [--explain]` | one check with the head-turn challenge; `--explain` runs it in a local worker and prints each frame's numbers (no frame is saved); exit 1 when it fails | macOS (exit 2 elsewhere); through the hub when a guarded hub runs, so a passed check unlocks tau, else a local worker |
-| `tau guard forget` | removes the template, the marker and the Keychain key behind Touch ID or the Mac password, and writes `enabled = false`; exit 1 when the Keychain kept the key (run it again) | at the Mac only, always a local worker |
+| `tau guard forget` | removes the template, the marker and the Keychain key behind Touch ID (the Mac password only without Touch ID), and writes `enabled = false`; exit 1 when the Keychain kept the key (run it again) | at the Mac only, always a local worker |
 | `tau guard doctor` | checks platform, worker, OpenCV, the YuNet and SFace files, enrollment, template, Keychain, modes, liveness, camera, the terminal's camera permission, failures and the app holding the hub's camera grant; exit 1 on a `fail` | anywhere |
 | `tau guard status [--json]` | the state as the running hub reports it (`GET /guard/status`); without an active guard prints `off`; exit 0 when no hub runs, 1 on a hub error | anywhere |
 | `tau guard lock` | locks every guarded channel (`POST /guard/lock`, trigger `command`) | anywhere; also over SSH |
@@ -132,7 +132,7 @@ A refused turn yields a notice and `TurnEnd("locked")`: nothing is appended to t
 
 | Reason | Meaning | Counted |
 |---|---|---|
-| `match` | verified; `method` is `face` (or `touch_id`, issue 114) | – |
+| `match` | verified; `method` is `face` or `touch_id` | – |
 | `no_match` | a quality frame did not match the template | yes |
 | `no_face` | no face was seen | no |
 | `multiple_faces` | a second face big enough to count | yes |
@@ -146,7 +146,7 @@ A refused turn yields a notice and `TurnEnd("locked")`: nothing is appended to t
 | `key_unavailable` | the Keychain key could not be read | no |
 | `cooldown` | refused during a cooldown; `retry_after` is set | – |
 | `locked` | a step-up while locked | – |
-| `touch_id_unavailable`, `touch_id_failed` | Touch ID missing (closed lid, no sensor, until 114) or not confirmed | no |
+| `touch_id_unavailable`, `touch_id_failed` | Touch ID missing (closed lid, no sensor, lockout) or not confirmed; a changed fingerprint set also gives `touch_id_failed` until `tau guard enroll --add` pins it again | no |
 | `unsupported_platform`, `unavailable`, `busy`, `error` | not macOS; no hub or bad answer; another check runs; anything else | no |
 
 ### Progress steps

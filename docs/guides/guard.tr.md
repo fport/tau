@@ -7,7 +7,7 @@ Sahip koruması (owner guard), tau'nun yalnızca senin için çalışmasını sa
 Koruma hub'ın (tau'nun çalıştığı, sana ait makine) içinde çalışır; ne bir modele ne de internete ihtiyaç duyar. Yüz şablonun Mac'ten asla çıkmaz ve veri klasörünün bir kopyası ya da bir yedek onu okuyamaz. Karar ve tüm tehdit modeli [ADR 0008](../adr/0008-owner-guard.md)'de. Her anahtar, route ve kayıt alanı [koruma referansında](../reference/guard.md) listelenir.
 
 !!! info "Henüz olmayanlar"
-    - **Touch ID**, kilit açmada yedek yol ve step-up seçeneği olarak issue 114 ile geliyor. O zamana kadar kilidi yalnızca yüz kontrolü açar. Kayıt ve `tau guard forget` şimdiden Touch ID ya da Mac parolanı ister.
+    - **Touch ID yedek yoldur.** İki başarısız yüz kontrolünden sonra ya da kamera kullanılamadığında kilit ekranı Touch ID'yi önerir: `tau tui`'de `t`'ye bas, `tau chat`'in `kilitli>` isteminde `t` yazıp Enter'a bas. macOS isteği Mac'in ekranında çıkar. `step_up` da Touch ID isteyebilir (`face_or_touch_id` ya da `touch_id`). Touch ID kayıt sırasında parmak izi setini sabitler: Sistem Ayarları'nda parmak ekler ya da silersen Touch ID'nin yeniden kabul edilmesi için `tau guard enroll --add` çalıştır.
     - **Uzaktan kilit açma:** SSH ya da mosh üzerinden bir TUI, yalnızca Mac'in başında kilidi açtığın sürece çalışır. Telegram'dan verilen telefon izinleri issue 117 ile geliyor.
     - Koruma altında **ses** issue 118 ve 119 ile geliyor.
 
@@ -209,4 +209,4 @@ uv run tau doctor          # guard satırı hub'ın korumayı çalıştırıp ç
 uv run tau guard forget
 ```
 
-Touch ID ya da Mac parolanı ister, sonra şablonu, kayıt işaretini ve Keychain anahtarını siler ve `[component.guard] enabled = false` yazar. Hub'ı ve açık her tau penceresini yeniden başlat; koruma kapanır. Keychain'in anahtarı tuttuğunu söylerse yeniden çalıştır. `tau guard setup` her şeyi en baştan yeniden kurar.
+Touch ID ister (Mac parolanı yalnızca Touch ID'siz bir Mac'te), sonra şablonu, kayıt işaretini ve Keychain anahtarını siler ve `[component.guard] enabled = false` yazar. Hub'ı ve açık her tau penceresini yeniden başlat; koruma kapanır. Keychain'in anahtarı tuttuğunu söylerse yeniden çalıştır. `tau guard setup` her şeyi en baştan yeniden kurar.

@@ -5,7 +5,7 @@ The owner guard makes tau work only for you. After you set it up, `tau tui`, `ta
 The guard runs inside the hub and does not need a model or the internet. Your face template never leaves the Mac, and a copy of the data folder or a backup cannot read it. The decision and its full threat model are in [ADR 0008](../adr/0008-owner-guard.md). Every key, route and log field is listed in the [guard reference](../reference/guard.md).
 
 !!! info "What is not here yet"
-    - **Touch ID** as an unlock fallback and as a step-up option comes with issue 114. Until then only the face check unlocks. Enrollment and `tau guard forget` already ask for Touch ID or your Mac password.
+    - **Touch ID is the fallback.** After two failed face checks, or when the camera cannot be used, the lock screen offers Touch ID: press `t` in `tau tui`, or type `t` and press Enter at the `locked>` prompt of `tau chat`. The macOS prompt appears on the Mac's screen. `step_up` can also ask for Touch ID (`face_or_touch_id` or `touch_id`). Touch ID pins your fingerprint set at enrollment: after you add or remove a finger in System Settings, run `tau guard enroll --add` so Touch ID is accepted again.
     - **Remote unlock:** a TUI over SSH or mosh works only while you are unlocked at the Mac. Grants for a phone, issued from Telegram, come with issue 117.
     - **Voice** under the guard comes with issues 118 and 119.
 
@@ -207,4 +207,4 @@ uv run tau doctor          # its guard line says whether the hub runs the guard 
 uv run tau guard forget
 ```
 
-It asks for Touch ID or your Mac password, then removes the template, the enrollment marker and the Keychain key, and writes `[component.guard] enabled = false`. Restart the hub and any open tau window; the guard is off. If it says the Keychain kept the key, run it again. `tau guard setup` sets everything up again from scratch.
+It asks for Touch ID (your Mac password only on a Mac without Touch ID), then removes the template, the enrollment marker and the Keychain key, and writes `[component.guard] enabled = false`. Restart the hub and any open tau window; the guard is off. If it says the Keychain kept the key, run it again. `tau guard setup` sets everything up again from scratch.

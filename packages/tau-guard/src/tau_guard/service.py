@@ -11,7 +11,8 @@ guard's state inside ``tau hub run``:
   reflex loop (a daemon thread, every 2 s) and an inline check at every admission and
   verification apply the reflex locks, and each attempt runs in its own worker subprocess
   (:mod:`tau_guard.runner`). The service registers the protected ``/guard/*`` routes of
-  :mod:`tau_guard.routes` and writes ``guard/audit.jsonl``.
+  :mod:`tau_guard.routes` and writes ``guard/audit.jsonl``. The failure count and the cooldown
+  survive a restart in ``guard/failures.json`` (:mod:`tau_guard.failures`).
 - **Active but broken** (a bad knob, an unsupported platform, no presence source, a start
   failure): ``state: "unavailable"`` with a reason; the routes answer ``unavailable`` and the
   ``/status`` block is never omitted.
@@ -69,6 +70,7 @@ from tau_core.hub import ControlApi, ControlRequest
 
 from tau_guard.audit import AuditLog, secure_dir
 from tau_guard.config import GuardSettings, SettingsError, parse_settings, stricter_policy
+from tau_guard.failures import FailureFile
 from tau_guard.presence import PresenceSource, PresenceUnavailable, QuartzPresence
 from tau_guard.routes import SCHEMAS, BadRequest, parse_body, parse_query
 from tau_guard.runner import DEFAULT_COMMAND, Progress, WorkerRun
@@ -158,6 +160,8 @@ class GuardService:
         self.settings: GuardSettings | None = None
         self.machine: GuardMachine | None = None
         self.audit = AuditLog(self.guard_dir, now=self.clock.wall)
+        self.failure_file = FailureFile(self.guard_dir)
+        self._saved_failures: dict[str, Any] | None = None
         self._cond = threading.Condition(threading.RLock())
         self._runs: dict[str, WorkerRun] = {}
         self._all_runs: list[WorkerRun] = []
@@ -198,6 +202,10 @@ class GuardService:
         self.mode = "active"
         secure_dir(self.guard_dir)
         self.machine = GuardMachine(self.clock)
+        saved = self.failure_file.load()
+        if saved is not None and not self.machine.restore_failures(saved):
+            logger.warning("guard: %s is malformed; ignoring it", self.failure_file.path)
+        self._saved_failures = self.machine.failure_state()
         try:
             self.settings = parse_settings(table)
         except SettingsError as exc:
@@ -319,6 +327,7 @@ class GuardService:
                 yield machine
             finally:
                 self._apply(machine)
+                self._persist_failures(machine)
                 changed = machine.seq != before
                 status = self._guard_status() if changed else None
                 if changed:
@@ -340,6 +349,12 @@ class GuardService:
                     run.stop(reason)
             for attempt in effects.spawn:
                 self._spawn(attempt)
+
+    def _persist_failures(self, machine: GuardMachine) -> None:
+        state = machine.failure_state()
+        if state != self._saved_failures:
+            self._saved_failures = state
+            self.failure_file.save(state)
 
     def _spawn(self, attempt: Attempt) -> None:
         assert self.machine is not None

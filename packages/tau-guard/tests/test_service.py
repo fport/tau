@@ -18,7 +18,14 @@ from tau_core.approval import ApprovalRequest
 from tau_core.hub import ControlApi
 from tau_core.testing import test_config
 from tau_guard.service import GuardService, make_service
-from tau_guard.testing import FakeClock, FakePresence, fake_worker_command, match, write_script
+from tau_guard.testing import (
+    FakeClock,
+    FakePresence,
+    fake_worker_command,
+    match,
+    read_requests,
+    write_script,
+)
 
 REQUEST = ApprovalRequest("r1", "lamp", Tier.PHYSICAL, {"state": "on"}, "", "s1", "tui")
 OPEN_KEYS = {"state", "enrolled", "available", "reason"}
@@ -314,5 +321,56 @@ async def test_cancelling_an_in_hub_unlock_cancels_the_attempt(tmp_path: Path) -
             await task
         status = await service.status()
         assert status.state == "locked" and status.last_verdict == "cancelled"
+    finally:
+        await service.stop()
+
+
+# -- verification fixes: stopping, reflexes at the verdict, restarts, the event loop -------------
+
+
+def workers(script: Path) -> list[int]:
+    return [int(entry["pid"]) for entry in read_requests(script)]
+
+
+SPOOF = {"verdict": {"ok": False, "reason": "spoof", "method": None, "score": 0.3}}
+
+
+async def test_a_restart_keeps_the_failures_and_the_cooldown(tmp_path: Path) -> None:
+    clock, config = FakeClock(), guard_config(tmp_path)
+    service, hub, _, script = make(tmp_path, config, clock=clock, runs=[[SPOOF]])
+    await service.start(hub)  # type: ignore[arg-type]
+    for _ in range(3):
+        assert (await service.unlock(channel="tui", client_id="c1")).reason == "spoof"
+    assert (await service.unlock(channel="tui", client_id="c1")).reason == "cooldown"
+    await service.stop()
+    saved = tmp_path / "data" / "guard" / "failures.json"
+    assert stat.S_IMODE(saved.stat().st_mode) == 0o600
+    assert set(json.loads(saved.read_text())) >= {"failures", "cooldown_until", "level"}
+    clock.advance(3)  # TauBar's switch off and on again
+    again, hub2, _, _ = make(tmp_path, config, clock=clock, runs=[[match()]])
+    await again.start(hub2)  # type: ignore[arg-type]
+    try:
+        status = await again.status()
+        assert (status.state, status.failures) == ("locked", 3)
+        assert status.cooldown_until is not None
+        verdict = await again.unlock(channel="tui", client_id="c1")
+        assert (verdict.ok, verdict.reason, verdict.retry_after) == (False, "cooldown", 27.0)
+        assert len(workers(script)) == 3  # no worker ran after the restart
+    finally:
+        await again.stop()
+
+
+async def test_a_malformed_failure_file_is_ignored(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    guard_dir = tmp_path / "data" / "guard"
+    guard_dir.mkdir(parents=True)
+    (guard_dir / "failures.json").write_text('{"v": 1, "failures": "many"}', encoding="utf-8")
+    service, hub, _, _ = make(tmp_path)
+    with caplog.at_level("WARNING", logger="tau_guard"):
+        await service.start(hub)  # type: ignore[arg-type]
+    try:
+        assert service.mode == "active" and (await service.status()).failures == 0
+        assert "failures.json is malformed" in caplog.text
     finally:
         await service.stop()

@@ -3,6 +3,8 @@ decision 9 table, the reflex locks of decision 10 and the cooldown of decision 1
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from tau_guard.state import (
     COOLDOWN_MAX,
@@ -689,3 +691,84 @@ def test_challenge_freshness_ends_with_a_lock(clock: FakeClock) -> None:
     run_kind(m, "unlock", TOUCH_ID)
     step_up = m.request("step_up", channel="tui", client_id="c1")
     assert not isinstance(step_up, Refusal) and not step_up.challenge_fresh
+
+
+# -- the failure count and the cooldown across a restart -----------------------------------------
+
+
+def cooled_down(clock: FakeClock) -> GuardMachine:
+    m = machine(clock)
+    for reason in ("no_match", "spoof", "multiple_faces"):
+        assert fail(m, reason) is None
+    assert m.cooldown_left() == 30
+    return m
+
+
+def test_a_restart_keeps_the_failures_and_the_cooldown(clock: FakeClock) -> None:
+    saved = cooled_down(clock).failure_state()
+    assert set(saved) == {
+        "v",
+        "failures",
+        "failure_times",
+        "level",
+        "last_failure",
+        "cooldown_end",
+        "cooldown_until",
+    }
+    clock.advance(3)
+    fresh = GuardMachine(clock)
+    assert fresh.restore_failures(saved) is True
+    assert fresh.failures == 3 and fresh.cooldown_left() == 27
+    assert fresh.snapshot()["cooldown_until"] == saved["cooldown_until"][:19] + "+00:00"
+    assert fresh.request("unlock", channel="tui", client_id="c1") == Refusal("cooldown", 27)
+    clock.advance(27)
+    assert fail(fresh) is None
+    assert fresh.cooldown_left() == 60  # the doubling survived the restart too
+
+
+def test_a_restart_after_a_long_stop_forgets_old_failures(clock: FakeClock) -> None:
+    m = machine(clock)
+    fail(m)
+    fail(m)
+    saved = m.failure_state()
+    clock.sleep(601)  # the hub was down (or the Mac slept) past the window
+    fresh = GuardMachine(clock)
+    assert fresh.restore_failures(saved)
+    assert fresh.failures == 2 and fresh.failure_state()["failure_times"] == []
+    fail(fresh)
+    assert fresh.cooldown_left() is None
+
+
+def test_restored_times_are_clamped(clock: FakeClock) -> None:
+    saved = cooled_down(clock).failure_state()
+    future = (clock.wall() + timedelta(days=1)).isoformat()
+    saved.update(cooldown_until=future, cooldown_end=future, failure_times=[future] * 3)
+    fresh = GuardMachine(clock)
+    assert fresh.restore_failures(saved)
+    assert fresh.cooldown_left() == COOLDOWN_MAX  # never longer than the longest cooldown
+    assert all(t == clock.wall().isoformat() for t in fresh.failure_state()["failure_times"])
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        None,
+        [],
+        {"v": 2},
+        {"failures": -1},
+        {"failures": True},
+        {"level": "3"},
+        {"failure_times": "now"},
+        {"failure_times": ["yesterday"]},
+        {"failure_times": ["2026-09-30T12:00:00"]},  # no time zone
+        {"failure_times": ["2026-09-30T12:00:00+00:00"] * 33},
+        {"cooldown_until": 30},
+    ],
+)
+def test_a_malformed_saved_state_restores_nothing(clock: FakeClock, broken: object) -> None:
+    saved: object = broken
+    if isinstance(broken, dict) and broken.get("v") != 2:
+        saved = {**cooled_down(FakeClock()).failure_state(), **broken}
+    fresh = GuardMachine(clock)
+    assert fresh.restore_failures(saved) is False
+    assert fresh.failures == 0 and fresh.cooldown_left() is None

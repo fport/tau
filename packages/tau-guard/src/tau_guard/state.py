@@ -40,6 +40,9 @@ Rules the table in the ADR leaves to the implementation:
   :data:`COOLDOWN_START` seconds. From then on every counted failure starts the next cooldown
   at twice the length, up to :data:`COOLDOWN_MAX`, until a match or a quiet window (no failure
   and no cooldown ending within :data:`FAILURE_WINDOW`) resets the doubling.
+  :meth:`GuardMachine.failure_state` and :meth:`GuardMachine.restore_failures` carry the
+  failure count and the cooldown across a hub restart (as wall times), so a restart never
+  resets the rate limit.
 - While the screen-lock state or the HID idle time is unknown, an unlock lasts at most
   ``idle_lock`` seconds (lock trigger ``max_age``).
 """
@@ -108,6 +111,8 @@ _STEP_UP_METHODS = {
     "none": frozenset({"face", "touch_id"}),
 }
 """The success methods each ``step_up`` policy accepts (an unknown value: face only)."""
+MAX_SAVED_FAILURES = 32
+MAX_SAVED_LEVEL = 16
 _CAMERA = {
     "camera_denied": "denied",
     "camera_unavailable": "unavailable",
@@ -141,6 +146,22 @@ def iso(moment: datetime | None) -> str | None:
     if moment is None:
         return None
     return moment.astimezone(UTC).isoformat(timespec="seconds")
+
+
+def _stamp(moment: datetime | None) -> str | None:
+    """``moment`` as ISO 8601 UTC with microseconds (for :meth:`GuardMachine.failure_state`)."""
+    return None if moment is None else moment.astimezone(UTC).isoformat()
+
+
+def _moment(value: object) -> datetime | None:
+    """An aware ISO time, else ``None``."""
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
 
 
 def _rank(key: str, policy: Mapping[str, str]) -> int:
@@ -273,8 +294,11 @@ class GuardMachine:
         self._cooldown_until_mono: float | None = None
         self._cooldown_level = 0
         self._cooldown_end: float | None = None
+        self._cooldown_end_wall: datetime | None = None
         self._last_failure: float | None = None
-        self._failure_times: list[float] = []
+        self._last_failure_wall: datetime | None = None
+        self._failure_times: list[tuple[float, datetime]] = []
+        """``(monotonic, wall)`` of each counted failure within the window."""
         self.step_up_active = False
         self.last_verdict: str | None = None
         self.camera: str | None = None
@@ -365,6 +389,52 @@ class GuardMachine:
 
     def attempt(self, attempt_id: str) -> Attempt | None:
         return self._find(attempt_id)
+
+    def failure_state(self) -> dict[str, Any]:
+        """The failure count and the cooldown with wall times, so a hub restart keeps them
+        (the service stores this in ``guard/failures.json``)."""
+        return {
+            "v": 1,
+            "failures": self.failures,
+            "failure_times": [
+                _stamp(wall) for _, wall in self._failure_times[-MAX_SAVED_FAILURES:]
+            ],
+            "level": self._cooldown_level,
+            "last_failure": _stamp(self._last_failure_wall),
+            "cooldown_end": _stamp(self._cooldown_end_wall),
+            "cooldown_until": _stamp(self.cooldown_until),
+        }
+
+    def restore_failures(self, data: object) -> bool:
+        """Take back a :meth:`failure_state` from before a restart: wall times become
+        monotonic ones. A malformed value restores nothing (``False``). A time in the future
+        counts as now, and a cooldown never comes back longer than :data:`COOLDOWN_MAX`."""
+        parsed = _parse_failure_state(data)
+        if parsed is None:
+            return False
+        failures, times, level, last_failure, cooldown_end, cooldown_until = parsed
+        now, wall = self.clock.monotonic(), self.clock.wall()
+
+        def back(moment: datetime, most: float = 0.0) -> tuple[float, datetime]:
+            delta = min((moment - wall).total_seconds(), most)
+            return now + delta, wall + timedelta(seconds=delta)
+
+        self.failures = failures
+        self._failure_times = [back(moment) for moment in times]
+        self._cooldown_level = level
+        self._last_failure, self._last_failure_wall = (
+            back(last_failure) if last_failure is not None else (None, None)
+        )
+        self._cooldown_end, self._cooldown_end_wall = (
+            back(cooldown_end, COOLDOWN_MAX) if cooldown_end is not None else (None, None)
+        )
+        if cooldown_until is not None:
+            until_mono, until_wall = back(cooldown_until, COOLDOWN_MAX)
+            if until_mono > now:
+                self._cooldown_until_mono, self.cooldown_until = until_mono, until_wall
+        self._prune()
+        self._bump()
+        return True
 
     # -- requests --------------------------------------------------------------------------
 
@@ -658,8 +728,8 @@ class GuardMachine:
         if outcome.ok:
             self._failure_times.clear()
             self._cooldown_level = 0
-            self._last_failure = None
-            self._cooldown_end = None
+            self._last_failure = self._last_failure_wall = None
+            self._cooldown_end = self._cooldown_end_wall = None
             if outcome.liveness == "challenge" and attempt.kind in ("unlock", "step_up"):
                 self._challenge_passed = now
         duration = None if attempt.started is None else int((now - attempt.started) * 1000)
@@ -717,8 +787,8 @@ class GuardMachine:
     def _count_failure(self, now: float, wall: datetime) -> None:
         self.failures += 1
         self._prune_failures(now)
-        self._failure_times.append(now)
-        self._last_failure = now
+        self._failure_times.append((now, wall))
+        self._last_failure, self._last_failure_wall = now, wall
         if self._cooldown_level == 0 and len(self._failure_times) < COOLDOWN_AFTER:
             return
         seconds = min(COOLDOWN_MAX, COOLDOWN_START * 2**self._cooldown_level)
@@ -726,13 +796,16 @@ class GuardMachine:
         self._cooldown_until_mono = now + seconds
         self._cooldown_end = now + seconds
         self.cooldown_until = wall + timedelta(seconds=seconds)
+        self._cooldown_end_wall = self.cooldown_until
         self._bump()
         self._audit("cooldown", ok=False, reason="cooldown", duration_ms=int(seconds * 1000))
 
     def _prune_failures(self, now: float) -> None:
         """Forget failures older than the window; after a quiet window (no failure and no
         cooldown ending in it) the doubling starts over."""
-        self._failure_times = [t for t in self._failure_times if now - t < FAILURE_WINDOW]
+        self._failure_times = [
+            (mono, wall) for mono, wall in self._failure_times if now - mono < FAILURE_WINDOW
+        ]
         anchors = [t for t in (self._last_failure, self._cooldown_end) if t is not None]
         if not anchors or now - max(anchors) >= FAILURE_WINDOW:
             self._cooldown_level = 0
@@ -764,3 +837,43 @@ class GuardMachine:
             if now - attempt.created > limit:
                 self.queue.remove(attempt)
                 self._finish_unstarted(attempt, Outcome(False, "timeout"))
+
+
+def _parse_failure_state(
+    data: object,
+) -> tuple[int, list[datetime], int, datetime | None, datetime | None, datetime | None] | None:
+    """Validate a :meth:`GuardMachine.failure_state` read back from disk; ``None`` when any
+    field is off."""
+    if not isinstance(data, dict) or data.get("v") != 1:
+        return None
+    failures, level = _count(data.get("failures")), _count(data.get("level"))
+    times = data.get("failure_times")
+    if failures is None or level is None:
+        return None
+    if not isinstance(times, list) or len(times) > MAX_SAVED_FAILURES:
+        return None
+    moments = [_moment(text) for text in times]
+    if any(moment is None for moment in moments):
+        return None
+    optional: list[datetime | None] = []
+    for key in ("last_failure", "cooldown_end", "cooldown_until"):
+        value = data.get(key)
+        moment = _moment(value)
+        if value is not None and moment is None:
+            return None
+        optional.append(moment)
+    return (
+        min(failures, 10**6),
+        [moment for moment in moments if moment is not None],
+        min(level, MAX_SAVED_LEVEL),
+        optional[0],
+        optional[1],
+        optional[2],
+    )
+
+
+def _count(value: object) -> int | None:
+    """A non-negative int (not a bool), else ``None``."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None

@@ -1,6 +1,6 @@
 # 113 · Guarded channels: TUI lock screen, terminal lock prompt, `/guard`, Telegram lock, live lock propagation
 
-Status: ready-for-agent
+Status: done
 Type: AFK
 Layer: L10 · Guard
 Packages: tau-core, tau-tui
@@ -60,16 +60,16 @@ The channels show the guard. `tau tui` and `tau chat` start locked when a guard 
 
 ## Acceptance criteria
 
-- [ ] `/guard` sits just before `/quit` in `SLASH_COMMANDS`; the terminal, the TUI and Telegram handle it; all pinned tests and snapshots are updated and green; with no guard it answers that the guard is off
-- [ ] TUI: with a `FakeGuard` in `locked` state, the lock screen is the first screen, the transcript is not visible behind it (snapshot with a custom check), the setup wizard and the settings screen never open, and every action except Enter, Esc, ctrl+q and the allowed commands is refused
-- [ ] TUI: Enter runs `unlock` and every scripted progress step appears before the verdict; Esc during an attempt calls `cancel`; after an unlock the "Unlocked" notice shows the failure count and `FakeModel` records no call
-- [ ] TUI: flipping the `FakeGuard` to locked from outside pushes the lock screen within 2 s, cancels a running turn and dismisses an open approval dialog as `REJECTED`
-- [ ] TUI: a prompt submitted while locked stays in the composer; a `recheck` admission runs the passive check and resends the prompt
-- [ ] TUI: during a tier-2 step-up the challenge steps show in the busy line (scripted `FakeGuard` progress through the gate's `guard` events)
-- [ ] TUI: the same guard object is passed to every agent build (`/new`, `/resume`, `/model`, settings save); the header shows the lock glyph only when a guard is active; no snapshot changes when no guard is active except the `/guard` menu entry
-- [ ] Terminal: the locked banner shows at start; Enter unlocks and prints each step; Ctrl-C cancels an attempt and the REPL keeps running; only the allowed commands run while locked; entering the lock prompt writes `\x1b[2J\x1b[3J\x1b[H`; step-up challenge steps print through the event bus; `TurnEnd("locked")` returns to the lock prompt
-- [ ] Telegram: `/guard` shows the state, `/guard lock` locks with trigger `telegram`, `/guard unlock` answers that unlocking happens only at the Mac; Telegram turns keep running while the guard is locked
-- [ ] Every new UI string is an i18n key in `en` and `tr`; no Turkish text in code outside the `tr` column
+- [x] `/guard` sits just before `/quit` in `SLASH_COMMANDS`; the terminal, the TUI and Telegram handle it; all pinned tests and snapshots are updated and green; with no guard it answers that the guard is off
+- [x] TUI: with a `FakeGuard` in `locked` state, the lock screen is the first screen, the transcript is not visible behind it (snapshot with a custom check), the setup wizard and the settings screen never open, and every action except Enter, Esc, ctrl+q and the allowed commands is refused
+- [x] TUI: Enter runs `unlock` and every scripted progress step appears before the verdict; Esc during an attempt calls `cancel`; after an unlock the "Unlocked" notice shows the failure count and `FakeModel` records no call
+- [x] TUI: flipping the `FakeGuard` to locked from outside pushes the lock screen within 2 s, cancels a running turn and dismisses an open approval dialog as `REJECTED`
+- [x] TUI: a prompt submitted while locked stays in the composer; a `recheck` admission runs the passive check and resends the prompt
+- [x] TUI: during a tier-2 step-up the challenge steps show in the busy line (scripted `FakeGuard` progress through the gate's `guard` events)
+- [x] TUI: the same guard object is passed to every agent build (`/new`, `/resume`, `/model`, settings save); the header shows the lock glyph only when a guard is active; no snapshot changes when no guard is active except the `/guard` menu entry
+- [x] Terminal: the locked banner shows at start; Enter unlocks and prints each step; Ctrl-C cancels an attempt and the REPL keeps running; only the allowed commands run while locked; entering the lock prompt writes `\x1b[2J\x1b[3J\x1b[H`; step-up challenge steps print through the event bus; `TurnEnd("locked")` returns to the lock prompt
+- [x] Telegram: `/guard` shows the state, `/guard lock` locks with trigger `telegram`, `/guard unlock` answers that unlocking happens only at the Mac; Telegram turns keep running while the guard is locked
+- [x] Every new UI string is an i18n key in `en` and `tr`; no Turkish text in code outside the `tr` column
 
 ## Blocked by
 
@@ -84,3 +84,8 @@ The channels show the guard. `tau tui` and `tau chat` start locked when a guard 
   - `TierGate` now refuses an approved tier-2 call when the guard locked while the approval dialog was open (approval `locked`); the TUI still dismisses the open dialog on a lock.
   - The repo rules refuse `self.guard = None` and any other constant assigned to `.guard`; initialise the attribute from `resolve_guard(...)` or keep it in a dataclass field.
   - Until this issue adds `tui.turn.stop.locked`, the TUI footer shows the raw word `locked` for a refused turn.
+- 2026-09-30: done. Commits: fc3e28b (`/guard` in the shared commands, the `tau chat` lock prompt), 3bdc343 (Telegram `/guard`, tau-core README), db69fb0 (TUI lock screen, live locks, step-up line, header glyphs, `/guard`, ctrl+l / F5, snapshots). Tests: `test_terminal_guard.py` (18), Telegram `/guard` tests in `test_telegram.py` (5), tau-tui `test_guard.py` (23), a CLI test, three new snapshots (lock at start, lock over a chat, step-up); full suite 1203 passed, 1 failed (the known personal-path finding of issue 130, unrelated). Everything is tested against `FakeGuard`.
+  - Deviations: the TUI builds its first agent only after the first unlock (the strict reading of "before the first agent build"; `--resume` and the start notice wait too). `tau chat` still builds its agent before the lock prompt but prints nothing of the session (no ready banner, `--resume` waits) until the unlock. The setup screen is not shown while a guard marker exists for the data directory: `tau tui` exits 2 with a message, because there is no configuration to unlock with. The command menu grew to 16 rows (14 commands), so the transcript keeps 3 rows at 80x24. Any guard state other than `unlocked`, `verifying` included, counts as locked in every channel. The unlock fallback (Touch ID after two face failures or a `camera_*` verdict) is not offered: the `Guard` protocol has no way to report one yet (114). The docs site is untouched (the parallel session owns `docs/getting-started/*` and `docs/reference/*`); what a terminal cannot hide (an app that ignores `\x1b[3J`, tmux copy mode) is in the tau-core README and the `terminal.py` docstring. fc3e28b alone leaves tau-tui's menu pins red until db69fb0.
+  - Notes for 111: the channels lock (and cancel TUI turns) on every state but `unlocked`, so a recheck or a step-up must keep the state `unlocked`; the "Unlocked" notice shows `method` from the verdict or the status (`—` when missing) and the larger of the channel's own count and `status.failures`, so the status right after an unlock should still carry the count. The TUI long-polls `watch(since)` with `since` = the last `seq` it saw (starting at -1), so a hub restart must answer a lower `seq` promptly or the next change is seen only after the long poll ends.
+  - Notes for 114: add a way for the guard to report an available fallback (a `GuardStatus` field or a verdict hint); the lock screen and the lock prompt would offer it there.
+  - Notes for the docs pass: `/guard` in `docs/reference/slash-commands.md`, ctrl+l / F5 in `docs/getting-started/talk.md`, the lock screen and the terminal's limits in the guard guide.

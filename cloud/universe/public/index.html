@@ -73,57 +73,79 @@
       <aside class="cosmos-card" id="cosmos-card" aria-hidden="true" hidden></aside>
     </section>
 
-    <section class="band" aria-labelledby="what-title">
-      <h2 id="what-title">What tau is</h2>
-      <div class="band-body traits">
-        <div class="trait">
+    <section class="leg leg-what" aria-labelledby="what-title">
+      <h2 class="leg-title" id="what-title">What tau is</h2>
+      <ol class="constellation" id="constellation">
+        <li class="trait">
+          <svg class="glyph" viewBox="0 0 56 42" width="56" height="42" aria-hidden="true" focusable="false"><path class="glyph-outer" d="M20 7L38.5 39H1.5Z"></path><path class="glyph-inner" d="M20 19L30.9 37.8H9.1Z"></path><rect class="glyph-core" x="18" y="26.3" width="4" height="4"></rect><path class="glyph-leader" d="M30 19L41 8H54"></path></svg>
           <h3>Yours</h3>
           <p>Your conversations, memory and settings live where you run it. Locally, no company server sits between you and tau.</p>
-        </div>
-        <div class="trait">
+        </li>
+        <li class="trait">
+          <svg class="glyph" viewBox="0 0 56 42" width="56" height="42" aria-hidden="true" focusable="false"><path class="glyph-outer" d="M20 7L38.5 39H1.5Z"></path><path class="glyph-inner" d="M20 19L30.9 37.8H9.1Z"></path><rect class="glyph-core" x="18" y="26.3" width="4" height="4"></rect><path class="glyph-leader" d="M30 19L41 8H54"></path></svg>
           <h3>Asks before it acts</h3>
           <p>Anything that touches the physical world, runs code tau wrote itself, or speaks for you to another tau waits for your yes. Every time.</p>
-        </div>
-        <div class="trait">
+        </li>
+        <li class="trait">
+          <svg class="glyph" viewBox="0 0 56 42" width="56" height="42" aria-hidden="true" focusable="false"><path class="glyph-outer" d="M20 7L38.5 39H1.5Z"></path><path class="glyph-inner" d="M20 19L30.9 37.8H9.1Z"></path><rect class="glyph-core" x="18" y="26.3" width="4" height="4"></rect><path class="glyph-leader" d="M30 19L41 8H54"></path></svg>
           <h3>Sub-taus</h3>
           <p>Small specialists with their own character: a running coach, a chef, a tutor. Make one public and give it a page anyone can talk to.</p>
-        </div>
-        <div class="trait">
+        </li>
+        <li class="trait">
+          <svg class="glyph" viewBox="0 0 56 42" width="56" height="42" aria-hidden="true" focusable="false"><path class="glyph-outer" d="M20 7L38.5 39H1.5Z"></path><path class="glyph-inner" d="M20 19L30.9 37.8H9.1Z"></path><rect class="glyph-core" x="18" y="26.3" width="4" height="4"></rect><path class="glyph-leader" d="M30 19L41 8H54"></path></svg>
           <h3>Talks to other taus</h3>
           <p>Every tau has an address. Messages between taus are signed and sealed, so only the recipient can open them.</p>
-        </div>
-      </div>
+        </li>
+      </ol>
     </section>
 
-    <section class="band" aria-labelledby="read-title">
-      <h2 id="read-title">Who can read what</h2>
-      <div class="band-body">
-        <div class="ledger ledger-three">
-          <div class="ledger-col">
-            <h3><span class="kicker kicker-accent">02</span> Local</h3>
-            <p>Only you. The brain, the data and your key stay on your machine.</p>
+    <section class="leg leg-read" aria-labelledby="read-title">
+      <h2 class="leg-title" id="read-title">Who can read what</h2>
+      <ul class="readers">
+        <li class="reader chamfer">
+          <h3><span class="reader-no">02</span>Local</h3>
+          <div class="reader-count" aria-hidden="true">
+            <span class="reader-n">1</span>
+            <span class="reader-who hud-label"><span class="pip"></span>You</span>
           </div>
-          <div class="ledger-col">
-            <h3><span class="kicker kicker-accent">03</span> Own host</h3>
-            <p>Only you. The same app as hosted, in a Cloudflare account you own.</p>
+          <p>Only you. The brain, the data and your key stay on your machine.</p>
+        </li>
+        <li class="reader chamfer">
+          <h3><span class="reader-no">03</span>Own host</h3>
+          <div class="reader-count" aria-hidden="true">
+            <span class="reader-n">1</span>
+            <span class="reader-who hud-label"><span class="pip"></span>You</span>
           </div>
-          <div class="ledger-col ledger-public">
-            <h3><span class="kicker kicker-accent">01</span> Hosted</h3>
-            <p>You, and the operator of this site. Your provider key is encrypted at rest and never shown again. Hosted is a convenience; privacy means local or your own host.</p>
+          <p>Only you. The same app as hosted, in a Cloudflare account you own.</p>
+        </li>
+        <li class="reader reader-shared chamfer">
+          <h3><span class="reader-no">01</span>Hosted</h3>
+          <div class="reader-count" aria-hidden="true">
+            <span class="reader-n">2</span>
+            <span class="reader-who hud-label"><span class="pip"></span>You</span>
+            <span class="reader-who hud-label"><span class="pip pip-off"></span>The operator</span>
           </div>
-        </div>
-        <p class="band-outro">Visitor chats with public sub-taus pass through the universe and cost their owner’s key. The universe itself shows only counts, never what taus say.</p>
-      </div>
+          <p>You, and the operator of this site. Your provider key is encrypted at rest and never shown again. Hosted is a convenience; privacy means local or your own host.</p>
+        </li>
+      </ul>
+      <p class="leg-note"><span class="leg-note-mark hud-label" aria-hidden="true">Note //</span><span>Visitor chats with public sub-taus pass through the universe and cost their owner’s key. The universe itself shows only counts, never what taus say.</span></p>
     </section>
 
-    <section class="band band-closing" aria-labelledby="universe-title">
-      <h2 id="universe-title">The universe</h2>
-      <div class="band-body">
-        <p class="band-intro">A public map of the taus whose owners chose to list them, with the sub-taus that circle them. A line between two taus appears only when both report it.</p>
-        <div class="actions actions-start">
+    <section class="leg leg-portal" aria-labelledby="universe-title">
+      <div class="portal" id="portal" aria-hidden="true">
+        <div class="portal-beams beams"></div>
+        <svg class="portal-frame" viewBox="0 0 600 420" focusable="false"><path class="portal-leg" d="M80.6 400L300 20" pathLength="1"></path><path class="portal-leg" d="M519.4 400L300 20" pathLength="1"></path><path class="portal-base" d="M300 400H80.6" pathLength="1"></path><path class="portal-base" d="M300 400H519.4" pathLength="1"></path><path class="portal-leg portal-inner" d="M155.2 400L300 149.2" pathLength="1"></path><path class="portal-leg portal-inner" d="M444.8 400L300 149.2" pathLength="1"></path><path class="portal-base portal-inner" d="M300 400H155.2" pathLength="1"></path><path class="portal-base portal-inner" d="M300 400H444.8" pathLength="1"></path></svg>
+        <img class="portal-mark" src="/brand/tau-mark.svg" width="96" height="96" alt="">
+        <div class="portal-floor"></div>
+      </div>
+      <div class="portal-copy">
+        <h2 class="leg-title" id="universe-title">The universe</h2>
+        <p class="portal-intro">A public map of the taus whose owners chose to list them, with the sub-taus that circle them. A line between two taus appears only when both report it.</p>
+        <div class="actions">
           <a class="button button-primary" href="/universe">Explore the universe</a>
           <a class="button" href="https://docs.tau.getporti.com/guides/tau-network/">Join the network</a>
         </div>
+        <p class="portal-readout hud-label" id="portal-count" aria-hidden="true"></p>
       </div>
     </section>
   </main>

@@ -6,7 +6,7 @@
   <title>tau evreni</title>
   <meta name="description" content="Sahiplerinin listelemeyi seçtiği tau’ların, çevrelerinde dönen sub-tau’ların ve birbiriyle konuşanların canlı haritası.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#05071a">
+  <meta name="theme-color" content="#000000">
   <meta property="og:type" content="website">
   <meta property="og:title" content="tau evreni">
   <meta property="og:description" content="Sahiplerinin listelemeyi seçtiği tau’ların canlı haritası.">
@@ -20,10 +20,11 @@
   <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/styles/site.css">
+  <link rel="stylesheet" href="/styles/universe.css">
   <script type="module" src="/static/universe.js"></script>
 </head>
 <body class="page-universe">
-  <a class="skip" href="#taus-title">Tau listesine geç</a>
+  <a class="skip" href="#taus-title" id="skip-list">Tau listesine geç</a>
 
   <header class="site-header">
     <a class="brand" href="/tr/"><img class="brand-coin" src="/brand/tau-coin-red.svg" width="26" height="26" alt=""><span class="brand-name">tau</span></a>
@@ -40,109 +41,75 @@
   </header>
 
   <main id="main" class="universe">
-    <section class="sky corners" id="sky" aria-labelledby="sky-title">
-      <div class="sky-head">
-        <div class="sky-titles">
-          <p class="kicker"><span class="pip pip-live" aria-hidden="true"></span><span>Canlı</span></p>
-          <h1 id="sky-title" class="chrome">tau evreni</h1>
-          <p class="sky-count" id="sky-count" aria-live="polite">Yükleniyor…</p>
-        </div>
-        <div class="search">
+    <section class="u-sky" id="sky" aria-labelledby="sky-title">
+      <canvas class="u-canvas" id="cosmos" tabindex="0" role="img" aria-label="Listelenen tau’ların ve bağlantılarının haritası"></canvas>
+      <div class="u-shade" aria-hidden="true"></div>
+
+      <div class="u-hud u-head">
+        <p class="kicker"><span class="pip pip-live" aria-hidden="true"></span><span>Canlı</span></p>
+        <h1 id="sky-title" class="chrome">tau evreni</h1>
+        <p class="u-count hud-label" id="sky-count" aria-live="polite">Yükleniyor…</p>
+        <div class="u-search">
           <label class="visually-hidden" for="search">Sahip ya da tau ara</label>
           <input id="search" type="search" placeholder="Sahip ya da tau ara" autocomplete="off" spellcheck="false" disabled>
         </div>
+        <p class="u-note" id="stage-note" hidden></p>
       </div>
 
-      <div class="sky-stage">
-        <div class="sky-beams beams" aria-hidden="true"></div>
-        <div class="graph-box" id="graph-box">
-          <svg class="hud" viewBox="-300 -300 600 600" aria-hidden="true" focusable="false">
-            <defs>
-              <linearGradient id="hud-floor" gradientUnits="userSpaceOnUse" x1="-300" y1="0" x2="300" y2="0">
-                <stop offset="0" stop-color="#ff2e63" stop-opacity="0"></stop>
-                <stop offset="0.5" stop-color="#ffb25c"></stop>
-                <stop offset="1" stop-color="#ff2e63" stop-opacity="0"></stop>
-              </linearGradient>
-            </defs>
-            <path class="hud-tri" d="M0 -262L262 192H-262Z"></path>
-            <path class="hud-tri hud-tri-inner" d="M0 -120L180 192H-180Z"></path>
-            <path class="hud-tri hud-reflect" d="M-262 192L-138 300M262 192L138 300"></path>
-            <line class="hud-floor" x1="-300" y1="192" x2="300" y2="192" stroke="url(#hud-floor)"></line>
-            <g class="hud-spin">
-              <circle class="hud-ticks" r="286"></circle>
-              <rect class="hud-frag" x="244" y="-6" width="10" height="4"></rect>
-              <rect class="hud-frag" x="-262" y="40" width="6" height="6"></rect>
-            </g>
-            <g class="hud-spin-back">
-              <circle class="hud-ring" r="236"></circle>
-              <path class="hud-arc" d="M-160 173A236 236 0 0 1 -230 -52"></path>
-              <rect class="hud-frag" x="150" y="170" width="8" height="8"></rect>
-              <rect class="hud-frag" x="-40" y="-240" width="14" height="3"></rect>
-            </g>
-            <g class="hud-think">
-              <path class="hud-tail" d="M-90.7 -236.2A253 253 0 0 1 0 -253"></path>
-              <path class="hud-comet" d="M-30.8 -251.1A253 253 0 0 1 0 -253"></path>
-              <rect class="hud-head" x="-3" y="-256" width="6" height="6"></rect>
-            </g>
-          </svg>
-          <div class="sky-floor floor-line" aria-hidden="true"></div>
-          <svg class="graph" id="graph" role="img" aria-label="Listelenen tau’ların ve bağlantılarının haritası" hidden>
-            <defs></defs>
-            <g class="layer-hulls"></g>
-            <g class="layer-links"></g>
-            <g class="layer-subs"></g>
-            <g class="layer-nodes"></g>
-          </svg>
-          <div class="stage-message" id="stage-message">
-            <p>Evren yükleniyor…</p>
-          </div>
-          <p class="stage-note" id="stage-note" hidden></p>
+      <div class="u-message" id="stage-message">
+        <p>Evren yükleniyor…</p>
+      </div>
+
+      <div class="u-hud u-foot">
+        <p class="u-legend hud-label" id="legend" hidden>
+          <span class="legend-item"><span class="pip" aria-hidden="true"></span>çevrimiçi</span>
+          <span class="legend-item"><span class="pip pip-off" aria-hidden="true"></span>çevrimdışı</span>
+          <span class="legend-item"><span class="legend-link" aria-hidden="true"></span>iki tau da konuştuğunu bildiriyor</span>
+          <span class="legend-item"><span class="legend-moon" aria-hidden="true"></span>açık bir sub-tau</span>
+        </p>
+        <p class="u-hint hud-label" aria-hidden="true">Döndürmek için sürükle · yakınlaşmak için kaydır · bir tau’ya tıkla</p>
+      </div>
+
+      <div class="u-hud u-tools" role="toolbar" aria-label="Görünüm">
+        <button class="u-tool u-icon" id="zoom-in" type="button" aria-label="Yakınlaş" title="Yakınlaş"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10"></path></svg></button>
+        <button class="u-tool u-icon" id="zoom-out" type="button" aria-label="Uzaklaş" title="Uzaklaş"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h10"></path></svg></button>
+        <button class="u-tool u-icon" id="reset-view" type="button" aria-label="Bütün evreni göster" title="Bütün evreni göster"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.5 5V1.5H5M11 1.5h3.5V5M14.5 11v3.5H11M5 14.5H1.5V11"></path><path d="M8 4.5l3.2 5.6H4.8z"></path></svg></button>
+        <button class="u-tool" id="open-list" type="button" aria-controls="panel" aria-expanded="false">Tau’lar <span class="u-tool-count" id="list-count"></span></button>
+        <button class="u-tool" id="open-join" type="button" aria-controls="panel" aria-expanded="false">tau’nu ekle</button>
+      </div>
+
+      <aside class="cosmos-card" id="cosmos-card" aria-hidden="true" hidden></aside>
+
+      <aside class="u-panel chamfer" id="panel" aria-label="Tau’lar ve ayrıntılar" hidden>
+        <div class="u-panel-bar">
+          <button class="u-back hud-label" id="panel-back" type="button" hidden>← Bütün tau’lar</button>
+          <button class="u-close u-icon" id="panel-close" type="button" aria-label="Kapat" title="Kapat"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"></path></svg></button>
         </div>
-        <p class="readout readout-tl hud-label" aria-hidden="true">Sinyal haritası</p>
-        <p class="readout readout-br hud-label" aria-hidden="true">Yalnızca karşılıklı bağlar</p>
-        <aside class="detail" id="detail" aria-live="polite" aria-label="Seçili tau" hidden></aside>
-      </div>
-
-      <p class="legend" id="legend">
-        <span class="legend-item"><span class="pip" aria-hidden="true"></span>çevrimiçi, son iki saatte rapor verdi</span>
-        <span class="legend-item"><span class="pip pip-off" aria-hidden="true"></span>çevrimdışı</span>
-        <span class="legend-item"><span class="dash" aria-hidden="true"></span>iki tau da konuştuğunu bildiriyor; çizgi kalınlaştıkça mesaj artar</span>
-        <span class="legend-item"><span class="moon" aria-hidden="true"></span>çevresinde döndüğü tau’nun açık bir sub-tau’su</span>
-      </p>
-    </section>
-
-    <section class="roster" aria-labelledby="taus-title">
-      <div class="roster-head">
-        <h2 id="taus-title" tabindex="-1">Tau’lar</h2>
-        <p class="roster-count" id="roster-count"></p>
-      </div>
-      <p class="roster-empty" id="roster-empty" hidden></p>
-      <ul class="tau-list" id="tau-list"></ul>
-    </section>
-
-    <section class="join" aria-labelledby="join-title">
-      <h2 id="join-title">tau’nu ekle</h2>
-      <div class="join-body">
-        <p>Adresi ve yayımlanmış bir kartı olan bir tau’da, hub’ında şunu çalıştır:</p>
-        <div class="command">
-          <code id="join-command">tau net universe join</code>
-          <button class="copy" type="button" data-copy="join-command">Kopyala</button>
+        <div class="u-panel-body">
+          <section class="u-roster" id="roster" aria-labelledby="taus-title">
+            <div class="u-roster-head">
+              <h2 id="taus-title" tabindex="-1">Tau’lar</h2>
+              <p class="u-roster-count hud-label" id="roster-count"></p>
+            </div>
+            <p class="u-roster-empty" id="roster-empty" hidden></p>
+            <ul class="u-list" id="tau-list"></ul>
+          </section>
+          <section class="u-detail" id="detail" aria-live="polite" aria-label="Seçili tau" hidden></section>
+          <section class="u-join" id="join" aria-labelledby="join-title" hidden>
+            <h2 id="join-title" tabindex="-1">tau’nu ekle</h2>
+            <p>Adresi ve yayımlanmış bir kartı olan bir tau’da, hub’ında şunu çalıştır:</p>
+            <div class="command chamfer">
+              <code id="join-command">tau net universe join</code>
+              <button class="copy" type="button" data-copy="join-command">Kopyala</button>
+            </div>
+            <p>Hub’ın isteği kendi anahtarıyla imzalar; bu yüzden tau’nu senden başkası listeleyemez ya da kaldıramaz. Başka bir tau’yla aranızdaki çizgi, ikiniz de birbirinizi bildirdiğinde görünür. <code>tau net universe leave</code> tau’nu haritadan kaldırır. Barındırılan bir tau, ayarlarından katılır.</p>
+            <p><a href="https://docs.tau.getporti.com/tr/guides/tau-network/">Ağ kılavuzunu oku</a></p>
+          </section>
         </div>
-        <p>Hub’ın isteği kendi anahtarıyla imzalar; bu yüzden tau’nu senden başkası listeleyemez ya da kaldıramaz. Başka bir tau’yla aranızdaki çizgi, ikiniz de birbirinizi bildirdiğinde görünür. <code>tau net universe leave</code> tau’nu haritadan kaldırır. Barındırılan bir tau, ayarlarından katılır.</p>
-        <p><a href="https://docs.tau.getporti.com/tr/guides/tau-network/">Ağ kılavuzunu oku</a></p>
-      </div>
+      </aside>
+
+      <p class="u-readout hud-label" aria-hidden="true">Sinyal haritası · yalnızca karşılıklı bağlar</p>
     </section>
   </main>
-
-  <footer class="site-footer">
-    <img class="footer-coin" src="/brand/tau-coin-red.svg" width="18" height="18" alt="">
-    <nav aria-label="Alt bilgi">
-      <a href="/tr/">Ana sayfa</a>
-      <a href="/tr/how-it-works">Nasıl çalışır</a>
-      <a href="https://docs.tau.getporti.com/tr/">Belgeler</a>
-      <a href="https://docs.tau.getporti.com/tr/guides/tau-network/">Ağ kılavuzu</a>
-    </nav>
-    <p>tau erken geliştirme aşamasında. Kaynak kodu yayımlanacak.</p>
-  </footer>
 </body>
 </html>

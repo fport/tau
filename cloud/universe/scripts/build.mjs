@@ -5,11 +5,13 @@
 // Writes the gitignored public/static/, served at /static/ (`/app` belongs to tau-host,
 // ADR 0013 §6):
 //   landing.js     the landing page's hero: the universe on a canvas, opened through the portal
-//   universe.js    the universe graph (/universe), bundled with d3-force and d3-polygon (no
-//                  CDN: the pages' CSP only allows scripts from the site itself)
+//   universe.js    the universe page (/universe): the full-page universe on the same canvas
+//                  engine (client/painter.ts)
 //   person.js      the person page (/@handle)
 //   sub.js         the sub-tau page and its visitor chat (/<slug>, /@handle/<name>)
 //   claim.js       the claim page (/claim#…)
+//   how.js         how it works: the star field and the storyline's current station
+//   sky.js         the star field alone, for the pages with no other script
 //   chunks/        code the pages share (the character generator, the strings), and the
 //                  development fixtures, which only localhost ever loads (client/api.ts)
 //   theme.css      cloud/shared/theme.css: the tokens, fonts and primitives of the hard theme
@@ -31,7 +33,7 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, "fonts"), { recursive: true });
 
 await build({
-  entryPoints: ["landing", "universe", "person", "sub", "claim"].map((name) => ({
+  entryPoints: ["landing", "universe", "person", "sub", "claim", "how", "sky"].map((name) => ({
     in: join(root, "client", `${name}.ts`),
     out: name,
   })),
@@ -43,9 +45,6 @@ await build({
   target: "es2022",
   minify: true,
   legalComments: "none",
-  banner: {
-    js: "/*! tau site. The universe graph includes d3-force and d3-polygon, ISC License, Copyright 2010-2021 Mike Bostock. */",
-  },
   logLevel: "warning",
 });
 

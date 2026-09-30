@@ -19,7 +19,10 @@ import {
   showState,
   t,
 } from "./site";
+import { starfield } from "./starfield";
 import type { PageSub, PersonView } from "./types";
+
+starfield();
 
 const handle = personFromPath(window.location.pathname);
 

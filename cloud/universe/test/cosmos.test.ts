@@ -1,12 +1,16 @@
-/** The landing page's universe without the DOM (client/cosmos.ts): pure, no canvas. */
+/** The universe without the DOM (client/cosmos.ts): pure, no canvas. */
 
 import { describe, expect, it } from "vitest";
 import {
   type Camera,
+  closeUp,
+  fitBox,
   frame,
   hash,
+  hull,
   LINK_LENGTH,
   orbits,
+  ownerKey,
   PORTAL,
   positions,
   project,
@@ -173,6 +177,65 @@ describe("frame", () => {
     const big = frame(1_440, 900, copy, 64, 900, 1_123);
     expect(big.dist).toBeGreaterThan(small.dist);
     expect(frame(1_440, 900, copy, 64, 1e6, 1_123).dist).toBe(4_200);
+  });
+});
+
+describe("fitBox", () => {
+  const focal = 1_000;
+
+  it("centres the universe in the box and fits its reach into the shorter side", () => {
+    const box = { left: 0, top: 80, right: 1_000, bottom: 880 };
+    const fit = fitBox(box, 400, focal);
+    expect(fit.cx).toBe(500);
+    expect(fit.cy).toBe(480);
+    // 400 units at this distance project to 80% of half the box's height.
+    expect((400 * focal) / fit.dist).toBeCloseTo(0.8 * 400, 5);
+  });
+
+  it("stands farther back for a smaller box, within bounds", () => {
+    const wide = fitBox({ left: 0, top: 0, right: 1_400, bottom: 900 }, 400, focal);
+    const narrow = fitBox({ left: 0, top: 0, right: 700, bottom: 900 }, 400, focal);
+    expect(narrow.dist).toBeGreaterThan(wide.dist);
+    expect(fitBox({ left: 0, top: 0, right: 10, bottom: 10 }, 9_000, focal).dist).toBe(4_200);
+    expect(fitBox({ left: 0, top: 0, right: 4_000, bottom: 4_000 }, 10, focal).dist).toBe(420);
+  });
+});
+
+describe("closeUp", () => {
+  it("comes nearer than the overview, farther for wider orbits", () => {
+    const overview = 1_600;
+    const bare = closeUp([], 1_000, overview);
+    const busy = closeUp([26, 37, 48, 62], 1_000, overview);
+    expect(bare).toBeLessThan(overview);
+    expect(busy).toBeGreaterThan(bare);
+    expect(busy).toBeLessThanOrEqual(overview * 0.8);
+  });
+
+  it("never comes closer than the nearest the camera may stand", () => {
+    expect(closeUp([], 100, 300)).toBe(220);
+  });
+});
+
+describe("owners", () => {
+  it("groups taus under the owner's name, whatever its spaces and case", () => {
+    expect(ownerKey("  Alice   Smith ")).toBe("alice smith");
+    expect(ownerKey("ALICE smith")).toBe("alice smith");
+    expect(ownerKey("   ")).toBe("");
+  });
+
+  it("outlines points with their convex hull", () => {
+    const square = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+      { x: 5, y: 5 },
+      { x: 3, y: 7 },
+    ];
+    const outline = hull(square);
+    expect(outline).toHaveLength(4);
+    expect(outline).not.toContainEqual({ x: 5, y: 5 });
+    expect(hull([{ x: 1, y: 1 }])).toEqual([{ x: 1, y: 1 }]);
   });
 });
 

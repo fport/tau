@@ -1,7 +1,8 @@
 /**
- * The landing page's universe without the DOM (client/landing.ts draws it): the stars, where
- * the taus float, the camera and its projection, where the universe sits next to the hero's
- * text, the portal's timeline, and where a click on a tau leads.
+ * The universe without the DOM (client/painter.ts draws it, on the landing and on /universe):
+ * the stars, where the taus float, the camera and its projection, where the universe sits
+ * next to the hero's text or in a box, how near the camera comes to a selected tau, the
+ * portal's timeline, and where a click on a tau leads.
  *
  * Pure and deterministic: the same snapshot always gives the same sky, so the Worker's tests
  * can check it.
@@ -304,6 +305,21 @@ export interface Frame {
 /** The narrowest free column next to the text that still holds the universe. */
 const SIDE_MIN = 340;
 
+/** Where the universe's centre goes, and how far the camera stands for `reach` to fit `box`. */
+export function fitBox(
+  box: Rect,
+  reach: number,
+  focal: number,
+): { cx: number; cy: number; dist: number } {
+  const room = Math.max(80, Math.min(box.right - box.left, box.bottom - box.top) / 2);
+  return {
+    cx: (box.left + box.right) / 2,
+    cy: (box.top + box.bottom) / 2,
+    // A margin: the universe turns, nearer taus project larger, and labels need room.
+    dist: clamp((focal * reach) / (room * 0.8), 420, 4_200),
+  };
+}
+
 /**
  * Where the universe sits: beside the hero's text when there is room on its right, above it
  * otherwise, and as far away as it takes for `reach` to fit that space.
@@ -320,14 +336,42 @@ export function frame(
   const box: Rect = side
     ? { left: copy.right, top, right: width, bottom: height }
     : { left: 0, top, right: width, bottom: Math.max(top + 160, copy.top) };
-  const room = Math.max(80, Math.min(box.right - box.left, box.bottom - box.top) / 2);
-  return {
-    cx: (box.left + box.right) / 2,
-    cy: (box.top + box.bottom) / 2,
-    // A margin: the universe turns, nearer taus project larger, and labels need room.
-    dist: clamp((focal * reach) / (room * 0.8), 420, 4_200),
-    layout: side ? "side" : "stacked",
-  };
+  return { ...fitBox(box, reach, focal), layout: side ? "side" : "stacked" };
+}
+
+/** How near the camera comes to a selected tau: its sub-taus' orbits fill a few hundred pixels. */
+export function closeUp(orbitRadii: readonly number[], focal: number, overview: number): number {
+  const reach = Math.max(45, ...orbitRadii);
+  return clamp((focal * reach) / 130, 220, Math.max(220, overview * 0.8));
+}
+
+// ---------------------------------------------------------------------------------------
+// Owners
+
+/** The owner a tau is grouped under: the name, trimmed, spaces folded, case ignored. */
+export function ownerKey(owner: string): string {
+  return owner.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/** The convex hull of some screen points, clockwise on screen (monotone chain). */
+export function hull(points: readonly { x: number; y: number }[]): { x: number; y: number }[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (sorted.length <= 2) return sorted;
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: { x: number; y: number }[] = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0)
+      lower.pop();
+    lower.push(p);
+  }
+  const upper: { x: number; y: number }[] = [];
+  for (const p of [...sorted].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0)
+      upper.pop();
+    upper.push(p);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
 }
 
 // ---------------------------------------------------------------------------------------

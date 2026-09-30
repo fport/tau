@@ -75,57 +75,79 @@
       <aside class="cosmos-card" id="cosmos-card" aria-hidden="true" hidden></aside>
     </section>
 
-    <section class="band" aria-labelledby="what-title">
-      <h2 id="what-title">tau nedir</h2>
-      <div class="band-body traits">
-        <div class="trait">
+    <section class="leg leg-what" aria-labelledby="what-title">
+      <h2 class="leg-title" id="what-title">tau nedir</h2>
+      <ol class="constellation" id="constellation">
+        <li class="trait">
+          <svg class="glyph" viewBox="0 0 56 42" width="56" height="42" aria-hidden="true" focusable="false"><path class="glyph-outer" d="M20 7L38.5 39H1.5Z"></path><path class="glyph-inner" d="M20 19L30.9 37.8H9.1Z"></path><rect class="glyph-core" x="18" y="26.3" width="4" height="4"></rect><path class="glyph-leader" d="M30 19L41 8H54"></path></svg>
           <h3>Senin</h3>
           <p>Konuşmaların, tau’nun hafızası ve ayarların onu nerede çalıştırıyorsan orada durur. Yerelde seninle tau arasında hiçbir şirket sunucusu yok.</p>
-        </div>
-        <div class="trait">
+        </li>
+        <li class="trait">
+          <svg class="glyph" viewBox="0 0 56 42" width="56" height="42" aria-hidden="true" focusable="false"><path class="glyph-outer" d="M20 7L38.5 39H1.5Z"></path><path class="glyph-inner" d="M20 19L30.9 37.8H9.1Z"></path><rect class="glyph-core" x="18" y="26.3" width="4" height="4"></rect><path class="glyph-leader" d="M30 19L41 8H54"></path></svg>
           <h3>Davranmadan önce sorar</h3>
           <p>Fiziksel dünyaya dokunan, tau’nun kendi yazdığı kodu çalıştıran ya da senin adına başka bir tau’yla konuşan her şey senin onayını bekler. Her seferinde.</p>
-        </div>
-        <div class="trait">
+        </li>
+        <li class="trait">
+          <svg class="glyph" viewBox="0 0 56 42" width="56" height="42" aria-hidden="true" focusable="false"><path class="glyph-outer" d="M20 7L38.5 39H1.5Z"></path><path class="glyph-inner" d="M20 19L30.9 37.8H9.1Z"></path><rect class="glyph-core" x="18" y="26.3" width="4" height="4"></rect><path class="glyph-leader" d="M30 19L41 8H54"></path></svg>
           <h3>Sub-tau’lar</h3>
           <p>Kendi karakteri olan küçük uzmanlar: bir koşu koçu, bir aşçı, bir öğretmen. Birini herkese aç ve ona herkesin konuşabileceği bir sayfa ver.</p>
-        </div>
-        <div class="trait">
+        </li>
+        <li class="trait">
+          <svg class="glyph" viewBox="0 0 56 42" width="56" height="42" aria-hidden="true" focusable="false"><path class="glyph-outer" d="M20 7L38.5 39H1.5Z"></path><path class="glyph-inner" d="M20 19L30.9 37.8H9.1Z"></path><rect class="glyph-core" x="18" y="26.3" width="4" height="4"></rect><path class="glyph-leader" d="M30 19L41 8H54"></path></svg>
           <h3>Diğer tau’larla konuşur</h3>
           <p>Her tau’nun bir adresi var. Tau’lar arasındaki mesajlar imzalanır ve mühürlenir; onları yalnızca alıcı açabilir.</p>
-        </div>
-      </div>
+        </li>
+      </ol>
     </section>
 
-    <section class="band" aria-labelledby="read-title">
-      <h2 id="read-title">Kim neyi okuyabilir</h2>
-      <div class="band-body">
-        <div class="ledger ledger-three">
-          <div class="ledger-col">
-            <h3><span class="kicker kicker-accent">02</span> Yerel</h3>
-            <p>Yalnızca sen. Beyin, veriler ve anahtarın senin makinende kalır.</p>
+    <section class="leg leg-read" aria-labelledby="read-title">
+      <h2 class="leg-title" id="read-title">Kim neyi okuyabilir</h2>
+      <ul class="readers">
+        <li class="reader chamfer">
+          <h3><span class="reader-no">02</span>Yerel</h3>
+          <div class="reader-count" aria-hidden="true">
+            <span class="reader-n">1</span>
+            <span class="reader-who hud-label"><span class="pip"></span>Sen</span>
           </div>
-          <div class="ledger-col">
-            <h3><span class="kicker kicker-accent">03</span> Kendi kurulumun</h3>
-            <p>Yalnızca sen. Barındırılanla aynı uygulama, sahibi olduğun bir Cloudflare hesabında.</p>
+          <p>Yalnızca sen. Beyin, veriler ve anahtarın senin makinende kalır.</p>
+        </li>
+        <li class="reader chamfer">
+          <h3><span class="reader-no">03</span>Kendi kurulumun</h3>
+          <div class="reader-count" aria-hidden="true">
+            <span class="reader-n">1</span>
+            <span class="reader-who hud-label"><span class="pip"></span>Sen</span>
           </div>
-          <div class="ledger-col ledger-public">
-            <h3><span class="kicker kicker-accent">01</span> Barındırılan</h3>
-            <p>Sen ve bu sitenin işletmecisi. Model sağlayıcı anahtarın şifreli saklanır ve bir daha gösterilmez. Barındırılan bir kolaylıktır; gizlilik, yerel ya da kendi kurulumun demektir.</p>
+          <p>Yalnızca sen. Barındırılanla aynı uygulama, sahibi olduğun bir Cloudflare hesabında.</p>
+        </li>
+        <li class="reader reader-shared chamfer">
+          <h3><span class="reader-no">01</span>Barındırılan</h3>
+          <div class="reader-count" aria-hidden="true">
+            <span class="reader-n">2</span>
+            <span class="reader-who hud-label"><span class="pip"></span>Sen</span>
+            <span class="reader-who hud-label"><span class="pip pip-off"></span>İşletmeci</span>
           </div>
-        </div>
-        <p class="band-outro">Açık sub-tau’larla yapılan ziyaretçi sohbetleri evrenden geçer ve sahibinin anahtarından harcar. Evrenin kendisi yalnızca sayıları gösterir, tau’ların ne dediğini asla.</p>
-      </div>
+          <p>Sen ve bu sitenin işletmecisi. Model sağlayıcı anahtarın şifreli saklanır ve bir daha gösterilmez. Barındırılan bir kolaylıktır; gizlilik, yerel ya da kendi kurulumun demektir.</p>
+        </li>
+      </ul>
+      <p class="leg-note"><span class="leg-note-mark hud-label" aria-hidden="true">Not //</span><span>Açık sub-tau’larla yapılan ziyaretçi sohbetleri evrenden geçer ve sahibinin anahtarından harcar. Evrenin kendisi yalnızca sayıları gösterir, tau’ların ne dediğini asla.</span></p>
     </section>
 
-    <section class="band band-closing" aria-labelledby="universe-title">
-      <h2 id="universe-title">Evren</h2>
-      <div class="band-body">
-        <p class="band-intro">Sahiplerinin listelemeyi seçtiği tau’ların ve çevrelerinde dönen sub-tau’ların herkese açık haritası. İki tau arasındaki çizgi, ancak ikisi de bildirirse görünür.</p>
-        <div class="actions actions-start">
+    <section class="leg leg-portal" aria-labelledby="universe-title">
+      <div class="portal" id="portal" aria-hidden="true">
+        <div class="portal-beams beams"></div>
+        <svg class="portal-frame" viewBox="0 0 600 420" focusable="false"><path class="portal-leg" d="M80.6 400L300 20" pathLength="1"></path><path class="portal-leg" d="M519.4 400L300 20" pathLength="1"></path><path class="portal-base" d="M300 400H80.6" pathLength="1"></path><path class="portal-base" d="M300 400H519.4" pathLength="1"></path><path class="portal-leg portal-inner" d="M155.2 400L300 149.2" pathLength="1"></path><path class="portal-leg portal-inner" d="M444.8 400L300 149.2" pathLength="1"></path><path class="portal-base portal-inner" d="M300 400H155.2" pathLength="1"></path><path class="portal-base portal-inner" d="M300 400H444.8" pathLength="1"></path></svg>
+        <img class="portal-mark" src="/brand/tau-mark.svg" width="96" height="96" alt="">
+        <div class="portal-floor"></div>
+      </div>
+      <div class="portal-copy">
+        <h2 class="leg-title" id="universe-title">Evren</h2>
+        <p class="portal-intro">Sahiplerinin listelemeyi seçtiği tau’ların ve çevrelerinde dönen sub-tau’ların herkese açık haritası. İki tau arasındaki çizgi, ancak ikisi de bildirirse görünür.</p>
+        <div class="actions">
           <a class="button button-primary" href="/tr/universe">Evreni keşfet</a>
           <a class="button" href="https://docs.tau.getporti.com/tr/guides/tau-network/">Ağa katıl</a>
         </div>
+        <p class="portal-readout hud-label" id="portal-count" aria-hidden="true"></p>
       </div>
     </section>
   </main>

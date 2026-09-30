@@ -17,7 +17,7 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
-  // Bundles the universe page's script (d3-force) and copies the web fonts into
+  // Bundles the pages' scripts and copies the theme and the web fonts into
   // public/static/ (gitignored). `wrangler dev` and `wrangler deploy` run it first.
   "build": {
     "command": "node scripts/build.mjs",

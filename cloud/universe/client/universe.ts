@@ -1,145 +1,100 @@
 /**
- * The universe graph: reads /api/universe and draws the taus as a force-directed graph on
- * the universe page (`/universe`). The landing page draws its own universe
- * (client/landing.ts).
+ * The universe page (`/universe`): the whole viewport is the live universe, drawn by the
+ * landing's engine (client/painter.ts), with the page's controls as HUD over the sky.
  *
- * - Every tau and sub-tau is drawn as its ember sigil (cloud/shared/character.ts), seeded
- *   with its address (a sub-tau: `<address>/<name>`, burning in its tau's hue).
- * - Taus of the same owner share a hull, a sharp polygon; a tau without an owner is a group
- *   of its own.
- * - A tau's public sub-taus circle it as small sigils inside the hull (client/layout.ts).
- * - A mutual link is an energy beam: a thin line from one tau's hue to the other's over a
- *   faint glow, wider for more messages, with a pulse running along it.
- * - Online taus burn; offline ones are cold and still. Hover and selection show a square
- *   reticle.
- * - Hover or tap shows a tau's card; `#<address>` in the URL pins it, and
- *   `#<address>/<name>` pins the card of one of its sub-taus. A card links the tau's person
- *   page and a sub-tau's page when the universe knows them.
- * - The list under the graph is the keyboard path: every tau is a link to `#<address>`.
- * - Under `prefers-reduced-motion` the layout is computed up front and drawn once, and the
- *   characters stand still.
+ * - Arriving, the camera flies in from far away, star streaks and all, and the taus light
+ *   one by one. Then the universe drifts slowly until someone touches it.
+ * - Drag turns the universe, the wheel or a pinch zooms, and the buttons do both.
+ * - A click on a tau (or `#<address>` in the URL) flies the camera to it, names its
+ *   sub-taus and opens its card in the panel; `#<address>/<name>` does the same for one of
+ *   its sub-taus. Selecting goes through the URL, so a pinned tau can be shared and the back
+ *   button works. What is not next to the selection goes faint.
+ * - The search dims the taus that do not match and filters the list; Enter picks the first.
+ * - The panel holds the list of taus (the keyboard path: every tau is a link to
+ *   `#<address>`), a tau's card, or how to add your tau. It stands at the right on wide
+ *   screens and rises from the bottom on narrow ones; the universe keeps clear of it.
+ * - Under `prefers-reduced-motion` nothing moves by itself: no fly-in, no drift, no sparks;
+ *   the camera jumps and the universe is drawn only when something changes.
  *
- * Everything the directory returns is set with textContent, never parsed as HTML. The
- * page's own strings come from client/messages.ts, in the language of `<html lang>`.
+ * Everything the directory returns is drawn as canvas text or set with textContent, never
+ * parsed as HTML. The page's own strings come from client/messages.ts.
  */
 
-import {
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceSimulation,
-  forceX,
-  forceY,
-  type Simulation,
-  type SimulationLinkDatum,
-  type SimulationNodeDatum,
-} from "d3-force";
-import { polygonHull } from "d3-polygon";
-import type { PublicLink } from "../src/snapshot";
 import { getJson } from "./api";
-import { hueOf, type Kind, traits } from "../../shared/character";
-import { byId, characterElement, html, link, maybeId, svg } from "./dom";
 import {
-  groupKey,
-  hash01,
-  matches,
-  NODE_RADIUS,
-  nameOffset,
-  parseTarget,
-  reach,
-  SUB_RADIUS,
-  type SubNodeData,
-  subsOf,
-  tauSubNodes,
-} from "./layout";
+  type Camera,
+  clamp,
+  closeUp,
+  easeOut,
+  fitBox,
+  type Point,
+  projector,
+  type Rect,
+  span,
+  stars,
+} from "./cosmos";
+import { byId, characterElement, html, link } from "./dom";
+import { matches, parseTarget, subsOf } from "./layout";
 import { MESSAGES, pageLanguage } from "./messages";
+import { type Beam, buildWorld, type Focus, Painter, type Tau, type World } from "./painter";
 import { HANDLE, personPath, subPath } from "./paths";
 import type { SiteSnapshot, SnapshotSub, SnapshotTau } from "./types";
 
-type PublicTau = SnapshotTau;
-type Snapshot = SiteSnapshot;
-
-const HULL_PADDING = 16;
-/** Sub-taus sit closer to the hull's edge than taus do. */
-const SUB_HULL_PADDING = 10;
-/** The graph never draws larger than this many pixels per unit (a small universe). */
-const MAX_SCALE = 1.8;
-const NAME_LABEL_LIMIT = 40;
-const TINY_UNIVERSE = 5;
-const JOIN_COMMAND = "tau net universe join";
-/** A sigil is drawn this many times its node's radius wide. */
-const CHARACTER_SCALE = 2.7;
-/** Where a sigil's centre sits, as a fraction of its height: a tau's ring, a sub-tau's
- *  smaller triangle. */
-const SIGIL_CENTRE: Record<Kind, number> = { tau: 0.52, sub: 0.58 };
-/** The beams' middle: Flare, the brightest of the fire. */
-const BEAM_MIDDLE = "#ffb25c";
-
-interface GraphNode extends SimulationNodeDatum {
-  tau: PublicTau;
-  group: string;
-  element: SVGGElement;
-  label: SVGTextElement | null;
-  /** Its public sub-taus, drawn at fixed offsets around it. */
-  subs: SubNode[];
-  /** How far its drawing reaches from its centre (its disc or its sub-taus). */
-  reach: number;
-}
-
-/** A public sub-tau: a small node that follows its tau. */
-interface SubNode {
-  data: SubNodeData;
-  parent: GraphNode;
-  element: SVGGElement;
-}
-
-interface GraphLink extends SimulationLinkDatum<GraphNode> {
-  data: PublicLink;
-  element: SVGGElement;
-  /** The glow, the beam and the hit area: lines between the two taus. */
-  lines: SVGLineElement[];
-  /** The travelling pulse: a path, so its dashes can be measured in `pathLength` units. */
-  pulse: SVGPathElement;
-  /** The beam's gradient, in the graph's own units, from one tau's hue to the other's. */
-  gradient: SVGLinearGradientElement;
-}
-
-interface Group {
-  key: string;
-  owner: string;
-  members: GraphNode[];
-  element: SVGGElement;
-  path: SVGPathElement;
-  label: SVGTextElement | null;
-}
-
-interface State {
-  snapshot: Snapshot;
-  nodes: GraphNode[];
-  links: GraphLink[];
-  groups: Group[];
-  byAddress: Map<string, GraphNode>;
-  subsById: Map<string, SubNode>;
-  cards: Map<string, HTMLLIElement>;
-  query: string;
-  /** The selected tau, also when one of its sub-taus is selected. */
-  selected: string | null;
-  /** The selected sub-tau's id (`<address>/<name>`). */
-  selectedSub: string | null;
-  hovered: string | null;
-  hoveredSub: string | null;
-  simulation: Simulation<GraphNode, GraphLink> | null;
-  view: { x: number; y: number; w: number; h: number } | null;
-}
-
-const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const language = pageLanguage(document.documentElement.lang);
 const t = MESSAGES[language];
 const numberFormat = new Intl.NumberFormat(language, { notation: "compact" });
 const dateFormat = new Intl.DateTimeFormat(language, { dateStyle: "medium" });
 const relative = new Intl.RelativeTimeFormat(language, { numeric: "auto" });
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-/** A counted noun: `count(t.taus, 3)` is "3 taus" or "3 tau". */
+const TINY_UNIVERSE = 5;
+const JOIN_COMMAND = "tau net universe join";
+/** The camera's usual tilt: a little from above. */
+const PITCH = -0.22;
+/** How far the camera may come, and how many overviews it may back away. */
+const NEAREST = 160;
+const FARTHEST = 2.6;
+/** How much nearer than a plain fit the whole universe is shown. */
+const OVERVIEW_ZOOM = 0.82;
+/** A pointer that moves farther than this between down and up is a drag, not a click. */
+const DRAG_SLOP = 5;
+/** After the last touch, the universe starts drifting again. */
+const IDLE_MS = 4_000;
+
+const page = {
+  sky: byId<HTMLElement>("sky"),
+  canvas: byId<HTMLCanvasElement>("cosmos"),
+  count: byId<HTMLElement>("sky-count"),
+  message: byId<HTMLElement>("stage-message"),
+  note: byId<HTMLElement>("stage-note"),
+  legend: byId<HTMLElement>("legend"),
+  search: byId<HTMLInputElement>("search"),
+  card: byId<HTMLElement>("cosmos-card"),
+  tools: document.querySelector<HTMLElement>(".u-tools"),
+  zoomIn: byId<HTMLButtonElement>("zoom-in"),
+  zoomOut: byId<HTMLButtonElement>("zoom-out"),
+  reset: byId<HTMLButtonElement>("reset-view"),
+  openList: byId<HTMLButtonElement>("open-list"),
+  openJoin: byId<HTMLButtonElement>("open-join"),
+  listCount: byId<HTMLElement>("list-count"),
+  panel: byId<HTMLElement>("panel"),
+  back: byId<HTMLButtonElement>("panel-back"),
+  close: byId<HTMLButtonElement>("panel-close"),
+  roster: byId<HTMLElement>("roster"),
+  rosterTitle: byId<HTMLElement>("taus-title"),
+  rosterCount: byId<HTMLElement>("roster-count"),
+  rosterEmpty: byId<HTMLElement>("roster-empty"),
+  list: byId<HTMLUListElement>("tau-list"),
+  detail: byId<HTMLElement>("detail"),
+  join: byId<HTMLElement>("join"),
+  joinTitle: byId<HTMLElement>("join-title"),
+  skip: document.getElementById("skip-list"),
+  header: document.querySelector<HTMLElement>(".site-header"),
+};
+
+// ---------------------------------------------------------------------------------------
+// Words
+
 function count(message: (count: number, formatted: string) => string, value: number): string {
   return message(value, numberFormat.format(value));
 }
@@ -159,667 +114,430 @@ function ago(seconds: number, now: number): string {
 }
 
 /** A tau's handle from the snapshot, when it is a valid one. */
-function handleOf(tau: PublicTau): string | null {
+function handleOf(tau: SnapshotTau): string | null {
   return typeof tau.handle === "string" && HANDLE.test(tau.handle) ? tau.handle : null;
 }
 
-/** The page of a sub-tau, when the universe gives one or its tau has a handle. */
-function pageOfSub(tau: PublicTau, name: string): string | null {
-  const sub = subsOf(tau).find((candidate) => candidate.name === name) as SnapshotSub | undefined;
-  if (sub === undefined) return null;
-  return subPath(sub, handleOf(tau), language);
+function subOf(tau: SnapshotTau, name: string): SnapshotSub | undefined {
+  return subsOf(tau).find((sub) => sub.name === name) as SnapshotSub | undefined;
 }
 
 // ---------------------------------------------------------------------------------------
-// Page elements
+// State
 
-const page = {
-  count: byId<HTMLElement>("sky-count"),
-  box: byId<HTMLDivElement>("graph-box"),
-  graph: byId<SVGSVGElement>("graph"),
-  message: byId<HTMLDivElement>("stage-message"),
-  note: byId<HTMLParagraphElement>("stage-note"),
-  detail: byId<HTMLElement>("detail"),
-  sky: byId<HTMLElement>("sky"),
-  // The universe page only: the search, the list of taus and the legend.
-  search: maybeId<HTMLInputElement>("search"),
-  list: maybeId<HTMLUListElement>("tau-list"),
-  rosterCount: maybeId<HTMLParagraphElement>("roster-count"),
-  rosterEmpty: maybeId<HTMLParagraphElement>("roster-empty"),
-  legend: maybeId<HTMLParagraphElement>("legend"),
+type PanelMode = "list" | "detail" | "join";
+
+const state = {
+  snapshot: null as SiteSnapshot | null,
+  world: buildWorld(null, t.yourTau) as World,
+  query: "",
+  selected: null as Tau | null,
+  selectedSub: null as string | null,
+  hovered: null as Tau | null,
+  panel: null as PanelMode | null,
+  /** List items by address, for the current mark. */
+  items: new Map<string, HTMLLIElement>(),
+  /** When the universe arrived, for the taus lighting one by one. */
+  arrived: 0,
 };
 
-function layer(name: string): SVGGElement {
-  const element = page.graph.querySelector<SVGGElement>(`.layer-${name}`);
-  if (element === null) throw new Error(`missing layer ${name}`);
-  return element;
+/** Where the camera is, and where it is going. */
+interface View extends Point {
+  yaw: number;
+  pitch: number;
+  dist: number;
+  cx: number;
+  cy: number;
 }
 
-/** The graph's <defs>, where each beam keeps its gradient. */
-const defs: SVGDefsElement =
-  page.graph.querySelector("defs") ?? page.graph.insertBefore(svg("defs"), page.graph.firstChild);
+const still = reducedMotion.matches;
+const painter = new Painter(page.canvas);
+painter.labelSize = 13;
+const sky = stars(window.innerWidth < 760 ? 1_400 : 2_600);
+const view: View = { x: 0, y: 0, z: 0, yaw: 0.4, pitch: PITCH, dist: 1_000, cx: 0, cy: 0 };
+const goal: View = { ...view };
+let overview = { cx: 0, cy: 0, dist: 1_000 };
+let lastTouch = 0;
+let dirty = true;
 
-const layers = {
-  hulls: layer("hulls"),
-  links: layer("links"),
-  subs: layer("subs"),
-  nodes: layer("nodes"),
-};
-
-let state: State | null = null;
+function touched(): void {
+  lastTouch = performance.now();
+  dirty = true;
+}
 
 // ---------------------------------------------------------------------------------------
-// Loading and the states around the graph
+// The camera
 
-function showMessage(parts: (string | Node)[], retry = false): void {
-  page.message.replaceChildren();
-  for (const part of parts) {
-    page.message.append(typeof part === "string" ? html("p", undefined, part) : part);
+/** The part of the sky the universe keeps to: under the header, clear of the panel. */
+function freeBox(): Rect {
+  const sky = page.sky.getBoundingClientRect();
+  const box: Rect = { left: 0, top: 0, right: painter.width, bottom: painter.height };
+  const header = page.header?.getBoundingClientRect();
+  if (header !== undefined) box.top = Math.max(0, header.bottom - sky.top) + 8;
+  const tools = page.tools?.getBoundingClientRect();
+  if (tools !== undefined && tools.height > 0) box.bottom = tools.top - sky.top - 8;
+  if (!page.panel.hidden) {
+    const panel = page.panel.getBoundingClientRect();
+    if (panel.left - sky.left > painter.width * 0.4) box.right = panel.left - sky.left - 12;
+    else box.bottom = Math.min(box.bottom, panel.top - sky.top - 8);
   }
-  if (retry) {
-    const button = html("button", "button", t.tryAgain);
-    button.type = "button";
-    button.addEventListener("click", () => void load());
-    page.message.append(button);
-  }
-  page.message.hidden = false;
+  if (box.bottom - box.top < 160) box.bottom = box.top + 160;
+  return box;
 }
 
-function commandLine(): HTMLParagraphElement {
-  const line = html("p", "stage-command");
-  line.append(...withCommand(t.runOnHub));
-  return line;
+function layout(): void {
+  // The HUD starts under the header, which wraps onto two lines on phones.
+  const header = page.header?.getBoundingClientRect().height ?? 64;
+  page.sky.style.setProperty("--top", `${Math.round(header)}px`);
+  painter.resize();
+  const fit = fitBox(freeBox(), state.world.reach, painter.focal);
+  // The page is the universe: it may come nearer than the landing's framing.
+  overview = { ...fit, dist: Math.max(NEAREST * 2, fit.dist * OVERVIEW_ZOOM) };
+  aim();
+  if (still) Object.assign(view, goal);
+  dirty = true;
 }
 
-async function load(): Promise<void> {
-  showMessage([t.loadingUniverse]);
-  page.count.textContent = t.loading;
-  const result = await getJson<Snapshot>("/api/universe");
-  if (result.status !== 200 || result.data === null || !Array.isArray(result.data.taus)) {
-    page.count.textContent = t.unavailable;
-    showMessage([t.loadFailed], true);
+/** Points the camera at the selection, or at the whole universe. */
+function aim(): void {
+  const box = freeBox();
+  goal.cx = (box.left + box.right) / 2;
+  goal.cy = (box.top + box.bottom) / 2;
+  const tau = state.selected;
+  if (tau === null) {
+    goal.x = goal.y = goal.z = 0;
+    goal.dist = overview.dist;
     return;
   }
-  render(result.data);
-}
-
-function render(snapshot: Snapshot): void {
-  state?.simulation?.stop();
-  const { stats } = snapshot;
-  page.count.textContent = t.skyCount(
-    count(t.msgs, stats.messages),
-    numberFormat.format(stats.online),
-    count(t.taus, stats.taus),
+  goal.x = tau.x;
+  goal.y = tau.y;
+  goal.z = tau.z;
+  goal.dist = closeUp(
+    tau.orbits.map((orbit) => orbit.radius),
+    painter.focal,
+    overview.dist,
   );
-  if (page.search !== null) page.search.disabled = stats.taus === 0;
-  if (page.legend !== null) page.legend.hidden = stats.taus === 0;
+}
 
-  state = {
-    snapshot,
-    nodes: [],
-    links: [],
-    groups: [],
-    byAddress: new Map(),
-    subsById: new Map(),
-    cards: new Map(),
-    query: page.search?.value.trim().toLowerCase() ?? "",
-    selected: null,
-    selectedSub: null,
-    hovered: null,
-    hoveredSub: null,
-    simulation: null,
-    view: null,
-  };
+function zoom(factor: number): void {
+  goal.dist = clamp(goal.dist * factor, NEAREST, overview.dist * FARTHEST);
+  touched();
+}
 
-  renderList(state);
-
-  if (stats.taus === 0) {
-    page.graph.toggleAttribute("hidden", true);
-    page.note.hidden = true;
-    showMessage([t.empty, commandLine()]);
-    return;
-  }
-  page.message.hidden = true;
-  page.graph.toggleAttribute("hidden", false);
-  if (stats.taus < TINY_UNIVERSE) {
-    page.note.replaceChildren(...withCommand(t.fewSoFar(count(t.taus, stats.taus))));
-    page.note.hidden = false;
-  } else {
-    page.note.hidden = true;
-  }
-
-  buildGraph(state);
-  applyHash();
+function turn(yaw: number, pitch: number): void {
+  goal.yaw += yaw;
+  goal.pitch = clamp(goal.pitch + pitch, -1.2, 0.5);
+  if (still) Object.assign(view, goal);
+  touched();
 }
 
 // ---------------------------------------------------------------------------------------
-// The graph
+// Drawing
 
-/** A sigil centred on its node: its ring's (or its triangle's) middle on the node's centre. */
-function placedCharacter(seed: string, radius: number, kind: Kind): SVGSVGElement {
-  const size = radius * CHARACTER_SCALE;
-  const element = characterElement(seed, { size, kind, animated: !reducedMotion.matches });
-  element.setAttribute("x", (-size / 2).toFixed(1));
-  element.setAttribute("y", (-size * SIGIL_CENTRE[kind]).toFixed(1));
-  element.classList.add("node-character");
-  return element;
-}
-
-/** A square reticle of four corner brackets, `half` from the centre, arms `arm` long. */
-function reticle(half: number, arm: number): SVGPathElement {
-  const h = half.toFixed(1);
-  const a = (half - arm).toFixed(1);
-  const d =
-    `M-${h} -${a}V-${h}H-${a}M${a} -${h}H${h}V-${a}` +
-    `M${h} ${a}V${h}H${a}M-${a} ${h}H-${h}V${a}`;
-  return svg("path", { class: "reticle", d });
-}
-
-/** The colour of a tau's triangle, for the ends of its beams. */
-function hueColour(address: string): string {
-  return hueOf(traits(address, "tau").hue).a;
-}
-
-function gradientStop(offset: string, colour: string, opacity: string): SVGStopElement {
-  return svg("stop", { offset, "stop-color": colour, "stop-opacity": opacity });
-}
-
-function buildGraph(s: State): void {
-  layers.hulls.replaceChildren();
-  layers.links.replaceChildren();
-  defs.replaceChildren();
-  layers.subs.replaceChildren();
-  layers.nodes.replaceChildren();
-
-  const showNames = s.snapshot.taus.length <= NAME_LABEL_LIMIT;
-  const groupsByKey = new Map<string, Group>();
-
-  for (const tau of s.snapshot.taus) {
-    const key = groupKey(tau);
-    let group = groupsByKey.get(key);
-    if (group === undefined) {
-      const element = svg("g", { class: "hull" });
-      const path = svg("path");
-      element.append(path);
-      let label: SVGTextElement | null = null;
-      if (tau.owner.trim() !== "") {
-        label = svg("text", { class: "hull-label", "text-anchor": "middle" });
-        label.textContent = tau.owner.trim();
-        element.append(label);
-      }
-      layers.hulls.append(element);
-      group = { key, owner: tau.owner.trim(), members: [], element, path, label };
-      groupsByKey.set(key, group);
-    }
-
-    const element = svg("g", { class: `node ${tau.online ? "online" : "offline"}` });
-    element.append(reticle(NODE_RADIUS + 7, 5));
-    element.append(svg("circle", { class: "node-hit", r: NODE_RADIUS + 2 }));
-    element.append(placedCharacter(tau.address, NODE_RADIUS, "tau"));
-    const subData = tauSubNodes(tau);
-    let label: SVGTextElement | null = null;
-    if (showNames) {
-      label = svg("text", { class: "node-name", "text-anchor": "middle", y: nameOffset(subData) });
-      label.textContent = tau.name;
-      element.append(label);
-    }
-    layers.nodes.append(element);
-
-    const node: GraphNode = {
-      tau,
-      group: key,
-      element,
-      label,
-      subs: [],
-      reach: reach(subData.length),
-    };
-    for (const data of subData) {
-      const sub = buildSub(node, data, showNames);
-      node.subs.push(sub);
-      s.subsById.set(data.id, sub);
-      wireSub(s, sub);
-    }
-    group.members.push(node);
-    s.nodes.push(node);
-    s.byAddress.set(tau.address, node);
-    wireNode(s, node);
+function neighbours(tau: Tau): Set<Tau> {
+  const around = new Set([tau]);
+  for (const beam of state.world.beams) {
+    if (beam.a === tau) around.add(beam.b);
+    if (beam.b === tau) around.add(beam.a);
   }
-  s.groups = [...groupsByKey.values()];
+  return around;
+}
 
-  const counts = s.snapshot.links.map((link) => link.messages);
-  const most = Math.max(1, ...counts);
-  s.snapshot.links.forEach((data, index) => {
-    const source = s.byAddress.get(data.a);
-    const target = s.byAddress.get(data.b);
-    if (source === undefined || target === undefined) return;
-    const id = `beam-${index}`;
-    const gradient = svg("linearGradient", { id, gradientUnits: "userSpaceOnUse" });
-    gradient.append(
-      gradientStop("0", hueColour(data.a), "0.95"),
-      gradientStop("0.5", BEAM_MIDDLE, "0.5"),
-      gradientStop("1", hueColour(data.b), "0.95"),
+function focus(): Focus {
+  const selected = state.selected;
+  const around = selected !== null ? neighbours(selected) : null;
+  const query = state.query;
+  const dim = (tau: Tau) =>
+    around !== null
+      ? !around.has(tau)
+      : query !== "" && (tau.tau === null || !matches(tau.tau, query));
+  return {
+    selected,
+    sub: state.selectedSub,
+    hovered: state.hovered,
+    dim,
+    dimBeam: (beam: Beam) =>
+      selected !== null
+        ? beam.a !== selected && beam.b !== selected
+        : query !== "" && (dim(beam.a) || dim(beam.b)),
+  };
+}
+
+/** The taus light one by one after the universe arrives. */
+function light(now: number): void {
+  const age = still ? 1_000 : (now - state.arrived) / 1000;
+  state.world.taus.forEach((tau, i) => {
+    const at = 0.35 + i * 0.07;
+    tau.shown = easeOut(span(age, at - 0.3, at + 0.5));
+    tau.heat = easeOut(span(age, at, at + 0.7));
+  });
+  state.world.beams.forEach((beam, i) => {
+    beam.reveal = easeOut(span(age, 0.9 + i * 0.04, 1.7 + i * 0.04));
+  });
+}
+
+let lastDist = view.dist;
+
+function draw(now: number): void {
+  light(now);
+  const clock = still ? 0 : now / 1000;
+  const cam: Camera = {
+    target: { x: view.x, y: view.y, z: view.z },
+    yaw: view.yaw,
+    pitch: view.pitch,
+    dist: view.dist,
+    cx: view.cx,
+    cy: view.cy,
+    focal: painter.focal,
+  };
+  // Star streaks only while the camera really flies in, not while it settles.
+  const closing = lastDist - view.dist;
+  const streak = still || closing < 3 ? 0 : Math.min(closing * 5, 900);
+  lastDist = view.dist;
+  const project = projector(cam);
+  const lens = focus();
+  painter.clear();
+  painter.haze(project, state.world.taus.some((tau) => tau.online) ? 1 : 0.3);
+  painter.stars(project, view.dist, sky, clock, 1, streak);
+  painter.owners(project, state.world.owners, lens);
+  painter.beams(project, state.world.beams, clock, !still, lens);
+  painter.taus(project, state.world.taus, clock, lens);
+  if (state.hovered !== null) placeCard(state.hovered);
+}
+
+let last = performance.now();
+let lastFrame = 0;
+
+function loop(now: number): void {
+  window.requestAnimationFrame(loop);
+  if (document.hidden) return;
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const idle = now - lastTouch > IDLE_MS;
+
+  if (!still) {
+    if (idle && state.selected === null && !dragging) goal.yaw += dt * 0.03;
+    const k = 1 - Math.exp(-dt * 4.2);
+    for (const key of ["x", "y", "z", "yaw", "pitch", "dist", "cx", "cy"] as const) {
+      view[key] += (goal[key] - view[key]) * k;
+    }
+    // Settled and untouched: the universe only drifts, 30 frames a second are enough.
+    const moving = Math.abs(goal.dist - view.dist) > 1 || !idle;
+    if (!moving && now - lastFrame < 30) return;
+  } else if (!dirty) {
+    return;
+  }
+  lastFrame = now;
+  dirty = false;
+  draw(now);
+}
+
+// ---------------------------------------------------------------------------------------
+// Pointing
+
+/** The tau, or the sub-tau of a tau, under a point of the canvas. */
+function pick(x: number, y: number): { tau: Tau; sub: string | null } | null {
+  const candidates = state.world.taus.filter((tau) => tau.drawn && tau.tau !== null);
+  // Sub-taus first: they sit close to their tau and are small.
+  for (const tau of candidates) {
+    const named = tau === state.selected;
+    for (const moon of tau.moons) {
+      if (!named && moon.r < 7) continue;
+      if (Math.hypot(moon.x - x, moon.y - y) < moon.r) return { tau, sub: moon.name };
+    }
+  }
+  let best: Tau | null = null;
+  let bestDistance = Infinity;
+  for (const tau of candidates) {
+    const d = Math.hypot(tau.sx - x, tau.sy - y);
+    if (d < tau.sr && d < bestDistance) {
+      best = tau;
+      bestDistance = d;
+    }
+  }
+  return best === null ? null : { tau: best, sub: null };
+}
+
+let cardFor: Tau | null = null;
+
+function placeCard(tau: Tau): void {
+  const width = page.card.offsetWidth;
+  const x =
+    tau.sx + tau.sr + 12 + width > painter.width - 12
+      ? tau.sx - tau.sr - 12 - width
+      : tau.sx + tau.sr + 12;
+  page.card.style.transform = `translate(${Math.round(x)}px, ${Math.round(tau.sy - 24)}px)`;
+}
+
+/** The small card on hover: who it is, whether it is alive, how busy. */
+function showCard(tau: Tau | null): void {
+  const data = tau?.tau ?? null;
+  if (tau === null || data === null || tau === state.selected) {
+    page.card.hidden = true;
+    cardFor = null;
+    return;
+  }
+  if (cardFor !== tau) {
+    cardFor = tau;
+    const head = html("div", "cosmos-card-head");
+    const names = html("div");
+    names.append(
+      html("p", "cosmos-card-name", data.name || data.address),
+      html("p", "cosmos-card-address", data.address),
     );
-    defs.append(gradient);
-    // Pulses start at different points and half of them run the other way.
-    const element = svg("g", {
-      class: `link beam-d${index % 6}${index % 2 === 1 ? " beam-back" : ""}`,
-    });
-    const width = 0.8 + 1.5 * Math.sqrt(data.messages / most);
-    const glow = svg("line", { class: "beam-glow", "stroke-width": (width * 4).toFixed(2) });
-    const line = svg("line", {
-      class: "beam-line",
-      stroke: `url(#${id})`,
-      "stroke-width": width.toFixed(2),
-    });
-    const pulse = svg("path", { class: "beam-pulse", pathLength: 100 });
-    const hit = svg("line", { class: "link-hit" });
-    const title = svg("title");
-    title.textContent = t.linkTitle(
-      source.tau.name,
-      target.tau.name,
-      count(t.messages, data.messages),
+    head.append(characterElement(data.address, { size: 44, animated: false }), names);
+    const status = html("p", `cosmos-card-state${data.online ? " is-live" : ""}`);
+    status.append(
+      html("span", `pip ${data.online ? "pip-live" : "pip-off"}`),
+      html("span", undefined, data.online ? t.online : t.offline),
     );
-    hit.append(title);
-    element.append(glow, line, pulse, hit);
-    layers.links.append(element);
-    s.links.push({ source, target, data, element, lines: [glow, line, hit], pulse, gradient });
-  });
-
-  // Spread the layout the way the free part of the box is shaped: wide on a desktop, tall on
-  // a phone.
-  const rect = page.box.getBoundingClientRect();
-  const inset = insets(s, rect);
-  const freeWidth = rect.width - inset.left - inset.right;
-  const freeHeight = rect.height - inset.top - inset.bottom;
-  const tall = freeWidth > 0 && freeHeight > 0 && freeWidth / freeHeight < 1;
-  seedPositions(s, tall);
-  page.graph.setAttribute(
-    "aria-label",
-    t.mapLabel(count(t.taus, s.nodes.length), count(t.links, s.links.length)),
-  );
-
-  const simulation = forceSimulation<GraphNode, GraphLink>(s.nodes)
-    .force(
-      "link",
-      forceLink<GraphNode, GraphLink>(s.links)
-        .distance((link) => (sameGroup(link) ? 60 : 150) + extra(link))
-        .strength((link) => (sameGroup(link) ? 0.6 : 0.12)),
-    )
-    .force("charge", forceManyBody<GraphNode>().strength(-260).distanceMax(520))
-    .force("collide", forceCollide<GraphNode>((node) => node.reach + 14))
-    .force("cluster", clusterForce(s))
-    .force("x", forceX<GraphNode>(0).strength(tall ? 0.1 : 0.035))
-    .force("y", forceY<GraphNode>(0).strength(tall ? 0.025 : 0.06));
-  s.simulation = simulation;
-
-  if (reducedMotion.matches) {
-    simulation.stop();
-    for (let i = 0; i < 320; i++) simulation.tick();
-    draw(s, true);
-  } else {
-    simulation.on("tick", () => draw(s, false));
-    simulation.on("end", () => draw(s, true));
+    const facts = [
+      count(t.publicSubs, subsOf(data).length),
+      count(t.links, tau.links),
+      count(t.msgs, tau.messages),
+    ];
+    page.card.replaceChildren(head, status, html("p", "cosmos-card-facts", facts.join(" · ")));
   }
-  highlight(s);
+  page.card.hidden = false;
+  placeCard(tau);
 }
 
-function sameGroup(link: GraphLink): boolean {
-  const source = link.source as GraphNode;
-  const target = link.target as GraphNode;
-  return source.group === target.group;
+const pointers = new Map<number, { x: number; y: number }>();
+let press: { x: number; y: number; moved: number } | null = null;
+let pinch = 0;
+let dragging = false;
+
+function local(event: PointerEvent | MouseEvent): { x: number; y: number } {
+  const rect = page.canvas.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
 }
 
-/** A link between taus with sub-taus is longer by the room their sub-taus take. */
-function extra(link: GraphLink): number {
-  const source = link.source as GraphNode;
-  const target = link.target as GraphNode;
-  return source.reach + target.reach - 2 * NODE_RADIUS;
+function spread(): number {
+  const [a, b] = [...pointers.values()];
+  return a !== undefined && b !== undefined ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
 }
 
-/**
- * A sub-tau's small node, drawn in its own layer under the taus: a short tether to its tau,
- * its character and, when names are shown, its `/name` outside the orbit. Its position is
- * set from its tau's in draw().
- */
-function buildSub(parent: GraphNode, data: SubNodeData, showNames: boolean): SubNode {
-  const element = svg("g", { class: `sub ${parent.tau.online ? "online" : "offline"}` });
-  const distance = Math.hypot(data.dx, data.dy) || 1;
-  const ux = data.dx / distance;
-  const uy = data.dy / distance;
-  // In the sub-tau's own coordinates its tau's centre is at (-dx, -dy).
-  element.append(
-    svg("line", {
-      class: "sub-tether",
-      x1: (-data.dx + ux * (NODE_RADIUS + 2)).toFixed(1),
-      y1: (-data.dy + uy * (NODE_RADIUS + 2)).toFixed(1),
-      x2: (-ux * (SUB_RADIUS + 1.5)).toFixed(1),
-      y2: (-uy * (SUB_RADIUS + 1.5)).toFixed(1),
-    }),
-  );
-  element.append(svg("circle", { class: "sub-hit", r: SUB_RADIUS + 5 }));
-  element.append(reticle(SUB_RADIUS + 4, 3));
-  element.append(placedCharacter(data.id, SUB_RADIUS, "sub"));
-  if (showNames) {
-    const label = svg("text", {
-      class: "sub-name",
-      x: data.labelX,
-      y: data.labelY,
-      "text-anchor": data.anchor,
-    });
-    label.textContent = data.label;
-    element.append(label);
-  }
-  layers.subs.append(element);
-  return { data, parent, element };
-}
+page.canvas.addEventListener("pointerdown", (event) => {
+  page.canvas.setPointerCapture(event.pointerId);
+  const at = local(event);
+  pointers.set(event.pointerId, at);
+  if (pointers.size === 1) press = { ...at, moved: 0 };
+  if (pointers.size === 2) pinch = spread();
+  touched();
+});
 
-/** Groups start on a circle, members close to their group's point. */
-function seedPositions(s: State, tall: boolean): void {
-  const radius = 90 * Math.sqrt(s.groups.length);
-  s.groups.forEach((group, index) => {
-    const angle = (index / Math.max(1, s.groups.length)) * Math.PI * 2 - Math.PI / 2;
-    const cx = s.groups.length === 1 ? 0 : Math.cos(angle) * radius * (tall ? 0.6 : 1);
-    const cy = s.groups.length === 1 ? 0 : Math.sin(angle) * radius * (tall ? 1 : 0.7);
-    for (const node of group.members) {
-      const jitter = hash01(node.tau.address) * Math.PI * 2;
-      node.x = cx + Math.cos(jitter) * 24;
-      node.y = cy + Math.sin(jitter) * 24;
+page.canvas.addEventListener("pointermove", (event) => {
+  const at = local(event);
+  const before = pointers.get(event.pointerId);
+  if (before === undefined) {
+    // Hover (a mouse or a pen, not pressed).
+    if (event.pointerType === "touch") return;
+    const hit = pick(at.x, at.y);
+    const tau = hit?.tau ?? null;
+    if (tau !== state.hovered) {
+      state.hovered = tau;
+      dirty = true;
     }
-  });
-}
-
-/** Pulls every tau toward the centre of its owner's group. */
-function clusterForce(s: State) {
-  return (alpha: number) => {
-    for (const group of s.groups) {
-      if (group.members.length < 2) continue;
-      let cx = 0;
-      let cy = 0;
-      for (const node of group.members) {
-        cx += node.x ?? 0;
-        cy += node.y ?? 0;
-      }
-      cx /= group.members.length;
-      cy /= group.members.length;
-      for (const node of group.members) {
-        node.vx = (node.vx ?? 0) + (cx - (node.x ?? 0)) * 0.2 * alpha;
-        node.vy = (node.vy ?? 0) + (cy - (node.y ?? 0)) * 0.2 * alpha;
-      }
-    }
-  };
-}
-
-/**
- * A closed path through the hull of octagons around a group's members and their sub-taus,
- * so the sub-taus are inside their owner's hull. The edges stay straight: a hard, faceted
- * outline rather than a soft blob.
- */
-function hullPath(members: GraphNode[]): { d: string; top: number; cx: number } {
-  const points: [number, number][] = [];
-  const octagon = (x: number, y: number, r: number) => {
-    for (let i = 0; i < 8; i++) {
-      const angle = ((i + 0.5) / 8) * Math.PI * 2;
-      points.push([x + Math.cos(angle) * r, y + Math.sin(angle) * r]);
-    }
-  };
-  for (const node of members) {
-    const x = node.x ?? 0;
-    const y = node.y ?? 0;
-    octagon(x, y, NODE_RADIUS + HULL_PADDING);
-    for (const sub of node.subs) {
-      octagon(x + sub.data.dx, y + sub.data.dy, SUB_RADIUS + SUB_HULL_PADDING);
-    }
-  }
-  const hull = polygonHull(points) ?? points;
-  let d = "";
-  let top = Infinity;
-  hull.forEach(([x, y], index) => {
-    d += `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    if (y < top) top = y;
-  });
-  let cx = 0;
-  for (const node of members) cx += node.x ?? 0;
-  cx /= members.length;
-  return { d: `${d}Z`, top, cx };
-}
-
-function draw(s: State, settled: boolean): void {
-  for (const node of s.nodes) {
-    const x = node.x ?? 0;
-    const y = node.y ?? 0;
-    node.element.setAttribute("transform", `translate(${x.toFixed(1)},${y.toFixed(1)})`);
-    for (const sub of node.subs) {
-      sub.element.setAttribute(
-        "transform",
-        `translate(${(x + sub.data.dx).toFixed(1)},${(y + sub.data.dy).toFixed(1)})`,
-      );
-    }
-  }
-  for (const link of s.links) {
-    const source = link.source as GraphNode;
-    const target = link.target as GraphNode;
-    const x1 = (source.x ?? 0).toFixed(1);
-    const y1 = (source.y ?? 0).toFixed(1);
-    const x2 = (target.x ?? 0).toFixed(1);
-    const y2 = (target.y ?? 0).toFixed(1);
-    for (const element of [...link.lines, link.gradient]) {
-      element.setAttribute("x1", x1);
-      element.setAttribute("y1", y1);
-      element.setAttribute("x2", x2);
-      element.setAttribute("y2", y2);
-    }
-    link.pulse.setAttribute("d", `M${x1} ${y1}L${x2} ${y2}`);
-  }
-  for (const group of s.groups) {
-    const { d, top, cx } = hullPath(group.members);
-    group.path.setAttribute("d", d);
-    if (group.label !== null) {
-      group.label.setAttribute("x", cx.toFixed(1));
-      group.label.setAttribute("y", (top - 7).toFixed(1));
-    }
-  }
-  fit(s, settled);
-}
-
-interface Insets {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-}
-
-/**
- * The parts of the box the drawing keeps clear of, in pixels: a pinned card floating over the
- * graph (wide screens).
- */
-function insets(s: State, rect: DOMRect): Insets {
-  const out: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
-  const floating =
-    s.selected !== null &&
-    !page.detail.hidden &&
-    page.detail.classList.contains("pinned") &&
-    window.getComputedStyle(page.detail).position === "absolute";
-  if (floating) out.right = Math.min(page.detail.offsetWidth + 24, rect.width * 0.55);
-  return out;
-}
-
-/**
- * Moves the viewBox toward the bounds of the drawing: the drawing fits into the part of the
- * box that nothing covers (see insets), the viewBox covers the whole box at the same scale,
- * so links and hulls may run on under the covered parts.
- */
-function fit(s: State, immediate: boolean): void {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const node of s.nodes) {
-    const x = node.x ?? 0;
-    const y = node.y ?? 0;
-    // A tau with sub-taus reaches further than its disc.
-    const around = node.reach - NODE_RADIUS;
-    minX = Math.min(minX, x - around);
-    maxX = Math.max(maxX, x + around);
-    minY = Math.min(minY, y - around);
-    maxY = Math.max(maxY, y + around);
-  }
-  const pad = NODE_RADIUS + HULL_PADDING + 24;
-  minX -= pad;
-  maxX += pad;
-  minY -= pad + 14;
-  maxY += pad + 18;
-  const rect = page.box.getBoundingClientRect();
-  const width = rect.width > 0 ? rect.width : 16;
-  const height = rect.height > 0 ? rect.height : 9;
-  const inset = rect.width > 0 ? insets(s, rect) : { left: 0, right: 0, top: 0, bottom: 0 };
-  // A covered part never takes more than two thirds of the box.
-  const usableW = Math.max(width / 3, width - inset.left - inset.right);
-  const usableH = Math.max(height / 3, height - inset.top - inset.bottom);
-  const scale = Math.min(
-    usableW / Math.max(1, maxX - minX),
-    usableH / Math.max(1, maxY - minY),
-    rect.width > 0 ? MAX_SCALE : Infinity,
-  );
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const left = Math.min(inset.left, width - usableW);
-  const top = Math.min(inset.top, height - usableH);
-  const target = {
-    x: cx - (left + usableW / 2) / scale,
-    y: cy - (top + usableH / 2) / scale,
-    w: width / scale,
-    h: height / scale,
-  };
-  const view = s.view;
-  const next =
-    immediate || view === null
-      ? target
-      : {
-          x: view.x + (target.x - view.x) * 0.15,
-          y: view.y + (target.y - view.y) * 0.15,
-          w: view.w + (target.w - view.w) * 0.15,
-          h: view.h + (target.h - view.h) * 0.15,
-        };
-  s.view = next;
-  page.graph.setAttribute(
-    "viewBox",
-    `${next.x.toFixed(1)} ${next.y.toFixed(1)} ${next.w.toFixed(1)} ${next.h.toFixed(1)}`,
-  );
-}
-
-let fitFrame = 0;
-
-/** Glides the viewBox to its new target over a few frames (at once under reduced motion). */
-function refit(s: State): void {
-  cancelAnimationFrame(fitFrame);
-  if (s.nodes.length === 0) return;
-  if (reducedMotion.matches) {
-    fit(s, true);
+    page.canvas.classList.toggle("is-pointing", hit !== null);
+    showCard(hit?.sub == null ? tau : null);
     return;
   }
-  let frames = 0;
-  const step = () => {
-    fit(s, frames >= 24);
-    frames += 1;
-    if (frames <= 24) fitFrame = requestAnimationFrame(step);
+  pointers.set(event.pointerId, at);
+  if (pointers.size === 2) {
+    const now = spread();
+    if (pinch > 0 && now > 0) zoom(pinch / now);
+    pinch = now;
+    dragging = true;
+    return;
+  }
+  const dx = at.x - before.x;
+  const dy = at.y - before.y;
+  if (press !== null) press.moved += Math.hypot(dx, dy);
+  if (press !== null && press.moved > DRAG_SLOP) {
+    dragging = true;
+    page.canvas.classList.add("is-dragging");
+    showCard(null);
+    turn(-dx * 0.006, dy * 0.004);
+    view.yaw = goal.yaw;
+    view.pitch = goal.pitch;
+  }
+});
+
+function release(event: PointerEvent): void {
+  pointers.delete(event.pointerId);
+  if (pointers.size < 2) pinch = 0;
+  if (pointers.size > 0) return;
+  const at = local(event);
+  const click = press !== null && !dragging && event.type === "pointerup";
+  press = null;
+  dragging = false;
+  page.canvas.classList.remove("is-dragging");
+  touched();
+  if (!click) return;
+  const hit = pick(at.x, at.y);
+  if (hit === null) {
+    if (state.selected !== null) select(null);
+    return;
+  }
+  const address = hit.tau.tau!.address;
+  select(hit.sub !== null ? `${address}/${hit.sub}` : address);
+}
+
+page.canvas.addEventListener("pointerup", release);
+page.canvas.addEventListener("pointercancel", release);
+page.canvas.addEventListener("pointerleave", () => {
+  if (pointers.size > 0) return;
+  state.hovered = null;
+  page.canvas.classList.remove("is-pointing");
+  showCard(null);
+  dirty = true;
+});
+
+page.canvas.addEventListener(
+  "wheel",
+  (event) => {
+    event.preventDefault();
+    const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1;
+    zoom(Math.exp(event.deltaY * scale * (event.ctrlKey ? 0.01 : 0.0012)));
+  },
+  { passive: false },
+);
+
+page.canvas.addEventListener("keydown", (event) => {
+  const keys: Record<string, () => void> = {
+    ArrowLeft: () => turn(0.12, 0),
+    ArrowRight: () => turn(-0.12, 0),
+    ArrowUp: () => turn(0, -0.08),
+    ArrowDown: () => turn(0, 0.08),
+    "+": () => zoom(0.8),
+    "=": () => zoom(0.8),
+    "-": () => zoom(1.25),
+    "0": () => resetView(),
+    Home: () => resetView(),
   };
-  step();
+  const action = keys[event.key];
+  if (action === undefined) return;
+  event.preventDefault();
+  action();
+});
+
+page.zoomIn.addEventListener("click", () => zoom(0.72));
+page.zoomOut.addEventListener("click", () => zoom(1.39));
+page.reset.addEventListener("click", () => resetView());
+
+function resetView(): void {
+  goal.pitch = PITCH;
+  if (state.selected !== null) select(null);
+  else {
+    aim();
+    touched();
+  }
 }
 
 // ---------------------------------------------------------------------------------------
-// Interaction
+// Selecting, through the URL
 
-function wireNode(s: State, node: GraphNode): void {
-  const address = node.tau.address;
-  node.element.addEventListener("pointerenter", () => {
-    s.hovered = address;
-    highlight(s);
-    if (s.selected === null) showDetail(s, address, false);
-  });
-  node.element.addEventListener("pointerleave", () => {
-    if (s.hovered === address) s.hovered = null;
-    highlight(s);
-    if (s.selected === null) hideDetail();
-  });
-
-  let start: { x: number; y: number } | null = null;
-  let dragging = false;
-  node.element.addEventListener("pointerdown", (event) => {
-    event.stopPropagation();
-    start = { x: event.clientX, y: event.clientY };
-    dragging = false;
-    if (!reducedMotion.matches) node.element.setPointerCapture(event.pointerId);
-  });
-  node.element.addEventListener("pointermove", (event) => {
-    if (start === null || reducedMotion.matches || s.simulation === null) return;
-    if (!dragging && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) return;
-    if (!dragging) {
-      dragging = true;
-      s.simulation.alphaTarget(0.25).restart();
-    }
-    const point = toGraph(event.clientX, event.clientY);
-    node.fx = point.x;
-    node.fy = point.y;
-  });
-  const release = (event: PointerEvent) => {
-    if (start === null) return;
-    start = null;
-    if (node.element.hasPointerCapture(event.pointerId)) {
-      node.element.releasePointerCapture(event.pointerId);
-    }
-    if (dragging) {
-      dragging = false;
-      node.fx = null;
-      node.fy = null;
-      s.simulation?.alphaTarget(0);
-      return;
-    }
-    select(address);
-  };
-  node.element.addEventListener("pointerup", release);
-  node.element.addEventListener("pointercancel", (event) => {
-    start = null;
-    dragging = false;
-    node.fx = null;
-    node.fy = null;
-    s.simulation?.alphaTarget(0);
-    if (node.element.hasPointerCapture(event.pointerId)) {
-      node.element.releasePointerCapture(event.pointerId);
-    }
-  });
-}
-
-/** Hovering a sub-tau shows its card; a click pins it (`#<address>/<name>`). */
-function wireSub(s: State, sub: SubNode): void {
-  const id = sub.data.id;
-  const parent = sub.parent.tau.address;
-  sub.element.addEventListener("pointerenter", () => {
-    s.hoveredSub = id;
-    s.hovered = parent;
-    highlight(s);
-    if (s.selected === null) showSubDetail(s, sub, false);
-  });
-  sub.element.addEventListener("pointerleave", () => {
-    if (s.hoveredSub === id) s.hoveredSub = null;
-    if (s.hovered === parent) s.hovered = null;
-    highlight(s);
-    if (s.selected === null) hideDetail();
-  });
-  sub.element.addEventListener("pointerdown", (event) => event.stopPropagation());
-  sub.element.addEventListener("click", () => select(id));
-}
-
-function toGraph(clientX: number, clientY: number): { x: number; y: number } {
-  const matrix = page.graph.getScreenCTM();
-  if (matrix === null) return { x: 0, y: 0 };
-  const point = new DOMPoint(clientX, clientY).matrixTransform(matrix.inverse());
-  return { x: point.x, y: point.y };
-}
-
-/**
- * Selecting goes through the URL, so a pinned tau can be shared and the back button works.
- * `target` is a tau's address or a sub-tau's id (`<address>/<name>`).
- */
+/** `target` is a tau's address or a sub-tau's id (`<address>/<name>`), or null for none. */
 function select(target: string | null): void {
   if (target === null) {
     if (window.location.hash !== "") {
@@ -834,164 +552,137 @@ function select(target: string | null): void {
 }
 
 function applyHash(): void {
-  const s = state;
-  if (s === null) return;
+  const snapshot = state.snapshot;
+  if (snapshot === null) return;
   let hash = "";
   try {
     hash = decodeURIComponent(window.location.hash.slice(1));
   } catch {
     hash = "";
   }
-  const target = parseTarget(s.snapshot, hash);
-  s.selected = target?.address ?? null;
-  s.selectedSub = target?.sub != null ? `${target.address}/${target.sub}` : null;
-  for (const [key, card] of s.cards) {
-    const anchor = card.querySelector("a");
-    if (key === s.selected) anchor?.setAttribute("aria-current", "true");
+  const target = parseTarget(snapshot, hash);
+  const before = state.selected;
+  state.selected = target !== null ? (state.world.byAddress.get(target.address) ?? null) : null;
+  state.selectedSub = target?.sub ?? null;
+  for (const [address, item] of state.items) {
+    const anchor = item.querySelector("a");
+    if (address === target?.address) anchor?.setAttribute("aria-current", "true");
     else anchor?.removeAttribute("aria-current");
   }
-  highlight(s);
-  const sub = s.selectedSub !== null ? s.subsById.get(s.selectedSub) : undefined;
-  if (sub !== undefined) showSubDetail(s, sub, true);
-  else if (s.selected !== null) showDetail(s, s.selected, true);
-  else hideDetail();
-  refit(s);
-}
-
-function neighbours(s: State, address: string): Set<string> {
-  const around = new Set([address]);
-  for (const link of s.snapshot.links) {
-    if (link.a === address) around.add(link.b);
-    if (link.b === address) around.add(link.a);
+  showCard(null);
+  if (state.selected !== null) {
+    renderDetail(state.selected, state.selectedSub);
+    openPanel("detail", false);
+  } else if (before !== null && state.panel === "detail") {
+    closePanel(false);
   }
-  return around;
-}
-
-/** Dims what is not selected, not matching the search, or not next to the hovered tau. */
-function highlight(s: State): void {
-  const focus = s.selected ?? null;
-  const around = focus !== null ? neighbours(s, focus) : null;
-  const lit = (node: GraphNode) =>
-    around !== null ? around.has(node.tau.address) : matches(node.tau, s.query);
-
-  for (const node of s.nodes) {
-    const on = lit(node);
-    node.element.classList.toggle("dimmed", !on);
-    // A selected sub-tau carries the selection mark, not its tau.
-    node.element.classList.toggle("selected", node.tau.address === focus && s.selectedSub === null);
-    node.element.classList.toggle("hovered", node.tau.address === s.hovered);
-    node.element.classList.toggle("named", on && (s.query !== "" || focus !== null));
-  }
-  for (const link of s.links) {
-    const source = link.source as GraphNode;
-    const target = link.target as GraphNode;
-    const on =
-      focus !== null
-        ? source.tau.address === focus || target.tau.address === focus
-        : lit(source) && lit(target);
-    link.element.classList.toggle("dimmed", !on);
-    link.element.classList.toggle(
-      "active",
-      s.hovered !== null && (source.tau.address === s.hovered || target.tau.address === s.hovered),
-    );
-  }
-  for (const node of s.nodes) {
-    const on = lit(node);
-    for (const sub of node.subs) {
-      sub.element.classList.toggle("dimmed", !on);
-      sub.element.classList.toggle("selected", sub.data.id === s.selectedSub);
-      sub.element.classList.toggle("hovered", sub.data.id === s.hoveredSub);
-      sub.element.classList.toggle("named", on && (s.query !== "" || focus !== null));
-    }
-  }
-  for (const group of s.groups) {
-    group.element.classList.toggle("dimmed", !group.members.some(lit));
-  }
+  aim();
+  if (still) Object.assign(view, goal);
+  touched();
 }
 
 // ---------------------------------------------------------------------------------------
-// The detail card
+// The panel: the list, a tau's card, or how to add your tau
 
-function hideDetail(): void {
-  page.detail.hidden = true;
-  page.detail.replaceChildren();
+function openPanel(mode: PanelMode, moveFocus = true): void {
+  state.panel = mode;
+  page.panel.hidden = false;
+  page.roster.hidden = mode !== "list";
+  page.detail.hidden = mode !== "detail";
+  page.join.hidden = mode !== "join";
+  page.back.hidden = mode === "list" || state.snapshot === null || state.snapshot.taus.length === 0;
+  page.openList.setAttribute("aria-expanded", String(mode === "list"));
+  page.openJoin.setAttribute("aria-expanded", String(mode === "join"));
+  document.body.classList.add("is-panel-open");
+  if (moveFocus) (mode === "join" ? page.joinTitle : page.rosterTitle).focus();
+  layout();
 }
 
-/** Empties the detail card and places it for `element`, with a close button when pinned. */
-function openCard(element: SVGGElement, pinned: boolean): HTMLElement {
-  const card = page.detail;
-  card.replaceChildren();
-  card.classList.toggle("pinned", pinned);
-  // A hover card goes to the side away from the tau, so it never covers it. A pinned card
-  // stays on the right, where fit() keeps the graph out of its way.
-  let onLeft = false;
-  if (!pinned) {
-    const box = page.box.getBoundingClientRect();
-    const spot = element.getBoundingClientRect();
-    onLeft = spot.left + spot.width / 2 > box.left + box.width / 2;
-  }
-  card.classList.toggle("on-left", onLeft);
-
-  if (pinned) {
-    const close = html("button", "detail-close", "×");
-    close.type = "button";
-    close.setAttribute("aria-label", t.close);
-    close.addEventListener("click", () => select(null));
-    card.append(close);
-  }
-  return card;
+function closePanel(clearSelection = true): void {
+  state.panel = null;
+  page.panel.hidden = true;
+  page.openList.setAttribute("aria-expanded", "false");
+  page.openJoin.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("is-panel-open");
+  if (clearSelection && state.selected !== null) select(null);
+  layout();
 }
 
-function statusLine(tau: PublicTau, now: number): HTMLParagraphElement {
+page.openList.addEventListener("click", () => {
+  if (state.panel === "list") closePanel();
+  else openPanel("list");
+});
+page.openJoin.addEventListener("click", () => {
+  if (state.panel === "join") closePanel();
+  else openPanel("join");
+});
+page.close.addEventListener("click", () => closePanel());
+page.back.addEventListener("click", () => {
+  if (state.selected !== null) select(null);
+  openPanel("list");
+});
+page.skip?.addEventListener("click", (event) => {
+  event.preventDefault();
+  openPanel("list");
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || event.target === page.search) return;
+  if (state.panel !== null) closePanel();
+  else if (state.selected !== null) select(null);
+});
+
+function statusLine(tau: SnapshotTau, now: number): HTMLParagraphElement {
   const status = html("p", `detail-status kicker ${tau.online ? "is-online" : "is-offline"}`);
   status.append(
-    html("span", `pip ${tau.online ? "" : "pip-off"}`),
+    html("span", `pip ${tau.online ? "pip-live" : "pip-off"}`),
     tau.online ? t.online : t.lastSeen(ago(tau.last_seen, now)),
   );
   return status;
 }
 
-/** The card's head: the character, the status line and the name. */
-function cardHead(seed: string, tau: PublicTau, name: string, now: number): HTMLElement {
+function cardHead(seed: string, tau: SnapshotTau, name: string, now: number): HTMLElement {
   const head = html("div", "detail-head");
   const text = html("div", "detail-titles");
-  text.append(statusLine(tau, now), html("h3", "detail-name", name));
-  head.append(characterElement(seed, { size: 56, animated: !reducedMotion.matches }), text);
+  text.append(statusLine(tau, now), html("h2", "detail-name", name));
+  head.append(characterElement(seed, { size: 64, animated: !still }), text);
   return head;
 }
 
-/** The card of one sub-tau: its name, the tau it belongs to, its address and about line. */
-function showSubDetail(s: State, sub: SubNode, pinned: boolean): void {
-  const { data } = sub;
-  const tau = sub.parent.tau;
-  const card = openCard(sub.element, pinned);
-  const parent = html("p", "detail-parent");
-  const back = html("a", undefined, tau.name);
-  back.href = `#${tau.address}`;
-  parent.append(`${t.subOf} `, back);
-  const addressLine = html("p", "detail-address");
-  addressLine.append(html("code", undefined, data.id));
-  card.append(cardHead(data.id, tau, data.label, s.snapshot.generated_at), parent, addressLine);
-  if (data.about.trim() !== "") card.append(html("p", "detail-about", data.about));
-  const own = pageOfSub(tau, data.name);
-  if (own !== null && pinned) card.append(link(own, `${t.openPage} →`, "detail-page"));
-  card.hidden = false;
-}
+function renderDetail(node: Tau, subName: string | null): void {
+  const tau = node.tau;
+  const snapshot = state.snapshot;
+  if (tau === null || snapshot === null) return;
+  const now = snapshot.generated_at;
+  const card = page.detail;
+  card.replaceChildren();
+  const handle = handleOf(tau);
 
-function showDetail(s: State, address: string, pinned: boolean): void {
-  const node = s.byAddress.get(address);
-  if (node === undefined) return;
-  const { tau } = node;
-  const now = s.snapshot.generated_at;
-  const card = openCard(node.element, pinned);
+  const sub = subName !== null ? subOf(tau, subName) : undefined;
+  if (sub !== undefined) {
+    const id = `${tau.address}/${sub.name}`;
+    card.append(cardHead(id, tau, `/${sub.name}`, now));
+    const parent = html("p", "detail-parent");
+    const back = html("a", undefined, tau.name);
+    back.href = `#${tau.address}`;
+    parent.append(`${t.subOf} `, back);
+    const addressLine = html("p", "detail-address");
+    addressLine.append(html("code", undefined, id));
+    card.append(parent, addressLine);
+    if (sub.web === true) card.append(html("p", "detail-tag", t.chatTag));
+    if (sub.about.trim() !== "") card.append(html("p", "detail-about", sub.about));
+    const own = subPath(sub, handle, language);
+    if (own !== null) card.append(link(own, `${t.openPage} →`, "detail-page button button-primary"));
+    return;
+  }
+
+  card.append(cardHead(tau.address, tau, tau.name, now));
   const addressLine = html("p", "detail-address");
   addressLine.append(html("code", undefined, tau.address));
-  card.append(cardHead(tau.address, tau, tau.name, now), addressLine);
-  const handle = handleOf(tau);
+  card.append(addressLine);
   if (handle !== null) {
     card.append(link(personPath(handle, language), `@${handle}`, "detail-handle"));
   }
-
   if (tau.about.trim() !== "") card.append(html("p", "detail-about", tau.about));
 
   const facts = html("dl", "detail-facts");
@@ -1005,14 +696,15 @@ function showDetail(s: State, address: string, pinned: boolean): void {
   if (tau.online) fact(t.lastReport, ago(tau.last_seen, now));
   card.append(facts);
 
-  const subs = subsOf(tau);
+  const subs = subsOf(tau) as SnapshotSub[];
   if (subs.length > 0) {
-    card.append(html("h4", "detail-heading", t.subTaus));
+    card.append(html("h3", "detail-heading", t.subTaus));
     const list = html("ul", "detail-subs");
-    for (const sub of subs) {
-      const chip = html("a", "sub-chip", `/${sub.name}`);
-      chip.href = `#${tau.address}/${sub.name}`;
-      if (sub.about.trim() !== "") chip.title = sub.about;
+    for (const each of subs) {
+      const chip = html("a", `sub-chip${each.web === true && tau.online ? " is-live" : ""}`);
+      chip.textContent = `/${each.name}`;
+      chip.href = `#${tau.address}/${each.name}`;
+      if (each.about.trim() !== "") chip.title = each.about;
       const item = html("li");
       item.append(chip);
       list.append(item);
@@ -1020,168 +712,135 @@ function showDetail(s: State, address: string, pinned: boolean): void {
     card.append(list);
   }
 
-  const links = s.snapshot.links
-    .filter((link) => link.a === address || link.b === address)
-    .map((link) => ({ peer: link.a === address ? link.b : link.a, messages: link.messages }))
+  const links = snapshot.links
+    .filter((entry) => entry.a === tau.address || entry.b === tau.address)
+    .map((entry) => ({
+      peer: entry.a === tau.address ? entry.b : entry.a,
+      messages: entry.messages,
+    }))
     .sort((x, y) => y.messages - x.messages);
   if (links.length === 0) {
     card.append(html("p", "detail-none", t.noLinks));
   } else {
-    card.append(html("h4", "detail-heading", t.talksWith));
+    card.append(html("h3", "detail-heading", t.talksWith));
     const list = html("ul", "detail-links");
     for (const entry of links) {
-      const peer = s.byAddress.get(entry.peer);
+      const peer = state.world.byAddress.get(entry.peer)?.tau ?? null;
       const item = html("li");
-      const anchor = html("a", undefined, peer?.tau.name ?? entry.peer);
+      const anchor = html("a", peer?.online ? "is-online" : undefined);
+      anchor.append(
+        html("span", `pip ${peer?.online ? "pip-live" : "pip-off"}`),
+        peer?.name ?? entry.peer,
+      );
       anchor.href = `#${entry.peer}`;
       item.append(anchor, html("span", "detail-count", count(t.msgs, entry.messages)));
       list.append(item);
     }
     card.append(list);
   }
-  if (handle !== null && pinned) {
-    card.append(link(personPath(handle, language), `${t.openPage} →`, "detail-page"));
+  if (handle !== null) {
+    card.append(
+      link(personPath(handle, language), `${t.openPage} →`, "detail-page button button-primary"),
+    );
   }
-  card.hidden = false;
 }
 
-// ---------------------------------------------------------------------------------------
-// The list under the graph (also the keyboard path into the graph)
-
-function renderList(s: State): void {
-  const list = page.list;
-  if (list === null) return;
-  list.replaceChildren();
-  s.cards.clear();
-  const now = s.snapshot.generated_at;
+function renderList(snapshot: SiteSnapshot): void {
+  page.list.replaceChildren();
+  state.items.clear();
+  const now = snapshot.generated_at;
   const degree = new Map<string, number>();
-  for (const entry of s.snapshot.links) {
+  for (const entry of snapshot.links) {
     degree.set(entry.a, (degree.get(entry.a) ?? 0) + 1);
     degree.set(entry.b, (degree.get(entry.b) ?? 0) + 1);
   }
-
-  for (const tau of s.snapshot.taus) {
+  // The living first, then by name.
+  const taus = [...snapshot.taus].sort(
+    (a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, language),
+  );
+  for (const tau of taus) {
     const item = html("li");
-    const card = html("a", `tau-card ${tau.online ? "is-online" : "is-offline"}`);
-    card.href = `#${tau.address}`;
-
-    const head = html("span", "tau-card-head");
-    const titles = html("span", "tau-card-titles");
-    const status = html("span", "tau-card-name");
-    status.append(html("span", `pip ${tau.online ? "" : "pip-off"}`), tau.name);
-    titles.append(status, html("span", "tau-card-address", tau.address));
-    head.append(characterElement(tau.address, { size: 44, animated: false }), titles);
-    card.append(head);
-    const handle = handleOf(tau);
-    if (handle !== null) card.append(html("span", "tau-card-handle", `@${handle}`));
-    if (tau.owner.trim() !== "") {
-      card.append(html("span", "tau-card-owner", t.ownerLine(tau.owner)));
-    }
-    if (tau.about.trim() !== "") card.append(html("span", "tau-card-about", tau.about));
-    const subs = subsOf(tau);
+    const row = html("a", `tau-card u-row ${tau.online ? "is-online" : "is-offline"}`);
+    row.href = `#${tau.address}`;
+    const titles = html("span", "u-row-titles");
+    const name = html("span", "u-row-name");
+    name.append(html("span", `pip ${tau.online ? "pip-live" : "pip-off"}`), tau.name);
+    titles.append(name, html("span", "tau-card-address", tau.address));
+    row.append(characterElement(tau.address, { size: 40, animated: false }), titles);
+    const subs = subsOf(tau) as SnapshotSub[];
     if (subs.length > 0) {
-      const row = html("span", "tau-card-subs");
-      row.append(html("span", "visually-hidden", `${t.subTaus}: `));
+      const chips = html("span", "u-row-subs");
+      chips.append(html("span", "visually-hidden", `${t.subTaus}: `));
       for (const sub of subs) {
-        const chip = html("span", "sub-chip", `/${sub.name}`);
+        const chip = html(
+          "span",
+          `sub-chip${sub.web === true && tau.online ? " is-live" : ""}`,
+          `/${sub.name}`,
+        );
         if (sub.about.trim() !== "") chip.title = sub.about;
-        row.append(chip, " ");
+        chips.append(chip, " ");
       }
-      card.append(row);
+      row.append(chips);
     }
-    const meta = html("span", "tau-card-meta");
-    const links = degree.get(tau.address) ?? 0;
-    meta.textContent = [
-      tau.online ? t.online : t.lastSeen(ago(tau.last_seen, now)),
-      t.joinedOn(dateFormat.format(new Date(tau.joined_at * 1000))),
-      count(t.links, links),
-    ].join(", ");
-    card.append(meta);
-
-    card.addEventListener("click", () => {
-      // The hash change selects the tau; bring the graph into view if it is off screen.
-      const top = page.sky.getBoundingClientRect().top;
-      if (top < -page.sky.offsetHeight / 2 || top > window.innerHeight) {
-        page.sky.scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth" });
-      }
-    });
-
-    item.append(card);
-    list.append(item);
-    s.cards.set(tau.address, item);
+    const meta = [
+      tau.owner.trim() !== "" ? t.ownerLine(tau.owner) : null,
+      tau.online ? null : t.lastSeen(ago(tau.last_seen, now)),
+      count(t.links, degree.get(tau.address) ?? 0),
+    ].filter((part): part is string => part !== null);
+    row.append(html("span", "u-row-meta", meta.join(" · ")));
+    item.append(row);
+    page.list.append(item);
+    state.items.set(tau.address, item);
   }
-  filterList(s);
+  filterList();
 }
 
-function filterList(s: State): void {
-  if (page.list === null) return;
-  const total = s.snapshot.taus.length;
+function filterList(): void {
+  const snapshot = state.snapshot;
+  if (snapshot === null) return;
+  const total = snapshot.taus.length;
   let shown = 0;
-  for (const tau of s.snapshot.taus) {
-    const visible = matches(tau, s.query);
-    const card = s.cards.get(tau.address);
-    if (card !== undefined) card.hidden = !visible;
+  for (const tau of snapshot.taus) {
+    const visible = matches(tau, state.query);
+    const item = state.items.get(tau.address);
+    if (item !== undefined) item.hidden = !visible;
     if (visible) shown++;
   }
-  const online = s.snapshot.stats.online;
-  if (page.rosterCount !== null) {
-    page.rosterCount.textContent =
-      s.query === ""
-        ? t.listed(numberFormat.format(total), numberFormat.format(online))
-        : t.matching(numberFormat.format(shown), numberFormat.format(total));
-  }
-  const empty = page.rosterEmpty;
-  if (empty === null) return;
+  page.rosterCount.textContent =
+    state.query === ""
+      ? t.listed(numberFormat.format(total), numberFormat.format(snapshot.stats.online))
+      : t.matching(numberFormat.format(shown), numberFormat.format(total));
   if (total === 0) {
-    empty.textContent = t.nobodyYet;
-    empty.hidden = false;
+    page.rosterEmpty.textContent = t.nobodyYet;
+    page.rosterEmpty.hidden = false;
   } else if (shown === 0) {
-    empty.textContent = t.noMatch(page.search?.value.trim() ?? "");
-    empty.hidden = false;
+    page.rosterEmpty.textContent = t.noMatch(page.search.value.trim());
+    page.rosterEmpty.hidden = false;
   } else {
-    empty.hidden = true;
+    page.rosterEmpty.hidden = true;
   }
 }
 
-// ---------------------------------------------------------------------------------------
-// Wiring
-
-const search = page.search;
-if (search !== null) {
-  search.addEventListener("input", () => {
-    if (state === null) return;
-    state.query = search.value.trim().toLowerCase();
-    filterList(state);
-    highlight(state);
-  });
-
-  search.addEventListener("keydown", (event) => {
-    if (state === null) return;
-    if (event.key === "Enter") {
-      const first = state.snapshot.taus.find((tau) => matches(tau, state?.query ?? ""));
-      if (first !== undefined) select(first.address);
-    } else if (event.key === "Escape") {
-      search.value = "";
-      state.query = "";
-      filterList(state);
-      highlight(state);
-    }
-  });
-}
-
-page.graph.addEventListener("pointerdown", (event) => {
-  if (event.target === page.graph) select(null);
+page.search.addEventListener("input", () => {
+  state.query = page.search.value.trim().toLowerCase();
+  filterList();
+  if (state.query !== "" && state.panel === null) openPanel("list", false);
+  touched();
 });
 
-window.addEventListener("hashchange", applyHash);
-
-let resizeFrame = 0;
-new ResizeObserver(() => {
-  cancelAnimationFrame(resizeFrame);
-  resizeFrame = requestAnimationFrame(() => {
-    if (state !== null && state.nodes.length > 0) fit(state, true);
-  });
-}).observe(page.box);
+page.search.addEventListener("keydown", (event) => {
+  const snapshot = state.snapshot;
+  if (snapshot === null) return;
+  if (event.key === "Enter") {
+    const first = snapshot.taus.find((tau) => matches(tau, state.query));
+    if (first !== undefined) select(first.address);
+  } else if (event.key === "Escape") {
+    page.search.value = "";
+    state.query = "";
+    filterList();
+    touched();
+  }
+});
 
 for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-copy]")) {
   button.addEventListener("click", async () => {
@@ -1203,4 +862,89 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-c
   });
 }
 
+// ---------------------------------------------------------------------------------------
+// Loading
+
+function showMessage(parts: (string | Node)[], retry = false): void {
+  page.message.replaceChildren();
+  for (const part of parts) {
+    page.message.append(typeof part === "string" ? html("p", undefined, part) : part);
+  }
+  if (retry) {
+    const button = html("button", "button", t.tryAgain);
+    button.type = "button";
+    button.addEventListener("click", () => void load());
+    page.message.append(button);
+  }
+  page.message.hidden = false;
+}
+
+function commandLine(): HTMLParagraphElement {
+  const line = html("p", "u-command");
+  line.append(...withCommand(t.runOnHub));
+  return line;
+}
+
+async function load(): Promise<void> {
+  showMessage([t.loadingUniverse]);
+  page.count.textContent = t.loading;
+  const result = await getJson<SiteSnapshot>("/api/universe");
+  if (result.status !== 200 || result.data === null || !Array.isArray(result.data.taus)) {
+    page.count.textContent = t.unavailable;
+    showMessage([t.loadFailed], true);
+    return;
+  }
+  if (!Array.isArray(result.data.links)) result.data.links = [];
+  render(result.data);
+}
+
+function render(snapshot: SiteSnapshot): void {
+  const { stats } = snapshot;
+  state.snapshot = snapshot;
+  state.world = buildWorld(snapshot, t.yourTau);
+  state.selected = null;
+  state.arrived = performance.now();
+  page.count.textContent =
+    stats.taus === 0
+      ? t.empty
+      : t.skyCount(
+          count(t.msgs, stats.messages),
+          numberFormat.format(stats.online),
+          count(t.taus, stats.taus),
+        );
+  page.search.disabled = stats.taus === 0;
+  page.legend.hidden = stats.taus === 0;
+  page.listCount.textContent = numberFormat.format(stats.taus);
+  renderList(snapshot);
+
+  if (stats.taus === 0) {
+    showMessage([t.empty, commandLine()]);
+    page.note.hidden = true;
+  } else {
+    page.message.hidden = true;
+    if (stats.taus < TINY_UNIVERSE) {
+      page.note.replaceChildren(...withCommand(t.fewSoFar(count(t.taus, stats.taus))));
+      page.note.hidden = false;
+    } else {
+      page.note.hidden = true;
+    }
+  }
+
+  layout();
+  // Arriving: the camera flies in from far away.
+  if (!still) {
+    view.dist = goal.dist * 4.5;
+    lastDist = view.dist;
+    view.cx = goal.cx;
+    view.cy = goal.cy;
+  }
+  applyHash();
+}
+
+window.addEventListener("hashchange", applyHash);
+window.addEventListener("resize", layout);
+
+layout();
+Object.assign(view, goal);
+window.requestAnimationFrame(loop);
 void load();

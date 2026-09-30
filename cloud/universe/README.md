@@ -65,15 +65,22 @@ src/http.ts        small HTTP helpers (a verbatim copy of cloud/spine's)
 ../shared/net/     the protocol's TypeScript half (envelopes, seal, identity, cards), imported
                    by relative path for the visitor relay (cloud/shared/README.md)
 client/            the pages' scripts (TypeScript, bundled by scripts/build.mjs)
-client/landing.ts  the landing page's hero: the live universe on a canvas, opened through the
-                   portal, a tau's card on hover
-client/cosmos.ts   the landing's universe without the DOM: stars, where taus float, the camera,
-                   where the universe sits beside the text, the portal's timeline
-client/universe.ts the universe page's graph, bundled with d3-force and d3-polygon
-client/layout.ts   the page's layout data without the DOM: sub-tau orbits, search, the `#` target
+client/painter.ts  the universe on a canvas, shared by the landing and /universe: the world
+                   built from a snapshot, the stars, the taus, their links and sub-taus, labels
+client/cosmos.ts   the universe without the DOM: stars, where taus float, the camera, where the
+                   universe sits beside the text or in a box, the portal's timeline
+client/landing.ts  the landing page's hero: the universe opened through the portal, a tau's
+                   card on hover
+client/fold.ts     the landing below the hero: the constellation, the readers, the portal
+client/universe.ts the universe page: the full-page universe, turn and zoom, selection through
+                   `#`, the search, the panel with the list, a tau's card and the join steps
+client/layout.ts   the universe page's helpers without the DOM: sub-taus, search, the `#` target
+client/starfield.ts the quiet star field behind every page
+client/how.ts      how it works: the star field and the storyline's current station
+client/sky.ts      the star field alone, for the 404 and "soon" pages
 client/messages.ts the script's strings in English and Turkish
 public/            the English site: index.html, how-it-works.html, universe.html, 404.html,
-                   styles/, _headers
+                   styles/ (site.css for every page, universe.css for /universe), _headers
 public/tr/         the Turkish site: the same four files, translated
 public/brand/      copies of docs/brand files (`bun run sync-brand`; a test keeps them exact)
 public/static/     build output, gitignored: the page scripts, theme.css and the web fonts
@@ -87,8 +94,8 @@ scripts/           configure.mjs, identity.mjs, build.mjs, sync-brand.mjs, dev-t
 - **Person and sub-tau pages.** They are templates (`public/person.html`, `public/sub.html`, `public/claim.html` and their Turkish twins). `run_worker_first` sends `/@*`, `/tr/@*` and `/claim` to the Worker; a sub-tau's short page `/<slug>` reaches it because no file matches. The Worker looks the handle or slug up in the directory and answers the template, or the 404 page when there is no such person or sub-tau; the page's script then reads `/api/people/<handle>` or `/api/subs/…`. Slugs are global and first come, and every name the site uses is reserved (`RESERVED_NAMES` in `src/routes.ts`; a test checks it covers every top-level entry of `public/`).
 - **tau-host behind the universe.** With the `HOST` service binding (`bun run configure --host-service tau-host`), the universe stays the front door of `tau.<domain>`: it forwards tau-host's paths unchanged and asks tau-host who is signed in when a handle is claimed. A hosted tau's card is fetched through the binding too, because a Worker cannot fetch its own host. Without the binding, those paths are 404, claims are 501 and `bun run dev` serves everything else.
 - **Visitors.** A web sub-tau's page talks to `/api/chat/<target>` (the reference's §5). Each thread is its own `Relay` Durable Object, named by the thread id, with its own SQLite tables, created only when the thread begins, and an alarm that deletes it 24 hours later. A send stores the message and answers at once; the delivery runs after the answer (`waitUntil`): a hosted sub-tau's answer comes from tau-host's `POST /api/visit/<handle>/<name>` through `HOST`, a hub-run sub-tau gets a `visit` envelope signed and sealed with `cloud/shared/net` under `UNIVERSE_IDENTITY`, and its hub's answer arrives at `POST /net/inbox`, which takes only answers to the universe's own visits. The page's poll waits in the Worker, reading the Relay every 2 seconds, so a waiting visitor never keeps a Durable Object active; it waits only while an answer is pending. Every send is limited per client IP by the `CHAT_IP_LIMIT` Rate Limiting binding (10 a minute).
-- **Pages and headers.** `run_worker_first` sends `/api/*` and every page in both languages to the Worker, which adds the security headers of §2 (CSP `default-src 'self'` and friends, `nosniff`, `Referrer-Policy`). Every other file is served straight from the asset store with `public/_headers`. Unknown paths reach the Worker, which answers `public/404.html` (or `public/tr/404.html` under `/tr/`) with status 404. There is no inline script or style anywhere (a test checks it); the graph code and the explainer's diagrams (inline SVG styled from `site.css`) need none, and no third-party script or font is loaded.
-- **The page.** It reads `/api/universe` once. Every tau and sub-tau is its ember sigil (`cloud/shared/character.ts`). Taus with the same owner share a hull, a mutual link is an energy beam from one tau's hue to the other's (wider for more messages, with a pulse running along it), online taus burn and offline ones are cold and still. A tau's public sub-taus are small sigils circling it inside the hull, labelled `/name`, and chips in its cards. `#<address>` pins a tau and `#<address>/<name>` one of its sub-taus; the list under the graph is the keyboard path to every tau. Under `prefers-reduced-motion` the layout is computed up front and nothing moves. The layout data (orbits, labels, search, the `#` target) is the pure `client/layout.ts`, which the tests check.
+- **Pages and headers.** `run_worker_first` sends `/api/*` and every page in both languages to the Worker, which adds the security headers of §2 (CSP `default-src 'self'` and friends, `nosniff`, `Referrer-Policy`). Every other file is served straight from the asset store with `public/_headers`. Unknown paths reach the Worker, which answers `public/404.html` (or `public/tr/404.html` under `/tr/`) with status 404. There is no inline script or style anywhere (a test checks it); the canvas code and the explainer's diagrams (inline SVG styled from `site.css`) need none, and no third-party script or font is loaded.
+- **The page.** It reads `/api/universe` once and fills the viewport with the universe, drawn by the same canvas engine as the landing (`client/painter.ts`): the camera flies in, the taus light one by one, online taus burn in two neon triangles and offline ones are grey, a mutual link between two online taus carries sparks, and a tau's public sub-taus circle it (the ones visitors can talk to glow). Drag turns it, the wheel or a pinch zooms. A click or `#<address>` flies the camera to a tau, names its sub-taus and opens its card in the panel; `#<address>/<name>` does the same for a sub-tau. The panel's list is the keyboard path to every tau, and the search dims what does not match. Under `prefers-reduced-motion` nothing moves by itself. Where the taus float and how the camera frames them is the pure `client/cosmos.ts`, the search and the `#` target the pure `client/layout.ts`; the tests check both.
 
 ## Two languages
 

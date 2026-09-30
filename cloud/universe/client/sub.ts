@@ -42,7 +42,10 @@ import {
   showState,
   t,
 } from "./site";
+import { starfield } from "./starfield";
 import type { ChatMessage, ChatPoll, ChatSent, SubView } from "./types";
+
+starfield();
 
 /** The longest visitor message the universe takes (ADR 0013 §5). */
 const MAX_TEXT = 2000;
@@ -108,6 +111,8 @@ function renderHead(view: SubView): void {
 
   const status = byId<HTMLElement>("sub-status");
   status.replaceChildren();
+  // The rings around the sigil burn only while it can answer (site.css).
+  stage.classList.toggle("is-live", view.hosted === true || view.online === true);
   if (view.hosted === true || view.online === true) {
     status.append(html("span", "pip"), t.online);
   } else {

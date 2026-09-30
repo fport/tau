@@ -19,10 +19,6 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "~0.22.0",
     "@cloudflare/workers-types": "^5.20260930.1",
-    "@types/d3-force": "^3.0.10",
-    "@types/d3-polygon": "^3.0.2",
-    "d3-force": "^3.0.0",
-    "d3-polygon": "^3.0.1",
     "esbuild": "^0.28.1",
     "typescript": "^6.0.3",
     "vitest": "~4.1.11",

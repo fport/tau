@@ -71,6 +71,11 @@ describe("pages", () => {
     const page = await res.text();
     expect(page).toContain("The tau universe");
     expect(page).toContain('<script type="module" src="/static/universe.js"></script>');
+    // The whole page is the universe: one canvas, the list and the join steps in its panel.
+    expect(page).toContain('<link rel="stylesheet" href="/styles/universe.css">');
+    expect(page).toContain('id="cosmos"');
+    expect(page).toContain('id="tau-list"');
+    expect(page).toContain("tau net universe join");
   });
 
   it("answers HEAD for the pages", async () => {

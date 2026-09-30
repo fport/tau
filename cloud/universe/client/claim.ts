@@ -13,7 +13,10 @@ import { fixtureMode, postJson } from "./api";
 import { byId, html, link } from "./dom";
 import { HANDLE, localPath, personPath } from "./paths";
 import { language, linkLanguageTwin, setCrumbs, t } from "./site";
+import { starfield } from "./starfield";
 import type { ClaimResult } from "./types";
+
+starfield();
 
 /** A claim is valid for an hour after its `ts` (issue 157). */
 const VALID_SECONDS = 3_600;

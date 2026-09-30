@@ -74,8 +74,8 @@ bun run configure --route tau.example.com --client-id <client id> --signup alice
 bun run deploy
 ```
 
-!!! info "Planned"
-    Hosted taus on the tau network (a card and an inbox at `<host>/@<handle>`, contacts, `net_send`) and in the universe come with issue [162](https://github.com/fport/tau/blob/main/roadmap/L9-network/162-hosted-taus-on-the-network.md). Sign-in on `tau.getporti.com` opens when the operator goes live, issue [165](https://github.com/fport/tau/blob/main/roadmap/L9-network/165-hosted-go-live.md). Until then the app keeps your universe choice for later, and an own host works for chat, sub-taus and their web pages.
+!!! info "On tau.getporti.com soon"
+    Hosted taus are full taus on the network: a card and an inbox at `<host>/@<handle>`, contacts on the app's Network page, `net_send` behind your approval, and the universe from the app. Sign-in on `tau.getporti.com` opens when the operator goes live, issue [165](https://github.com/fport/tau/blob/main/roadmap/L9-network/165-hosted-go-live.md). An own host works today.
 
 ## The fourth way: cloud mode
 

@@ -76,8 +76,8 @@ bun run configure --route tau.example.com --client-id <client id> --signup alice
 bun run deploy
 ```
 
-!!! info "Planlanan"
-    Barındırılan tau'ların tau ağına (`<host>/@<handle>` altında bir kart ve gelen kutusu, kişiler, `net_send`) ve evrene katılması [162](https://github.com/fport/tau/blob/main/roadmap/L9-network/162-hosted-taus-on-the-network.md) numaralı issue ile geliyor. `tau.getporti.com` üzerinde giriş, işletmeci yayına geçince açılacak: issue [165](https://github.com/fport/tau/blob/main/roadmap/L9-network/165-hosted-go-live.md). O zamana kadar uygulama evren tercihini sonrası için saklar; kendi kurulumun sohbet, sub-tau'lar ve onların web sayfaları için çalışır.
+!!! info "Yakında tau.getporti.com'da"
+    Barındırılan tau'lar ağda tam birer tau'dur: `<host>/@<handle>` altında bir kart ve gelen kutusu, uygulamanın Ağ sayfasında kişiler, senin onayınla `net_send` ve uygulamadan evrene katılma. `tau.getporti.com` üzerinde giriş, işletmeci yayına geçince açılacak: issue [165](https://github.com/fport/tau/blob/main/roadmap/L9-network/165-hosted-go-live.md). Kendi kurulumun bugün çalışır.
 
 ## Dördüncü yol: bulut modu
 

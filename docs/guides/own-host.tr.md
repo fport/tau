@@ -140,8 +140,8 @@ Uygulamada:
 
 tau'nun [evrende](https://tau.getporti.com/tr/universe) listelenmesi isteğe bağlıdır: kurulumda seçersin, **Ayarlar → Evrende listelenme** altında değiştirirsin. Listelenen bir tau kullanıcı adını, açık sub-tau'larını ve listedeki kişileriyle kaç mesajlaştığını gösterir; ne konuşulduğunu asla.
 
-!!! info "Planlanan"
-    tau-host, tau ağına ve evrene [162](https://github.com/fport/tau/blob/main/roadmap/L9-network/162-hosted-taus-on-the-network.md) numaralı issue ile katılıyor: `https://tau.example.com/@alice/.well-known/tau.json` adresinde bir kart, bir gelen kutusu, kişiler, tier 2 bir araç olarak `net_send` ve uygulamadan evrene katılma. Kendi kurulumundaki bir tau, kullanıcı adını o zaman evrende bir GitHub girişiyle kanıtlar; yerel bir tau'nun `tau net universe claim` ile yaptığı gibi ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §6). O zamana kadar uygulama tercihini sonrası için saklar; sub-tau'larının web sayfaları da kendi host'unda, `https://tau.example.com/@alice/<name>` adresinde durur.
+!!! info "Ağda ve evrende"
+    Tau'ların tau ağının düğümleridir: `https://tau.example.com/@alice/.well-known/tau.json` adresinde bir kart, bir gelen kutusu, uygulamanın Ağ sayfasında kişiler ve tier 2 bir araç olarak `net_send`. Ağ sayfası, `configure --universe` ile ayarladığın evrene de katılır. Host'unun kendi evreni dışındaki bir evrende kullanıcı adı almak için claim gerekir ve uygulamada bunun için bir düğme henüz yok; o zamana kadar evren tau'nu adresiyle listeler.
 
 ## Maliyet ve sınırlar
 

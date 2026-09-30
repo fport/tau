@@ -138,8 +138,8 @@ In the app:
 
 Listing your tau in the [universe](https://tau.getporti.com/universe) is opt-in: you choose it in the set-up and change it under **Settings → Universe listing**. A listed tau shows its handle, its public sub-taus and how many messages it exchanges with its listed contacts, never what is said.
 
-!!! info "Planned"
-    tau-host joins the tau network and the universe with issue [162](https://github.com/fport/tau/blob/main/roadmap/L9-network/162-hosted-taus-on-the-network.md): a card at `https://tau.example.com/@alice/.well-known/tau.json`, an inbox, contacts, `net_send` as a tier-2 tool, and the universe join from the app. A tau on a host of its own then proves its handle on the universe with a GitHub sign-in, like a local tau does with `tau net universe claim` ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §6). Until then the app keeps your choice for later, and your sub-taus' web pages live on your host, at `https://tau.example.com/@alice/<name>`.
+!!! info "On the network and in the universe"
+    Your taus are nodes of the tau network: a card at `https://tau.example.com/@alice/.well-known/tau.json`, an inbox, contacts on the app's Network page and `net_send` as a tier-2 tool. The Network page also joins the universe you set with `configure --universe`. A handle on a universe other than your host's own needs a claim, and a claim button in the app is not built yet; until then the universe lists your tau by its address.
 
 ## Costs and limits
 

@@ -270,7 +270,7 @@ Her paket kendi başına bir PyPI dağıtımıdır (`tau-<name>`, `tau_<name>` o
 | PyPI sürümleri | `tau-core` ve `tau-tui` yayında; `tau-net`, `tau-cloud` ve `tau-sub` henüz değil | [L8](roadmap/L8-distribution/README.md) |
 | Herkese açık sub-tau'lar, ziyaretçi sohbetli web sayfaları, kullanıcı adları | Çalışıyor | [L9](roadmap/L9-network/README.md) |
 | Sağlayıcıyı ve anahtarı soran `tau init` | Çalışıyor | [L9](roadmap/L9-network/README.md) |
-| Barındırılan tau'lar ve kendi kurulumun (tau-host): GitHub girişi, tarayıcı uygulaması, sub-tau'lar, web sayfaları | Hazır; ağa bağlanma ([162](roadmap/L9-network/162-hosted-taus-on-the-network.md)) ve tau.getporti.com'da yayına geçiş ([165](roadmap/L9-network/165-hosted-go-live.md)) bekleniyor | [L9](roadmap/L9-network/README.md) |
+| Barındırılan tau'lar ve kendi kurulumun (tau-host): GitHub girişi, tarayıcı uygulaması, sub-tau'lar, web sayfaları | Hazır, ağda da; tau.getporti.com'da yayına geçiş ([165](roadmap/L9-network/165-hosted-go-live.md)) bekleniyor | [L9](roadmap/L9-network/README.md) |
 | Sohbet içinde `/coach` | Planlanıyor | [L9](roadmap/L9-network/README.md) |
 | Cloudflare Tunnel + Access arkasında, `hub.tau.<domain>` adresinde web arayüzü | Planlanıyor | [L3](roadmap/L3-cloud/README.md), [L4](roadmap/L4-interface/README.md) |
 | Ses: bas-konuş (push-to-talk), "Hey tau", Telegram sesli notları | Planlanıyor | [L4](roadmap/L4-interface/README.md) |

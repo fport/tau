@@ -98,8 +98,8 @@ In the app, open **Sub-taus**, pick one (or create it) and set its **Visibility*
 - On your own host, the page is on the host itself: `https://tau.example.com/@alice/coach`.
 - On `tau.getporti.com`, the universe serves the page, at `/@alice/coach` and, when the name was free, at `/coach`.
 
-!!! info "Planned"
-    A hosted tau's sub-taus reach the universe's pages once hosted taus report to the universe, with issue [162](https://github.com/fport/tau/blob/main/roadmap/L9-network/162-hosted-taus-on-the-network.md). Until then a web sub-tau of a hosted tau is reached at its host's own page, `https://<host>/@<handle>/<name>`.
+!!! info "Hosted taus"
+    A hosted tau's web sub-taus reach the universe's pages once the tau joins the universe from the app's Network page; its reports then list them like a hub's. Without joining, a web sub-tau of a hosted tau is still reached at its host's own page, `https://<host>/@<handle>/<name>`.
 
 ## Costs
 

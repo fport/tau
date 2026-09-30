@@ -100,8 +100,8 @@ Uygulamada **Alt-tau'lar** bölümünü aç, birini seç (ya da oluştur) ve **G
 - Kendi kurulumunda sayfa host'un kendisindedir: `https://tau.example.com/@alice/coach`.
 - `tau.getporti.com` üzerinde sayfayı evren sunar: `/@alice/coach` adresinde ve ad boşsa `/coach` adresinde.
 
-!!! info "Planlanan"
-    Barındırılan bir tau'nun sub-tau'ları, barındırılan tau'lar evrene rapor göndermeye başlayınca evrenin sayfalarına ulaşır; bu [162](https://github.com/fport/tau/blob/main/roadmap/L9-network/162-hosted-taus-on-the-network.md) numaralı issue ile geliyor. O zamana kadar barındırılan bir tau'nun web sayfalı sub-tau'suna host'un kendi sayfasından, `https://<host>/@<handle>/<name>` adresinden ulaşılır.
+!!! info "Barındırılan tau'lar"
+    Barındırılan bir tau'nun web sayfalı sub-tau'ları, tau uygulamanın Ağ sayfasından evrene katılınca evrenin sayfalarına ulaşır; raporları onları bir hub'ınkiler gibi listeler. Katılmadan da barındırılan bir tau'nun web sayfalı sub-tau'suna host'un kendi sayfasından, `https://<host>/@<handle>/<name>` adresinden ulaşılır.
 
 ## Maliyet
 

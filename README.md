@@ -266,7 +266,7 @@ Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name
 | PyPI releases | `tau-core` and `tau-tui` published; `tau-net`, `tau-cloud` and `tau-sub` not yet | [L8](roadmap/L8-distribution/README.md) |
 | Public sub-taus, their web pages with visitor chats, handles | Works | [L9](roadmap/L9-network/README.md) |
 | `tau init` asks for your provider and key | Works | [L9](roadmap/L9-network/README.md) |
-| Hosted taus and your own host (tau-host): GitHub sign-in, the browser app, sub-taus, web pages | Built; on the network ([162](roadmap/L9-network/162-hosted-taus-on-the-network.md)) and live on tau.getporti.com ([165](roadmap/L9-network/165-hosted-go-live.md)) pending | [L9](roadmap/L9-network/README.md) |
+| Hosted taus and your own host (tau-host): GitHub sign-in, the browser app, sub-taus, web pages | Built, on the network too; live on tau.getporti.com ([165](roadmap/L9-network/165-hosted-go-live.md)) pending | [L9](roadmap/L9-network/README.md) |
 | `/coach` inside chats | Planned | [L9](roadmap/L9-network/README.md) |
 | Web UI at `hub.tau.<domain>` behind Cloudflare Tunnel + Access | Planned | [L3](roadmap/L3-cloud/README.md), [L4](roadmap/L4-interface/README.md) |
 | Voice: push-to-talk, "Hey tau", Telegram voice notes | Planned | [L4](roadmap/L4-interface/README.md) |

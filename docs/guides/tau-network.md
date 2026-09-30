@@ -39,7 +39,7 @@ TAU_NET_ALLOW_INSECURE=1   # development only: allows http to localhost peers
 ```sh
 cd cloud/spine
 pnpm exec wrangler login
-pnpm run deploy                          # creates the Worker, KV and D1 on the first deploy
+pnpm run deploy                          # creates the Worker and its KV namespace (no D1 needed)
 pnpm exec wrangler secret put HUB_TOKEN  # paste a long random value; your hub needs the same
 ```
 

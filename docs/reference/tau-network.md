@@ -130,12 +130,15 @@ The spine's own address is the `ADDRESS` variable when it is set and not empty, 
 | fewer than 60 envelopes from `from` arrived in the last hour | `429 {"error": "rate_limited"}` |
 | fewer than 1 000 undelivered envelopes in the mailbox | `503 {"error": "mailbox_full"}` |
 
-When every check passes, the spine:
+The last three checks run in the spine's `Mailbox` Durable Object, which the Worker calls only after the signature verified. When every check passes, the `Mailbox`, in one step:
 
 1. records `(from, id, ts)` in `seen`;
 2. stores the envelope in `mailbox`;
-3. wakes a waiting long poll (the `HubSignal` Durable Object);
-4. answers `202 {"status": "queued", "id": ...}`.
+3. wakes a waiting long poll;
+
+and the spine answers `202 {"status": "queued", "id": ...}`.
+
+Storage: the `Mailbox` Durable Object (one instance, named `hub`) keeps `mailbox` and `seen` in its own SQLite storage, in both modes. Local mode uses no D1 database at all: KV, the `Mailbox` and the cron are everything it needs, and all are on the Workers Free plan. D1 holds only the cloud store (§5, cloud mode).
 
 The spine never decrypts, never stores contacts, and answers every envelope the same way whether or not the owner knows the sender.
 
@@ -146,7 +149,8 @@ Implementation details, as shipped in `tau-spine` 0.1.0:
 - Unknown top-level keys of the wire envelope are dropped before storing.
 - Card fetches never follow redirects; a redirect counts as `sender_card_unavailable`.
 - An envelope addressed from the spine's own address is checked against its own stored card.
-- The rate limit counts arrivals per sender in the last hour.
+- The rate limit counts arrivals per sender in the last hour (the sender's `seen` rows).
+- The `Mailbox` creates its tables on first use and keeps a schema version in its `meta` table.
 
 ## 5. Spine: hub API
 
@@ -168,7 +172,7 @@ The hub reads the token from `TAU_SPINE_TOKEN` and the spine URL from `TAU_SPINE
 
 The mode is the `TAU_MODE` variable (`local` by default, `cloud` in the cloud configuration).
 
-The long poll waits up to `timeout` seconds and wakes as soon as an envelope arrives. It always queries again before answering, so the answer may be an empty list, and an empty answer comes back after about `timeout` plus a few milliseconds. Clients therefore set their HTTP timeout above 25 s (tau-net uses 35 s).
+The long poll waits up to `timeout` seconds and wakes as soon as an envelope arrives; it waits inside the `Mailbox` Durable Object, next to the mailbox itself, so an envelope stored just before the wait starts is never missed. It always queries again before answering, so the answer may be an empty list, and an empty answer comes back after about `timeout` plus a few milliseconds. Clients therefore set their HTTP timeout above 25 s (tau-net uses 35 s).
 
 Query values that are out of range or not integers get `400`; they are never clamped. `seq` only increases and is never reused after an ack. An ack takes at most 1 000 seqs; duplicates are ignored and `deleted` counts real deletions.
 
@@ -180,7 +184,9 @@ Unless a table says otherwise:
 
 ### Cloud mode only
 
-When `TAU_MODE` is not `cloud`, every route below answers `404 {"error": "cloud_mode_off"}`. That way a local-mode spine can never hold life data.
+When `TAU_MODE` is not `cloud`, every route below answers `404 {"error": "cloud_mode_off"}`, without touching any store. That way a local-mode spine can never hold life data; the local-mode configuration does not even bind a D1 database.
+
+State and sessions live in D1, which only the cloud configuration binds (`DB`); files live in KV. A spine with `TAU_MODE=cloud` but no D1 binding (a local-mode configuration run with the variable changed) answers the state and session routes with `503 {"error": "not_configured"}`.
 
 **State** (small JSON documents in D1; `key` matches `^[a-z0-9][a-z0-9._:-]{0,127}$`):
 
@@ -246,7 +252,7 @@ The image sets `TAU_HOME=/tau` and `TAU_DATA_DIR=/data` and runs as the non-root
 
 The spine runs every minute (`* * * * *`):
 
-- It deletes mailbox rows older than 7 days and `seen` rows older than 1 day.
+- It has the `Mailbox` Durable Object delete mailbox rows older than 7 days and `seen` rows older than 1 day. It touches no D1 database for this, in either mode.
 - In cloud mode with `KEEP_AWAKE=1`, it pings the brain container's `/health` so the container keeps running (the Telegram poller lives inside it).
 
 ## 6. Hub behaviour (`tau-net`)
@@ -318,7 +324,7 @@ The spine runs every minute (`* * * * *`):
    - Other errors back off exponentially, up to 60 s.
    - The cursor is saved after a successful ack. A failed ack leaves the cursor where it was, and the envelope that comes back is dropped as already handled.
    - The hub reaches its own spine over `http` only when the spine is on `localhost` or `127.0.0.1`. Peers need `TAU_NET_ALLOW_INSECURE=1` for `http`.
-8. **Storage.** `[component.net] store = "file"` (default) keeps identity-independent state under `TAU_DATA_DIR/net/`: `contacts.json`, `sessions.json`, `seen.json`, `log.jsonl` and `cursor`. `store = "spine"` keeps the same documents in the spine's state API (`net.contacts`, `net.sessions`, `net.seen`, `net.log`, `net.cursor`); cloud mode uses this store.
+8. **Storage.** `[component.net] store = "file"` (default) keeps identity-independent state under `TAU_DATA_DIR/net/`: `contacts.json`, `sessions.json`, `seen.json`, `log.jsonl` and `cursor`. `store = "spine"` keeps the same documents in the spine's state API (`net.contacts`, `net.sessions`, `net.seen`, `net.log`, `net.cursor`), which is the spine's D1 database and exists only in cloud mode; cloud mode uses this store.
 
 ## 7. Configuration
 

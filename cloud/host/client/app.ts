@@ -1,17 +1,18 @@
 /**
- * The owner's app at /app: onboarding, chat with streaming, sessions, sub-taus, approvals
- * and settings. Plain TypeScript and the DOM, bundled by scripts/build.mjs; no framework.
+ * The owner's app at /app: onboarding, chat with streaming, sessions, sub-taus, the tau
+ * network, approvals and settings. Plain TypeScript and the DOM, bundled by
+ * scripts/build.mjs; no framework.
  *
  * Views are paths under /app (history API): /app (chat), /app/chat/<session>,
- * /app/subs, /app/subs/<name>, /app/subs/new, /app/approvals, /app/settings. The Worker
- * serves the same shell for all of them.
+ * /app/subs, /app/subs/<name>, /app/subs/new, /app/net, /app/net/<address>,
+ * /app/approvals, /app/settings. The Worker serves the same shell for all of them.
  *
  * Everything the owner, a model or a visitor wrote is set as text, never as HTML.
  */
 
 import { character } from "tau-character";
 import { ApiError, call, type StreamEvent, stream } from "./api";
-import { clear, date, h, pageData, svg, time, usd } from "./dom";
+import { append, clear, date, h, pageData, svg, time, usd } from "./dom";
 import { MESSAGES, type Messages, type UiLanguage } from "./messages";
 
 // -- the API's shapes --------------------------------------------------------------------
@@ -29,6 +30,11 @@ interface Settings {
   profile: string;
   universe: boolean | null;
   onboarded: boolean;
+  net_name: string;
+  net_note: string;
+  net_owner: string;
+  net_about: string;
+  net_auto_reply: boolean;
 }
 
 interface Budget {
@@ -98,6 +104,58 @@ interface AppState {
   defaults: { persona: string; models: Record<string, Record<Role, string>> };
   providers: string[];
   unpriced: string[];
+  net: { address: string | null; pending: number; universe: string | null };
+}
+
+type ContactState = "pending_in" | "pending_out" | "accepted" | "blocked";
+
+interface NetContact {
+  address: string;
+  state: ContactState;
+  name: string;
+  note: string;
+  created_at: number;
+  updated_at: number;
+  accepted_at: number | null;
+  messages: number;
+}
+
+interface UniverseStatus {
+  at: number;
+  ok: boolean;
+  action: string;
+  error?: string;
+  visible_links?: number;
+  url?: string;
+}
+
+interface UniverseView {
+  host: string | null;
+  choice: boolean | null;
+  joined: boolean;
+  last: UniverseStatus | null;
+  next_at: number | null;
+}
+
+interface NetView {
+  address: string | null;
+  name: string;
+  universe: UniverseView;
+  contacts: NetContact[];
+  pending: number;
+}
+
+interface LogEntry {
+  seq: number;
+  ts: number;
+  direction: "in" | "out";
+  address: string;
+  kind: string;
+  id: string;
+  thread: string;
+  text: string;
+  own_sub: string | null;
+  peer_sub: string | null;
 }
 
 interface Template {
@@ -162,6 +220,12 @@ function errorText(err: unknown): string {
       return m.err_stale;
     case "network":
       return m.err_network;
+    case "net":
+      return m.err_net(detail);
+    case "universe_off":
+      return m.err_universe_off;
+    case "not_configured":
+      return m.err_not_configured;
     case "invalid_sub":
     case "exists":
     case "bad_request":
@@ -202,6 +266,8 @@ type View =
   | { kind: "subs" }
   | { kind: "sub"; name: string }
   | { kind: "new-sub" }
+  | { kind: "net" }
+  | { kind: "contact"; address: string }
   | { kind: "approvals" }
   | { kind: "settings" };
 
@@ -211,6 +277,8 @@ function parsePath(path: string): View {
   if (parts[0] === "subs" && parts[1] === "new") return { kind: "new-sub" };
   if (parts[0] === "subs" && parts[1]) return { kind: "sub", name: parts[1] };
   if (parts[0] === "subs") return { kind: "subs" };
+  if (parts[0] === "net" && parts[1]) return { kind: "contact", address: decodeURIComponent(parts[1]) };
+  if (parts[0] === "net") return { kind: "net" };
   if (parts[0] === "approvals") return { kind: "approvals" };
   if (parts[0] === "settings") return { kind: "settings" };
   return { kind: "chat", session: null };
@@ -226,6 +294,10 @@ function pathOf(view: View): string {
       return `/app/subs/${view.name}`;
     case "new-sub":
       return "/app/subs/new";
+    case "net":
+      return "/app/net";
+    case "contact":
+      return `/app/net/${encodeURIComponent(view.address)}`;
     case "approvals":
       return "/app/approvals";
     case "settings":
@@ -284,6 +356,12 @@ function navButtons(view: View): HTMLElement {
     { class: "nav", "aria-label": m.menu },
     item(m.chat, { kind: "chat", session: openSession }, view.kind === "chat"),
     item(m.subTaus, { kind: "subs" }, view.kind === "subs" || view.kind === "sub" || view.kind === "new-sub"),
+    item(
+      m.network,
+      { kind: "net" },
+      view.kind === "net" || view.kind === "contact",
+      state?.net.pending ? h("span", { class: "count" }, String(state.net.pending)) : null,
+    ),
     item(m.approvals, { kind: "approvals" }, view.kind === "approvals", pending ? h("span", { class: "count" }, String(pending)) : null),
     item(m.settings, { kind: "settings" }, view.kind === "settings"),
   );
@@ -366,6 +444,12 @@ async function render(): Promise<void> {
       break;
     case "new-sub":
       await newSubView(main);
+      break;
+    case "net":
+      await netView(main);
+      break;
+    case "contact":
+      await contactView(main, view.address);
       break;
     case "approvals":
       approvalsView(main);
@@ -1020,6 +1104,371 @@ async function subView(main: HTMLElement, name: string): Promise<void> {
   }
 }
 
+// -- the tau network ---------------------------------------------------------------------
+
+function panel(title: string, ...children: (Node | null)[]): HTMLElement {
+  return h("section", { class: "panel" }, h("h2", { class: "hud" }, title), ...children);
+}
+
+function when(seconds: number): string {
+  return `${date(seconds, lang)} ${time(seconds, lang)}`;
+}
+
+/** The universe status and its toggle: joining (and the first report) or leaving right away. */
+function universePanel(choice: boolean | null): HTMLElement {
+  const box = h("div", {});
+  const status = h("p", { class: "status ok-note", role: "status" });
+  const draw = (view: UniverseView): void => {
+    clear(box);
+    box.append(h("p", { class: "muted small" }, m.universeHelp));
+    if (view.host === null) {
+      box.append(h("p", { class: "muted" }, m.universeOff));
+      return;
+    }
+    box.append(
+      h("p", { class: "mono" }, m.universeHost(view.host)),
+      h("p", { class: view.joined ? "hud" : "muted small" }, view.joined ? m.universeJoined : m.universeNotJoined),
+    );
+    const last = view.last;
+    if (last) {
+      box.append(h("p", { class: "muted small" }, m.universeLast(when(last.at), last.ok)));
+      if (last.ok && last.visible_links !== undefined) box.append(h("p", { class: "muted small" }, m.universeLinks(last.visible_links)));
+      if (!last.ok && last.error) box.append(h("p", { class: "error-line" }, m.universeError(last.error)));
+      if (view.joined && last.url && /^https?:\/\//.test(last.url)) {
+        box.append(h("p", {}, h("a", { class: "btn ghost", href: last.url, target: "_blank", rel: "noopener" }, m.universeOpen)));
+      }
+    }
+    const wanted = view.choice === true;
+    const button = h(
+      "button",
+      {
+        class: wanted ? "btn danger" : "btn primary",
+        type: "button",
+        onclick: async () => {
+          button.disabled = true;
+          status.className = "status ok-note";
+          status.textContent = "";
+          try {
+            const next = await call<UniverseView>("POST", "/api/host/net/universe", { join: !wanted });
+            await load();
+            draw(next);
+          } catch (err) {
+            status.className = "status error-line";
+            status.textContent = errorText(err);
+            button.disabled = false;
+          }
+        },
+      },
+      wanted ? m.universeLeave : m.universeJoin,
+    );
+    box.append(h("p", { class: "muted small" }, m.universeSaved), h("div", { class: "row" }, button), status);
+  };
+  draw({ host: state?.net.universe ?? null, choice, joined: false, last: null, next_at: null });
+  void call<NetView>("GET", "/api/host/net")
+    .then((net) => draw(net.universe))
+    .catch(() => undefined);
+  return box;
+}
+
+/**
+ * A pending approval of a Network action, shown where the owner asked for it; `after` runs
+ * once it was decided, with the action's result line.
+ */
+function actionApproval(approval: Approval, after: (text: string, error: boolean) => void): HTMLElement {
+  return approvalCard(approval, (events) => {
+    const result = events.find((event) => event.t === "tool_result");
+    after(String(result?.text ?? ""), Boolean(result?.error));
+  });
+}
+
+async function contactAction(action: "accept" | "decline" | "block" | "remove", address: string, status: HTMLElement): Promise<void> {
+  try {
+    await call("POST", `/api/host/net/contacts/${action}`, { address });
+    await load();
+    void render();
+  } catch (err) {
+    status.className = "error-line";
+    status.textContent = errorText(err);
+  }
+}
+
+function stateBadge(contact: NetContact): HTMLElement {
+  return h("span", { class: `badge${contact.state === "accepted" ? " on" : ""}` }, m[`state_${contact.state}`]);
+}
+
+async function netView(main: HTMLElement): Promise<void> {
+  main.append(h("div", { class: "view-head" }, h("h1", {}, m.network)));
+  let net: NetView;
+  try {
+    net = await call<NetView>("GET", "/api/host/net");
+  } catch (err) {
+    main.append(h("p", { class: "error-line" }, errorText(err)));
+    return;
+  }
+  const current = state as AppState;
+
+  // The address other taus use.
+  if (net.address) {
+    const address = net.address;
+    const copy = h(
+      "button",
+      {
+        class: "btn ghost",
+        type: "button",
+        onclick: async () => {
+          try {
+            await navigator.clipboard.writeText(address);
+            copy.textContent = m.copied;
+          } catch {
+            // The address stays selectable.
+          }
+        },
+      },
+      m.copy,
+    );
+    main.append(
+      panel(
+        m.netAddress,
+        h("div", { class: "row" }, charOf(address, net.name, 36), h("span", { class: "mono" }, address), copy),
+        h("p", { class: "muted small" }, m.netAddressHelp),
+      ),
+    );
+  } else {
+    main.append(panel(m.netAddress, h("p", { class: "muted" }, m.netNoAddress)));
+  }
+
+  // Requests waiting for the owner.
+  const requests = net.contacts.filter((contact) => contact.state === "pending_in");
+  const requestStatus = h("p", { class: "ok-note", role: "status" });
+  const requestList = h("div", {});
+  if (requests.length === 0) requestList.append(h("p", { class: "muted small" }, m.noRequests));
+  for (const contact of requests) {
+    requestList.append(
+      h(
+        "div",
+        { class: "thread" },
+        h("p", {}, h("strong", {}, contact.name || contact.address), " ", h("span", { class: "mono small" }, contact.address)),
+        contact.note ? h("p", { class: "muted" }, `“${contact.note}”`) : null,
+        contact.note ? h("p", { class: "muted small" }, m.untrustedNote) : null,
+        h(
+          "div",
+          { class: "row" },
+          h("button", { class: "btn primary", type: "button", onclick: () => void contactAction("accept", contact.address, requestStatus) }, m.accept),
+          h("button", { class: "btn ghost", type: "button", onclick: () => void contactAction("decline", contact.address, requestStatus) }, m.decline),
+          h("button", { class: "btn danger", type: "button", onclick: () => void contactAction("block", contact.address, requestStatus) }, m.block),
+        ),
+      ),
+    );
+  }
+  main.append(panel(m.requests, requestList, requestStatus));
+
+  // Adding a contact: a request in the owner's name, after the owner approves it.
+  const address = h("input", { class: "code", autocomplete: "off", spellcheck: "false", placeholder: "tau.example.com/@alice", required: true });
+  const note = h("input", { maxlength: 2000 });
+  const addStatus = h("p", { class: "ok-note", role: "status" });
+  const approvalSlot = h("div", {});
+  const addForm = h(
+    "form",
+    {},
+    h("p", { class: "muted small" }, m.addContactHelp),
+    h("div", { class: "row" }, field(m.contactAddress, address), field(m.introduction, note)),
+    h("button", { class: "btn primary", type: "submit" }, m.ask),
+    addStatus,
+    approvalSlot,
+  );
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    addStatus.className = "ok-note";
+    addStatus.textContent = "";
+    clear(approvalSlot);
+    try {
+      const approval = await call<Approval>("POST", "/api/host/net/contacts", { address: address.value.trim(), note: note.value.trim() });
+      addStatus.textContent = m.approveBelow;
+      approvalSlot.append(
+        actionApproval(approval, (text, error) => {
+          addStatus.className = error ? "error-line" : "ok-note";
+          addStatus.textContent = text;
+          void load();
+        }),
+      );
+    } catch (err) {
+      addStatus.className = "error-line";
+      addStatus.textContent = errorText(err);
+    }
+  });
+  main.append(panel(m.addContact, addForm));
+
+  // Contacts.
+  const others = net.contacts.filter((contact) => contact.state !== "pending_in");
+  const list = h("div", { class: "cards" });
+  for (const contact of others) {
+    list.append(
+      h(
+        "button",
+        { class: "card", type: "button", onclick: () => go({ kind: "contact", address: contact.address }) },
+        charOf(contact.address, contact.name || contact.address, 40),
+        h(
+          "span",
+          {},
+          h("span", { class: "name" }, contact.name || contact.address),
+          h("p", { class: "about mono" }, contact.address),
+          h("span", { class: "badges" }, stateBadge(contact), h("span", { class: "badge" }, m.messagesCount(contact.messages))),
+        ),
+      ),
+    );
+  }
+  main.append(panel(m.contacts, others.length ? list : h("p", { class: "muted small" }, m.noContacts)));
+
+  main.append(panel(m.universeSetting, universePanel(current.settings.universe)));
+}
+
+/** Who a log entry is from, in the conversation view. */
+function entryLabel(entry: LogEntry, name: string): string {
+  if (entry.direction === "out") {
+    if (entry.own_sub) return `/${entry.own_sub}`;
+    if (entry.peer_sub) return `tau → /${entry.peer_sub}`;
+    return "tau";
+  }
+  if (entry.own_sub) return `${name} → /${entry.own_sub}`;
+  if (entry.peer_sub) return `${name}/${entry.peer_sub}`;
+  return name;
+}
+
+/** The conversation a log entry belongs to: the main taus, or one sub-tau of either side. */
+function conversationOf(entry: LogEntry): string {
+  if (entry.own_sub) return `/${entry.own_sub}`;
+  if (entry.peer_sub) return `${entry.address}/${entry.peer_sub}`;
+  return "";
+}
+
+async function contactView(main: HTMLElement, address: string): Promise<void> {
+  let net: NetView;
+  let entries: LogEntry[];
+  try {
+    [net, entries] = await Promise.all([
+      call<NetView>("GET", "/api/host/net"),
+      call<LogEntry[]>("GET", `/api/host/net/log?address=${encodeURIComponent(address)}`),
+    ]);
+  } catch (err) {
+    main.append(h("p", { class: "error-line" }, errorText(err)));
+    return;
+  }
+  const contact = net.contacts.find((c) => c.address === address);
+  const name = contact?.name || address;
+  const status = h("p", { class: "ok-note", role: "status" });
+  const actions = h("div", { class: "row" }, h("button", { class: "btn ghost", type: "button", onclick: () => go({ kind: "net" }) }, m.back));
+  if (contact && contact.state !== "blocked") {
+    actions.append(h("button", { class: "btn danger", type: "button", onclick: () => void contactAction("block", address, status) }, m.block));
+  }
+  if (contact) {
+    actions.append(
+      h(
+        "button",
+        {
+          class: "btn ghost",
+          type: "button",
+          onclick: async () => {
+            if (!confirm(m.confirmRemove(address))) return;
+            await contactAction("remove", address, status);
+            go({ kind: "net" }, true);
+          },
+        },
+        m.remove,
+      ),
+    );
+  }
+  main.append(
+    h(
+      "div",
+      { class: "view-head" },
+      h("h1", {}, charOf(address, name, 40), name),
+      actions,
+    ),
+    h("p", {}, h("span", { class: "mono" }, address), " ", contact ? stateBadge(contact) : null),
+    status,
+  );
+
+  // The conversations with this tau: the main taus', and each sub-tau's.
+  const keys = [...new Set(entries.map(conversationOf))];
+  let shown: string | null = null;
+  const tabs = h("div", { class: "tabs", role: "tablist" });
+  const log = h("div", { class: "log" });
+  const draw = (): void => {
+    clear(log);
+    const visible = entries.filter((entry) => shown === null || conversationOf(entry) === shown);
+    if (visible.length === 0) log.append(h("p", { class: "muted" }, m.noConversation));
+    for (const entry of visible) {
+      const kind = entry.kind === "message" ? null : m[`kind_${entry.kind as "contact_request" | "contact_accept" | "visit"}`] ?? entry.kind;
+      log.append(
+        h(
+          "div",
+          { class: `msg ${entry.direction === "out" ? "assistant" : "user"}` },
+          h("span", { class: "from" }, `${entryLabel(entry, name)} · ${when(entry.ts)}${kind ? ` · ${kind}` : ""}`),
+          entry.text ? h("div", { class: "text" }, entry.text) : null,
+        ),
+      );
+    }
+    for (const button of tabs.querySelectorAll("button")) {
+      button.setAttribute("aria-selected", button.dataset.key === (shown ?? "*") ? "true" : "false");
+    }
+  };
+  const tab = (key: string | null, label: string) => {
+    const button = h("button", { type: "button", role: "tab", onclick: () => {
+      shown = key;
+      draw();
+    } }, label);
+    button.dataset.key = key ?? "*";
+    return button;
+  };
+  if (keys.length > 1) {
+    tabs.append(tab(null, m.allConversations));
+    for (const key of keys) tabs.append(tab(key, key === "" ? m.mainTau : key));
+  }
+  main.append(panel(m.conversation, entries.some((e) => e.direction === "in" && e.text) ? h("p", { class: "muted small" }, m.untrustedNote) : null, tabs, log));
+  draw();
+
+  // Writing to an accepted contact, after the owner approves it.
+  if (contact?.state === "accepted") {
+    const to = h("input", { class: "code", value: address, autocomplete: "off", spellcheck: "false" });
+    const text = h("textarea", { rows: 3, maxlength: 8000, required: true });
+    const sendStatus = h("p", { class: "ok-note", role: "status" });
+    const approvalSlot = h("div", {});
+    const form = h(
+      "form",
+      {},
+      field(m.sendTo, to, m.sendToHelp),
+      field(m.netMessage, text),
+      h("button", { class: "btn primary", type: "submit" }, m.send),
+      sendStatus,
+      approvalSlot,
+    );
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      sendStatus.className = "ok-note";
+      sendStatus.textContent = "";
+      clear(approvalSlot);
+      try {
+        const approval = await call<Approval>("POST", "/api/host/net/send", { to: to.value.trim(), text: text.value.trim() });
+        sendStatus.textContent = m.approveBelow;
+        approvalSlot.append(
+          actionApproval(approval, (result, error) => {
+            if (error) {
+              sendStatus.className = "error-line";
+              sendStatus.textContent = result;
+              return;
+            }
+            void load().then(() => go({ kind: "contact", address }, true));
+          }),
+        );
+      } catch (err) {
+        sendStatus.className = "error-line";
+        sendStatus.textContent = errorText(err);
+      }
+    });
+    main.append(panel(m.send, form));
+  }
+}
+
 // -- approvals ---------------------------------------------------------------------------
 
 function approvalsView(main: HTMLElement): void {
@@ -1031,18 +1480,27 @@ function approvalsView(main: HTMLElement): void {
     return;
   }
   for (const approval of pending) {
-    main.append(
-      approvalCard(approval, () => {
+    // An action of the Network page (adding a contact, a message) has no session.
+    const fromApp = approval.session === "";
+    append(
+      main,
+      [approvalCard(approval, () => {
         void load().then(() => {
+          if (fromApp) {
+            go({ kind: "net" });
+            return;
+          }
           openSession = approval.session;
           go({ kind: "chat", session: approval.session });
         });
       }),
-      h(
-        "p",
-        {},
-        h("button", { class: "btn ghost", type: "button", onclick: () => go({ kind: "chat", session: approval.session }) }, m.openSession),
-      ),
+      fromApp
+        ? null
+        : h(
+            "p",
+            {},
+            h("button", { class: "btn ghost", type: "button", onclick: () => go({ kind: "chat", session: approval.session }) }, m.openSession),
+          )],
     );
   }
 }
@@ -1171,20 +1629,39 @@ function settingsView(main: HTMLElement): void {
   const profileForm = h("form", {}, field(m.profile, profile, m.profileHelp), statusLine(), saveButton());
   profileForm.addEventListener("submit", saveWith(() => ({ profile: profile.value })));
 
-  // Universe
-  const yes = h("input", { type: "radio", name: "universe-setting", value: "yes", checked: s.universe === true });
-  const no = h("input", { type: "radio", name: "universe-setting", value: "no", checked: s.universe === false });
-  const universeForm = h(
+  // Network: the card name, the public note, the listing and auto-replies
+  const netName = h("input", { value: s.net_name, maxlength: 80, placeholder: `@${current.handle}` });
+  const netNote = h("textarea", { rows: 5, maxlength: 4000 });
+  netNote.value = s.net_note;
+  const netOwner = h("input", { value: s.net_owner, maxlength: 60 });
+  const netAbout = h("input", { value: s.net_about, maxlength: 200 });
+  const autoReply = h("input", { type: "checkbox", checked: s.net_auto_reply });
+  const netForm = h(
     "form",
     {},
-    h("p", { class: "muted small" }, m.universeHelp),
-    h("label", { class: "choice" }, yes, h("span", {}, m.universeYes)),
-    h("label", { class: "choice" }, no, h("span", {}, m.universeNo)),
-    h("p", { class: "muted small" }, m.universeSaved),
+    current.net.address ? h("p", { class: "mono" }, current.net.address) : null,
+    field(m.netName, netName, m.netNameHelp(current.handle)),
+    field(m.netNote, netNote, m.netNoteHelp),
+    h("div", { class: "row" }, field(m.netOwner, netOwner), field(m.netAbout, netAbout)),
+    h("p", { class: "muted small" }, m.netListingHelp),
+    h("label", { class: "check" }, autoReply, h("span", {}, m.netAutoReply)),
+    h("p", { class: "muted small" }, m.netAutoReplyHelp),
     statusLine(),
     saveButton(),
   );
-  universeForm.addEventListener("submit", saveWith(() => ({ universe: yes.checked })));
+  netForm.addEventListener(
+    "submit",
+    saveWith(() => ({
+      net_name: netName.value,
+      net_note: netNote.value,
+      net_owner: netOwner.value,
+      net_about: netAbout.value,
+      net_auto_reply: autoReply.checked,
+    })),
+  );
+
+  // Universe: the toggle joins or leaves right away.
+  const universeForm = universePanel(s.universe);
 
   // Export and delete
   const confirmInput = h("input", { class: "code", autocomplete: "off", placeholder: current.handle });
@@ -1209,6 +1686,7 @@ function settingsView(main: HTMLElement): void {
     section(`${m.budget} · ${m.language}`, generalForm),
     section(m.persona, personaForm),
     section(m.profile, profileForm),
+    section(m.netSettings, netForm),
     section(m.universeSetting, universeForm),
     section(
       m.exportTitle,

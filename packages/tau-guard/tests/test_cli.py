@@ -209,3 +209,17 @@ def test_the_status_labels_read_apart(language: str) -> None:
         for key in ("guard.cli.trigger", "guard.cli.reason")
     }
     assert len(labels) == 2  # "why it is locked" and "why it is unavailable" never look alike
+
+
+def test_status_shows_the_touch_id_fallback_only_while_locked() -> None:
+    from tau_guard.cli import status_lines
+
+    line = t("guard.cli.fallback", mode="touch_id")
+    assert line in status_lines({"state": "locked", "fallback": "touch_id"}, "en")
+    assert line not in status_lines({"state": "unlocked", "fallback": "touch_id"}, "en")
+    assert not any("Touch ID" in text for text in status_lines({"state": "locked"}, "en"))
+    assert not any(
+        "Touch ID" in text for text in status_lines({"state": "locked", "fallback": "x"}, "en")
+    )
+    turkish = status_lines({"state": "locked", "fallback": "touch_id_or_password"}, "tr")
+    assert t("guard.cli.fallback", "tr", mode="touch_id_or_password") in turkish

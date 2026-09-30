@@ -49,6 +49,10 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "en": "  Failed attempts since the last unlock: {count}",
         "tr": "  Son açılıştan beri başarısız deneme: {count}",
     },
+    "guard.cli.fallback": {
+        "en": "  Touch ID fallback: offered ({mode})",
+        "tr": "  Touch ID yedeği: sunuluyor ({mode})",
+    },
     "guard.cli.cooldown": {
         "en": "  Too many failed attempts; checks resume at {when}",
         "tr": "  Çok fazla başarısız deneme; kontroller {when} itibarıyla yeniden başlar",
@@ -220,8 +224,24 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "saniye sürer.",
     },
     "guard.cli.enroll.local_auth": {
-        "en": "Confirm in the macOS prompt with Touch ID or your Mac password.",
-        "tr": "macOS isteminde Touch ID ya da Mac parolanla onayla.",
+        "en": "Confirm in the macOS prompt: Touch ID, or your Mac password where the prompt "
+        "offers it.",
+        "tr": "macOS isteminde onayla: Touch ID ile ya da istem sunuyorsa Mac parolanla.",
+    },
+    # -- Touch ID refusals of enroll and forget (issue 114) -------------------------------------
+    "guard.cli.touch_id.touch_id_failed": {
+        "en": "Touch ID accepts only the fingerprints that were enrolled on this Mac when you "
+        "set up the guard; `tau guard doctor` says whether they changed.",
+        "tr": "Touch ID yalnızca korumayı kurduğunda bu Mac'te kayıtlı olan parmak izlerini "
+        "kabul eder; değişip değişmediklerini `tau guard doctor` söyler.",
+    },
+    "guard.cli.touch_id.touch_id_unavailable": {
+        "en": "This Mac has Touch ID, but it cannot be used now (the lid is closed, the Touch ID "
+        "keyboard is not connected, or it is locked after failed tries). Open the lid or unlock "
+        "the Mac with its password once, then try again.",
+        "tr": "Bu Mac'te Touch ID var ama şu an kullanılamıyor (kapak kapalı, Touch ID klavyesi "
+        "bağlı değil ya da başarısız denemelerden sonra kilitlendi). Kapağı aç ya da Mac'in "
+        "kilidini bir kez parolayla aç, sonra yeniden dene.",
     },
     "guard.cli.enroll.add": {
         "en": "Adding samples under the current light to your face template.",
@@ -422,9 +442,97 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "çalışan hub yok; onu başlatan uygulamanın (TauBar ya da `tau hub run` çalıştıran "
         "terminal) kamera iznine ihtiyacı var",
     },
-    "guard.cli.doctor.touch_id": {
-        "en": "Touch ID and the closed lid are checked from issue 114 on",
-        "tr": "Touch ID ve kapalı kapak 114 numaralı işten itibaren denetlenir",
+    "guard.cli.doctor.touch_id_ok": {
+        "en": "available; re-enrollment, forget and the Touch ID fallback use it",
+        "tr": "kullanılabilir; yeniden kayıt, silme ve Touch ID yedeği onu kullanır",
+    },
+    "guard.cli.doctor.touch_id_unavailable": {
+        "en": "this Mac has Touch ID, but it cannot be used now: {why}",
+        "tr": "bu Mac'te Touch ID var ama şu an kullanılamıyor: {why}",
+    },
+    "guard.cli.doctor.why.clamshell": {
+        "en": "the lid is closed, so the built-in sensor is off",
+        "tr": "kapak kapalı, bu yüzden yerleşik sensör kapalı",
+    },
+    "guard.cli.doctor.why.lockout": {
+        "en": "it is locked after failed tries; unlock the Mac with its password once",
+        "tr": "başarısız denemelerden sonra kilitlendi; Mac'in kilidini bir kez parolayla aç",
+    },
+    "guard.cli.doctor.why.disconnected": {
+        "en": "the Touch ID keyboard is not connected",
+        "tr": "Touch ID klavyesi bağlı değil",
+    },
+    "guard.cli.doctor.why.not_available": {
+        "en": "macOS says it is not available",
+        "tr": "macOS kullanılamadığını söylüyor",
+    },
+    "guard.cli.doctor.why.no_passcode": {
+        "en": "the Mac has no login password",
+        "tr": "Mac'in giriş parolası yok",
+    },
+    "guard.cli.doctor.why.error": {
+        "en": "LocalAuthentication did not answer; worker.log has the details",
+        "tr": "LocalAuthentication yanıt vermedi; ayrıntılar worker.log'da",
+    },
+    "guard.cli.doctor.touch_id_none": {
+        "en": "this Mac has no Touch ID (or no enrolled finger); enrollment and forget use the "
+        "Mac password",
+        "tr": "bu Mac'te Touch ID yok (ya da kayıtlı parmak yok); kayıt ve silme Mac parolasını "
+        "kullanır",
+    },
+    "guard.cli.doctor.touch_id_none_needed": {
+        "en": "this Mac has no Touch ID (or no enrolled finger), but unlock_fallback or step_up "
+        "asks for it; use unlock_fallback = touch_id_or_password or none, and step_up = face",
+        "tr": "bu Mac'te Touch ID yok (ya da kayıtlı parmak yok) ama unlock_fallback ya da "
+        "step_up onu istiyor; unlock_fallback = touch_id_or_password ya da none ve step_up = "
+        "face kullan",
+    },
+    "guard.cli.doctor.touch_id_unknown": {
+        "en": "could not be checked (the worker self-test did not say)",
+        "tr": "denetlenemedi (işçinin öz sınaması bildirmedi)",
+    },
+    "guard.cli.doctor.clamshell_closed": {
+        "en": "the lid is closed: the built-in camera and Touch ID are off; "
+        "unlock_fallback = touch_id_or_password takes the Mac password then",
+        "tr": "kapak kapalı: yerleşik kamera ve Touch ID kapalı; unlock_fallback = "
+        "touch_id_or_password o zaman Mac parolasını kabul eder",
+    },
+    "guard.cli.doctor.clamshell_open": {"en": "the lid is open", "tr": "kapak açık"},
+    "guard.cli.doctor.clamshell_unknown": {
+        "en": "no lid, or its state cannot be read",
+        "tr": "kapak yok ya da durumu okunamıyor",
+    },
+    "guard.cli.doctor.pin_ok": {
+        "en": "the Touch ID fingerprints are the ones pinned at enrollment",
+        "tr": "Touch ID parmak izleri kayıtta sabitlenenlerle aynı",
+    },
+    "guard.cli.doctor.pin_changed": {
+        "en": "the Touch ID fingerprints changed since the enrollment (a finger was added or "
+        "removed), so Touch ID is refused for the fallback, the step-up, re-enrollment and "
+        "forget. To start over, remove the template key (`security delete-generic-password "
+        "-s tau-guard -a template-key-v1`), then run `tau guard setup` at the Mac.",
+        "tr": "Touch ID parmak izleri kayıttan beri değişti (bir parmak eklendi ya da silindi), "
+        "bu yüzden Touch ID yedek, adım yükseltme, yeniden kayıt ve silme için reddedilir. "
+        "Baştan başlamak için şablon anahtarını sil (`security delete-generic-password -s "
+        "tau-guard -a template-key-v1`), sonra Mac'in başında `tau guard setup` çalıştır.",
+    },
+    "guard.cli.doctor.pin_not_pinned": {
+        "en": "the enrollment pinned no Touch ID fingerprints (set up without Touch ID, or "
+        "before issue 114), so Touch ID only is refused; `tau guard enroll --add` with Touch ID "
+        "available pins them",
+        "tr": "kayıt Touch ID parmak izi sabitlemedi (Touch ID olmadan ya da 114'ten önce "
+        "kuruldu), bu yüzden yalnızca Touch ID reddedilir; Touch ID kullanılabilirken `tau "
+        "guard enroll --add` onları sabitler",
+    },
+    "guard.cli.doctor.pin_unknown": {
+        "en": "cannot be compared now (no readable enrollment, or Touch ID is not available)",
+        "tr": "şu an karşılaştırılamıyor (okunabilir kayıt yok ya da Touch ID kullanılamıyor)",
+    },
+    "guard.cli.doctor.step_up_none": {
+        "en": "step_up = none: a tier-2 call on a guarded channel runs after the approval alone, "
+        "with no fresh check (only while the client's tau.toml says none too)",
+        "tr": "step_up = none: korunan bir kanalda 2. katman bir çağrı yalnızca onayla, taze "
+        "kontrol olmadan çalışır (yalnızca istemcinin tau.toml'u da none dediğinde)",
     },
     "guard.cli.doctor.failures": {
         "en": "{count} in the last 24 h",

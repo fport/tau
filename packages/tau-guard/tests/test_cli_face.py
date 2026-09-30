@@ -159,7 +159,7 @@ def test_setup_downloads_enrolls_verifies_and_enables(tmp_path: Path, model_ok: 
         json.loads(line)["event"]
         for line in (config.data_dir / "guard" / "audit.jsonl").read_text().splitlines()
     ]
-    assert events == ["camera_open", "enroll", "camera_open", "verify"]
+    assert events == ["camera_open", "touch_id", "enroll", "camera_open", "verify"]
 
 
 def test_setup_installs_the_model_when_it_is_missing(tmp_path: Path) -> None:
@@ -411,6 +411,8 @@ def test_doctor_covers_every_item(tmp_path: Path) -> None:
         "camera permission",
         "hub camera",
         "touch id",
+        "clamshell",
+        "touch id pin",
         "failures",
     ]
     assert "Terminal" in result.output and t("guard.cli.doctor.tcc.3") in result.output
@@ -576,3 +578,103 @@ def test_run_local_reads_forget_and_selftest_answers(tmp_path: Path) -> None:
         tmp_path / "g", "forget", {}, timeout=30, command=fake_worker_command(script)
     )
     assert answer["ok"] is True and answer["removed"] == ["enrolled"]
+
+
+# -- Touch ID (issue 114) ------------------------------------------------------------------------
+
+
+def touch_id(**details: Any) -> dict[str, Any]:
+    base = {"biometry": "available", "detail": None, "clamshell": False, "pin": "ok"}
+    return {**base, **details}
+
+
+def doctor_line(output: str, name: str) -> tuple[str, str]:
+    for line in output.splitlines():
+        status, _, rest = line.partition(" ")
+        label, _, text = rest.strip().partition(": ")
+        if label == name:
+            return status, text
+    raise AssertionError(f"no {name} line in {output}")
+
+
+def test_doctor_reports_touch_id_the_lid_and_the_pin(tmp_path: Path) -> None:
+    config = cli_config(tmp_path)
+    result, _ = doctor(config, selftest_answer(touch_id=touch_id()))
+    assert doctor_line(result.output, "touch id") == ("ok", t("guard.cli.doctor.touch_id_ok"))
+    assert doctor_line(result.output, "clamshell") == ("ok", t("guard.cli.doctor.clamshell_open"))
+    assert doctor_line(result.output, "touch id pin") == ("ok", t("guard.cli.doctor.pin_ok"))
+
+
+def test_doctor_explains_a_closed_lid(tmp_path: Path) -> None:
+    config = cli_config(tmp_path)
+    answer = selftest_answer(
+        touch_id=touch_id(biometry="unavailable", detail="clamshell", clamshell=True, pin="unknown")
+    )
+    result, _ = doctor(config, answer)
+    status, text = doctor_line(result.output, "touch id")
+    assert status == "warn" and t("guard.cli.doctor.why.clamshell") in text
+    assert doctor_line(result.output, "clamshell")[0] == "warn"
+    assert "touch_id_or_password" in doctor_line(result.output, "clamshell")[1]
+    assert doctor_line(result.output, "touch id pin")[0] == "info"
+
+
+def test_a_changed_fingerprint_set_fails_the_doctor_and_says_how_to_start_over(
+    tmp_path: Path,
+) -> None:
+    config = cli_config(tmp_path)
+    result, _ = doctor(config, selftest_answer(touch_id=touch_id(pin="changed")))
+    status, text = doctor_line(result.output, "touch id pin")
+    assert status == "fail" and "security delete-generic-password" in text
+    assert result.exit_code == 1
+
+
+def test_doctor_warns_about_a_touch_id_setting_without_touch_id(tmp_path: Path) -> None:
+    config = cli_config(tmp_path)
+    none = touch_id(biometry="none", detail="no_sensor", clamshell=None, pin="not_pinned")
+    result, _ = doctor(config, selftest_answer(touch_id=none))
+    assert doctor_line(result.output, "touch id") == (
+        "warn",
+        t("guard.cli.doctor.touch_id_none_needed"),
+    )  # unlock_fallback = touch_id is the default
+    assert doctor_line(result.output, "touch id pin")[0] == "warn"
+    toml = config.home / "tau.toml"
+    toml.write_text(toml.read_text() + 'unlock_fallback = "touch_id_or_password"\n')
+    result, _ = doctor(Config.load(config.home), selftest_answer(touch_id=none))
+    assert doctor_line(result.output, "touch id") == ("info", t("guard.cli.doctor.touch_id_none"))
+
+
+def test_doctor_warns_about_step_up_none(tmp_path: Path) -> None:
+    config = cli_config(tmp_path)
+    toml = config.home / "tau.toml"
+    toml.write_text(toml.read_text() + 'step_up = "none"\n')
+    result, _ = doctor(Config.load(config.home), selftest_answer(touch_id=touch_id()))
+    assert doctor_line(result.output, "step_up") == ("warn", t("guard.cli.doctor.step_up_none"))
+
+
+def test_a_re_enrollment_with_changed_fingerprints_is_refused_with_a_hint(
+    tmp_path: Path, model_ok: list
+) -> None:
+    from tau_guard.localauth import Biometry
+    from tau_guard.testing import OTHER_FINGERPRINTS
+
+    config = fresh(tmp_path)
+    runner = InProcess()
+    assert invoke(config, "enroll", runner=runner).exit_code == 0
+    runner.auth = FakeLocalAuth(biometry=Biometry("available", domain_state=OTHER_FINGERPRINTS))
+    result = invoke(config, "enroll", runner=runner)
+    assert result.exit_code == 1 and t("guard.verdict.touch_id_failed") in result.output
+    assert t("guard.cli.touch_id.touch_id_failed") in result.output
+    runner.auth = FakeLocalAuth(biometry=Biometry("unavailable", "clamshell", clamshell=True))
+    result = invoke(config, "forget", runner=runner)
+    assert result.exit_code == 1 and t("guard.cli.touch_id.touch_id_unavailable") in result.output
+    assert (config.data_dir / "guard" / MARKER_FILE).is_file()  # nothing was removed
+    entries = [
+        json.loads(line)
+        for line in (config.data_dir / "guard" / "audit.jsonl").read_text().splitlines()
+    ]
+    touch = [entry for entry in entries if entry["event"] == "touch_id"]
+    assert [(e["policy"], e["reason"]) for e in touch] == [
+        ("device_owner", "ok"),
+        ("biometrics", "changed"),
+        ("biometrics", "unavailable"),
+    ]

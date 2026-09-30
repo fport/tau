@@ -17,7 +17,7 @@ from tau_guard.camera import CameraError
 from tau_guard.engine import SFACE_SHA256, ModelError
 from tau_guard.liveness import Calibration
 from tau_guard.local import validate_explain
-from tau_guard.localauth import BIOMETRICS, DEVICE_OWNER
+from tau_guard.localauth import BIOMETRICS, DEVICE_OWNER, Biometry
 from tau_guard.runner import Progress, parse_line
 from tau_guard.state import Outcome
 from tau_guard.store import (
@@ -31,6 +31,7 @@ from tau_guard.store import (
 )
 from tau_guard.testing import (
     FINGERPRINTS,
+    OTHER_FINGERPRINTS,
     OWNER,
     STRANGER,
     FakeFrameSource,
@@ -548,6 +549,12 @@ def test_the_deep_selftest_reports_everything_without_a_camera(session: Session)
         "builtin": True,
     }
     assert details["opencv"] and details["opencv_verified"] is True
+    assert details["touch_id"] == {
+        "biometry": "available",
+        "detail": None,
+        "clamshell": None,
+        "pin": "ok",
+    }
     plain = worker.selftest("darwin", request={"v": 1}, deps=deps)
     assert "details" not in plain
 
@@ -591,3 +598,41 @@ def test_nothing_holds_an_embedding_but_the_encrypted_template(
     for text in texts:
         for needle in needles:
             assert needle not in text
+
+
+@pytest.mark.parametrize(
+    ("biometry", "pin"),
+    [
+        (Biometry("available", domain_state=OTHER_FINGERPRINTS), "changed"),
+        (Biometry("unavailable", "clamshell", clamshell=True), "unknown"),
+        (Biometry("available", domain_state=None), "unknown"),
+        (Biometry("none", "no_sensor"), "unknown"),
+    ],
+)
+def test_the_deep_selftest_compares_the_pinned_fingerprints_without_a_prompt(
+    session: Session, biometry: Biometry, pin: str
+) -> None:
+    session.enroll()
+    auth = FakeLocalAuth(biometry=biometry)
+    deps = fake_deps(keys=session.keys, local_auth=auth)
+    answer = worker.selftest(
+        "darwin", request={**session.request("selftest"), "deep": True}, deps=deps
+    )
+    touch = answer["details"]["touch_id"]
+    assert touch["pin"] == pin and touch["biometry"] == biometry.state
+    assert touch["detail"] == biometry.detail and touch["clamshell"] == biometry.clamshell
+    assert auth.calls == [] and auth.probes == 1  # never a prompt
+
+
+def test_the_deep_selftest_without_an_enrollment_or_a_pin(session: Session) -> None:
+    deps = fake_deps(keys=session.keys)
+    request = {**session.request("selftest"), "deep": True}
+    assert worker.selftest("darwin", request=request, deps=deps)["details"]["touch_id"]["pin"] == (
+        "unknown"
+    )
+    session.auth = FakeLocalAuth(biometry=Biometry("none", "no_sensor"))
+    session.enroll()
+    deps = fake_deps(keys=session.keys)
+    assert worker.selftest("darwin", request=request, deps=deps)["details"]["touch_id"]["pin"] == (
+        "not_pinned"
+    )

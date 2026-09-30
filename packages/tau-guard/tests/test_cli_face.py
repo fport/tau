@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 from click.testing import CliRunner
-from guard_helpers import running_hub
+from guard_helpers import cli_config, running_hub
 from tau_core import Config
 from tau_core.hub import HubClient
 from tau_core.i18n import t
@@ -34,7 +34,6 @@ from tau_guard.testing import (
     read_requests,
     write_script,
 )
-from test_cli import cli_config
 
 
 @pytest.fixture(autouse=True)

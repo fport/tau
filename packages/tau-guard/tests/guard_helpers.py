@@ -7,6 +7,8 @@ own ``tmp_path``.
 from __future__ import annotations
 
 import json
+import os
+import socket
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -156,3 +158,24 @@ def running_hub(
         yield handle
     finally:
         handle.stop()
+
+
+def free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def cli_config(tmp_path: Path, *, active: bool = True, port: int | None = None) -> Config:
+    """A home whose tau.toml points at a port nothing listens on (never 7877)."""
+    config = test_config(tmp_path)
+    toml = config.home / "tau.toml"
+    text = toml.read_text().replace("control_port = 7877", f"control_port = {port or free_port()}")
+    if active:
+        text += "\n[component.guard]\nenabled = true\n"
+    toml.write_text(text)
+    os.environ["TAU_DATA_DIR"] = str(config.data_dir)
+    loaded = Config.load(config.home)
+    if active:
+        write_marker(loaded)
+    return loaded

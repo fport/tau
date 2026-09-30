@@ -1,6 +1,6 @@
 # 115 · TauBar: camera and microphone permission plumbing, webview media deny, guard line, "Lock now"
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L10 · Guard
 Packages: apps/taubar
@@ -40,12 +40,12 @@ The menu also gains a guard line and a "Lock now" item. The decisions are in [AD
 ## Acceptance criteria
 
 - [ ] The built `TauBar.app` Info.plist contains `NSCameraUsageDescription` and `NSMicrophoneUsageDescription`; `codesign -d --entitlements -` on the built app shows the camera and audio-input entitlements
-- [ ] Every webview media permission request is denied (a unit test on the permission handler, or a documented manual check with `getUserMedia` in the window returning `NotAllowedError`)
-- [ ] The guard line follows the `/status` guard block (tests with canned `/status` bodies: absent, `off`, `locked`, `unlocked`, `unavailable` with a reason), and is hidden without a guard
-- [ ] "Lock now" posts `/guard/lock` signed with the token read from the file (the token itself never leaves TauBar), retries once after a 403 with a re-read token, and treats a missing or wrong proof or a redirect as unavailable (tests against a local fake server)
-- [ ] On `camera_denied` the "Grant camera access…" item appears and opens the Privacy_Camera pane
-- [ ] The README documents the stable signing identity and the re-grant steps with example values only; no personal identity name is committed
-- [ ] `cargo test`, `cargo clippy` and `pnpm test` are green
+- [x] Every webview media permission request is denied (a unit test on the permission handler, or a documented manual check with `getUserMedia` in the window returning `NotAllowedError`)
+- [x] The guard line follows the `/status` guard block (tests with canned `/status` bodies: absent, `off`, `locked`, `unlocked`, `unavailable` with a reason), and is hidden without a guard
+- [x] "Lock now" posts `/guard/lock` signed with the token read from the file (the token itself never leaves TauBar), retries once after a 403 with a re-read token, and treats a missing or wrong proof or a redirect as unavailable (tests against a local fake server)
+- [x] On `camera_denied` the "Grant camera access…" item appears and opens the Privacy_Camera pane
+- [x] The README documents the stable signing identity and the re-grant steps with example values only; no personal identity name is committed
+- [x] `cargo test`, `cargo clippy` and `pnpm test` are green
 - [ ] (user) TauBar is signed with a stable self-signed identity, rebuilt once, and the camera grant survives the rebuild; the hub TauBar runs gets the camera (`tau guard doctor` reports camera `ok` with TauBar as the responsible process)
 
 ## Blocked by
@@ -55,3 +55,9 @@ The menu also gains a guard line and a "Lock now" item. The decisions are in [AD
 ## Comments
 
 - 2026-09-30: filed with ADR 0008. Not blocked by 084, whose only open acceptance criterion is the start at a real login.
+- 2026-09-30: built on the guard/taubar branch (commits eb4ead2, 9440ab0, 0aee791, 59d4f51, 669a1fb, c7c2986; 130's test-path fix is dba2f6d).
+  - **Bundle.** `Info.plist` has `NSCameraUsageDescription` and `NSMicrophoneUsageDescription` (English); `Entitlements.plist` holds exactly `com.apple.security.device.camera` and `com.apple.security.device.audio-input`, wired through `bundle.macOS.entitlements`; `signingIdentity` stays `"-"`. `tests/bundle_config.rs` pins all of it, and the debug binary's embedded plist (`launchctl plist __TEXT,__info_plist target/debug/taubar`) shows both keys. The first criterion stays open: it needs a built `TauBar.app`, and this session was told not to build a bundle. The owner's next `pnpm tauri build` for the user criterion checks it with the README's `plutil` and `codesign -d --entitlements -` lines.
+  - **Webview.** `webview::permission` denies every kind. It is installed on the app builder and on the settings window's `WebviewWindowBuilder`, so wry never falls back to its grant-by-default or to WebKit's prompt. A test checks the handler, and a source scan checks that every `WebviewWindowBuilder::new` installs it. The README documents the manual `getUserMedia` check.
+  - **Signed requests.** `hub::control` mirrors tau-core's `request_auth`, `response_proof` and `HubClient` byte for byte (`hmac` 0.12 is the only new crate). The tests pin tau-core's vectors plus three more computed with tau-core itself, and run against a fake loopback hub: a 403 followed by a token re-read, a second 403 with no third try, a missing, foreign, body-mismatched or echoed-auth proof, a redirect, no token file, nothing listening. A manual end-to-end run of a throwaway Rust client against a real `tau_core.hub.control.ControlApi` (ephemeral port, temp `hub_dir`) passed: the lock was accepted, the proof verified, and the hub saw no `Origin`.
+  - **Menu and window.** `HubView.guard` parses the open `/status` block. State and reason pass an allow-list, because any local process can answer `/status`. The guard line, "Lock now" and "Grant camera access…" are inserted under the hub lines only while a guard runs. The camera item appears for `camera_denied` or `camera_unavailable`, in any state, and opens the Privacy_Camera pane through the opener plugin; that click is not exercised by a test. "Lock now" is always offered while a guard runs (locking is idempotent, and the menu can lag the hub by a poll). It runs off the main thread, logs the result, shows an error dialog when tau may not be locked, and polls `/status` at once. The window shows the same line and buttons (`lock_guard`, `open_camera_settings`).
+  - **For later issues:** 086 moves these English strings to the message table and `InfoPlist.strings`. 025 and any other TauBar client of a protected route can reuse `ControlClient` (POST only for now; a GET is a few lines). Check the (user) criterion from TauBar's hub once 112 lands (`tau guard doctor`).

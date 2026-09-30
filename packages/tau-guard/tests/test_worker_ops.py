@@ -23,6 +23,7 @@ from tau_guard.state import Outcome
 from tau_guard.store import (
     MARKER_FILE,
     TEMPLATE_FILE,
+    KeyUnavailable,
     MemoryKeyStore,
     load_template,
     new_key,
@@ -387,11 +388,13 @@ def test_enrollment_is_refused_over_ssh(session: Session, monkeypatch: pytest.Mo
 
 
 def test_the_key_store_decides_first_enrollment(session: Session) -> None:
+    session.auth = FakeLocalAuth(biometry=Biometry("none", "no_sensor"))  # nothing to pin
     assert session.enroll()["first"] is True
     key = session.keys.key
     (session.data_dir / "guard" / TEMPLATE_FILE).unlink()  # only the file goes
     again = session.enroll()
     assert again["ok"] and again["first"] is False and session.keys.key == key
+    assert again["local_auth"]["policy"] == DEVICE_OWNER  # a re-enrollment's policy
     enrollment = read_enrollment_id(session)
     third = session.enroll()
     assert third["first"] is False and read_enrollment_id(session) != enrollment
@@ -475,9 +478,16 @@ def test_forget_behind_local_authentication(session: Session) -> None:
     parse_line(json.dumps(answer).encode(), op="selftest")  # the CLI reads it like a selftest
 
 
+class _UndeletableKeyStore(MemoryKeyStore):
+    """The Keychain hands the key out but does not let it go."""
+
+    def delete(self) -> bool:
+        raise KeyUnavailable("the Keychain refused to remove the key")
+
+
 def test_forget_reports_what_went_when_the_key_cannot_go(session: Session) -> None:
     session.enroll()
-    stuck = MemoryKeyStore(session.keys.key, fail=True)
+    stuck = _UndeletableKeyStore(session.keys.key)
     answer = session.run("forget", session.request("forget"), keys=stuck)
     assert answer["ok"] is False and answer["reason"] == "key_unavailable"
     assert set(answer["removed"]) == {TEMPLATE_FILE, MARKER_FILE}
@@ -607,6 +617,7 @@ def test_nothing_holds_an_embedding_but_the_encrypted_template(
         (Biometry("unavailable", "clamshell", clamshell=True), "unknown"),
         (Biometry("available", domain_state=None), "unknown"),
         (Biometry("none", "no_sensor"), "unknown"),
+        (Biometry("none", "not_enrolled"), "changed"),  # every pinned finger was removed
     ],
 )
 def test_the_deep_selftest_compares_the_pinned_fingerprints_without_a_prompt(
@@ -622,6 +633,27 @@ def test_the_deep_selftest_compares_the_pinned_fingerprints_without_a_prompt(
     assert touch["pin"] == pin and touch["biometry"] == biometry.state
     assert touch["detail"] == biometry.detail and touch["clamshell"] == biometry.clamshell
     assert auth.calls == [] and auth.probes == 1  # never a prompt
+
+
+@pytest.mark.parametrize(
+    ("biometry", "fail", "pin"),
+    [
+        (Biometry("available", domain_state=FINGERPRINTS), False, "unreadable"),
+        (Biometry("none", "not_enrolled"), False, "unreadable"),
+        (Biometry("none", "no_sensor"), False, "unknown"),  # the password repairs it there
+        (Biometry("available", domain_state=FINGERPRINTS), True, "unknown"),  # the Keychain
+    ],
+)
+def test_the_deep_selftest_names_a_pin_that_cannot_be_read(
+    session: Session, biometry: Biometry, fail: bool, pin: str
+) -> None:
+    session.enroll()
+    (session.data_dir / "guard" / TEMPLATE_FILE).write_bytes(b"TAUG1" + b"\0" * 40)
+    keys = MemoryKeyStore(fail=True) if fail else session.keys
+    deps = fake_deps(keys=keys, local_auth=FakeLocalAuth(biometry=biometry))
+    request = {**session.request("selftest"), "deep": True}
+    touch = worker.selftest("darwin", request=request, deps=deps)["details"]["touch_id"]
+    assert touch["pin"] == pin
 
 
 def test_the_deep_selftest_without_an_enrollment_or_a_pin(session: Session) -> None:

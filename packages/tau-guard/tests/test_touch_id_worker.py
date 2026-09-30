@@ -154,6 +154,101 @@ def test_forget_is_refused_when_touch_id_does_not_confirm_the_owner(
     assert (guard_dir(session) / MARKER_FILE).exists() and session.keys.key is not None
 
 
+NO_FINGERS = Biometry("none", "not_enrolled")
+
+
+@pytest.mark.parametrize(
+    ("biometry", "reason", "outcome"),
+    [
+        (NO_FINGERS, "touch_id_failed", "changed"),  # every pinned finger was removed
+        (NO_SENSOR, "touch_id_unavailable", "unavailable"),  # the Touch ID keyboard is gone
+    ],
+)
+@pytest.mark.parametrize("op", ["enroll", "forget"])
+def test_a_pinned_enrollment_never_falls_back_to_the_password(
+    session: Session, biometry: Biometry, reason: str, outcome: str, op: str
+) -> None:
+    session.enroll()  # pinned with FINGERPRINTS
+    before = (guard_dir(session) / TEMPLATE_FILE).read_bytes()
+    auth = FakeLocalAuth(biometry=biometry)
+    source = FakeFrameSource([])
+    answer = session.run(op, session.request(op), local_auth=auth, source=source)
+    assert answer["ok"] is False and answer["reason"] == reason
+    assert answer["local_auth"] == {"policy": BIOMETRICS, "outcome": outcome, "ms": 0}
+    assert auth.calls == [] and not source.opened  # no prompt, no password, no camera
+    assert (guard_dir(session) / TEMPLATE_FILE).read_bytes() == before
+    assert (guard_dir(session) / MARKER_FILE).exists() and session.keys.key is not None
+    accepted_by_the_hub(op if op == "enroll" else "selftest", session.lines, answer)
+
+
+def test_an_enrollment_that_never_pinned_keeps_the_password_without_fingers(
+    session: Session,
+) -> None:
+    session.auth = FakeLocalAuth(biometry=NO_FINGERS)  # a Touch ID Mac with no finger enrolled
+    session.enroll()
+    assert read_pin(guard_dir(session), session.keys) is None
+    again = session.enroll()
+    assert again["ok"] is True and session.auth.calls[-1][0] == DEVICE_OWNER
+
+
+def break_template(session: Session, how: str) -> None:
+    path = guard_dir(session) / (MARKER_FILE if how == "no_marker" else TEMPLATE_FILE)
+    if how == "corrupt":
+        path.write_bytes(b"TAUG1" + b"\0" * 40)
+    else:
+        path.unlink()
+
+
+@pytest.mark.parametrize("how", ["corrupt", "deleted", "no_marker"])
+@pytest.mark.parametrize("op", ["enroll", "forget"])
+def test_a_pin_that_cannot_be_read_refuses_touch_id_only(
+    session: Session, how: str, op: str
+) -> None:
+    session.enroll()
+    break_template(session, how)
+    auth = FakeLocalAuth(biometry=ADDED_A_FINGER)  # a finger was added meanwhile
+    source = FakeFrameSource([])
+    answer = session.run(op, session.request(op), local_auth=auth, source=source)
+    assert answer["ok"] is False and answer["reason"] == "touch_id_failed"
+    assert answer["local_auth"]["outcome"] == "changed" and auth.calls == []
+    assert not source.opened and session.keys.key is not None
+    unavailable = FakeLocalAuth(biometry=CLAMSHELL)
+    closed = session.run(op, session.request(op), local_auth=unavailable)
+    assert closed["reason"] == "touch_id_unavailable" and unavailable.calls == []
+
+
+@pytest.mark.parametrize("op", ["enroll", "forget"])
+def test_a_mac_without_a_sensor_repairs_an_unreadable_enrollment_with_the_password(
+    session: Session, op: str
+) -> None:
+    session.auth = FakeLocalAuth(biometry=NO_SENSOR)
+    session.enroll()
+    break_template(session, "corrupt")
+    answer = session.run(op, session.request(op))
+    assert answer["ok"] is True and session.auth.calls[-1][0] == DEVICE_OWNER
+
+
+def test_a_key_left_behind_by_forget_can_still_be_removed(session: Session) -> None:
+    session.enroll()
+    for name in (TEMPLATE_FILE, MARKER_FILE):  # forget removed both, the Keychain kept the key
+        (guard_dir(session) / name).unlink()
+    answer = session.run("forget", session.request("forget"))
+    assert answer["ok"] is True and answer["removed"] == ["key"]
+    assert session.auth.calls[-1][0] == BIOMETRICS and session.auth.pins[-1] is None
+
+
+def test_a_keychain_that_does_not_answer_refuses_before_any_prompt(session: Session) -> None:
+    from tau_guard.store import MemoryKeyStore
+
+    session.enroll()
+    auth = FakeLocalAuth()
+    answer = session.run(
+        "forget", session.request("forget"), local_auth=auth, keys=MemoryKeyStore(fail=True)
+    )
+    assert answer["ok"] is False and answer["reason"] == "key_unavailable"
+    assert auth.calls == [] and (guard_dir(session) / MARKER_FILE).exists()
+
+
 # -- the touch_id op -----------------------------------------------------------------------------
 
 

@@ -68,7 +68,10 @@ face check it can only narrow: it never produces an approval.
   the template file) uses Touch ID or the password. Re-enrollment, `enroll --add` and `forget`
   use Touch ID only with the pin when the Mac has Touch ID, refuse while it cannot be used (open
   the lid), and use the password only on a Mac without Touch ID. An enrollment pins the
-  fingerprints whenever Touch ID is available.
+  fingerprints whenever Touch ID is available, and a pinned enrollment is only ever authorised
+  by Touch ID with its pin: removing every finger refuses (`touch_id_failed`) instead of
+  bringing the password back. A template that cannot be read refuses Touch ID only too, since
+  the pin cannot be compared (a Mac with no Touch ID sensor keeps the password).
 - **Unlock fallback** (`unlock_fallback`, default `touch_id`). After two failed face unlocks
   within 10 minutes, or any `camera_*` verdict, the locked status carries `fallback`, and a
   channel may ask for it (`POST /guard/verify {..., fallback: "touch_id"}`,
@@ -88,8 +91,8 @@ face check it can only narrow: it never produces an approval.
 - **Audit.** Each prompt writes a `touch_id` record (`policy`, the outcome as `reason`, the
   attempt's kind as `trigger`), and checks and unlocks carry `method`.
 
-If the fingerprints changed since the enrollment, `tau guard doctor` says so and how to start
-over: remove the template key (`security delete-generic-password -s tau-guard -a
+If the fingerprints changed since the enrollment (or the enrollment cannot be read),
+`tau guard doctor` says so and how to start over: remove the template key (`security delete-generic-password -s tau-guard -a
 template-key-v1`), then run `tau guard setup` at the Mac.
 
 ## The face check

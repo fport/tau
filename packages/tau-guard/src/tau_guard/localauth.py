@@ -8,7 +8,9 @@ Two policies:
   (as a sha256, :func:`state_hash`) is stored in the encrypted template at enrollment, and a
   different set answers ``changed`` (``touch_id_failed``), before the prompt and again after
   it. Someone who knows the Mac password and adds a finger in System Settings therefore gets
-  nothing from Touch ID here.
+  nothing from Touch ID here, and removing every finger does not bring the password back:
+  a pinned enrollment is only ever authorised by Touch ID with its pin
+  (:func:`tau_guard.worker.admin_policy`).
 - :data:`DEVICE_OWNER` (``LAPolicyDeviceOwnerAuthentication``, policy 2): Touch ID or the Mac
   password. It authorises a first enrollment, re-enrollment and ``forget`` on a Mac without
   Touch ID, and the ``touch_id_or_password`` unlock fallback (the opt-in for a closed lid). The

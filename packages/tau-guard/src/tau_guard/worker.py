@@ -46,8 +46,11 @@ Operations:
   the prompt text from ``reason_text`` (:func:`admin_policy`: the device-owner policy for a
   first enrollment, else Touch ID only with the pinned fingerprint set when the Mac has Touch
   ID, ``touch_id_unavailable`` when it cannot be used now, the device-owner policy on a Mac
-  without it; ``touch_id_failed`` or ``touch_id_unavailable`` when it does not pass, and the
-  camera stays off); then the guided capture (:mod:`tau_guard.enroll`); then the key (a new one
+  without it unless the enrollment pinned a set, which only Touch ID with that pin ever
+  authorises; a pin that cannot be read (:class:`StoredPin`) refuses Touch ID only, and a
+  Keychain that does not answer refuses with ``key_unavailable`` before any prompt;
+  ``touch_id_failed`` or ``touch_id_unavailable`` when it does not pass, and the camera stays
+  off); then the guided capture (:mod:`tau_guard.enroll`); then the key (a new one
   only for a first enrollment, read back before anything is written: a key store that drops
   writes is ``key_unavailable``), the encrypted template (with the fingerprint set pinned when
   Touch ID is available) and the marker. The verdict carries ``first``.
@@ -463,54 +466,109 @@ def _biometry(deps: Deps) -> Any:
     return biometry
 
 
-def admin_policy(deps: Deps, *, first: bool) -> tuple[str | None, str | None]:
-    """``(policy, None)`` for authorising an enrollment or ``forget``, or ``(None, reason)``.
+@dataclass(frozen=True)
+class StoredPin:
+    """The fingerprint set the enrollment pinned, as re-enrollment, ``forget`` and the doctor
+    see it (:func:`stored_pin`)."""
 
-    A first enrollment uses the device-owner policy (Touch ID or the Mac password). Otherwise a
-    Mac with Touch ID uses Touch ID only (with the pinned fingerprint set) and refuses with
-    ``touch_id_unavailable`` while it cannot be used (a closed lid, a disconnected keyboard, a
-    lockout); a Mac without Touch ID uses the device-owner policy."""
+    state: str
+    """``pinned``; ``unpinned`` (the template decrypts and pinned nothing: made without Touch
+    ID, or before issue 114); ``absent`` (neither the marker nor the template exists: a key
+    that a failed ``forget`` left behind, nothing is enrolled); ``unreadable`` (the
+    enrollment's files exist but the template cannot be read, so whether it pinned a set is
+    unknown)."""
+    value: str | None = None
+    """The pinned set (a sha256), when ``pinned``."""
+    reason: str | None = None
+    """Why ``unreadable``: the store's reason (``template_invalid``, ``key_unavailable``, ...)."""
+
+
+def stored_pin(guard_dir: Path, deps: Deps) -> StoredPin:
+    """What :class:`StoredPin` says about the enrollment in ``guard_dir``."""
+    from tau_guard.store import MARKER_FILE, TEMPLATE_FILE, StoreError, read_pin
+
+    try:
+        value = read_pin(guard_dir, deps.keys)
+    except StoreError as exc:
+        if not (guard_dir / MARKER_FILE).exists() and not (guard_dir / TEMPLATE_FILE).exists():
+            return StoredPin("absent")
+        log(f"the pinned Touch ID fingerprint set cannot be read ({exc.reason})")
+        return StoredPin("unreadable", reason=exc.reason)
+    return StoredPin("pinned", value) if value is not None else StoredPin("unpinned")
+
+
+def admin_policy(
+    deps: Deps, *, first: bool, stored: StoredPin | None = None
+) -> tuple[str | None, str | None]:
+    """``(policy, None)`` for authorising an enrollment or ``forget``, or ``(None, outcome)``
+    with the LocalAuthentication outcome the refusal records (``unavailable`` →
+    ``touch_id_unavailable``, ``changed`` → ``touch_id_failed``).
+
+    A first enrollment uses the device-owner policy (Touch ID or the Mac password). Otherwise:
+
+    - Touch ID available: Touch ID only, compared with the pin when there is one.
+    - Touch ID that cannot be used now (a closed lid, a disconnected keyboard, a lockout):
+      ``unavailable``, never the password instead.
+    - No Touch ID (``none``): the device-owner policy, unless the enrollment pinned a set.
+      Then a Mac that reports no enrolled finger answers ``changed`` (every pinned finger was
+      removed, which takes only the Mac password), and one that reports no sensor answers
+      ``unavailable`` (the Touch ID keyboard the pin belongs to is gone): a pinned enrollment
+      is only ever authorised by Touch ID with its pin.
+    - A pin that cannot be read (``unreadable``) counts as a pin Touch ID cannot compare:
+      ``changed`` (``unavailable`` while Touch ID cannot be used), except on a Mac that
+      reports no Touch ID sensor at all, which keeps the device-owner policy. The way back is
+      the documented Keychain reset."""
     from tau_guard.localauth import BIOMETRICS, DEVICE_OWNER
 
     if first:
         return DEVICE_OWNER, None
+    state = stored.state if stored is not None else "unpinned"
     biometry = _biometry(deps)
+    no_sensor = biometry.state == "none" and biometry.detail != "not_enrolled"
+    if state == "unreadable" and not no_sensor:
+        if biometry.state == "unavailable":
+            log(f"Touch ID exists but cannot be used now ({biometry.detail})")
+            return None, "unavailable"
+        log("the enrollment's pinned fingerprint set cannot be read; refusing Touch ID only")
+        return None, "changed"
     if biometry.state == "available":
         return BIOMETRICS, None
     if biometry.state == "unavailable":
         log(f"Touch ID exists but cannot be used now ({biometry.detail})")
-        return None, "touch_id_unavailable"
+        return None, "unavailable"
+    if state == "pinned":
+        if no_sensor:
+            log("the Touch ID sensor the enrollment pinned is gone; refusing the password")
+            return None, "unavailable"
+        log("every pinned Touch ID fingerprint was removed; refusing the password")
+        return None, "changed"
     return DEVICE_OWNER, None
 
 
 def _admin_authenticate(
-    request: dict[str, Any], deps: Deps, *, first: bool, pin: str | None
+    request: dict[str, Any], deps: Deps, *, first: bool, stored: StoredPin | None
 ) -> tuple[str | None, dict[str, Any]]:
     """LocalAuthentication for an enrollment or ``forget`` (:func:`admin_policy`)."""
-    from tau_guard.localauth import BIOMETRICS
+    from tau_guard.localauth import BIOMETRICS, verdict_reason
 
-    policy, refusal = admin_policy(deps, first=first)
+    if not first and stored is not None and stored.reason == "key_unavailable":
+        return "key_unavailable", {}  # the Keychain did not answer: allow access, try again
+    policy, refusal = admin_policy(deps, first=first, stored=stored)
     if policy is None:
-        return refusal, _local_auth(BIOMETRICS, "unavailable", None, deps)
-    return _authenticate(request, deps, policy, pin=pin if policy == BIOMETRICS else None)
-
-
-def _stored_pin(guard_dir: Path, deps: Deps) -> str | None:
-    """The pinned fingerprint set, ``None`` when there is none or it cannot be read (then a
-    Touch ID authorisation cannot compare it)."""
-    from tau_guard.store import StoreError, read_pin
-
-    try:
-        return read_pin(guard_dir, deps.keys)
-    except StoreError as exc:
-        log(f"the pinned Touch ID fingerprint set cannot be read ({exc.reason})")
-        return None
+        outcome = refusal or "unavailable"
+        return verdict_reason(outcome), _local_auth(BIOMETRICS, outcome, None, deps)
+    pin = stored.value if stored is not None and policy == BIOMETRICS else None
+    return _authenticate(request, deps, policy, pin=pin)
 
 
 def _current_pin(deps: Deps) -> str | None:
     """The fingerprint set to pin now: Touch ID's, when it is available."""
     biometry = _biometry(deps)
-    return biometry.domain_state if biometry.state == "available" else None
+    if biometry.state != "available":
+        return None
+    if biometry.domain_state is None:
+        log("Touch ID is available but its fingerprint set cannot be read; nothing is pinned")
+    return biometry.domain_state
 
 
 def _camera_ready(request: dict[str, Any], deps: Deps) -> str | None:
@@ -570,13 +628,13 @@ def enroll_op(request: dict[str, Any], deps: Deps, emit: Emit) -> dict[str, Any]
     except StoreError as exc:
         log(f"enroll: {exc.reason}")
         return verdict(False, exc.reason)
-    pin = None if first else _stored_pin(guard_dir, deps)
+    stored = None if first else stored_pin(guard_dir, deps)
     camera_refused = _camera_ready(request, deps)
     if camera_refused is not None:
         return verdict(False, camera_refused)
     progress = _Progress(emit, deps)
     progress.step("touch_id")
-    refused, auth = _admin_authenticate(request, deps, first=first, pin=pin)
+    refused, auth = _admin_authenticate(request, deps, first=first, stored=stored)
     if refused is not None:
         return verdict(False, refused, **auth)
     progress.step("starting")
@@ -632,8 +690,8 @@ def forget_op(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
         log("forget: refused in a session started over SSH")
         return verdict(False, "unavailable")
     guard_dir = data_dir / "guard"
-    pin = _stored_pin(guard_dir, deps)
-    refused, auth = _admin_authenticate(request, deps, first=False, pin=pin)
+    stored = stored_pin(guard_dir, deps)
+    refused, auth = _admin_authenticate(request, deps, first=False, stored=stored)
     if refused is not None:
         return verdict(False, refused, **auth)
     try:
@@ -727,7 +785,7 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
         sface_path,
         vendored_yunet,
     )
-    from tau_guard.store import KeyInvalid, KeyUnavailable, StoreError, load_template, read_pin
+    from tau_guard.store import KeyInvalid, KeyUnavailable, StoreError, load_template
 
     details: dict[str, Any] = {}
     try:
@@ -746,8 +804,6 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
         details["keychain"] = "invalid"
     except KeyUnavailable:
         details["keychain"] = "unavailable"
-    pin: str | None = None
-    pin_read = False
     if data_dir is None or not (data_dir / ENROLLED_MARKER).is_file():
         details["template"] = "not_enrolled"
     else:
@@ -757,11 +813,8 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
             details["template"] = exc.reason
         else:
             details["template"] = "ok"
-        try:
-            pin, pin_read = read_pin(data_dir / "guard", deps.keys), True
-        except StoreError:
-            pass
-    details["touch_id"] = _touch_id_details(deps, pin, pin_read)
+    stored = stored_pin(data_dir / "guard", deps) if data_dir is not None else StoredPin("absent")
+    details["touch_id"] = _touch_id_details(deps, stored)
     camera: dict[str, Any] = {"device": None, "others": 0, "permission": None}
     try:
         listed = deps.devices().devices() if deps.devices is not None else []
@@ -780,18 +833,26 @@ def _deep(request: dict[str, Any], deps: Deps) -> dict[str, Any]:
     return details
 
 
-def _touch_id_details(deps: Deps, pin: str | None, pin_read: bool) -> dict[str, Any]:
+def _touch_id_details(deps: Deps, stored: StoredPin) -> dict[str, Any]:
     """Touch ID for the doctor: its state and why, the lid, and the pinned fingerprint set
-    (``ok``, ``changed``, ``not_pinned`` or ``unknown``). No prompt."""
+    (``ok``; ``changed``, also when every pinned finger was removed; ``unreadable``, an
+    enrollment whose pin cannot be read on a Mac with Touch ID, which refuses re-enrollment
+    and ``forget``; ``not_pinned``; or ``unknown``). No prompt."""
     biometry = _biometry(deps)
-    if not pin_read:
-        pinned = "unknown"
-    elif pin is None:
+    no_sensor = biometry.state == "none" and biometry.detail != "not_enrolled"
+    if stored.state == "unpinned":
         pinned = "not_pinned"
+    elif stored.state == "unreadable":
+        transient = stored.reason == "key_unavailable"  # the Keychain line says why
+        pinned = "unknown" if transient or no_sensor else "unreadable"
+    elif stored.state != "pinned":
+        pinned = "unknown"
+    elif biometry.state == "none" and not no_sensor:
+        pinned = "changed"  # every pinned finger was removed
     elif biometry.state != "available" or biometry.domain_state is None:
         pinned = "unknown"
     else:
-        pinned = "ok" if biometry.domain_state == pin else "changed"
+        pinned = "ok" if biometry.domain_state == stored.value else "changed"
     return {
         "biometry": biometry.state,
         "detail": biometry.detail,

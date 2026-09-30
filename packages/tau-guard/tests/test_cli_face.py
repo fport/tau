@@ -628,6 +628,14 @@ def test_a_changed_fingerprint_set_fails_the_doctor_and_says_how_to_start_over(
     assert result.exit_code == 1
 
 
+def test_an_unreadable_pin_fails_the_doctor_and_says_how_to_start_over(tmp_path: Path) -> None:
+    config = cli_config(tmp_path)
+    result, _ = doctor(config, selftest_answer(touch_id=touch_id(pin="unreadable")))
+    status, text = doctor_line(result.output, "touch id pin")
+    assert (status, text) == ("fail", t("guard.cli.doctor.pin_unreadable"))
+    assert "security delete-generic-password" in text and result.exit_code == 1
+
+
 def test_doctor_warns_about_a_touch_id_setting_without_touch_id(tmp_path: Path) -> None:
     config = cli_config(tmp_path)
     none = touch_id(biometry="none", detail="no_sensor", clamshell=None, pin="not_pinned")

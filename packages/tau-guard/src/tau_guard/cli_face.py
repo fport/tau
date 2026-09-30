@@ -782,7 +782,13 @@ def _doctor_lines(ctx: click.Context, config: Config) -> list[tuple[str, str, st
 
 
 TOUCH_ID_WHY = ("clamshell", "lockout", "disconnected", "not_available", "no_passcode", "error")
-PIN_STATES = {"ok": "ok", "changed": "fail", "not_pinned": "warn", "unknown": "info"}
+PIN_STATES = {
+    "ok": "ok",
+    "changed": "fail",
+    "unreadable": "fail",
+    "not_pinned": "warn",
+    "unknown": "info",
+}
 
 
 def _touch_id_lines(touch: object, settings: Any, language: str) -> list[tuple[str, str, str]]:

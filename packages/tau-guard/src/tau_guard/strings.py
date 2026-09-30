@@ -508,13 +508,25 @@ CLI_MESSAGES: dict[str, dict[str, str]] = {
     },
     "guard.cli.doctor.pin_changed": {
         "en": "the Touch ID fingerprints changed since the enrollment (a finger was added or "
-        "removed), so Touch ID is refused for the fallback, the step-up, re-enrollment and "
-        "forget. To start over, remove the template key (`security delete-generic-password "
-        "-s tau-guard -a template-key-v1`), then run `tau guard setup` at the Mac.",
-        "tr": "Touch ID parmak izleri kayıttan beri değişti (bir parmak eklendi ya da silindi), "
-        "bu yüzden Touch ID yedek, adım yükseltme, yeniden kayıt ve silme için reddedilir. "
-        "Baştan başlamak için şablon anahtarını sil (`security delete-generic-password -s "
-        "tau-guard -a template-key-v1`), sonra Mac'in başında `tau guard setup` çalıştır.",
+        "removed, or none is left), so Touch ID is refused for the fallback, the step-up, "
+        "re-enrollment and forget, and the Mac password never replaces it. To start over, "
+        "remove the template key (`security delete-generic-password -s tau-guard -a "
+        "template-key-v1`), then run `tau guard setup` at the Mac.",
+        "tr": "Touch ID parmak izleri kayıttan beri değişti (bir parmak eklendi ya da silindi "
+        "ya da hiç kalmadı), bu yüzden Touch ID yedek, adım yükseltme, yeniden kayıt ve silme "
+        "için reddedilir ve Mac parolası onun yerini tutmaz. Baştan başlamak için şablon "
+        "anahtarını sil (`security delete-generic-password -s tau-guard -a template-key-v1`), "
+        "sonra Mac'in başında `tau guard setup` çalıştır.",
+    },
+    "guard.cli.doctor.pin_unreadable": {
+        "en": "the enrollment cannot be read, so Touch ID cannot compare the fingerprints it "
+        "pinned, and re-enrollment and forget are refused. To start over, remove the template "
+        "key (`security delete-generic-password -s tau-guard -a template-key-v1`), then run "
+        "`tau guard setup` at the Mac.",
+        "tr": "kayıt okunamıyor, bu yüzden Touch ID sabitlediği parmak izlerini "
+        "karşılaştıramıyor; yeniden kayıt ve silme reddedilir. Baştan başlamak için şablon "
+        "anahtarını sil (`security delete-generic-password -s tau-guard -a template-key-v1`), "
+        "sonra Mac'in başında `tau guard setup` çalıştır.",
     },
     "guard.cli.doctor.pin_not_pinned": {
         "en": "the enrollment pinned no Touch ID fingerprints (set up without Touch ID, or "

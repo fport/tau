@@ -49,6 +49,7 @@ from tau_core.models import (
     provider_load_failure,
     proxy_key_env,
     proxy_url,
+    required_env,
 )
 from tau_core.persona import PersonaLoader
 from tau_core.plugins import _as_tools
@@ -424,8 +425,7 @@ def _check_role(name: str, role: RoleConfig, env: Mapping[str, str]) -> Check:
     except ConfigError as exc:
         return Check(f"role {name}", "fail", str(exc))
     if not missing:
-        needs = registry.provider_required_env(provider) or provider in ("bedrock", "anthropic")
-        detail = "credentials present" if needs else "needs no credentials"
+        detail = "credentials present" if required_env(role) else "needs no credentials"
         return Check(f"role {name}", "ok", f"provider '{provider}', {detail}")
     fallback = role.fallback
     if fallback is not None and registry.provider_factory(fallback.provider) is not None:

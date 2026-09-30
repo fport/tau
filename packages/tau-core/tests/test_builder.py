@@ -550,6 +550,7 @@ def test_doctor_checks_the_proxy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(proxy, "fetch_key_info", fetch)
     monkeypatch.setattr(builder, "_proxy_alive", lambda url: True)
     by = {c.name: c for c in run_doctor(config.home, env=env)}
+    assert by["role brain"].detail == "provider 'proxy', credentials present"
     assert by["proxy brain"].status == "ok"
     assert by["proxy brain"].detail == "$0.40 of $15.00 per 1mo, within budget"
     assert by["proxy fast"].status == "warn" and "run tau proxy keys" in by["proxy fast"].detail

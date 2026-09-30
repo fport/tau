@@ -1,4 +1,4 @@
-"""Public test helpers: an offline spine and an offline network.
+"""Public test helpers: an offline spine, an offline universe and an offline network.
 
 - :class:`FakeSpine` implements the spine of protocol v1 in memory: the public endpoints of §4
   (``GET /``, ``GET /.well-known/tau.json``, ``POST /net/inbox`` with every check, in order) and
@@ -7,10 +7,14 @@
   answer ``404 cloud_mode_off`` unless ``mode="cloud"``. Other routes (the ``/hub/sessions``
   API, ``/hub/brain``) can be added with :meth:`FakeSpine.route`. A ``FakeSpine`` is itself a
   :class:`~tau_net.spine.Transport` that only reaches its own address.
+- :class:`FakeUniverse` implements a universe (``docs/reference/tau-universe.md`` §2) in
+  memory: signed ``join``/``report``/``leave`` with every check in order (the card is fetched
+  over its network), the mutual-link rule and the public snapshot. It records every request
+  body, so tests can assert what a hub sent.
 - :class:`FakeNetwork` is a :class:`~tau_net.spine.Transport` that routes each request by host
-  to one of several fake spines, so tests run two taus that talk to each other with no socket.
-  It refuses ``http`` to any host but ``localhost``/``127.0.0.1``, like a careful client must,
-  and a spine on those two hosts speaks only ``http`` (a development spine has no TLS).
+  to one of several fake spines (and fake universes), so tests run taus that talk to each other
+  with no socket. It refuses ``http`` to any host but ``localhost``/``127.0.0.1``, like a careful
+  client must, and a host on those two speaks only ``http`` (a development spine has no TLS).
 
 Both are thread-safe: the hub calls the transport from worker threads.
 """
@@ -22,6 +26,7 @@ import json
 import re
 import threading
 import time
+import unicodedata
 import urllib.parse
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
@@ -44,6 +49,7 @@ from tau_net.envelope import (
 )
 from tau_net.peers import CARD_PATH, CARD_TIMEOUT, MAX_CARD_BYTES
 from tau_net.spine import STATE_KEY_PATTERN, TransportError
+from tau_net.universe import MAX_REQUEST_BYTES, MalformedRequest, parse_request, verify_request
 
 __all__ = [
     "DEFAULT_HUB_TOKEN",
@@ -51,6 +57,7 @@ __all__ = [
     "FakeNetwork",
     "FakeRequest",
     "FakeSpine",
+    "FakeUniverse",
 ]
 
 DEFAULT_HUB_TOKEN = "test-hub-token"
@@ -563,15 +570,316 @@ class FakeSpine:
         return 200, {"name": name, "size": len(request.body), "updated_at": now}
 
 
-class FakeNetwork:
-    """A :class:`~tau_net.spine.Transport` that routes by host to fake spines.
+UNIVERSE_STALE_SECONDS = 300
+UNIVERSE_RATE_PER_HOUR = 30
+ONLINE_SECONDS = 2 * 3600
+FORGET_SECONDS = 30 * 24 * 3600
 
-    ``FakeNetwork([alice, bob])`` or :meth:`add`; :attr:`requests` records ``(method, url)``;
-    hosts in :attr:`down` (or spines with ``down = True``) raise a network error.
+
+def _plain(text: str) -> str:
+    """``owner``/``about`` as a universe keeps them: control characters removed."""
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Cc")
+
+
+class FakeUniverse:
+    """An in-memory universe for ``host`` (reference §2), reached through a
+    :class:`FakeNetwork` (``network.add(FakeUniverse(...))``) or used alone as a transport.
+
+    ``POST /api/join|report|leave`` make the checks of §2 in order (size, shape, ``universe``,
+    ``ts``, path, the card fetched over :attr:`network`, signature, membership, rate). ``GET
+    /api/universe`` is the snapshot and ``GET /api/taus/<address>`` one tau with its visible
+    links as ``{"peer", "messages"}``. Inspect :attr:`taus`, :attr:`reports` (``address →
+    {peer: messages}``), :attr:`requests` (``(method, path)``) and :meth:`bodies` / :meth:`payloads`
+    (what was posted); script failures with :meth:`fail`; :meth:`cron` is the hourly clean-up.
     """
 
-    def __init__(self, spines: Iterable[FakeSpine] = ()):
-        self.spines: dict[str, FakeSpine] = {}
+    def __init__(
+        self,
+        host: str,
+        *,
+        clock: Callable[[], float] = time.time,
+        network: FakeNetwork | None = None,
+        allow_insecure_peers: bool = False,
+        rate_per_hour: int = UNIVERSE_RATE_PER_HOUR,
+    ):
+        if not is_valid_address(host):
+            raise ValueError(f"not a host: {host!r}")
+        self.address = host
+        self.clock = clock
+        self.network = network
+        self.allow_insecure_peers = allow_insecure_peers
+        self.rate_per_hour = rate_per_hour
+        self.taus: dict[str, dict[str, Any]] = {}
+        self.reports: dict[str, dict[str, int]] = {}
+        self.last_ts: dict[str, int] = {}
+        self.accepted: dict[str, list[int]] = {}
+        self.requests: list[tuple[str, str]] = []
+        self.posted: list[tuple[str, bytes]] = []
+        self.down = False
+        self._lock = threading.RLock()
+        self._failures: list[tuple[str, str, Response | BaseException]] = []
+
+    def __repr__(self) -> str:
+        return f"FakeUniverse({self.address!r}, taus={len(self.taus)})"
+
+    @property
+    def host(self) -> str:
+        return self.address
+
+    @property
+    def scheme(self) -> str:
+        return "http" if self.address.split(":")[0] in INSECURE_HOSTS else "https"
+
+    @property
+    def url(self) -> str:
+        return f"{self.scheme}://{self.address}"
+
+    # -- scripting and inspection --------------------------------------------------------------
+
+    def fail(self, method: str, path: str, *answers: tuple[int, Any] | BaseException) -> None:
+        """The next requests of ``method`` to ``path`` (a prefix) get these answers in order:
+        ``(status, json payload)`` or an exception the network raises."""
+        with self._lock:
+            for answer in answers:
+                if isinstance(answer, BaseException):
+                    self._failures.append((method, path, answer))
+                else:
+                    status, payload = answer
+                    self._failures.append((method, path, _json(status, payload)))
+
+    def bodies(self, path: str | None = None) -> list[bytes]:
+        """The raw ``POST`` bodies received (only those to ``path`` when given)."""
+        with self._lock:
+            return [body for p, body in self.posted if path is None or p == path]
+
+    def payloads(self, kind: str | None = None) -> list[dict[str, Any]]:
+        """The decoded payloads of the well-formed ``POST`` bodies (only ``kind`` when given)."""
+        found = []
+        for body in self.bodies():
+            try:
+                payload = parse_request(body).payload
+            except MalformedRequest:
+                continue
+            if kind is None or payload.get("kind") == kind:
+                found.append(payload)
+        return found
+
+    def links(self) -> list[dict[str, Any]]:
+        """The visible links: ``a < b``, both joined and both reporting each other; ``messages``
+        is the smaller count."""
+        with self._lock:
+            links = []
+            for a in sorted(self.taus):
+                for b, count in sorted(self.reports.get(a, {}).items()):
+                    if a < b and b in self.taus and a in self.reports.get(b, {}):
+                        messages = min(count, self.reports[b][a])
+                        links.append({"a": a, "b": b, "messages": messages})
+            return links
+
+    def snapshot(self) -> dict[str, Any]:
+        """``GET /api/universe``."""
+        now = int(self.clock())
+        with self._lock:
+            taus = [self._public(entry, now) for entry in self.taus.values()]
+            taus.sort(key=lambda entry: (entry["joined_at"], entry["address"]))
+            links = self.links()
+        return {
+            "universe": self.address,
+            "generated_at": now,
+            "stats": {
+                "taus": len(taus),
+                "online": sum(1 for entry in taus if entry["online"]),
+                "messages": sum(link["messages"] for link in links),
+            },
+            "taus": taus,
+            "links": links,
+        }
+
+    def cron(self) -> None:
+        """The hourly job: forget taus without a report for 30 days, prune rate-limit rows."""
+        now = int(self.clock())
+        with self._lock:
+            for address, entry in list(self.taus.items()):
+                if now - entry["last_seen"] > FORGET_SECONDS:
+                    del self.taus[address]
+                    self.reports.pop(address, None)
+            for address, times in list(self.accepted.items()):
+                kept = [t for t in times if now - t < 3600]
+                if kept:
+                    self.accepted[address] = kept
+                else:
+                    del self.accepted[address]
+
+    # -- the transport -------------------------------------------------------------------------
+
+    def __call__(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: bytes | None,
+        timeout: float,
+    ) -> tuple[int, Mapping[str, str], bytes]:
+        """Use the universe alone as a transport (it reaches only its own host)."""
+        host = urllib.parse.urlsplit(url).netloc
+        if host != self.address:
+            raise TransportError(f"no route to {host}")
+        return self.handle(method, url, headers, body)
+
+    def handle(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: bytes | None = None,
+    ) -> Response:
+        path = urllib.parse.urlsplit(url).path or "/"
+        body = bytes(body or b"")
+        with self._lock:
+            self.requests.append((method, path))
+            if method == "POST":
+                self.posted.append((path, body))
+            for i, (f_method, f_path, answer) in enumerate(self._failures):
+                if f_method == method and path.startswith(f_path):
+                    del self._failures[i]
+                    if isinstance(answer, BaseException):
+                        raise answer
+                    return answer
+        if method == "GET" and path in ("/", "/universe"):
+            return 200, {"content-type": "text/html; charset=utf-8"}, b"<!doctype html>"
+        if method == "GET" and path == "/api/universe":
+            headers = {"cache-control": "public, max-age=60", "access-control-allow-origin": "*"}
+            return _json(200, self.snapshot(), headers)
+        if method == "GET" and path.startswith("/api/taus/"):
+            return self._one(urllib.parse.unquote(path[len("/api/taus/") :]))
+        if method == "POST" and path in ("/api/join", "/api/report", "/api/leave"):
+            return self._post(path[len("/api/") :], body)
+        return _error(404, "not_found")
+
+    # -- reading -------------------------------------------------------------------------------
+
+    def _public(self, entry: Mapping[str, Any], now: int) -> dict[str, Any]:
+        return {
+            "address": entry["address"],
+            "name": entry["name"],
+            "owner": entry["owner"],
+            "about": entry["about"],
+            "joined_at": entry["joined_at"],
+            "last_seen": entry["last_seen"],
+            "online": now - entry["last_seen"] <= ONLINE_SECONDS,
+        }
+
+    def _one(self, address: str) -> Response:
+        now = int(self.clock())
+        with self._lock:
+            entry = self.taus.get(address)
+            if entry is None:
+                return _error(404, "not_found")
+            links = []
+            for link in self.links():
+                if address in (link["a"], link["b"]):
+                    peer = link["b"] if link["a"] == address else link["a"]
+                    links.append({"peer": peer, "messages": link["messages"]})
+            return _json(200, {**self._public(entry, now), "links": links})
+
+    # -- signed requests -----------------------------------------------------------------------
+
+    def _card(self, address: str) -> dict[str, Any] | None:
+        if self.network is None:
+            return None
+        url = base_url(address, allow_insecure=self.allow_insecure_peers) + CARD_PATH
+        try:
+            status, _, body = self.network(
+                "GET", url, {"accept": "application/json"}, None, CARD_TIMEOUT
+            )
+        except OSError:
+            return None
+        if status != 200 or len(body) > MAX_CARD_BYTES:
+            return None
+        try:
+            card = json.loads(bytes(body).decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            return None
+        if (
+            not isinstance(card, dict)
+            or card.get("v") != 1
+            or card.get("address") != address
+            or not _key32(card.get("sign_key"))
+        ):
+            return None
+        return card
+
+    def _post(self, route: str, body: bytes) -> Response:
+        if len(body) > MAX_REQUEST_BYTES:
+            return _error(413, "too_large")
+        try:
+            request = parse_request(body)
+        except MalformedRequest as exc:
+            return _error(400, "bad_request", exc.reason)
+        payload = request.payload
+        if payload["universe"] != self.address:
+            return _error(400, "wrong_universe")
+        address, ts, kind = payload["address"], payload["ts"], payload["kind"]
+        now = int(self.clock())
+        with self._lock:
+            last = self.last_ts.get(address)
+        if abs(now - ts) > UNIVERSE_STALE_SECONDS or (last is not None and ts <= last):
+            return _error(400, "stale")
+        if kind != route:
+            return _error(400, "bad_request", "the path does not match the kind")
+        card = self._card(address)
+        if card is None:
+            return _error(502, "card_unavailable")
+        try:
+            verify_request(card["sign_key"], request.payload_bytes, request.sig)
+        except BadSignature:
+            return _error(403, "bad_signature")
+        with self._lock:
+            if kind in ("report", "leave") and address not in self.taus:
+                return _error(404, "not_joined")
+            recent = [t for t in self.accepted.get(address, []) if now - t < 3600]
+            if len(recent) >= self.rate_per_hour:
+                return _error(429, "rate_limited")
+            self.accepted[address] = [*recent, now]
+            self.last_ts[address] = ts
+            name = card.get("name") if isinstance(card.get("name"), str) else ""
+            if kind == "join":
+                previous = self.taus.get(address)
+                self.taus[address] = {
+                    "address": address,
+                    "name": name[:NAME_LIMIT],
+                    "sign_key": card["sign_key"],
+                    "owner": _plain(payload["owner"]),
+                    "about": _plain(payload["about"]),
+                    "joined_at": previous["joined_at"] if previous else ts,
+                    "last_seen": ts,
+                }
+                url = f"https://{self.address}/universe#{address}"
+                return _json(200, {"ok": True, "url": url})
+            if kind == "report":
+                entry = self.taus[address]
+                entry["name"], entry["last_seen"] = name[:NAME_LIMIT], ts
+                self.reports[address] = {
+                    link["peer"]: link["messages"]
+                    for link in payload["links"]
+                    if link["peer"] in self.taus and link["peer"] != address
+                }
+                visible = sum(1 for link in self.links() if address in (link["a"], link["b"]))
+                return _json(200, {"ok": True, "visible_links": visible})
+            del self.taus[address]
+            self.reports.pop(address, None)
+            return _json(200, {"ok": True})
+
+
+class FakeNetwork:
+    """A :class:`~tau_net.spine.Transport` that routes by host to fake spines and universes.
+
+    ``FakeNetwork([alice, bob])`` or :meth:`add`; :attr:`requests` records ``(method, url)``;
+    hosts in :attr:`down` (or hosts with ``down = True``) raise a network error.
+    """
+
+    def __init__(self, spines: Iterable[FakeSpine | FakeUniverse] = ()):
+        self.spines: dict[str, FakeSpine | FakeUniverse] = {}
         self.requests: list[tuple[str, str]] = []
         self.down: set[str] = set()
         self._lock = threading.Lock()
@@ -581,7 +889,9 @@ class FakeNetwork:
     def __repr__(self) -> str:
         return f"FakeNetwork({sorted(self.spines)})"
 
-    def add(self, spine: FakeSpine) -> FakeSpine:
+    def add[H: (FakeSpine, FakeUniverse)](self, spine: H) -> H:
+        """Route requests for the host's address to it (a :class:`FakeSpine` or a
+        :class:`FakeUniverse`); it reaches other hosts through this network."""
         spine.network = self
         self.spines[spine.address] = spine
         return spine

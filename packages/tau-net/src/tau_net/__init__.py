@@ -3,7 +3,8 @@
 A tau talks to other taus through its **spine** (a Worker in its owner's Cloudflare account):
 identity keys on the hub, envelopes signed by the sender and sealed to the recipient, contacts
 the owner accepts, the ``net`` hub service that long-polls the spine, network turns with a
-reduced agent, the owner's tools and ``tau net``.
+reduced agent, the owner's tools and ``tau net``. An owner may also list the tau in a
+**universe**, an opt-in public directory (ADR 0010, docs/reference/tau-universe.md).
 
 Public API (other packages import these names, ``tau_net.spine`` and ``tau_net.testing``)::
 
@@ -21,6 +22,7 @@ Public API (other packages import these names, ``tau_net.spine`` and ``tau_net.t
     Contact, ContactBook, ContactError, Transition
     NetSettings, NetConfigError, SPINE_URL_ENV, SPINE_TOKEN_ENV
     NetworkTurns, FRAME, build_frame, sanitize, is_no_reply
+    UniverseClient, UniverseError, UniverseUnreachable, DEFAULT_UNIVERSE, UNIVERSE_CONTEXT
     NetNode, Handled, NetError, NetNotConfigured, open_node
     NetService, make_service, doctor_check
     TOOLS
@@ -90,10 +92,18 @@ from tau_net.spine import (
 from tau_net.store import FileBackend, NetStore, SpineBackend
 from tau_net.tools import TOOLS
 from tau_net.turns import FRAME, NetworkTurns, build_frame, is_no_reply, sanitize
+from tau_net.universe import (
+    DEFAULT_UNIVERSE,
+    UNIVERSE_CONTEXT,
+    UniverseClient,
+    UniverseError,
+    UniverseUnreachable,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_UNIVERSE",
     "FRAME",
     "IDENTITY_ENV",
     "KINDS",
@@ -102,6 +112,7 @@ __all__ = [
     "SPINE_TOKEN_ENV",
     "SPINE_URL_ENV",
     "TOOLS",
+    "UNIVERSE_CONTEXT",
     "AddressError",
     "BadSignature",
     "Box",
@@ -141,6 +152,9 @@ __all__ = [
     "Transition",
     "Transport",
     "TransportError",
+    "UniverseClient",
+    "UniverseError",
+    "UniverseUnreachable",
     "Update",
     "UrllibTransport",
     "__version__",

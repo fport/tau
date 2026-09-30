@@ -10,6 +10,13 @@
     public_note = "net.md"            # under persona/; replaces user.md in network turns
     store = "file"                    # file | spine (cloud mode)
     poll_timeout_seconds = 25
+    universe = "tau.getporti.com"     # the universe host; "" switches the universe off
+    universe_links = true             # report mutual links (with counts) to listed contacts
+    universe_report_minutes = 60      # 5 or more
+
+The owner's personal values (the card name, the universe membership, owner and about) are
+runtime data in the network store's ``profile`` document (:mod:`tau_net.profile`), never
+``tau.toml``; ``name`` here is only a fallback for the card name.
 
 ``TAU_SPINE_URL`` and ``TAU_SPINE_TOKEN`` point the hub at its spine; ``TAU_NET_IDENTITY``
 replaces the identity file (cloud mode); ``TAU_NET_ALLOW_INSECURE=1`` lets development peers on
@@ -29,12 +36,14 @@ from typing import Any
 
 from tau_core import Config
 
-from tau_net.encoding import INSECURE_HOSTS
+from tau_net.encoding import INSECURE_HOSTS, AddressError, parse_address
 from tau_net.spine import MAX_POLL_TIMEOUT, SpineClient, Transport
 from tau_net.store import STORE_KINDS
+from tau_net.universe import DEFAULT_UNIVERSE
 
 __all__ = [
     "COMPONENT",
+    "NAME_LIMIT",
     "SPINE_TOKEN_ENV",
     "SPINE_URL_ENV",
     "NetConfigError",
@@ -58,14 +67,26 @@ KNOWN_KEYS = frozenset(
         "public_note",
         "store",
         "poll_timeout_seconds",
+        "universe",
+        "universe_links",
+        "universe_report_minutes",
     }
 )
+REPORT_MINUTES_RANGE = (5, 1440)
+"""``universe_report_minutes``: at least 5; at most a day (a universe shows a tau as online
+for 2 hours after its last report and forgets it after 30 days)."""
 PRIVATE_NOTES = frozenset({"user.md", "persona.md"})
 """Files a network turn may never read as the public note."""
 
 
+_UNIVERSE_ERROR = (
+    "tau.toml: [component.net] 'universe' must be a host such as \"tau.getporti.com\", "
+    'or "" to switch the universe off.'
+)
+
+
 class NetConfigError(ValueError):
-    """``[component.net]`` or a network variable that cannot be used."""
+    """``[component.net]``, a network variable or a profile value that cannot be used."""
 
 
 def _int(settings: Mapping[str, Any], key: str, default: int, low: int, high: int) -> int:
@@ -86,6 +107,10 @@ class NetSettings:
     public_note: str = "net.md"
     store: str = "file"
     poll_timeout_seconds: int = MAX_POLL_TIMEOUT
+    universe: str = DEFAULT_UNIVERSE
+    """The universe host; ``""`` switches the universe off."""
+    universe_links: bool = True
+    universe_report_minutes: int = 60
 
     @classmethod
     def from_mapping(cls, settings: Mapping[str, Any]) -> NetSettings:
@@ -118,6 +143,21 @@ class NetSettings:
             raise NetConfigError(
                 f"tau.toml: [component.net] 'store' must be one of {', '.join(STORE_KINDS)}."
             )
+        universe = settings.get("universe", cls.universe)
+        if not isinstance(universe, str):
+            raise NetConfigError(_UNIVERSE_ERROR)
+        if universe.strip():
+            try:
+                universe = parse_address(universe)
+            except AddressError:
+                raise NetConfigError(_UNIVERSE_ERROR) from None
+        else:
+            universe = ""
+        universe_links = settings.get("universe_links", cls.universe_links)
+        if not isinstance(universe_links, bool):
+            raise NetConfigError(
+                "tau.toml: [component.net] 'universe_links' must be true or false."
+            )
         return cls(
             name=name.strip(),
             auto_reply=auto_reply,
@@ -129,6 +169,14 @@ class NetSettings:
             store=store,
             poll_timeout_seconds=_int(
                 settings, "poll_timeout_seconds", cls.poll_timeout_seconds, 0, MAX_POLL_TIMEOUT
+            ),
+            universe=universe,
+            universe_links=universe_links,
+            universe_report_minutes=_int(
+                settings,
+                "universe_report_minutes",
+                cls.universe_report_minutes,
+                *REPORT_MINUTES_RANGE,
             ),
         )
 

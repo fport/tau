@@ -7,7 +7,8 @@ It is built on [Strands Agents](https://strandsagents.com/) and is published on 
 
 ```sh
 pip install tau-core        # or, inside the tau repo: uv sync --all-packages --group dev
-tau --help                  # chat, hub, components, doctor, init, spend, telegram, version, plus plugin commands (tui, net, ...)
+tau --help                  # chat, hub, components, doctor, init, setup, spend, telegram, version, plus plugin commands (tui, net, ...)
+tau setup                   # pick features, install their packages, set them up (docs/reference/setup.md)
 tau init                    # create ~/.tau/tau.toml and the persona files from the templates
 tau doctor                  # check config, credentials, budgets, sessions, persona, .env, the hub
 tau spend                   # what every model role spent in its budget period
@@ -923,6 +924,13 @@ tau init                # tau.toml from the shipped template (provider: anthropi
                         # asks the UI language unless --language or --yes
 tau init --home ~/.tau --provider anthropic --language tr --profile home --yes   # non-interactive
 ```
+
+`tau setup` (`tau_core.setup`, ADR 0014) sits on top of them: a checklist of the features in
+`templates/features.toml`, one `uv tool install --force tau-core==<this version> --with …` for
+the missing packages and a re-execution in the new environment, then `tau init`, "about you",
+each feature's steps (tau subcommands run as subprocesses; tau-core never imports tau-guard,
+tau-net or tau-sub) and `tau doctor`. `tau setup status|install|run --json` is the line
+protocol the Mac app drives; `docs/reference/setup.md` in the repository specifies it.
 
 `tau init` rewrites the `provider` and `model_id` of `brain` and `fast` to the provider it picks,
 with the ids of `templates/models.toml` (`anthropic` renders the template as shipped). The

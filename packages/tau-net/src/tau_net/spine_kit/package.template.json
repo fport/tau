@@ -1,0 +1,16 @@
+{
+  "name": "tau-spine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "tau spine 0.1.0+23e68ef60fa9, deployed from the tau-net spine kit",
+  "scripts": {
+    "deploy": "wrangler deploy && wrangler d1 migrations apply DB --remote",
+    "dev": "wrangler d1 migrations apply DB --local && wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "4.144.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

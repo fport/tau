@@ -10,6 +10,7 @@
     "dev:cloud": "wrangler d1 migrations apply DB --local --config wrangler.cloud.example.jsonc && wrangler dev --config wrangler.cloud.example.jsonc --enable-containers=false",
     "deploy": "wrangler deploy",
     "deploy:cloud": "node scripts/configure.mjs --check-cloud && wrangler deploy && wrangler d1 migrations apply DB --remote",
+    "kit": "node scripts/kit.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types --config wrangler.cloud.example.jsonc --env-file .dev.vars.example --include-runtime=false --strict-vars=false"

@@ -43,7 +43,13 @@ from tau_core.config import (
     RoleConfig,
 )
 from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES
-from tau_core.models import PLANNED_PROVIDERS, missing_credentials, provider_load_failure
+from tau_core.models import (
+    PLANNED_PROVIDERS,
+    missing_credentials,
+    provider_load_failure,
+    proxy_key_env,
+    proxy_url,
+)
 from tau_core.persona import PersonaLoader
 from tau_core.plugins import _as_tools
 from tau_core.sessions import PLANNED_BACKENDS, open_session_store
@@ -52,10 +58,12 @@ from tau_core.tiers import tier_of
 logger = logging.getLogger(__name__)
 
 TEMPLATES = resources.files("tau_core") / "templates"
-PROVIDER_PREFERENCE = ("bedrock", "anthropic", "fake")
-"""``tau init`` picks the first provider whose credentials are present; ``fake`` needs none."""
-INIT_ROLES = ("brain", "fast")
-"""Roles whose provider and model id ``tau init`` rewrites; ``local`` keeps the template's."""
+PROVIDER_PREFERENCE = ("proxy", "anthropic", "bedrock", "fake")
+"""``tau init`` picks the first provider whose credentials are present; ``fake`` needs none.
+``proxy`` needs the brain role's proxy key (``TAU_PROXY_KEY_BRAIN``, from ``tau proxy keys``)."""
+DIRECT_LOCAL_PROVIDER = "ollama"
+"""Without the proxy, ``tau init`` points the roles ``models.toml`` lists under ``[ollama]``
+(``local``) at Ollama directly."""
 HEALTH_TIMEOUT = 1.0
 
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # loopback, never a proxy
@@ -439,6 +447,84 @@ def _check_role(name: str, role: RoleConfig, env: Mapping[str, str]) -> Check:
     )
 
 
+def _proxy_alive(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(f"{url}/health/liveliness", timeout=1.0):  # noqa: S310
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+def _check_proxy(config: Config, env: Mapping[str, str]) -> list[Check]:
+    """The LiteLLM proxy behind the ``proxy`` roles: does it answer, does it know every role's
+    key, and does each key's cap match the role's ``budget`` in tau.toml. A budget on a role
+    the proxy does not serve is flagged: nothing would enforce it."""
+    from tau_core.spend import SpendTracker, proxy_roles
+
+    checks = [
+        Check(
+            f"role {name}",
+            "warn",
+            f"has a budget, but provider '{role.provider}' cannot enforce it (only the proxy "
+            "does; ADR 0009)",
+        )
+        for name, role in config.roles.items()
+        if role.budget is not None and role.provider != "proxy"
+    ]
+    roles = proxy_roles(config)
+    if not roles:
+        return checks
+    url = proxy_url(next(iter(roles.values())), env)
+    if not _proxy_alive(url):
+        return [
+            *checks,
+            Check(
+                "proxy",
+                "warn",
+                f"not answering at {url}; start it with infra/litellm/proxy.sh up "
+                "(model calls of the proxy roles fail until then)",
+            ),
+        ]
+    for spend in SpendTracker(config, env).refresh().values():
+        cfg = roles[spend.role]
+        if spend.error is not None:
+            if proxy_key_env(cfg) in spend.error:
+                continue  # the role line already says the key is missing
+            checks.append(
+                Check(
+                    f"proxy {spend.role}",
+                    "fail",
+                    f"the proxy does not accept {proxy_key_env(cfg)} ({spend.error}); "
+                    "run tau proxy keys",
+                )
+            )
+        elif cfg.budget is None:
+            checks.append(
+                Check(f"proxy {spend.role}", "warn", "no budget in tau.toml: the key has no cap")
+            )
+        elif spend.drifted:
+            checks.append(
+                Check(
+                    f"proxy {spend.role}",
+                    "warn",
+                    f"the key's cap (${spend.max_budget or 0:.2f} per {spend.period}) differs "
+                    f"from tau.toml (${cfg.budget.usd:.2f} per {cfg.budget.period}); "
+                    "run tau proxy keys",
+                )
+            )
+        else:
+            state = "spent" if spend.exhausted else "within budget"
+            checks.append(
+                Check(
+                    f"proxy {spend.role}",
+                    "ok",
+                    f"${spend.spend or 0:.2f} of ${spend.max_budget or 0:.2f} per "
+                    f"{spend.period}, {state}",
+                )
+            )
+    return checks
+
+
 def _check_sessions(config: Config) -> Check:
     backend = config.sessions.backend
     try:
@@ -615,6 +701,7 @@ def run_doctor(home: Path | None = None, *, env: Mapping[str, str] | None = None
     env = os.environ if env is None else env_with_dotenv(config.home, env)
     for name, role in config.roles.items():
         checks.append(_check_role(name, role, env))
+    checks += _check_proxy(config, env)
     checks.append(_check_sessions(config))
     checks += _check_persona(config)
     checks.append(_check_dotenv(config))
@@ -678,11 +765,20 @@ class InitResult:
     kept: tuple[Path, ...]
 
 
+def provider_probe(provider: str) -> RoleConfig:
+    """A ``brain`` role on ``provider`` with the model id ``tau init`` would write, to ask
+    whether its credentials are present (the proxy's key name follows the model group)."""
+    try:
+        model_id = model_ids(provider).get("brain", "probe")
+    except ConfigError:
+        model_id = "probe"
+    return RoleConfig(provider=provider, model_id=model_id)
+
+
 def pick_provider(env: Mapping[str, str]) -> str:
     """The first of :data:`PROVIDER_PREFERENCE` whose credentials are in ``env``."""
     for provider in PROVIDER_PREFERENCE:
-        probe = RoleConfig(provider=provider, model_id="probe")
-        if not missing_credentials(probe, env):
+        if not missing_credentials(provider_probe(provider), env):
             return provider
     return PROVIDER_PREFERENCE[-1]  # pragma: no cover - fake needs nothing
 
@@ -703,10 +799,15 @@ _LANGUAGE_LINE = re.compile(r'^(language\s*=\s*)"[^"]*"(.*)$')
 
 
 def render_config(template: str, *, provider: str, language: str) -> str:
-    """The template with ``provider``/``model_id`` rewritten for :data:`INIT_ROLES`, the
-    ``[models.roles.brain.fallback]`` table dropped when the provider is not ``bedrock`` (the
-    fallback only makes sense for it), and ``[ui] language`` set. Comments survive."""
+    """The template with each role's ``provider``/``model_id`` rewritten from ``models.toml``
+    and ``[ui] language`` set. Comments survive.
+
+    A role ``models.toml`` lists under ``provider`` moves to it; without the proxy, a role
+    listed under ``[ollama]`` (``local``) moves to Ollama directly, and the ``budget`` tables
+    are dropped, since only the proxy enforces them (ADR 0009). ``provider="proxy"`` renders
+    the template as shipped (the repository's own ``tau.toml``)."""
     ids = model_ids(provider)
+    direct = {} if provider == "proxy" else model_ids(DIRECT_LOCAL_PROVIDER)
     out: list[str] = []
     table: str | None = None
     skipping = False
@@ -714,7 +815,7 @@ def render_config(template: str, *, provider: str, language: str) -> str:
         header = _HEADER.match(line)
         if header:
             table = header.group(1).strip()
-            skipping = table == "models.roles.brain.fallback" and provider != "bedrock"
+            skipping = provider != "proxy" and table.endswith(".budget")
         if skipping:
             continue
         role = (
@@ -722,10 +823,17 @@ def render_config(template: str, *, provider: str, language: str) -> str:
             if table and table.startswith("models.roles.")
             else None
         )
-        if role in INIT_ROLES and (match := _PROVIDER_LINE.match(line)):
-            line = f'{match.group(1)}"{provider}"{match.group(2)}'
-        elif role in INIT_ROLES and (match := _MODEL_ID_LINE.match(line)):
-            line = f'{match.group(1)}"{ids[role]}"{match.group(2)}'
+        target = (
+            (provider, ids[role])
+            if role in ids
+            else (DIRECT_LOCAL_PROVIDER, direct[role])
+            if role in direct
+            else None
+        )
+        if target and (match := _PROVIDER_LINE.match(line)):
+            line = f'{match.group(1)}"{target[0]}"{match.group(2)}'
+        elif target and (match := _MODEL_ID_LINE.match(line)):
+            line = f'{match.group(1)}"{target[1]}"{match.group(2)}'
         elif table == "ui" and (match := _LANGUAGE_LINE.match(line)):
             line = f'{match.group(1)}"{language}"{match.group(2)}'
         out.append(line)
@@ -798,22 +906,27 @@ def init_home(
 
 
 _NEXT_STEPS = {
+    "proxy": "A proxy key (TAU_PROXY_KEY_BRAIN) was found in the environment or <home>/.env: "
+    "every role goes through the LiteLLM proxy with the budgets in tau.toml. Run "
+    "`tau proxy keys` after changing them.",
+    "anthropic": "ANTHROPIC_API_KEY was found in the environment or <home>/.env. brain and fast "
+    "call Anthropic directly and local calls Ollama; for hard budgets run the LiteLLM proxy "
+    "(infra/litellm) and `tau init --provider proxy --force`.",
     "bedrock": "AWS credentials were found in the environment or <home>/.env (AWS_REGION plus "
     "a profile, keys or a bearer token).",
-    "anthropic": "ANTHROPIC_API_KEY was found in the environment or <home>/.env.",
     "fake": "No model credentials were found in the environment or <home>/.env, so both roles "
-    "use the scripted 'fake' provider. Add AWS or Anthropic credentials to <home>/.env (names "
-    "are in <home>/.env.example) and run `tau init --force`, or edit tau.toml.",
+    "use the scripted 'fake' provider. Add ANTHROPIC_API_KEY to <home>/.env (names are in "
+    "<home>/.env.example) and run `tau init --force`, or edit tau.toml.",
 }
 
 
 @click.command(
     name="init",
     help="Set up a configuration root: tau.toml from the shipped template (provider picked "
-    "from the credentials present in the environment or <home>/.env: bedrock, then anthropic, "
-    "else fake), persona/persona.md, persona/user.example.md, persona/user.md (from the "
-    "example, unless it exists) and .env.example (the variable names). Existing files are kept "
-    "unless --force is given; user.md and .env.example are never overwritten.",
+    "from the credentials present in the environment or <home>/.env: proxy, then anthropic, "
+    "then bedrock, else fake), persona/persona.md, persona/user.example.md, persona/user.md "
+    "(from the example, unless it exists) and .env.example (the variable names). Existing "
+    "files are kept unless --force is given; user.md and .env.example are never overwritten.",
     short_help="Create tau.toml and the persona files.",
 )
 @help_option()

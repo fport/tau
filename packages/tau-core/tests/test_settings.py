@@ -88,13 +88,16 @@ def test_set_role_keeps_comments_and_layout(template_home: Path) -> None:
 
     # Comments survive: the header block, the provider comment, the [agent] comments.
     assert after.startswith("# tau.toml — static configuration read by tau_core.config.Config.")
-    assert "# bedrock | anthropic | fake (ollama: issue 012)" in after
+    assert "# proxy | anthropic | bedrock | ollama | fake" in after
     assert "# per-turn loop guard, Strands Limits(turns=...)" in after
-    assert "[models.roles.brain.fallback]" not in after  # removed
-    assert "[models.roles.fast.fallback]" in after and "# same rule as brain" in after
-    assert before.count("\n") - 4 <= after.count("\n") <= before.count("\n") + 1
+    assert "# hard cap of the role's proxy key" in after  # the budget table is untouched
+    assert "[models.roles.brain.fallback]" not in after
+    assert "[models.roles.fast.fallback]" in after  # added
+    assert before.count("\n") <= after.count("\n") <= before.count("\n") + 4
     config = Config.load(template_home, env={})
-    assert config.roles["brain"] == RoleConfig("anthropic", "brain-x", max_tokens=2048)
+    brain = config.roles["brain"]
+    assert (brain.provider, brain.model_id, brain.max_tokens) == ("anthropic", "brain-x", 2048)
+    assert brain.fallback is None and brain.budget is not None  # KEEP: budget untouched
     assert config.roles["fast"].fallback == RoleConfig("anthropic", "fb-x")
     assert config.roles["fast"].max_tokens == 1024  # KEEP: untouched
     assert config.roles["local"].max_tokens is None
@@ -120,33 +123,51 @@ def test_set_role_adds_a_fallback_table_and_validates(template_home: Path) -> No
 
 
 PLANNED_REFUSED = (
-    "provider 'ollama' is not supported yet (issue 012); available: anthropic, bedrock, fake"
+    "provider 'futurebox' is not supported yet (issue 999); available: anthropic, bedrock, fake"
 )
 """The refusal's text up to the built-in providers (an installed provider plugin adds to it)."""
+
+
+@pytest.fixture
+def planned(monkeypatch: pytest.MonkeyPatch) -> str:
+    """A provider a later issue would build (none is planned in tau-core right now)."""
+    import tau_core.models as models
+
+    monkeypatch.setitem(models.PLANNED_PROVIDERS, "futurebox", "999")
+    return "futurebox"
 
 
 def refused(role: str) -> str:
     return re.escape(f"[models.roles.{role}] {PLANNED_REFUSED}")
 
 
-def test_a_save_never_introduces_a_planned_provider(template_home: Path) -> None:
-    """``Config`` accepts ``ollama`` by name, but a role on it cannot start: ``set_role`` and
-    ``check_document`` refuse a *new* use, while the template's ``local`` role, which already
-    names it, never blocks an unrelated save."""
+def test_a_save_never_introduces_a_planned_provider(template_home: Path, planned: str) -> None:
+    """``Config`` accepts a planned provider by name, but a role on it cannot start:
+    ``set_role`` and ``check_document`` refuse a *new* use, while a role that already names it
+    never blocks an unrelated save."""
+    path = template_home / "tau.toml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(
+        text.replace(
+            '[models.roles.local]\nprovider = "proxy"',
+            '[models.roles.local]\nprovider = "futurebox"',
+        ),
+        encoding="utf-8",
+    )
     doc = load_document(template_home)
     with pytest.raises(ConfigError, match=refused("brain")):
-        set_role(doc, "brain", "ollama", "qwen3:8b")
+        set_role(doc, "brain", "futurebox", "f")
     with pytest.raises(ConfigError, match=r"\[models\.roles\.fast\.fallback\] "):
-        set_role(doc, "fast", "bedrock", "x", fallback=("ollama", "qwen3:8b"))
-    assert doc["models"]["roles"]["brain"]["provider"] == "bedrock"  # nothing half-written
-    set_role(doc, "local", "ollama", "qwen3:14b")  # the role already sits on it: allowed
+        set_role(doc, "fast", "bedrock", "x", fallback=("futurebox", "f"))
+    assert doc["models"]["roles"]["brain"]["provider"] == "proxy"  # nothing half-written
+    set_role(doc, "local", "futurebox", "f2")  # the role already sits on it: allowed
     set_ui_language(doc, "tr")
-    save_document(template_home, doc)  # local = ollama was on disk already
-    assert validate(template_home, env={}).roles["local"].model_id == "qwen3:14b"
+    save_document(template_home, doc)  # local = futurebox was on disk already
+    assert validate(template_home, env={}).roles["local"].model_id == "f2"
     with pytest.raises(ConfigError, match=refused("local")):
         check_document(doc)  # without a previous document every use is new
     check_document(doc, previous=load_document(template_home))
-    fresh = tomlkit_document('[models.roles.brain]\nprovider = "ollama"\nmodel_id = "x"\n')
+    fresh = tomlkit_document('[models.roles.brain]\nprovider = "futurebox"\nmodel_id = "x"\n')
     with pytest.raises(ConfigError, match=re.escape(PLANNED_REFUSED)):
         save_document(template_home / "new", fresh)  # no file yet: strict
     assert not (template_home / "new" / "tau.toml").exists()
@@ -307,7 +328,7 @@ def test_mask_shows_less_of_a_shorter_value() -> None:
     assert mask(SECRET) == "sk-…abcd"
 
 
-def test_credential_status_cases(tmp_path: Path) -> None:
+def test_credential_status_cases(tmp_path: Path, planned: str) -> None:
     config = test_config(tmp_path)
     home = config.home
     fake = RoleConfig("fake", "x")
@@ -322,8 +343,11 @@ def test_credential_status_cases(tmp_path: Path) -> None:
     set_credential(home, "ANTHROPIC_API_KEY", SECRET)  # the file counts, like Config.load
     from_file = credential_status(home, RoleConfig("anthropic", "y"), env={})
     assert from_file.state == "ok" and from_file.satisfied == ["ANTHROPIC_API_KEY"]
-    planned = credential_status(home, RoleConfig("ollama", "x"), env={})
-    assert planned.state == "unavailable" and "issue 012" in planned.detail
+    later = credential_status(home, RoleConfig(planned, "x"), env={})
+    assert later.state == "unavailable" and "issue 999" in later.detail
+    assert credential_status(home, RoleConfig("ollama", "x"), env={}).state == "none"
+    proxy = credential_status(home, RoleConfig("proxy", "fast"), env={})
+    assert proxy.state == "missing" and proxy.missing == ["TAU_PROXY_KEY_FAST"]
     assert status_text(missing) == "missing AWS_REGION, AWS_PROFILE"
     assert (
         status_text(fallback, "tr")
@@ -332,14 +356,16 @@ def test_credential_status_cases(tmp_path: Path) -> None:
     assert status_text(ok, "tr") == "kimlik bilgileri tamam"
 
 
-def test_names_and_providers(tmp_path: Path) -> None:
+def test_names_and_providers(tmp_path: Path, planned: str) -> None:
     config = test_config(tmp_path)
     home = config.home
     assert credential_names_for("anthropic") == [["ANTHROPIC_API_KEY"]]
     assert credential_names_for("fake") == [] and credential_names_for("ollama") == []
+    assert credential_names_for("proxy") == [["TAU_PROXY_KEY_BRAIN"]]
     assert credential_names_for("no-such-provider") == []
     providers = dict(known_providers())
-    assert providers["fake"] is False and providers["ollama"] is True
+    assert providers["fake"] is False and providers["ollama"] is False
+    assert providers["proxy"] is False and providers[planned] is True
     assert configured_providers(home) == ["fake"]
     (home / ".env.example").write_text(
         "# MY_TOKEN=...\nOTHER=1\n# TAU_PROFILE=home\n", encoding="utf-8"
@@ -488,13 +514,13 @@ def test_settings_model_setter_rebuilds_on_the_same_session(tmp_path: Path) -> N
     assert validate(config.home, env={}).roles["brain"].provider == "fake"
 
 
-def test_settings_model_refuses_a_planned_provider(tmp_path: Path) -> None:
-    """``ollama`` loads by name but cannot start; ``/settings model`` refuses it so the next
-    ``tau chat`` does not exit 2 (set_role, before anything is written)."""
+def test_settings_model_refuses_a_planned_provider(tmp_path: Path, planned: str) -> None:
+    """A planned provider loads by name but cannot start; ``/settings model`` refuses it so the
+    next ``tau chat`` does not exit 2 (set_role, before anything is written)."""
     config = test_config(tmp_path)
     state = make_state(config)
     before = (config.home / "tau.toml").read_text(encoding="utf-8")
-    out = run(state, ["/settings model brain ollama qwen3:8b"])
+    out = run(state, [f"/settings model brain {planned} f"])
     assert f"Not saved: tau.toml: [models.roles.brain] {PLANNED_REFUSED}" in out
     assert (config.home / "tau.toml").read_text(encoding="utf-8") == before
     assert state.config.roles["brain"].provider == "fake"

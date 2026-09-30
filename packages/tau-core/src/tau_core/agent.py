@@ -58,7 +58,7 @@ from tau_core.approval import Approver, AutoRejectApprover, Exemption, TierGate,
 from tau_core.config import AgentConfig, Config, ConfigError
 from tau_core.events import AgentEvent, EventBus
 from tau_core.i18n import DEFAULT_LANGUAGE, t
-from tau_core.models import resolve_model
+from tau_core.models import ModelNotice, resolve_model
 from tau_core.persona import ContextSource, PersonaHook, PersonaLoader, default_context_factory
 from tau_core.plugins import discover_tools
 from tau_core.sessions import SessionStore, new_session_id
@@ -170,8 +170,25 @@ def turn_limit_text(n: int, language: str = DEFAULT_LANGUAGE) -> str:
     return t("notice.turn_limit", language, n=n)
 
 
+def model_notice_of(exc: BaseException) -> ModelNotice | None:
+    """The :class:`ModelNotice` behind a failed turn, if there is one: the SDK wraps a model's
+    exception in ``EventLoopException`` (``original_exception``, ``__cause__``)."""
+    current: BaseException | None = exc
+    for _ in range(8):
+        if current is None:
+            return None
+        if isinstance(current, ModelNotice):
+            return current
+        current = getattr(current, "original_exception", None) or current.__cause__
+    return None
+
+
 def model_error_text(exc: BaseException, language: str = DEFAULT_LANGUAGE) -> str:
-    """The notice for a failed model call: a short detail, the rest is in the log."""
+    """The notice for a failed model call: a :class:`ModelNotice`'s own sentence (a spent
+    budget, the proxy down), else a short detail with the rest in the log."""
+    notice = model_notice_of(exc)
+    if notice is not None:
+        return notice.notice(language)
     detail = " ".join(str(exc).split())[:160].rstrip(". ") or type(exc).__name__
     return t("notice.model_error", language, detail=detail)
 
@@ -524,11 +541,18 @@ class TauAgent:
             except Exception as exc:
                 for item in drain():
                     yield item
-                logger.exception("model call failed in session %s", self.session_id)
+                if model_notice_of(exc) is not None:
+                    # A spent budget or a stopped proxy: the notice says it all, no trace.
+                    logger.warning("model call refused in session %s: %s", self.session_id, exc)
+                else:
+                    logger.exception("model call failed in session %s", self.session_id)
                 self._emit("error", {"message": str(exc)[:500], "where": "model"})
                 repair = text = model_error_text(exc, language)
                 yield Notice(text=text)
                 stop_reason = "error"
+            for text in self._model_notices(language):
+                self._emit("notice", {"message": text, "reason": "budget"})
+                yield Notice(text=text)
             if stop_reason == "limit_turns":
                 self._emit("turn_limit", {"max_turns": agent_cfg.max_turns})
                 repair = text = turn_limit_text(agent_cfg.max_turns, language)
@@ -556,6 +580,19 @@ class TauAgent:
                 logger.debug("clearing a late cancel signal in session %s", self.session_id)
                 self.agent.cancel_signal.clear()
             unsubscribe()
+
+    def _model_notices(self, language: str) -> list[str]:
+        """What the model asks the channel to say about this turn (a spent role that handed the
+        call to its ``degrade_to``), each distinct sentence once."""
+        take = getattr(self.agent.model, "take_notices", None)
+        if not callable(take):
+            return []
+        texts: list[str] = []
+        for notice in take():
+            text = notice.notice(language)
+            if text not in texts:
+                texts.append(text)
+        return texts
 
     def _schedule_repair(self, text: str, last_before: Message | None) -> None:
         """Remember ``text`` for the next turn when this turn left the history dangling.

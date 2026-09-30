@@ -139,9 +139,15 @@ def test_missing_credentials_error_names_the_variables(cfg: Config) -> None:
     assert "Example names are in .env.example." in str(exc)
 
 
-def test_planned_and_unknown(cfg: Config) -> None:
-    with pytest.raises(ConfigError, match="issue 012"):
-        resolve_model("local", cfg, env={})
+def test_planned_and_unknown(cfg: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tau_core.models as models
+
+    monkeypatch.setitem(models.PLANNED_PROVIDERS, "futurebox", "999")
+    later = cfg.with_overrides(
+        roles={**cfg.roles, "later": RoleConfig(provider="futurebox", model_id="f")}
+    )
+    with pytest.raises(ConfigError, match="issue 999"):
+        resolve_model("later", later, env={})
     with pytest.raises(ConfigError, match="is not defined in tau.toml"):
         resolve_model("nope", cfg, env={})
 

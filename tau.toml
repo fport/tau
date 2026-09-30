@@ -1,32 +1,43 @@
 # tau.toml — static configuration read by tau_core.config.Config.
 # Role → provider + model id. Model ids are data; code never hardcodes them.
-# Bedrock ids use the Converse API form Strands uses (cross-region "global." prefix).
-# Verify the exact ids in the Bedrock console while doing issue 003.
 # Secrets never go here: credentials come from .env (see .env.example).
+#
+# provider = "proxy": the role goes through the LiteLLM proxy (infra/litellm, ADR 0009).
+# model_id is the proxy's model group, infra/litellm/config.yaml maps it to a real model, and the
+# role's own virtual key (TAU_PROXY_KEY_<GROUP>, written by `tau proxy keys`) carries the
+# budget. `tau init` without a proxy key writes direct providers (anthropic, ollama) and drops
+# the budget tables, which only the proxy can enforce.
 
 [models.roles.brain]
-provider = "bedrock"                      # bedrock | anthropic | fake (ollama: issue 012)
-model_id = "global.anthropic.claude-sonnet-5"
+provider = "proxy"                        # proxy | anthropic | bedrock | ollama | fake
+model_id = "brain"
 max_tokens = 4096
 
-[models.roles.brain.fallback]             # used only when the primary has no credentials
-provider = "anthropic"
-model_id = "claude-sonnet-5"
+[models.roles.brain.budget]               # hard cap of the role's proxy key; `tau proxy keys` applies changes
+usd = 15                                  # dollars per period
+period = "1mo"                            # LiteLLM budget_duration: 1d, 7d, 1mo, ... (resets in UTC)
+degrade_to = "fast"                       # once spent, this role answers until the reset; omit to stop and say so
 
 [models.roles.fast]
-provider = "bedrock"
-model_id = "global.anthropic.claude-haiku-4-5"
+provider = "proxy"
+model_id = "fast"
 max_tokens = 1024
 
-[models.roles.fast.fallback]              # same rule as brain: used only when Bedrock has no credentials
-provider = "anthropic"
-model_id = "claude-haiku-4-5-20251001"
+[models.roles.fast.budget]
+usd = 1
+period = "1d"
 
 [models.roles.local]
-provider = "ollama"                       # arrives in issue 012; resolving it now raises a clear error
-model_id = "qwen3:8b"
+provider = "proxy"                        # Ollama on the Mac; the proxy answers with fast when Ollama is away
+model_id = "local"
+max_tokens = 1024
 
-# Optional per-role prompt caching (Bedrock and Anthropic; the fake provider ignores it):
+[models.roles.local.budget]               # Ollama is free; the cap bounds what the fast fallback may spend
+usd = 0.5
+period = "1d"
+
+# Optional per-role prompt caching for the direct Anthropic and Bedrock providers (the proxy and
+# the fake provider ignore it):
 # [models.roles.brain.cache]
 # strategy = "auto"                       # auto | anthropic; Strands CacheConfig(strategy=...)
 # ttl = "1h"                              # optional cache TTL ("5m", "1h"); system_prompt_ttl / tools_ttl take a bool or a TTL

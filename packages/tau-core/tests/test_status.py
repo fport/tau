@@ -198,3 +198,24 @@ def test_hub_check_never_raises(config: Config, monkeypatch: pytest.MonkeyPatch)
     agent = build_agent(config=config, model=FakeModel(), tools=[])
     lines = asyncio.run(status_report(agent))
     assert lines[-1].startswith("Hub: control API check failed on ")
+
+
+def test_status_reports_the_proxy_budget(config: Config) -> None:
+    from datetime import UTC, datetime
+
+    from tau_core.config import BudgetConfig
+    from tau_core.spend import RoleSpend
+
+    roles = {**config.roles, "brain": RoleConfig("proxy", "brain", budget=BudgetConfig(15, "1mo"))}
+    proxied = config.with_overrides(roles=roles)
+    agent = build_agent(config=proxied, model=FakeModel(), tools=[], context_sources=[])
+    reset = datetime(2026, 10, 1, tzinfo=UTC)
+    spends = {"brain": RoleSpend("brain", "brain", 0.42, 15.0, "1mo", reset, 15.0, "1mo")}
+    lines = status_lines(agent, language="en", spends=spends)
+    assert lines[-1] == "Budget: brain $0.42 of $15.00 per 1mo (resets 01.10.2026 03:00)"
+    unread = status_lines(agent, language="tr", spends={"brain": RoleSpend("brain", "brain")})
+    assert unread[-1] == "Bütçe: henüz okunamadı (proxy yanıt vermedi)"
+    assert not any(
+        line.startswith("Budget")
+        for line in status_lines(build_agent(config=config, model=FakeModel(), tools=[]))
+    )  # no proxy role, no budget line

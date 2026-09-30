@@ -45,10 +45,10 @@ provider = "fake"
 model_id = "fake-brain"
 """
 
-OLLAMA_TOML = """\
+PLANNED_TOML = """\
 [models.roles.brain]
-provider = "ollama"
-model_id = "qwen3:8b"
+provider = "futurebox"
+model_id = "f"
 """
 
 
@@ -160,19 +160,22 @@ def test_missing_credentials_open_the_app_without_an_agent(tmp_path: Path, monke
 
 
 def test_planned_provider_in_the_stored_config_opens_the_app(tmp_path: Path, monkeypatch) -> None:
-    """A ``tau.toml`` that puts ``brain`` on ``ollama`` (planned, issue 012) used to end in
-    exit 2 with no way back; now the app opens without an agent on the Model roles section
-    (the UI itself is stubbed here; ``test_settings.py`` drives the real screen)."""
+    """A ``tau.toml`` that puts ``brain`` on a planned provider used to end in exit 2 with no
+    way back; now the app opens without an agent on the Model roles section (the UI itself is
+    stubbed here; ``test_settings.py`` drives the real screen)."""
+    import tau_core.models as models
     from tau_tui.app import TauApp
 
+    monkeypatch.setitem(models.PLANNED_PROVIDERS, "futurebox", "999")
     opened: list[TauApp] = []
     monkeypatch.setattr(TauApp, "run", lambda self: opened.append(self))
-    result = run([], make_home(tmp_path, OLLAMA_TOML), tmp_path)
+    result = run([], make_home(tmp_path, PLANNED_TOML), tmp_path)
     assert result.exit_code == 0, result.output
     assert "not supported yet" not in result.output and result.output.strip() == "Goodbye."
     (app,) = opened
     assert app.agent is None and app.missing_credentials is None
-    assert app.unsupported_provider is not None and app.unsupported_provider.provider == "ollama"
+    assert app.unsupported_provider is not None
+    assert app.unsupported_provider.provider == "futurebox"
     assert app.blocker_key == "settings.no_provider"
 
 

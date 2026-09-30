@@ -1146,7 +1146,7 @@ def build_app(
     remembers from ``/model``; an explicit ``role`` pins it for the app's lifetime.
 
     When the first agent cannot be built for lack of credentials, or because the stored config
-    puts the role on a planned provider (``ollama`` until issue 012), the app still opens,
+    puts the role on a planned provider (``PLANNED_PROVIDERS``), the app still opens,
     without an agent, on the settings screen's Credentials or Model roles section (see
     :class:`TauApp`), so the user can always recover in the UI; every other failure
     propagates. ``profile`` (``tau tui --profile``) overrides ``TAU_PROFILE`` for the app's

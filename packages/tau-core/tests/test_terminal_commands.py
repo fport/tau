@@ -246,7 +246,12 @@ def test_model_lists_switches_and_persists_the_role(file_config: Config) -> None
     assert store.read_meta(first.session_id)["role"] == "fast"
 
 
-def test_model_failure_keeps_the_current_agent(file_config: Config) -> None:
+def test_model_failure_keeps_the_current_agent(
+    file_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tau_core.models as models
+
+    monkeypatch.setitem(models.PLANNED_PROVIDERS, "futurebox", "999")
     store = open_session_store(file_config)
     state = make_state(file_config, store)
     agent = state.agent
@@ -256,11 +261,11 @@ def test_model_failure_keeps_the_current_agent(file_config: Config) -> None:
     roles = dict(file_config.roles)
     from tau_core.config import RoleConfig
 
-    roles["fast"] = RoleConfig(provider="ollama", model_id="qwen")  # planned, not available
+    roles["fast"] = RoleConfig(provider="futurebox", model_id="f")  # planned, not available
     state = make_state(file_config.with_overrides(roles=roles), store)
     agent = state.agent
     out = run(state, ["/model fast"])
-    assert "Provider 'ollama' is not supported yet (issue 012)." in out
+    assert "Provider 'futurebox' is not supported yet (issue 999)." in out
     assert state.agent is agent and state.role == "brain"
     assert store.read_meta(agent.session_id)["role"] == "brain"  # the role it runs on
 

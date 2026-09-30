@@ -28,7 +28,7 @@ from dotenv import dotenv_values, set_key, unset_key
 from tomlkit import TOMLDocument
 from tomlkit.items import Table
 
-from tau_core.builder import env_names, env_with_dotenv
+from tau_core.builder import env_names, env_with_dotenv, provider_probe
 from tau_core.config import (
     CONFIG_FILE,
     CONTEXT_MODES,
@@ -439,9 +439,10 @@ def clear_credential(home: Path | str, name: str, *, export: bool = False) -> bo
 def credential_names_for(provider: str) -> list[list[str]]:
     """The credential alternatives of a provider (each inner list must be fully set), read
     from ``models.required_env``; ``[]`` for a provider that needs none, is planned or is
-    unknown (nothing to ask for)."""
+    unknown (nothing to ask for). For the proxy it is the brain role's key; the other roles'
+    keys come from ``.env.example``."""
     try:
-        return required_env(RoleConfig(provider=provider, model_id="probe"))
+        return required_env(provider_probe(provider))
     except ConfigError:
         return []
 

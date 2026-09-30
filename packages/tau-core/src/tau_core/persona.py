@@ -20,7 +20,8 @@ persona itself decides the reply language)::
 
 The dynamic block carries the time (always Europe/Istanbul), the profile, the host role and
 the values later layers fill through :data:`ContextSource` callables (live nodes, today's
-budget). A value nobody provides renders as ``unknown``, so the model never has to guess.
+budget per model role, :mod:`tau_core.spend`). A value nobody provides renders as ``unknown``,
+so the model never has to guess.
 
 Failure rules: a missing, empty or unreadable ``persona.md`` raises :class:`ConfigError` on the
 first read (``build_agent`` reads eagerly, so tau fails at startup); later it keeps the last
@@ -116,7 +117,7 @@ class DynamicContext:
                 f"- Profile: {self.profile}",
                 f"- Host role: {self.role}",
                 f"- Live nodes: {nodes}",
-                f"- Budget today: {self.budget or UNKNOWN}",
+                f"- Budget: {self.budget or UNKNOWN}",
             ]
         )
 

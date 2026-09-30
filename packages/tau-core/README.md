@@ -177,7 +177,7 @@ loop. Its layout is fixed:
 - Profile: home
 - Host role: hub
 - Live nodes: unknown
-- Budget today: unknown
+- Budget: unknown
 ```
 
 The scaffolding (headings, labels, `unknown`) is English because the model reads it; the

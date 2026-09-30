@@ -217,7 +217,7 @@ class SettingsScreen(ModalScreen[bool]):
         return t(key, self.language, **kwargs)
 
     def _provider_options(self, current: str | None) -> list[tuple[str, str]]:
-        """The available providers only. A planned one (``ollama`` until issue 012) is never
+        """The available providers only. A planned one (``PLANNED_PROVIDERS``) is never
         offered — saving it would stop the next start — but a role that already sits on one
         keeps it as its current value, labelled as planned, so the form can be left alone."""
         providers = dict(known_providers())

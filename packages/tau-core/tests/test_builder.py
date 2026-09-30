@@ -104,7 +104,7 @@ def test_inventory_reflects_components_config(tmp_path: Path) -> None:
     assert by[("tau.context", "example")].note == "not listed in [components]"
     assert by[("tau.hub_services", "example")].enabled
     ollama = by[("tau.providers", "ollama")]
-    assert ollama.source == "planned" and not ollama.enabled and "issue 012" in ollama.note
+    assert ollama.source == "built-in" and ollama.enabled and ollama.note == "in use: local"
 
 
 def test_inventory_shows_load_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,7 +180,8 @@ def test_doctor_reports_credentials_without_building_clients(
         "[models.roles.brain.fallback]\nprovider = 'anthropic'\nmodel_id = 'a'\n"
         "[models.roles.fast]\nprovider = 'anthropic'\nmodel_id = 'a'\n"
         "[models.roles.local]\nprovider = 'ollama'\nmodel_id = 'o'\n"
-        "[models.roles.plug]\nprovider = 'fake2'\nmodel_id = 'p'\n",
+        "[models.roles.plug]\nprovider = 'fake2'\nmodel_id = 'p'\n"
+        "[models.roles.later]\nprovider = 'futurebox'\nmodel_id = 'f'\n",
         encoding="utf-8",
     )
     import tau_core.models as models
@@ -190,6 +191,7 @@ def test_doctor_reports_credentials_without_building_clients(
 
     monkeypatch.setitem(models.PROVIDERS, "bedrock", never)
     monkeypatch.setitem(models.PROVIDERS, "anthropic", never)
+    monkeypatch.setitem(models.PLANNED_PROVIDERS, "futurebox", "999")
     registry.reset()
 
     checks = run_doctor(config.home, env={"ANTHROPIC_API_KEY": "k"})
@@ -197,7 +199,8 @@ def test_doctor_reports_credentials_without_building_clients(
     assert by["role brain"].status == "warn"
     assert "fallback 'anthropic' has credentials" in by["role brain"].detail
     assert by["role fast"].status == "ok" and "credentials present" in by["role fast"].detail
-    assert by["role local"].status == "warn" and "issue 012" in by["role local"].detail
+    assert by["role local"].status == "ok" and "needs no credentials" in by["role local"].detail
+    assert by["role later"].status == "warn" and "issue 999" in by["role later"].detail
     assert by["role plug"].status == "fail" and "EXAMPLE_API_KEY" in by["role plug"].detail
 
     checks = run_doctor(config.home, env={})
@@ -335,12 +338,21 @@ def test_template_config_loads(tmp_path: Path) -> None:
     home.mkdir()
     (home / "tau.toml").write_text(template_text("tau.toml"), encoding="utf-8")
     config = Config.load(home, env={})
-    assert config.roles["brain"].provider == "bedrock"
-    assert config.roles["brain"].fallback is not None
+    for role in ("brain", "fast", "local"):
+        assert config.roles[role].provider == "proxy"
+        assert config.roles[role].model_id == role  # the proxy's model group
+        assert config.roles[role].budget is not None
+        assert config.roles[role].fallback is None  # a missing proxy key must not bypass budgets
+    assert config.roles["brain"].budget.degrade_to == "fast"
     assert config.components.tools_disabled == ()  # the example stays commented out
 
 
-@pytest.mark.parametrize("provider", ["bedrock", "anthropic", "fake"])
+def test_render_config_proxy_is_the_template(tmp_path: Path) -> None:
+    template = template_text("tau.toml")
+    assert render_config(template, provider="proxy", language="en") == template
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "bedrock", "fake"])
 def test_render_config_per_provider(tmp_path: Path, provider: str) -> None:
     text = render_config(template_text("tau.toml"), provider=provider, language="tr")
     home = tmp_path / provider
@@ -351,22 +363,25 @@ def test_render_config_per_provider(tmp_path: Path, provider: str) -> None:
     for role in ("brain", "fast"):
         assert config.roles[role].provider == provider
         assert config.roles[role].model_id == ids[role]
-    assert config.roles["local"].provider == "ollama"  # untouched
+    assert config.roles["local"].provider == "ollama"  # direct, without the proxy
+    assert config.roles["local"].model_id == model_ids("ollama")["local"]
+    assert all(role.budget is None for role in config.roles.values())  # only the proxy enforces
+    assert "budget]" not in text
     assert config.ui.language == "tr"
-    assert (config.roles["brain"].fallback is not None) == (provider == "bedrock")
-    assert "# bedrock | anthropic | fake" in text  # comments survive
+    assert "# proxy | anthropic | bedrock | ollama | fake" in text  # comments survive
     assert "\n\n\n" not in text
 
 
 def test_pick_provider_by_credentials() -> None:
     assert pick_provider({}) == "fake"
     assert pick_provider({"ANTHROPIC_API_KEY": "k"}) == "anthropic"
-    assert (
-        pick_provider({"ANTHROPIC_API_KEY": "k", "AWS_REGION": "r", "AWS_PROFILE": "p"})
-        == "bedrock"
-    )
+    aws = {"AWS_REGION": "r", "AWS_PROFILE": "p"}
+    assert pick_provider(aws) == "bedrock"
+    assert pick_provider({"ANTHROPIC_API_KEY": "k", **aws}) == "anthropic"
+    assert pick_provider({"ANTHROPIC_API_KEY": "k", "TAU_PROXY_KEY_BRAIN": "sk-x"}) == "proxy"
+    assert pick_provider({"TAU_PROXY_KEY_FAST": "sk-x"}) == "fake"  # brain's key decides
     with pytest.raises(ConfigError):
-        model_ids("ollama")
+        model_ids("nope")
 
 
 def test_init_non_interactive(tmp_path: Path) -> None:
@@ -441,10 +456,11 @@ def test_init_picks_provider_from_home_dotenv(tmp_path: Path) -> None:
     assert (home / ".env").read_text("utf-8") == "ANTHROPIC_API_KEY=sk-test-not-real\n"
 
     # TAU_HOME (no --home) reaches the same file; a variable set in the process wins over it
-    (home / ".env").write_text("ANTHROPIC_API_KEY=\nAWS_REGION=r\nAWS_PROFILE=p\n")
+    (home / ".env").write_text("ANTHROPIC_API_KEY=\nTAU_PROXY_KEY_BRAIN=sk-test-not-real\n")
     result = run(["init", "--yes", "--force"], tmp_path, home=home, env={"ANTHROPIC_API_KEY": "k"})
     assert result.exit_code == 0, result.output
-    assert "Provider: bedrock." in result.output  # the file's AWS values count too
+    assert "Provider: proxy." in result.output  # the file's proxy key counts too
+    assert Config.load(home, env={}).roles["local"].provider == "proxy"
     assert (home / ".env.example").read_text("utf-8") == template_text("dotenv.example")
     assert f"kept  {home / '.env.example'}" in result.output  # --force never touches it
 
@@ -493,3 +509,56 @@ def test_builder_logs_nothing_at_warning_on_a_healthy_install(
     with caplog.at_level(logging.WARNING):
         inventory(test_config(tmp_path))
     assert [r for r in caplog.records if r.name.startswith("tau_core")] == []
+
+
+# -- the proxy in tau doctor ---------------------------------------------------------------------
+
+
+def test_doctor_checks_the_proxy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tau_core import builder, proxy
+
+    config = test_config(tmp_path)
+    (config.home / "tau.toml").write_text(
+        "[models.roles.brain]\nprovider = 'proxy'\nmodel_id = 'brain'\n"
+        "budget = { usd = 15, period = '1mo' }\n"
+        "[models.roles.fast]\nprovider = 'proxy'\nmodel_id = 'fast'\n"
+        "budget = { usd = 1, period = '1d' }\n"
+        "[models.roles.open]\nprovider = 'proxy'\nmodel_id = 'open'\n"
+        "[models.roles.gone]\nprovider = 'proxy'\nmodel_id = 'gone'\n"
+        "[models.roles.direct]\nprovider = 'fake'\nmodel_id = 'f'\n"
+        "budget = { usd = 1, period = '1d' }\n",
+        encoding="utf-8",
+    )
+    env = {
+        "TAU_PROXY_URL": "http://proxy.test",
+        "TAU_PROXY_KEY_BRAIN": "sk-b",
+        "TAU_PROXY_KEY_FAST": "sk-f",
+        "TAU_PROXY_KEY_OPEN": "sk-o",
+        "TAU_PROXY_KEY_GONE": "sk-g",
+    }
+    records = {
+        "sk-b": {"spend": 0.4, "max_budget": 15.0, "budget_duration": "1mo"},
+        "sk-f": {"spend": 0.1, "max_budget": 5.0, "budget_duration": "1d"},
+        "sk-o": {"spend": 0.0, "max_budget": None},
+    }
+
+    def fetch(url: str, key: str, **kwargs) -> dict:
+        if key not in records:
+            raise OSError("HTTP Error 401: Unauthorized")
+        return records[key]
+
+    monkeypatch.setattr(proxy, "fetch_key_info", fetch)
+    monkeypatch.setattr(builder, "_proxy_alive", lambda url: True)
+    by = {c.name: c for c in run_doctor(config.home, env=env)}
+    assert by["proxy brain"].status == "ok"
+    assert by["proxy brain"].detail == "$0.40 of $15.00 per 1mo, within budget"
+    assert by["proxy fast"].status == "warn" and "run tau proxy keys" in by["proxy fast"].detail
+    assert by["proxy open"].status == "warn" and "no budget" in by["proxy open"].detail
+    assert by["proxy gone"].status == "fail" and "TAU_PROXY_KEY_GONE" in by["proxy gone"].detail
+    assert by["role direct"].status == "warn" and "cannot enforce it" in by["role direct"].detail
+
+    monkeypatch.setattr(builder, "_proxy_alive", lambda url: False)
+    by = {c.name: c for c in run_doctor(config.home, env=env)}
+    assert by["proxy"].status == "warn"
+    assert by["proxy"].detail.startswith("not answering at http://proxy.test; start it with")
+    assert "proxy brain" not in by

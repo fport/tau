@@ -93,7 +93,7 @@ def test_prompt_layout_is_exact(tmp_path: Path, fixed_now: datetime) -> None:
         "- Profile: home\n"
         "- Host role: hub\n"
         "- Live nodes: unknown\n"
-        "- Budget today: unknown"
+        "- Budget: unknown"
     )
 
 
@@ -346,7 +346,7 @@ def test_persona_hook_sets_system_prompt(tmp_path: Path, fixed_now: datetime) ->
     assert blocks[0]["text"].startswith("Sen tau'sun.\n\n## User\n")
     assert blocks[1] == {"cachePoint": {"type": "default"}}
     assert blocks[2]["text"].startswith("## Now\n")
-    assert blocks[2]["text"].endswith("- Budget today: 3 $")
+    assert blocks[2]["text"].endswith("- Budget: 3 $")
 
 
 def test_build_system_content_is_three_blocks_with_a_cache_point(
@@ -393,14 +393,14 @@ async def test_model_receives_the_cache_point(config: Config, fixed_now: datetim
 
 def test_unknown_sources_render_unknown(fixed_now: datetime) -> None:
     lines = ctx(fixed_now).render().splitlines()
-    assert lines[-2:] == [f"- Live nodes: {UNKNOWN}", f"- Budget today: {UNKNOWN}"]
+    assert lines[-2:] == [f"- Live nodes: {UNKNOWN}", f"- Budget: {UNKNOWN}"]
     assert UNKNOWN == "unknown"
 
 
 def test_known_values_render(fixed_now: datetime) -> None:
     rendered = ctx(fixed_now, nodes=["mac", "arm"], budget="2,40 $ kaldı").render()
     assert "- Live nodes: mac, arm" in rendered
-    assert "- Budget today: 2,40 $ kaldı" in rendered
+    assert "- Budget: 2,40 $ kaldı" in rendered
     # Known to be empty is not the same as unknown.
     assert "- Live nodes: none" in ctx(fixed_now, nodes=[]).render()
 
@@ -452,7 +452,7 @@ def test_sources_merge_in_order(config: Config, fixed_now: datetime) -> None:
     context = default_context_factory(config, clock=lambda: fixed_now, sources=sources)()
     assert context.nodes == ["mac", "arm"]
     assert context.budget is None
-    assert "- Budget today: unknown" in context.render()
+    assert "- Budget: unknown" in context.render()
 
 
 def test_sources_are_read_on_every_call(config: Config, fixed_now: datetime) -> None:
@@ -525,7 +525,7 @@ async def test_live_sources_reach_the_model(config: Config, fixed_now: datetime)
     first, second = (call.system_prompt or "" for call in model.calls)
     assert "- Live nodes: unknown" in first
     assert "- Live nodes: mac, arm" in second
-    assert "- Budget today: 2,40 $ kaldı" in first and "- Budget today: 2,40 $ kaldı" in second
+    assert "- Budget: 2,40 $ kaldı" in first and "- Budget: 2,40 $ kaldı" in second
 
 
 # --- the tracked persona files -------------------------------------------------------------

@@ -205,8 +205,9 @@ def test_register_session_backend(config: Config) -> None:
 
 def test_context_sources_are_built_from_entry_points(config: Config) -> None:
     sources = registry.context_sources(config)
-    assert set(sources) == {"example"}
+    assert set(sources) == {"budget", "example"}  # tau-core ships the budget line
     assert sources["example"]() == {"nodes": None}  # nothing configured: unknown
+    assert sources["budget"]() == {}  # no proxy role, nothing to report
 
 
 def test_context_source_reads_its_component_table(config: Config) -> None:
@@ -243,7 +244,7 @@ def test_hub_services_are_built_and_checked(
     )
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         services = registry.hub_services(config)
-    assert set(services) == {"example", "telegram"}
+    assert set(services) == {"example", "spend", "telegram"}
     assert services["example"].name == "example"
     assert "not_a_service" in caplog.text and "expected a HubService" in caplog.text
     # ConfigError(config) builds an exception instance, which is not a service either

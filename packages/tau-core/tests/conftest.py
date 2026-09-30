@@ -23,6 +23,14 @@ CREDENTIAL_VARS = (
     "ANTHROPIC_API_KEY",
 )
 TAU_VARS = ("TAU_HOME", "TAU_DATA_DIR", "TAU_PROFILE", "TAU_ROLE", "TAU_HUB_PORT")
+PROXY_VARS = (
+    "LITELLM_MASTER_KEY",
+    "TAU_PROXY_URL",
+    "TAU_PROXY_KEY_BRAIN",
+    "TAU_PROXY_KEY_FAST",
+    "TAU_PROXY_KEY_LOCAL",
+    "TAU_OLLAMA_URL",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -49,6 +57,19 @@ def no_real_telegram(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test sees a real bot token, so no hub a test assembles ever polls Telegram."""
     for name in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_CHAT_IDS"):
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_real_proxy(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """No test reaches a LiteLLM proxy that happens to run on this machine: the proxy
+    variables are unset and no spend tracker outlives its test."""
+    from tau_core import spend
+
+    for name in PROXY_VARS:
+        monkeypatch.delenv(name, raising=False)
+    spend.forget_trackers()
+    yield
+    spend.forget_trackers()
 
 
 @pytest.fixture

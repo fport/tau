@@ -20,8 +20,14 @@ from pathlib import Path
 
 from rich.text import Text
 from tau_core import LANGUAGES, ConfigError, t
-from tau_core.builder import PROVIDER_PREFERENCE, env_with_dotenv, init_home, pick_provider
-from tau_core.config import CONFIG_FILE, DEFAULT_HOME, RoleConfig
+from tau_core.builder import (
+    PROVIDER_PREFERENCE,
+    env_with_dotenv,
+    init_home,
+    pick_provider,
+    provider_probe,
+)
+from tau_core.config import CONFIG_FILE, DEFAULT_HOME
 from tau_core.i18n import DEFAULT_LANGUAGE
 from tau_core.models import missing_credentials
 from textual import events
@@ -55,10 +61,9 @@ def provider_labels(
         if provider == "fake":
             options.append((t("tui.setup.fake_note", language), provider))
             continue
-        probe = RoleConfig(provider=provider, model_id="probe")
         key = (
             "tui.setup.no_credentials"
-            if missing_credentials(probe, env)
+            if missing_credentials(provider_probe(provider), env)
             else "tui.setup.has_credentials"
         )
         options.append((t(key, language, provider=provider), provider))

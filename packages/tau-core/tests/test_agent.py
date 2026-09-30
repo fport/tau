@@ -263,7 +263,7 @@ async def test_persona_hook_rereads_changed_file(config: Config, fixed_now: date
         assert "- Date and time: 29.09.2026 15:30, Tuesday (Europe/Istanbul)" in prompt
         assert "- Profile: home" in prompt
         assert "- Live nodes: unknown" in prompt
-        assert "- Budget today: unknown" in prompt
+        assert "- Budget: unknown" in prompt
 
 
 async def test_profile_and_context_sources(config: Config) -> None:
@@ -279,7 +279,7 @@ async def test_profile_and_context_sources(config: Config) -> None:
     prompt = model.calls[0].system_prompt or ""
     assert "- Profile: sport" in prompt
     assert "- Live nodes: mac, arm" in prompt
-    assert "- Budget today: 2,40 $ kaldı" in prompt
+    assert "- Budget: 2,40 $ kaldı" in prompt
     assert agent.config.profile == "sport"
 
 

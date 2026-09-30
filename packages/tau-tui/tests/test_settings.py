@@ -42,10 +42,10 @@ model_id = "fake-fast"
 [sessions]
 backend = "memory"
 """
-OLLAMA_TOML = """\
+PLANNED_TOML = """\
 [models.roles.brain]
-provider = "ollama"
-model_id = "qwen3:8b"
+provider = "futurebox"
+model_id = "f"
 
 [models.roles.fast]
 provider = "fake"
@@ -324,39 +324,43 @@ async def test_profile_override_survives_a_rebuild_and_the_header_follows(
 
 
 async def test_planned_provider_is_not_offered_and_a_stored_one_recovers_in_the_ui(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``ollama`` (planned, issue 012) is not in the provider select, only in a note; a stored
-    config that already puts ``brain`` on it opens the app without an agent on Model roles
-    instead of exiting 2, and a save on an available provider builds the agent (M1)."""
+    """A planned provider is not in the provider select, only in a note; a stored config that
+    already puts ``brain`` on it opens the app without an agent on Model roles instead of
+    exiting 2, and a save on an available provider builds the agent (M1)."""
+    import tau_core.models as models
+
+    monkeypatch.setitem(models.PLANNED_PROVIDERS, "futurebox", "999")
     config = test_config(tmp_path)
     home = config.home
-    (home / "tau.toml").write_text(OLLAMA_TOML, encoding="utf-8")
+    (home / "tau.toml").write_text(PLANNED_TOML, encoding="utf-8")
     config = Config.load(home, env={"TAU_DATA_DIR": str(tmp_path / "data")})
     app = build_app(
         config, tools=[], session_id=SESSION_ID, clock=fixed_clock, motion=False, show_paths=False
     )
     assert app.agent is None and app.missing_credentials is None
-    assert app.unsupported_provider is not None and app.unsupported_provider.provider == "ollama"
+    assert app.unsupported_provider is not None
+    assert app.unsupported_provider.provider == "futurebox"
     async with app.run_test(size=(80, 24), notifications=True) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, SettingsScreen))
         await pilot.pause()
         screen = app.screen
         assert screen.current == "roles"
         brain = screen.query_one("#provider-brain", Select)
-        assert brain.value == "ollama"  # the stored value stays, labelled as planned
-        assert "ollama (planned)" in rendered(app)
+        assert brain.value == "futurebox"  # the stored value stays, labelled as planned
+        assert "futurebox (planned)" in rendered(app)
         with pytest.raises(InvalidSelectValueError):
-            screen.query_one("#provider-fast", Select).value = "ollama"  # never offered
+            screen.query_one("#provider-fast", Select).value = "futurebox"  # never offered
         with pytest.raises(InvalidSelectValueError):
-            screen.query_one("#fbprovider-fast", Select).value = "ollama"
-        assert "planned, not selectable yet: ollama (issue 012)" in screen.text
+            screen.query_one("#fbprovider-fast", Select).value = "futurebox"
+        assert "planned, not selectable yet: futurebox (issue 999)" in screen.text
         await pilot.press("escape")
         await pilot.pause()
         assert app.composer.state == "disabled"
         assert app.composer.prompt.placeholder == "Choose an available provider in /settings"
         said = "\n".join(notices(app))
-        assert "Provider 'ollama' is not supported yet (issue 012)." in said
+        assert "Provider 'futurebox' is not supported yet (issue 999)." in said
         assert "Choose an available provider in /settings" in said
         assert app.header.text == "τ tau  home · —  brain · en"
         await send(pilot, "hello")
@@ -662,10 +666,15 @@ async def test_setup_screen_detects_credentials_and_reuses_a_home(tmp_path: Path
         assert screen.query_one("#provider", Select).value == "anthropic"
         assert "anthropic · credentials found" in screen.text
         assert provider_labels({"ANTHROPIC_API_KEY": "k"}) == [
-            ("bedrock · no credentials found", "bedrock"),
+            ("proxy · no credentials found", "proxy"),
             ("anthropic · credentials found", "anthropic"),
+            ("bedrock · no credentials found", "bedrock"),
             ("fake · no credentials needed", "fake"),
         ]
+        assert provider_labels({"TAU_PROXY_KEY_BRAIN": "sk-x"})[0] == (
+            "proxy · credentials found",
+            "proxy",
+        )
         await pilot.press("ctrl+s")
         await pilot.pause()
     assert app.return_value == SetupResult(existing, "anthropic", "en", created=False)

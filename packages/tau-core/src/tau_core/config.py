@@ -16,6 +16,7 @@ from __future__ import annotations
 import copy
 import logging
 import os
+import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -36,9 +37,21 @@ PROFILES = ("home", "travel", "sport")
 DEFAULT_ROLE = "hub"
 HOST_ROLES = ("hub", "node")
 
-_ROLE_KEYS = {"provider", "model_id", "region", "max_tokens", "params", "fallback", "cache"}
+_ROLE_KEYS = {
+    "provider",
+    "model_id",
+    "region",
+    "max_tokens",
+    "params",
+    "fallback",
+    "cache",
+    "budget",
+}
 _CACHE_STRATEGIES = ("auto", "anthropic")
 _CACHE_KEYS = {"strategy", "ttl", "system_prompt_ttl", "tools_ttl"}
+_BUDGET_KEYS = {"usd", "period", "degrade_to"}
+_PERIOD = re.compile(r"^[1-9][0-9]*(s|m|h|d|mo)$")
+"""A LiteLLM ``budget_duration``: ``30s``, ``30m``, ``24h``, ``1d``, ``7d``, ``1mo``."""
 CONTEXT_MODES = ("sliding", "summarize")
 """``[agent] context`` values. The SDK's ``auto``/``agentic`` presets are rejected on purpose:
 they register untiered SDK tools that the tier gate would refuse."""
@@ -67,6 +80,20 @@ class ConfigNotFound(ConfigError):
 
 
 @dataclass(frozen=True)
+class BudgetConfig:
+    """``[models.roles.<role>.budget]``: the hard spend cap of the role's proxy key.
+
+    The proxy enforces it (``tau proxy keys`` writes ``usd`` and ``period`` to the role's
+    virtual key); tau only reads it to decide what happens when the cap is hit: answer with
+    ``degrade_to`` (a cheaper role) or tell the user when the budget resets.
+    """
+
+    usd: float
+    period: str
+    degrade_to: str | None = None
+
+
+@dataclass(frozen=True)
 class RoleConfig:
     """Provider and model id behind one model role (``brain``, ``fast``, ``local``)."""
 
@@ -79,6 +106,8 @@ class RoleConfig:
     cache: dict[str, Any] | None = None
     """Prompt-cache settings (``strategy``, ``ttl``, ``system_prompt_ttl``, ``tools_ttl``), the
     keyword arguments of Strands' ``CacheConfig``; ``None`` leaves caching to the provider."""
+    budget: BudgetConfig | None = None
+    """The role's hard spend cap; only the ``proxy`` provider enforces one."""
 
 
 @dataclass(frozen=True)
@@ -218,6 +247,7 @@ class Config:
         if host_role not in HOST_ROLES:
             raise ConfigError(f"Invalid TAU_ROLE: '{host_role}'. Valid values: hub, node.")
 
+        _check_degrade_targets(roles)
         config = cls(
             home=root,
             data_dir=data_dir.resolve(),
@@ -290,6 +320,11 @@ def _parse_role(name: str, raw: Any, *, allow_fallback: bool = True) -> RoleConf
             raise ConfigError(f"tau.toml: {where} cannot nest another 'fallback'.")
         fallback = _parse_role(f"{name}.fallback", raw["fallback"], allow_fallback=False)
     cache = _parse_cache(where, raw.get("cache"))
+    budget = None
+    if "budget" in raw:
+        if not allow_fallback:
+            raise ConfigError(f"tau.toml: {where} cannot have a 'budget'; set it on the role.")
+        budget = _parse_budget(where, raw["budget"])
     return RoleConfig(
         provider=provider,
         model_id=model_id,
@@ -298,7 +333,52 @@ def _parse_role(name: str, raw: Any, *, allow_fallback: bool = True) -> RoleConf
         params=dict(params),
         fallback=fallback,
         cache=cache,
+        budget=budget,
     )
+
+
+def _parse_budget(where: str, raw: Any) -> BudgetConfig:
+    """``budget = { usd = 15, period = "1mo", degrade_to = "fast" }`` → :class:`BudgetConfig`."""
+    where = f"{where} 'budget'"
+    if not isinstance(raw, dict):
+        raise ConfigError(f"tau.toml: {where} must be a table.")
+    unknown = sorted(set(raw) - _BUDGET_KEYS)
+    if unknown:
+        raise ConfigError(f"tau.toml: {where} has unknown keys: {', '.join(unknown)}.")
+    usd = raw.get("usd")
+    if isinstance(usd, bool) or not isinstance(usd, int | float) or usd <= 0:
+        raise ConfigError(f"tau.toml: {where} needs 'usd', a positive number of dollars.")
+    period = raw.get("period")
+    if not isinstance(period, str) or not _PERIOD.match(period):
+        raise ConfigError(
+            f'tau.toml: {where} needs \'period\' like "1d", "7d" or "1mo" '
+            "(a number followed by s, m, h, d or mo)."
+        )
+    degrade_to = raw.get("degrade_to")
+    if degrade_to is not None and (not isinstance(degrade_to, str) or not degrade_to):
+        raise ConfigError(f"tau.toml: {where} 'degrade_to' must be the name of a role.")
+    return BudgetConfig(usd=float(usd), period=period, degrade_to=degrade_to)
+
+
+def _check_degrade_targets(roles: Mapping[str, RoleConfig]) -> None:
+    """Every ``budget.degrade_to`` names another defined role, and following them never loops
+    (``brain`` → ``fast`` → ``brain`` would ping-pong between two spent keys)."""
+    for name, role in roles.items():
+        target = role.budget.degrade_to if role.budget else None
+        if target is None:
+            continue
+        where = f"tau.toml: [models.roles.{name}] 'budget.degrade_to'"
+        if target == name:
+            raise ConfigError(f"{where} cannot name the role itself.")
+        if target not in roles:
+            raise ConfigError(f"{where} names '{target}', which is not a defined role.")
+        seen = [name]
+        while target is not None:
+            if target in seen:
+                raise ConfigError(f"{where} loops: {' → '.join([*seen, target])}.")
+            seen.append(target)
+            budget = roles[target].budget
+            target = budget.degrade_to if budget else None
 
 
 def _parse_cache(where: str, raw: Any) -> dict[str, Any] | None:

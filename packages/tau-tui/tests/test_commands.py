@@ -332,12 +332,14 @@ async def test_model_switch_is_refused_while_busy(tmp_path: Path) -> None:
         await finish(pilot)
 
 
-async def test_model_failure_keeps_the_current_agent(tmp_path: Path) -> None:
+async def test_model_failure_keeps_the_current_agent(tmp_path: Path, monkeypatch) -> None:
+    import tau_core.models as models
     from tau_core.config import RoleConfig
 
+    monkeypatch.setitem(models.PLANNED_PROVIDERS, "futurebox", "999")
     config = test_config(tmp_path)
     roles = dict(config.roles)
-    roles["fast"] = RoleConfig(provider="ollama", model_id="qwen")  # planned: fails to build
+    roles["fast"] = RoleConfig(provider="futurebox", model_id="f")  # planned: fails to build
     app = build_app(
         config.with_overrides(roles=roles),
         model=None,
@@ -350,7 +352,7 @@ async def test_model_failure_keeps_the_current_agent(tmp_path: Path) -> None:
         agent = app.agent
         await send(pilot, "/model fast")
         await pilot.pause()
-        assert notices(app)[-1] == "▸ Provider 'ollama' is not supported yet (issue 012)."
+        assert notices(app)[-1] == "▸ Provider 'futurebox' is not supported yet (issue 999)."
         assert app.agent is agent and app.role == "brain"
 
 

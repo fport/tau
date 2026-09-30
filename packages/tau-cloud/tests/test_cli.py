@@ -243,7 +243,7 @@ def test_status_explains_local_mode(tmp_path: Path, spine: FakeSpine, cloud: Fak
     assert "The spine runs in local mode, so it keeps no files, sessions or brain." in (
         result.output
     )
-    assert "pnpm run configure --cloud" in result.output
+    assert "bun run configure --cloud" in result.output
 
 
 def test_status_in_turkish(tmp_path: Path, spine: FakeSpine, cloud: FakeCloud) -> None:

@@ -105,11 +105,11 @@ CLOUD_MESSAGES: dict[str, dict[str, str]] = {
     },
     "cloud.status.not_cloud": {
         "en": "The spine runs in {mode} mode, so it keeps no files, sessions or brain. Deploy "
-        "the cloud configuration first (pnpm run configure --cloud, then pnpm run "
+        "the cloud configuration first (bun run configure --cloud, then bun run "
         "deploy:cloud in cloud/spine; see the cloud-mode guide).",
         "tr": "Spine {mode} modunda çalışıyor; dosya, oturum ya da beyin tutmaz. Önce bulut "
-        "yapılandırmasını yayına al (cloud/spine içinde pnpm run configure --cloud, sonra "
-        "pnpm run deploy:cloud; bulut modu rehberine bak).",
+        "yapılandırmasını yayına al (cloud/spine içinde bun run configure --cloud, sonra "
+        "bun run deploy:cloud; bulut modu rehberine bak).",
     },
     "cloud.status.files": {"en": "files:", "tr": "dosyalar:"},
     "cloud.status.file": {

@@ -15,11 +15,13 @@ from typing import Any
 
 import pytest
 from tau_guard.runner import (
+    DEFAULT_COMMAND,
     KILL_GRACE,
     Malformed,
     Progress,
     WorkerRun,
     parse_line,
+    worker_env,
 )
 from tau_guard.state import Outcome
 from tau_guard.testing import fake_worker_command, match, read_requests, write_script
@@ -372,3 +374,31 @@ def test_a_value_of_the_wrong_type_ends_the_run_with_error_at_once(
     assert time.monotonic() - began < 5  # never left to the watchdog
     assert uncaught == []  # the reader thread did not die
     assert "0.0123" not in caplog.text  # the hub log names the field, never the value
+
+
+def test_the_worker_runs_without_the_working_directory_on_its_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A ``tau_guard`` directory where the hub was started cannot stand in for the worker."""
+    shadow = tmp_path / "cwd" / "tau_guard"
+    shadow.mkdir(parents=True)
+    (shadow / "__init__.py").write_text("", encoding="utf-8")
+    forged = {"type": "verdict", "ok": True, "reason": "match", "method": "face"}
+    (shadow / "worker.py").write_text(f"print({json.dumps(forged)!r})\n", encoding="utf-8")
+    monkeypatch.chdir(shadow.parent)
+    monkeypatch.setenv("PYTHONPATH", str(shadow.parent))
+    assert "-P" in DEFAULT_COMMAND and "PYTHONPATH" not in worker_env()
+    guard_dir = tmp_path / "guard"
+    guard_dir.mkdir()
+    collector = Collector()
+    run = WorkerRun(
+        "verify",
+        {"v": 1, "data_dir": str(tmp_path / "data")},
+        log_dir=guard_dir,
+        timeout=30,
+        on_progress=collector.on_progress,
+        on_done=collector.on_done,
+    )
+    run.start()
+    assert collector.done.wait(30) and run.wait(5)
+    assert collector.outcomes == [Outcome(False, "not_enrolled")]  # the real worker answered

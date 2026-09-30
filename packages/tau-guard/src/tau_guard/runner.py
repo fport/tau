@@ -16,6 +16,10 @@ without ``reason: "match"`` and a ``face`` or ``touch_id`` method, or an exit wi
 all end the run with ``error``. The hub log then names the field that broke the protocol and
 the value's type and length, never the value: a worker bug must not copy an embedding into
 ``tau.log``.
+
+The worker runs as ``python -P -m tau_guard.worker`` in ``guard/`` (``cwd``) without the hub's
+``PYTHONPATH``, so a ``tau_guard`` directory in the hub's working directory cannot stand in for
+it.
 """
 
 from __future__ import annotations
@@ -52,7 +56,8 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_COMMAND: tuple[str, ...] = (sys.executable, "-m", "tau_guard.worker")
+DEFAULT_COMMAND: tuple[str, ...] = (sys.executable, "-P", "-m", "tau_guard.worker")
+"""``-P``: the working directory is not put on ``sys.path``."""
 KILL_GRACE = 1.0
 """Seconds between SIGTERM and SIGKILL."""
 EXIT_GRACE = 1.0
@@ -67,6 +72,8 @@ HUB_REASONS = frozenset({"cooldown", "locked", "busy", "cancelled"})
 WORKER_REASONS = frozenset(VERDICT_REASONS) - HUB_REASONS
 LIVENESS = frozenset({"challenge", "passive", "none"})
 WORKER_ENV = {"OPENCV_LOG_LEVEL": "ERROR", "OPENCV_AVFOUNDATION_SKIP_AUTH": "1"}
+DROPPED_ENV = ("PYTHONPATH",)
+"""Hub variables a worker never inherits."""
 
 
 class Malformed(ValueError):
@@ -162,8 +169,11 @@ def parse_line(raw: bytes, *, op: str = "verify") -> Progress | Outcome:
 
 
 def worker_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The worker's environment: the hub's plus the OpenCV quieting and auth switches."""
+    """The worker's environment: the hub's without :data:`DROPPED_ENV`, plus the OpenCV
+    quieting and auth switches."""
     env = dict(os.environ if base is None else base)
+    for name in DROPPED_ENV:
+        env.pop(name, None)
     env.update(WORKER_ENV)
     return env
 
@@ -230,6 +240,7 @@ class WorkerRun:
                 stdout=subprocess.PIPE,
                 stderr=log_fd,
                 env=self.env,
+                cwd=self.log_dir,
                 close_fds=True,
                 start_new_session=True,
             )

@@ -144,6 +144,7 @@ are accepted forever but never shown in hints:
 | `/model [role]` | `/rol` | list the model roles, or switch this session to one (remembered by `/resume`) |
 | `/lang en\|tr` | `/dil` | switch the UI language for this run |
 | `/settings [key value]` | `/ayarlar`, `/ayar` | show the bootstrap config (roles, credential status, language, profile, context, files); `language en\|tr`, `profile NAME`, `model ROLE PROVIDER MODEL_ID`, `set NAME` (hidden prompt), `clear NAME` change one and reload; the TUI opens its settings screen |
+| `/guard [lock\|unlock]` | `/koruma` | the owner guard's state; `lock` locks it; `unlock` unlocks at the lock prompt (see [Guard](#guard)); without a guard it says the guard is off |
 | `/quit` | `/çık`, `/cik`, `/exit` | leave (`/exit` is an alias, `/quit` is the name the hints show) |
 
 Matching is `str.casefold()` on the typed name (`/ARAÇLAR` works). In code:
@@ -597,7 +598,7 @@ stop interrupted runs again); `chats.json` maps each chat to its current session
 keeps its conversation across restarts.
 
 The slash commands `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/status`,
-`/model`, `/compact` and `/lang` resolve through `tau_core.commands` with the terminal's wording
+`/model`, `/compact`, `/lang` and `/guard` resolve through `tau_core.commands` with the terminal's wording
 (Turkish aliases accepted, never shown; `/start` and a bare `/` show the help). On start they
 are set as the bot's command menu (`setMyCommands`) for each allowed chat only, in the UI
 language; `/lang` sets it again. `/clear`, `/quit` and any command that edits the configuration
@@ -618,6 +619,15 @@ hub stops while it waits). Every decision is an `approval` agent event in the se
 terminal approval, and `/status` shows `approvals_pending`. A pending approval does not survive
 a hub restart (068 moves it onto Strands interrupts): its message runs again after the restart
 and asks again. Nothing is ever auto-approved.
+
+The owner guard does not guard Telegram turns: the chat-id allowlist identifies the owner, so
+`_build` passes `guard=None` and a turn runs whatever the guard says (ADR 0008). `/guard` shows
+the guard's state, `/guard lock` locks it with trigger `telegram` (the owner's remote kill
+switch; the answer says whether the lock took, read back from the guard) and `/guard unlock`
+answers that unlocking happens only at the Mac. The service finds the in-hub guard lazily
+through `hub.find_service("guard")` plus an `isinstance(Guard)` check; without a guard service
+`/guard` says the guard is off (or, when a guard is enrolled, that this hub runs no guard
+service).
 
 Tests use `tau_core.testing.FakeBotApi`, an offline Bot API: `push_message(chat_id, text)`
 queues an update, `sent` / `texts()` show what the bot sent, `buttons(chat_id)` and
@@ -659,6 +669,18 @@ returns `None`.
   config key selects a channel.
 - **Reports.** `/status` adds `guard_status_line(status, language)` when a guard is active;
   `tau doctor` adds `guard_doctor_check(config, hub_status)`.
+- **Channels (issue 113).** `tau chat` resolves the guard once (`ReplState.guard`, resolved
+  again before every build and prompt while it is `None`) and passes it to every build. While
+  the guard is not `unlocked` it shows a lock prompt (`locked> `): entering it writes
+  `\x1b[2J\x1b[3J\x1b[H` (screen and scrollback; a terminal app that ignores `\x1b[3J`, or
+  one with its own scrollback outside the terminal such as tmux's copy mode, keeps what was
+  there), Enter on an empty line (or `/guard unlock`) unlocks and prints every challenge step,
+  Ctrl-C during an attempt cancels it and the REPL goes on, and only `ALLOWED_WHILE_LOCKED`
+  (`/help`, `/lang`, `/guard`, `/quit`) run. The state is read again before every prompt and
+  before a command that is not allowed while locked; a turn the guard refused returns to the
+  lock prompt, a `recheck` refusal runs the passive check and resends the prompt, and step-up
+  steps print from the agent's `guard` events. The TUI's lock screen is described in the
+  tau-tui README; Telegram's `/guard` under [Telegram](#telegram).
 
 Public API: `Guard` (protocol: `status`, `watch`, `admit`, `unlock`, `cancel`, `lock`,
 `step_up`; every method fails closed), `GuardState`, `GuardStatus`, `GuardVerdict`,

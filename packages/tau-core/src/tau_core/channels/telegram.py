@@ -28,6 +28,12 @@ the press) while a turn waits for its approval; messages that arrive meanwhile q
 turn runs that message again after the restart.
 
 The token never reaches a log line, an exception message or ``/status``.
+
+Telegram is an identified channel (ADR 0008): its turns run with ``guard=None`` whatever the
+guard says, because the chat-id allowlist identifies the owner. ``/guard`` shows the owner
+guard's state and ``/guard lock`` locks it (trigger ``telegram``, the owner's remote kill
+switch); ``/guard unlock`` only answers that unlocking happens at the Mac. The in-hub guard is
+found lazily through ``hub.find_service("guard")``.
 """
 
 from __future__ import annotations
@@ -60,6 +66,7 @@ from tau_core.compaction import (
     summarize,
 )
 from tau_core.config import Config, ConfigError
+from tau_core.guard import Guard, guard_active, guard_status_line, process_client_id
 from tau_core.i18n import LANGUAGES, t
 from tau_core.models import MissingCredentials
 from tau_core.sessions import SessionStore, open_session_store
@@ -582,6 +589,8 @@ class TelegramService:
         )
         self.api: BotApi | None = api
         self.store = store
+        self.hub: Hub | None = None
+        """The hub this service started in; ``/guard`` finds the in-hub guard through it."""
         self.files = TelegramFiles(config.data_dir / "telegram")
         self.approvals: dict[str, PendingApproval] = {}
         """Tier-2 requests waiting for a button press, by request id."""
@@ -607,6 +616,7 @@ class TelegramService:
         return bool(self.token) and bool(self.allowed)
 
     async def start(self, hub: Hub) -> None:
+        self.hub = hub
         hub.add_status_source(lambda: {SERVICE_NAME: self.status()})
         if not self.token:
             self.idle_reason = f"{TOKEN_ENV} is not set"
@@ -1030,6 +1040,14 @@ class TelegramService:
         except OSError as exc:
             logger.warning("telegram: could not write %s: %s", self.files.chats_path, exc)
 
+    def guard(self) -> Guard | None:
+        """The owner guard running in this hub (the ``guard`` hub service), looked up on every
+        use: it may start after this service. ``None`` without a hub or a guard service."""
+        if self.hub is None:
+            return None
+        service = self.hub.find_service("guard")
+        return service if isinstance(service, Guard) else None
+
     def _agent(self, chat: ChatState) -> TauAgent | None:
         """The chat's agent, built on first use on the session ``chats.json`` remembers."""
         if chat.agent is None and not self._build(chat, chat.session_id):
@@ -1288,6 +1306,36 @@ async def cmd_lang(service: TelegramService, chat: ChatState, arg: str) -> None:
     await service.register_commands(chat.chat_id, arg)
 
 
+async def cmd_guard(service: TelegramService, chat: ChatState, arg: str) -> None:
+    """``/guard``: the guard's state; ``/guard lock``: lock it (trigger ``telegram``) and check
+    that the lock took; ``/guard unlock``: unlocking happens only at the Mac."""
+    word = arg.strip().casefold()
+    if word not in ("", "lock", "unlock"):
+        chat.say("guard.cmd.usage")
+        return
+    guard = service.guard()
+    if guard is None:
+        chat.say("guard.cmd.no_service" if guard_active(service.config) else "guard.cmd.off")
+        return
+    if word == "unlock":
+        chat.say("guard.cmd.unlock_at_mac")
+        return
+    try:
+        if word == "lock":
+            await guard.lock(channel=CHANNEL, client_id=process_client_id(), trigger="telegram")
+        status = await guard.status()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("telegram: /guard %s failed", word or "status")
+        chat.say("guard.cmd.lock_failed" if word == "lock" else "guard.refused.error")
+        return
+    if word == "lock":
+        chat.say("guard.cmd.lock_done" if status.state == "locked" else "guard.cmd.lock_failed")
+        return
+    chat.print(guard_status_line(status, chat.language))
+
+
 COMMAND_HANDLERS: dict[str, ChatHandler] = {
     "help": cmd_help,
     "tools": cmd_tools,
@@ -1299,6 +1347,7 @@ COMMAND_HANDLERS: dict[str, ChatHandler] = {
     "model": cmd_model,
     "compact": cmd_compact,
     "lang": cmd_lang,
+    "guard": cmd_guard,
 }
 """The shared slash commands that make sense on Telegram. The rest (``/clear``, ``/quit``,
 ``/settings``, …) answer that they are not available here; credentials are never set from a

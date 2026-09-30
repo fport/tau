@@ -1,8 +1,8 @@
 //! TauBar: tau's macOS menu bar app.
 //!
-//! Tray only (no Dock icon): a native menu with the hub switch and its status, the sleep modes
-//! and "Launch at login", plus a small settings window (React) opened from the menu. See
-//! `apps/taubar/README.md`.
+//! Tray only (no Dock icon): a native menu with the hub switch and its status, the owner
+//! guard's line and "Lock now", the sleep modes and "Launch at login", plus a small settings
+//! window (React) opened from the menu. See `apps/taubar/README.md`.
 
 mod commands;
 pub mod core;
@@ -13,8 +13,10 @@ pub mod settings;
 mod signals;
 pub mod sleep;
 pub mod tray;
+pub mod webview;
 
 use crate::core::{Core, Dirs};
+use crate::hub::guard::CAMERA_SETTINGS_URL;
 use crate::hub::supervisor::SystemProbe;
 use crate::settings::SleepMode;
 use crate::sleep::SystemPower;
@@ -37,6 +39,8 @@ const HUB_TICK: Duration = Duration::from_secs(1);
 
 pub fn run() {
     let app = tauri::Builder::default()
+        // TauBar holds the camera grant for its hub; no webview may use it (ADR 0008).
+        .on_permission_request(|_, kind| webview::permission(kind))
         // One TauBar per user (roadmap 091). A second launch, from Spotlight, Finder,
         // `open -n` or the build folder of a checkout, hands over to the running TauBar and
         // exits before it touches the hub or the sleep assertion; the running one shows its
@@ -57,6 +61,8 @@ pub fn run() {
             commands::set_run_hub,
             commands::save_hub_settings,
             commands::open_hub_log,
+            commands::lock_guard,
+            commands::open_camera_settings,
         ])
         .setup(|app| {
             // Tray only: no Dock icon, no app menu (Info.plist also sets LSUIElement).
@@ -112,13 +118,24 @@ fn resolve_dirs(app: &AppHandle) -> Result<Dirs, Box<dyn std::error::Error>> {
     })
 }
 
-/// Push the current state to the menu and the settings window.
+/// Push the current state to the menu and the settings window. Callable from any thread.
+///
+/// The menu is changed on the main thread only. Off it, every Tauri menu call posts a task to
+/// the event loop and blocks until the main thread has run it, so the hub thread (which
+/// refreshes every second) must never make one: holding any lock across such a call deadlocks
+/// against a main-thread handler waiting for that lock, and the event loop freezes for good.
+/// `run_on_main_thread` never blocks: on the main thread it runs the update in place
+/// (tauri-runtime-wry's `send_user_message`), elsewhere it queues it for the event loop.
 pub fn refresh(app: &AppHandle) {
     let snapshot = app.state::<AppCore>().snapshot();
-    if let Some(menu) = app.try_state::<TrayMenu<Wry>>() {
-        menu.update(app, &snapshot);
-    }
     let _ = app.emit(SNAPSHOT_EVENT, &snapshot);
+    let handle = app.clone();
+    // An error means the event loop is gone (TauBar is quitting): nothing to show then.
+    let _ = app.run_on_main_thread(move || {
+        if let Some(menu) = handle.try_state::<TrayMenu<Wry>>() {
+            menu.update(&handle, &snapshot);
+        }
+    });
 }
 
 /// Turn "Run the hub" on or off, off the main thread (it can wait on the hub supervisor), and
@@ -147,6 +164,11 @@ fn on_menu(app: &AppHandle, id: &str) {
             return;
         }
         ids::HUB_LOG => open_hub_log(app),
+        ids::GUARD_LOCK => {
+            lock_guard(app);
+            return;
+        }
+        ids::GUARD_CAMERA => open_camera_settings(app),
         ids::SLEEP_NORMAL => {
             core.set_sleep_mode(SleepMode::Normal);
         }
@@ -178,6 +200,39 @@ fn on_menu(app: &AppHandle, id: &str) {
         _ => {}
     }
     refresh(app);
+}
+
+/// "Lock now" from the menu: the signed request runs off the main thread; a lock the hub did
+/// not confirm is shown, because the owner expects tau to be locked.
+fn lock_guard(app: &AppHandle) {
+    let worker = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("taubar-guard-lock".into())
+        .spawn(move || {
+            let result = worker.state::<AppCore>().guard_lock();
+            refresh(&worker);
+            if let Err(err) = result {
+                error_dialog(
+                    &worker,
+                    "Lock now",
+                    &format!("tau may not be locked: {err}"),
+                );
+            }
+        });
+    if let Err(err) = spawned {
+        app.state::<AppCore>()
+            .log
+            .write(format!("guard lock thread could not start: {err}"));
+    }
+}
+
+/// System Settings → Privacy & Security → Camera, where TauBar's camera grant lives.
+pub fn open_camera_settings(app: &AppHandle) {
+    if let Err(err) = app.opener().open_url(CAMERA_SETTINGS_URL, None::<&str>) {
+        app.state::<AppCore>()
+            .log
+            .write(format!("the camera settings could not be opened: {err}"));
+    }
 }
 
 /// Every few seconds: pick up changes made outside TauBar (login item toggled in System
@@ -242,6 +297,7 @@ pub fn open_settings(app: &AppHandle) {
             .min_inner_size(460.0, 420.0)
             .center()
             .focused(true)
+            .on_permission_request(|_, kind| webview::permission(kind))
             .build();
     match built {
         Ok(window) => {

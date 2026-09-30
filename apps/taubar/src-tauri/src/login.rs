@@ -135,23 +135,25 @@ mod tests {
 
     #[test]
     fn only_an_installed_bundle_may_register_for_login() {
-        let home = Path::new("/Users/someone");
+        // A placeholder home: the repo rule refuses real home paths in tracked files (roadmap
+        // 130), and `installed_bundle` only compares paths.
+        let home = Path::new("/path/to/home");
         let installed = Path::new("/Applications/TauBar.app/Contents/MacOS/taubar");
         assert_eq!(
             installed_bundle(installed, home),
             Ok(PathBuf::from("/Applications/TauBar.app"))
         );
-        let per_user = Path::new("/Users/someone/Applications/TauBar.app/Contents/MacOS/taubar");
+        let per_user = home.join("Applications/TauBar.app/Contents/MacOS/taubar");
         assert_eq!(
-            installed_bundle(per_user, home),
-            Ok(PathBuf::from("/Users/someone/Applications/TauBar.app"))
+            installed_bundle(&per_user, home),
+            Ok(home.join("Applications/TauBar.app"))
         );
         for elsewhere in [
-            "/path/to/tau/apps/taubar/src-tauri/target/release/bundle/macos/TauBar.app/Contents/MacOS/taubar",
-            "/Applications/Tools/TauBar.app/Contents/MacOS/taubar",
-            "/Users/someone/Downloads/TauBar.app/Contents/MacOS/taubar",
+            PathBuf::from("/path/to/tau/apps/taubar/src-tauri/target/release/bundle/macos/TauBar.app/Contents/MacOS/taubar"),
+            PathBuf::from("/Applications/Tools/TauBar.app/Contents/MacOS/taubar"),
+            home.join("Downloads/TauBar.app/Contents/MacOS/taubar"),
         ] {
-            let err = installed_bundle(Path::new(elsewhere), home).unwrap_err();
+            let err = installed_bundle(&elsewhere, home).unwrap_err();
             assert!(err.contains("needs TauBar.app installed in /Applications"), "{err}");
             assert!(err.contains("TauBar.app"), "{err}");
         }

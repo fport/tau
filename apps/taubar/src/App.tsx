@@ -6,6 +6,7 @@ import {
   SLEEP_CHOICES,
   checkoutSettings,
   formFromSettings,
+  guardTone,
   hubTone,
   lastLines,
   loginNote,
@@ -166,6 +167,19 @@ function HubSection({
     }
   };
 
+  const lockNow = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      onSnapshot(await api.lockGuard());
+      setNote({ tone: "ok", text: "tau is locked." });
+    } catch (e) {
+      setNote({ tone: "error", text: `tau may not be locked: ${String(e)}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const pickCheckout = async () => {
     const dir = await open({ directory: true, multiple: false, title: "The tau checkout" });
     if (typeof dir === "string") edit(checkoutSettings(dir));
@@ -205,6 +219,9 @@ function HubSection({
       </p>
       <p className="muted small">{hub.lines[1]}</p>
       <p className="muted small">{hub.lines[2]}</p>
+      {hub.guard_menu.line && (
+        <GuardLine snapshot={snapshot} busy={busy} onLock={lockNow} />
+      )}
       <label className="check">
         <input
           type="checkbox"
@@ -312,6 +329,44 @@ function HubSection({
         </dl>
       </details>
     </section>
+  );
+}
+
+function GuardLine({
+  snapshot,
+  busy,
+  onLock,
+}: {
+  snapshot: Snapshot;
+  busy: boolean;
+  onLock: () => void;
+}) {
+  const { guard, guard_menu } = snapshot.hub;
+  const { tone, mark } = guardTone(guard?.state ?? "unknown");
+  return (
+    <>
+      <p className={`status ${tone}`}>
+        {mark} {guard_menu.line}
+      </p>
+      {guard_menu.grant_camera && (
+        <p className="muted small">
+          The hub TauBar runs cannot use the camera. Allow TauBar under System Settings → Privacy
+          &amp; Security → Camera.
+        </p>
+      )}
+      <div className="buttons">
+        {guard_menu.lock_now && (
+          <button type="button" disabled={busy} onClick={onLock}>
+            Lock now
+          </button>
+        )}
+        {guard_menu.grant_camera && (
+          <button type="button" onClick={() => api.openCameraSettings()}>
+            Grant camera access…
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 

@@ -9,6 +9,8 @@ and the full reference (signing, files, development) are in
 Hub: up 2 h 5 min · pid 1234
 Telegram: polling as @your_bot
 Last crash: none
+Guard: unlocked          (only when the hub runs the owner guard)
+  Lock now
 ✓ Run the hub
   Open Hub Log
 ──────────
@@ -72,6 +74,23 @@ TauBar needs the Python with tau-core and `TAU_HOME`. It copies them from an ins
 the hub** → **Use a tau checkout…**. To hand the hub over from launchd, run
 `uv run tau hub uninstall` in the checkout and tick **Run the hub**. Details, including the data
 dir, port and environment fields: [Run tau as a service](hub-service.md#macos-taubar-default).
+
+## Owner guard and the camera
+
+When the hub runs the owner guard ([ADR 0008](https://github.com/fport/tau/blob/main/docs/adr/0008-owner-guard.md)),
+the menu shows a guard line (`Guard: locked`, `Guard: unlocked`,
+`Guard: unavailable (camera denied)`) and **Lock now**, which asks the hub to lock with a signed
+request; TauBar never unlocks. The section is hidden without a guard.
+
+The hub is TauBar's child, so macOS asks for the camera in TauBar's name ("TauBar would like to
+access the camera"); TauBar carries the usage descriptions and the camera and microphone
+entitlements for that. When the hub reports the camera as denied, **Grant camera access…** opens
+System Settings → Privacy & Security → Camera. An ad-hoc signed build is a new app to macOS
+after every rebuild, which drops the camera grant: sign TauBar with a stable self-signed
+certificate through `APPLE_SIGNING_IDENTITY`, as the
+[README](https://github.com/fport/tau/blob/main/apps/taubar/README.md#a-stable-signing-identity-for-the-camera-grant)
+describes step by step. No TauBar window can use the camera or the microphone: every webview
+permission request is denied.
 
 ## Sleep modes
 

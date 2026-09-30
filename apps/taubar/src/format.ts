@@ -1,6 +1,13 @@
 // Pure display helpers for the settings window (tested in format.test.ts).
 
-import type { HubSettings, HubState, LoginItemStatus, SleepMode, SleepStatus } from "./api";
+import type {
+  GuardState,
+  HubSettings,
+  HubState,
+  LoginItemStatus,
+  SleepMode,
+  SleepStatus,
+} from "./api";
 
 /** The colour class of the hub's status line (brand state colours, no green or red). */
 export function hubTone(state: HubState): "ok" | "pending" | "attention" | "error" {
@@ -19,6 +26,25 @@ export function hubTone(state: HubState): "ok" | "pending" | "attention" | "erro
       return "attention";
     case "error":
       return "error";
+  }
+}
+
+/** The colour class and mark of the guard line: unlocked is fine, locked is waiting for the
+ * owner, and a guard that cannot check needs attention. */
+export function guardTone(state: GuardState): {
+  tone: "ok" | "pending" | "attention";
+  mark: string;
+} {
+  switch (state) {
+    case "unlocked":
+      return { tone: "ok", mark: "●" };
+    case "locked":
+    case "verifying":
+    case "off":
+      return { tone: "pending", mark: "○" };
+    case "unavailable":
+    case "unknown":
+      return { tone: "attention", mark: "◆" };
   }
 }
 

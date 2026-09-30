@@ -32,12 +32,18 @@ pub async fn save_hub_settings(app: AppHandle, hub: HubSettings) -> Result<Snaps
     result.map(|()| app.state::<AppCore>().snapshot())
 }
 
-/// "Lock now" from the window; `Err` says why tau may not be locked.
+/// "Lock now" from the window; `Err` says why tau may not be locked. The signed request blocks
+/// (up to two attempts of [`crate::hub::guard::LOCK_TIMEOUT`] each), so it runs on a blocking
+/// thread instead of holding an async runtime worker.
 #[tauri::command]
 pub async fn lock_guard(app: AppHandle) -> Result<Snapshot, String> {
-    let result = app.state::<AppCore>().guard_lock();
-    refresh(&app);
-    result.map(|()| app.state::<AppCore>().snapshot())
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = app.state::<AppCore>().guard_lock();
+        refresh(&app);
+        result.map(|()| app.state::<AppCore>().snapshot())
+    })
+    .await
+    .map_err(|err| format!("the lock request stopped: {err}"))?
 }
 
 #[tauri::command]

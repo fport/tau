@@ -25,15 +25,15 @@ tau is a personal AI agent that lives on your own machine and keeps your convers
 
 ```mermaid
 flowchart LR
-  you(["You"]) -->|"terminal · TUI · Telegram"| hub
   subgraph home["Your machine: the hub"]
-    hub["tau"] --- data[("sessions · user.md · keys")]
+    tau["tau<br/>sessions · user.md · keys"]
   end
-  hub -->|"asks you first"| world["the physical world"]
-  hub -->|"to think"| model["your model provider<br/>Anthropic · OpenAI · Gemini · Bedrock · Ollama"]
-  hub -->|"collects mail, outbound only"| spine["your spine: address + mailbox<br/>in your Cloudflare account"]
+  you(["You"]) -->|"terminal · TUI · Telegram"| tau
+  tau -->|"asks you first"| world["the physical world"]
+  tau -->|"to think"| model["your model provider<br/>Anthropic · OpenAI<br/>Gemini · Bedrock · Ollama"]
+  tau -->|"collects its mail,<br/>outbound only"| spine["your spine<br/>address + mailbox<br/>in your Cloudflare account"]
   friends["friends' taus"] -->|"sealed envelopes"| spine
-  hub -->|"sealed envelopes"| friends
+  tau -->|"sealed envelopes<br/>to their spines"| friends
 ```
 
 tau is in early development. The status table under [Where things are](#where-things-are) says what works today and what is planned.

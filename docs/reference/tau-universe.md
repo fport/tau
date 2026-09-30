@@ -138,17 +138,23 @@ A report works like this:
 
 ## 4. The spine kit (`tau net spine`)
 
-`tau-net` ships the spine as a kit: the bundled Worker (`worker.js`, built from `cloud/spine` with `wrangler deploy --dry-run --outdir`), the D1 migrations and a Wrangler configuration template. `cloud/spine`'s `pnpm run kit` regenerates the kit, and a check keeps it in sync with the source.
+`tau-net` ships the spine as a kit in `tau_net/spine_kit/`. `cloud/spine`'s `pnpm run kit` regenerates it from the source, and a test plus a CI job fail when it is stale. The kit holds:
+
+- the bundled Worker, `worker.js`, built from `cloud/spine` with `wrangler deploy --dry-run --outdir`;
+- `wrangler.template.jsonc`, derived from `wrangler.example.jsonc`;
+- `package.template.json`, with Wrangler pinned;
+- `VERSION` and a `README.md`;
+- `migrations/`, only when the local-mode config has a D1 binding. It has none since the mailbox moved into the `Mailbox` Durable Object.
 
 - **`tau net spine init DIR [--address HOST]`** writes a Wrangler project into `DIR`, and refuses a non-empty `DIR`:
-  - `wrangler.jsonc` in local mode, with the Worker name `tau-spine`, `main = "worker.js"`, no build step, the KV, D1, Durable Object and cron settings of `cloud/spine`, and `ADDRESS` plus a custom-domain route when `--address` is a host that is not `*.workers.dev`;
-  - `worker.js`, `migrations/`;
+  - `wrangler.jsonc` in local mode, with the Worker name `tau-spine`, `main = "worker.js"`, no build step, the bindings, Durable Object migrations, vars and cron of `cloud/spine`'s local-mode config, and `ADDRESS` plus a custom-domain route when `--address` is a host that is not `*.workers.dev`;
+  - `worker.js` (and `migrations/` when there is a D1 binding);
   - a `package.json` with Wrangler pinned as a dev dependency;
   - `.gitignore` and a `README.md`.
 - **`tau net spine deploy DIR`** takes these steps, and never prints the token:
-  1. checks that `npx` exists and that `wrangler whoami` shows a login; otherwise it prints `npx wrangler login` and stops;
-  2. runs `npm install`, then `npx wrangler deploy`, then `npx wrangler d1 migrations apply DB --remote`;
-  3. generates `TAU_SPINE_TOKEN` in the hub's `.env` when it is missing, and feeds it to `npx wrangler secret put HUB_TOKEN` through stdin;
+  1. checks that `npx` exists and that `npx --yes wrangler@<pinned> whoami --json` shows a login (its output, which holds the account's e-mail, is never printed); otherwise it prints `npx wrangler login` and stops;
+  2. runs `npm install --no-audit --no-fund` and `npx wrangler deploy`, then `npx wrangler d1 migrations apply DB --remote` only when the project has a D1 binding;
+  3. generates `TAU_SPINE_TOKEN` in the hub's `.env` when it is missing, and feeds it to `npx wrangler secret put HUB_TOKEN` through stdin. The token never appears in argv, and any echoed line containing it is masked;
   4. writes `TAU_SPINE_URL` into the hub's `.env`: `https://<address>` from `--address`, or the `workers.dev` URL printed by the deploy.
 
   Afterwards `tau net init` and `tau net publish` finish the setup.

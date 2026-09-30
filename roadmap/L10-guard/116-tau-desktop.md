@@ -1,6 +1,6 @@
 # 116 · tau Desktop v0: Tauri app hosting `tau tui` in xterm.js + PTY
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L10 · Guard
 Packages: apps/tau-desktop (new)
@@ -36,13 +36,13 @@ A separate desktop app for talking to tau, as the owner asked: `apps/tau-desktop
 ## Acceptance criteria
 
 - [ ] `pnpm tauri build` produces the app bundle (bundle id `com.tau.desktop`, product name "tau Desktop"); `pnpm test` (vitest) and `cargo test` / `cargo clippy` are green
-- [ ] A window runs `<TAU_HOME>/.venv/bin/python -m tau_core tui` in a PTY with the documented environment and cwd; the TUI renders with colours and box drawing, and ğüşıöç typed and printed survive chunk boundaries (test feeding split UTF-8 through the coalescer)
-- [ ] Resizing the window resizes the PTY; ⌘N opens a second independent window
-- [ ] Option-typed characters on a Turkish layout reach the TUI as text (`macOptionIsMeta: false`); Option-click selects text
-- [ ] Closing a window sends ctrl+q, then kills the process group after 1 s; no orphan `tau_core tui` process stays behind (test or documented check with `pgrep`)
-- [ ] First run without `TAU_HOME` offers TauBar's home as a hint or a folder picker, and refuses a folder where `-m tau_core version` fails; there is no free-form Python path field
-- [ ] The app denies webview media permission requests, declares no camera or microphone usage, and opens no listening socket (`lsof -i` check documented)
-- [ ] Icons come from `docs/brand`; the README covers build and run with example values
+- [x] A window runs `<TAU_HOME>/.venv/bin/python -m tau_core tui` in a PTY with the documented environment and cwd; the TUI renders with colours and box drawing, and ğüşıöç typed and printed survive chunk boundaries (test feeding split UTF-8 through the coalescer)
+- [x] Resizing the window resizes the PTY; ⌘N opens a second independent window
+- [x] Option-typed characters on a Turkish layout reach the TUI as text (`macOptionIsMeta: false`); Option-click selects text
+- [x] Closing a window sends ctrl+q, then kills the process group after 1 s; no orphan `tau_core tui` process stays behind (test or documented check with `pgrep`)
+- [x] First run without `TAU_HOME` offers TauBar's home as a hint or a folder picker, and refuses a folder where `-m tau_core version` fails; there is no free-form Python path field
+- [x] The app denies webview media permission requests, declares no camera or microphone usage, and opens no listening socket (`lsof -i` check documented)
+- [x] Icons come from `docs/brand`; the README covers build and run with example values
 - [ ] (user) One live session in tau Desktop on the owner's Mac: open, chat, `/sessions`, resize, close; the result goes under Comments
 
 ## Blocked by
@@ -52,3 +52,7 @@ None - can start immediately. The guard's lock screen (113) appears in the app w
 ## Comments
 
 - 2026-09-30: filed with ADR 0008. `apps/tau-desktop` still has to be added to the repo map in CLAUDE.md and to the layout in `docs/ARCHITECTURE.md` in the final docs pass.
+- 2026-09-30: built in `apps/tau-desktop` (commits 047ff6b Rust core, 24a1fa0 window, b1883ff README). Green: `pnpm test` (23 vitest tests), `pnpm build`, `cargo test` (28 tests, stable over 5 runs), `cargo clippy --all-targets -- -D warnings`, and `cargo check`/`clippy` with `--features tauri/custom-protocol` (the production context with the CSP and embedded assets compiles). Not run, as the task instructed: `pnpm tauri build` and launching the app, so the first criterion stays open until the owner builds it for the live session. A scratch harness (not committed) ran the real `python -m tau_core tui` in a PTY with this environment, a scratch `TAU_HOME`/`TAU_DATA_DIR` and an unused hub port. It rendered truecolor, box drawing and blocks, the alternate screen and mouse tracking with no U+FFFD, and ctrl+q ended it cleanly in 0.29 s. Resize, ⌘N, Option typing and Option-click are implemented and tested below the GUI (PTY resize test, key-option tests); seeing them in the window is part of the live session.
+  - Deviations and choices: the brief's `-m tau_core --version` does not exist, so the check runs `-m tau_core version` as the issue says. `LC_ALL`/`LC_CTYPE` are inherited only when they are UTF-8. `TAU_LANG` is not passed (TauBar parity); the language comes from `[ui] language`. There is no confirmation before closing mid-turn, because the TUI's state is not readable cheaply from outside; the README documents it. A clean TUI exit (ctrl+q) closes its window. An error exit keeps the window with "Enter starts it again". Closing the last window keeps the app running, like Terminal. Output is batched on both sides: Rust sends at most one Channel message per 8 ms while output keeps coming, and a chunk after a quiet spell at once; the page coalesces for 8 ms. `pty_write` runs off the main thread, so the page keeps one write in flight (`InputQueue`) to preserve key order. Closing writes ctrl+q from its own thread, and the process group is killed only under the exit lock (waitid `WNOWAIT`), so a recycled pid is never signalled. Links open only on ⌘-click, http(s) only, through Rust; the capability grants the page no core, dialog or opener permission. The icons are generated from `docs/brand/tau-app-icon.svg` and come out byte-identical to TauBar's; a distinct icon would need a brand decision. `apps/tau-desktop` is not in CI, like TauBar (`.github/workflows/ci.yml` runs only Python and docs).
+  - For later issues: 113's lock screen shows up unchanged, and the desktop relies on the TUI's ctrl+q path releasing a running guard attempt (it never calls `/guard/cancel` itself). 086 now also covers the desktop chrome: the menu, the first-run page, notices and errors. Possible follow-ups: `@xterm/addon-clipboard`, so Textual's own OSC 52 copy works (today only Option-drag + ⌘C does); a cheap busy signal from the TUI (an OSC sequence) for a close confirmation; the WebGL renderer if the DOM renderer is slow in big windows. `test_no_personal_paths_in_tracked_files` still fails on this branch because of issue 130 (TauBar's `login.rs` and 130's own file), which predates this work.
+  - Final docs pass: add `apps/tau-desktop/  # Tauri v2 + React/TS + xterm.js: tau tui in a native window (#116)` to the CLAUDE.md repo map and the `docs/ARCHITECTURE.md` layout, add tau Desktop to CONTEXT.md's Channel entry (it is the `tui` channel), and add a short docs-site guide or a section in `docs/guides/taubar.md` pointing to `apps/tau-desktop/README.md` (build, first run, keys).

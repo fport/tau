@@ -1,0 +1,8 @@
+# Local development values for `wrangler dev`. `pnpm run configure` creates `.dev.vars`
+# (gitignored) from this file with a random HUB_TOKEN. Never put real secrets here.
+
+# The hub's bearer token; the hub reads the same value as TAU_SPINE_TOKEN.
+HUB_TOKEN=change-me
+
+# Development only: accept peers at http://localhost and http://127.0.0.1.
+ALLOW_INSECURE_PEERS=1

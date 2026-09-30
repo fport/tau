@@ -1,0 +1,33 @@
+{
+  "name": "tau-spine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "tau spine: a Cloudflare Worker with the tau's card, signed mailbox and hub API",
+  "type": "module",
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "dev": "wrangler d1 migrations apply DB --local && wrangler dev",
+    "dev:cloud": "wrangler d1 migrations apply DB --local && wrangler dev --var TAU_MODE:cloud --enable-containers=false",
+    "deploy": "wrangler deploy && wrangler d1 migrations apply DB --remote",
+    "deploy:cloud": "node scripts/configure.mjs --check-cloud && wrangler deploy && wrangler d1 migrations apply DB --remote",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types --config wrangler.cloud.example.jsonc --env-file .dev.vars.example --include-runtime=false --strict-vars=false"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "~0.22.0",
+    "@cloudflare/workers-types": "^5.20260930.1",
+    "typescript": "^6.0.3",
+    "vitest": "~4.1.11",
+    "wrangler": "^4.144.0"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ]
+  }
+}

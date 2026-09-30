@@ -1,0 +1,585 @@
+/* tau's hard theme (ADR 0013 §8): the tokens, fonts and primitives shared by the public site
+   (cloud/universe) and tau-host (cloud/host).
+
+   Near-black with a faint grid and a dark-blue code texture, one neon red accent taken from
+   the tau triangle, chrome-white type, thin lines, square corners and HUD rings. Dark only:
+   it is the brand.
+
+   How to use it: serve this file next to a `fonts/` directory holding the Jost variable font
+   (`jost-latin-wght-normal.woff2`, `jost-latin-ext-wght-normal.woff2` and its OFL licence,
+   from @fontsource-variable/jost), because the @font-face URLs below are relative to this
+   file. The universe's build copies both into public/app/. Load it before the page's own
+   stylesheet.
+
+   CSP: everything here works under `style-src 'self'; img-src 'self' data:`. There is no
+   @import and no remote font; the code texture is a data: SVG.
+
+   Motion: every animation here stops under `prefers-reduced-motion: reduce`. The character
+   classes (`.ch-*`) animate the SVG that cloud/shared/character.ts writes. */
+
+@font-face {
+  font-family: "Jost";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("fonts/jost-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Jost";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("fonts/jost-latin-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* Surfaces, darkest first. */
+  --bg: #07080a;
+  --bg-2: #0d0f13;
+  --bg-3: #13161c;
+  /* Lines: hairlines between things, and a stronger one for edges you can act on. */
+  --line: #1f232b;
+  --line-2: #2e3440;
+  /* Type: chrome white, muted, faint (faint only for large or decorative text). */
+  --text: #e8ecf1;
+  --muted: #8a93a3;
+  --faint: #5d6574;
+  /* The one accent: the neon red of the tau triangle, its glow and its tints. */
+  --accent: #ff2e3e;
+  --accent-hot: #ff6b75;
+  --accent-glow: rgba(255, 46, 62, 0.45);
+  --accent-soft: rgba(255, 46, 62, 0.12);
+  --accent-line: rgba(255, 46, 62, 0.55);
+  /* Text on the accent. */
+  --on-accent: #07080a;
+  /* The code texture's blue, and the grid. */
+  --code: #16305c;
+  --grid: rgba(232, 236, 241, 0.035);
+  /* Chrome: the gradient of the big letters. */
+  --chrome: linear-gradient(180deg, #ffffff 0%, #dfe4ea 38%, #8b95a5 52%, #c9d0da 64%, #f4f6f9 100%);
+
+  --font-sans: "Jost", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Square corners and thin lines, everywhere. */
+  --radius: 0;
+  --hair: 1px;
+
+  --page: 76rem;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+
+  color-scheme: dark;
+}
+
+/* ---- base ------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  font-weight: 380;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 300;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+p,
+ul,
+ol,
+dl,
+figure {
+  margin: 0;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+a {
+  color: var(--accent-hot);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+}
+
+a:hover {
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+code,
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+code {
+  color: var(--text);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  padding: 0.08em 0.4em;
+  white-space: nowrap;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 0.35em;
+  border: 1px solid var(--line-2);
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip {
+  position: absolute;
+  left: var(--gutter);
+  top: -4rem;
+  z-index: 20;
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 500;
+}
+
+.skip:focus {
+  top: 1rem;
+}
+
+/* ---- texture ---------------------------------------------------------------------- */
+
+/* A faint square grid. */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+}
+
+/* Vertical columns of glyphs in dark blue, like code falling behind glass. Put it on a layer
+   of its own (a pseudo-element or an empty div) so its opacity does not touch the content. */
+.code-bg {
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='320' font-family='monospace' font-size='12' fill='%2316305c'%3E%3Cg%3E%3Ctext x='6' y='14'%3E1%3C/text%3E%3Ctext x='6' y='30'%3E0%3C/text%3E%3Ctext x='6' y='46'%3E%CF%84%3C/text%3E%3Ctext x='6' y='62'%3E7%3C/text%3E%3Ctext x='6' y='78'%3E%E2%96%B2%3C/text%3E%3Ctext x='6' y='94'%3E0%3C/text%3E%3Ctext x='6' y='110'%3E1%3C/text%3E%3Ctext x='6' y='190'%3E3%3C/text%3E%3Ctext x='6' y='206'%3Ef%3C/text%3E%3Ctext x='6' y='222'%3E0%3C/text%3E%3Ctext x='54' y='62'%3Ea%3C/text%3E%3Ctext x='54' y='78'%3E9%3C/text%3E%3Ctext x='54' y='94'%3E%CF%84%3C/text%3E%3Ctext x='54' y='110'%3E0%3C/text%3E%3Ctext x='54' y='126'%3E1%3C/text%3E%3Ctext x='54' y='142'%3E1%3C/text%3E%3Ctext x='54' y='270'%3E%E2%96%B3%3C/text%3E%3Ctext x='54' y='286'%3E4%3C/text%3E%3Ctext x='54' y='302'%3E0%3C/text%3E%3Ctext x='102' y='14'%3E%E2%96%B3%3C/text%3E%3Ctext x='102' y='30'%3E8%3C/text%3E%3Ctext x='102' y='158'%3E1%3C/text%3E%3Ctext x='102' y='174'%3E0%3C/text%3E%3Ctext x='102' y='190'%3Ec%3C/text%3E%3Ctext x='102' y='206'%3E%CF%84%3C/text%3E%3Ctext x='102' y='222'%3E2%3C/text%3E%3Ctext x='102' y='238'%3E0%3C/text%3E%3Ctext x='150' y='94'%3E5%3C/text%3E%3Ctext x='150' y='110'%3E%E2%96%B2%3C/text%3E%3Ctext x='150' y='126'%3E0%3C/text%3E%3Ctext x='150' y='142'%3E1%3C/text%3E%3Ctext x='150' y='158'%3Ee%3C/text%3E%3Ctext x='150' y='302'%3E1%3C/text%3E%3Ctext x='198' y='30'%3E0%3C/text%3E%3Ctext x='198' y='46'%3E1%3C/text%3E%3Ctext x='198' y='62'%3E%CF%84%3C/text%3E%3Ctext x='198' y='206'%3Eb%3C/text%3E%3Ctext x='198' y='222'%3E6%3C/text%3E%3Ctext x='198' y='238'%3E%E2%96%B3%3C/text%3E%3Ctext x='198' y='254'%3E0%3C/text%3E%3Ctext x='198' y='270'%3E1%3C/text%3E%3C/g%3E%3C/svg%3E");
+  background-size: 240px 320px;
+}
+
+/* ---- type ------------------------------------------------------------------------- */
+
+/* Chrome letters: thin, silver, lit from above. */
+.chrome {
+  background: var(--chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* A small HUD label: mono, upper case, spaced. */
+.kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.kicker-accent {
+  color: var(--accent);
+}
+
+/* A lit square: online, live, on. A hollow one is off. */
+.pip {
+  display: inline-block;
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.pip-off {
+  background: transparent;
+  border: 1px solid var(--faint);
+  box-shadow: none;
+}
+
+.pip-live {
+  animation: pip-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes pip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---- surfaces --------------------------------------------------------------------- */
+
+.panel {
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+/* HUD corner brackets on any box; `--corner` sets their colour. */
+.corners {
+  --corner: var(--accent-line);
+  --corner-size: 10px;
+  background-image:
+    linear-gradient(var(--corner), var(--corner)), linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner)), linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner)), linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner)), linear-gradient(var(--corner), var(--corner));
+  background-repeat: no-repeat;
+  background-size:
+    var(--corner-size) 1px,
+    1px var(--corner-size),
+    var(--corner-size) 1px,
+    1px var(--corner-size),
+    var(--corner-size) 1px,
+    1px var(--corner-size),
+    var(--corner-size) 1px,
+    1px var(--corner-size);
+  background-position:
+    left top,
+    left top,
+    right top,
+    right top,
+    left bottom,
+    left bottom,
+    right bottom,
+    right bottom;
+}
+
+/* ---- controls --------------------------------------------------------------------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 1.2rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: rgba(13, 15, 19, 0.7);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 450;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+}
+
+.button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.button-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 550;
+  box-shadow: 0 0 22px var(--accent-soft);
+}
+
+.button-primary:hover {
+  color: var(--on-accent);
+  border-color: var(--accent-hot);
+  background: var(--accent-hot);
+  box-shadow: 0 0 28px var(--accent-glow);
+}
+
+.button:disabled,
+.button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.button svg {
+  flex: none;
+  width: 1.1em;
+  height: 1.1em;
+  fill: currentColor;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+/* ---- HUD rings -------------------------------------------------------------------- */
+
+/* Thin rings for an inline SVG: `.hud-ring` a steady line, `.hud-ticks` a dashed dial,
+   `.hud-spin` / `.hud-spin-back` turn them slowly around the SVG's centre. */
+.hud-ring,
+.hud-ticks,
+.hud-arc {
+  fill: none;
+  stroke: var(--accent);
+  vector-effect: non-scaling-stroke;
+}
+
+.hud-ring {
+  stroke-opacity: 0.28;
+  stroke-width: 1;
+}
+
+.hud-ticks {
+  stroke-opacity: 0.4;
+  stroke-width: 1;
+  stroke-dasharray: 1 7;
+}
+
+.hud-arc {
+  stroke-opacity: 0.85;
+  stroke-width: 1.5;
+}
+
+.hud-frag {
+  fill: var(--accent);
+  fill-opacity: 0.6;
+}
+
+.hud-spin,
+.hud-spin-back {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: hud-spin 90s linear infinite;
+}
+
+.hud-spin-back {
+  animation-duration: 140s;
+  animation-direction: reverse;
+}
+
+@keyframes hud-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- characters ------------------------------------------------------------------- */
+
+/* The SVG of cloud/shared/character.ts. `.ch-anim` turns the idle motion on; `.ch-p0`…
+   `.ch-p7` shift its phase so a row of creatures never moves in step. */
+.ch {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+.ch-anim {
+  --ch-delay: 0s;
+}
+
+.ch-p1 {
+  --ch-delay: -0.45s;
+}
+.ch-p2 {
+  --ch-delay: -0.9s;
+}
+.ch-p3 {
+  --ch-delay: -1.35s;
+}
+.ch-p4 {
+  --ch-delay: -1.8s;
+}
+.ch-p5 {
+  --ch-delay: -2.25s;
+}
+.ch-p6 {
+  --ch-delay: -2.7s;
+}
+.ch-p7 {
+  --ch-delay: -3.15s;
+}
+
+.ch-anim .ch-body {
+  animation: ch-float 3.6s ease-in-out var(--ch-delay) infinite;
+}
+
+.ch-anim .ch-shadow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ch-shadow 3.6s ease-in-out var(--ch-delay) infinite;
+}
+
+.ch-anim .ch-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ch-blink 5.2s linear calc(var(--ch-delay) * 2.3) infinite;
+}
+
+.ch-anim .ch-wiggle {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: ch-wiggle 2.6s ease-in-out var(--ch-delay) infinite;
+}
+
+.ch-anim .ch-bob {
+  animation: ch-bob 3.6s ease-in-out calc(var(--ch-delay) - 0.3s) infinite;
+}
+
+@keyframes ch-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes ch-shadow {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scaleX(0.84);
+    opacity: 0.6;
+  }
+}
+
+@keyframes ch-blink {
+  0%,
+  93%,
+  100% {
+    transform: scaleY(1);
+  }
+  96% {
+    transform: scaleY(0.08);
+  }
+}
+
+@keyframes ch-wiggle {
+  0%,
+  100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(7deg);
+  }
+}
+
+@keyframes ch-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+
+/* ---- motion ----------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .ch-anim .ch-body,
+  .ch-anim .ch-shadow,
+  .ch-anim .ch-eyes,
+  .ch-anim .ch-wiggle,
+  .ch-anim .ch-bob,
+  .hud-spin,
+  .hud-spin-back,
+  .pip-live {
+    animation: none;
+  }
+}

@@ -15,6 +15,7 @@ from tau_core.testing import test_config
 sys.path.insert(0, str(Path(__file__).parent))
 
 from sub_helpers import CATALOG, OWNER_FACT, SideEffects  # noqa: E402
+from tau_sub import tools  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +26,14 @@ def restore_environ() -> Iterator[None]:
     yield
     os.environ.clear()
     os.environ.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def clean_tool_overrides() -> Iterator[None]:
+    yield
+    tools.config_factory = None
+    tools.model_factory = None
+    tools.catalog_factory = None
 
 
 @pytest.fixture(autouse=True)

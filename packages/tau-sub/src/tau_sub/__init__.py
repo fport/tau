@@ -14,6 +14,7 @@ Public API (other packages import these names)::
     write_prompt, prompt_path, state_dir, last_session, remember_session
     Draft, DraftError, draft_sub, parse_draft
     DelegatedApprover, RefusingApprover, turn_approver, turn_gate
+    TOOLS, CREATE_EFFECT
 """
 
 from __future__ import annotations
@@ -53,16 +54,19 @@ from tau_sub.definition import (
     validate_name,
 )
 from tau_sub.draft import Draft, DraftError, draft_sub, parse_draft
+from tau_sub.tools import CREATE_EFFECT, TOOLS
 
 __version__ = "0.1.0"
 
 __all__ = [
     "ABOUT_LIMIT",
+    "CREATE_EFFECT",
     "DEFAULT_ROLE",
     "FORBIDDEN_TOOLS",
     "HEADER",
     "NAME_RE",
     "ROLES",
+    "TOOLS",
     "DelegatedApprover",
     "Draft",
     "DraftError",

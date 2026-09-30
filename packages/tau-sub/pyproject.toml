@@ -28,6 +28,9 @@ Changelog = "https://github.com/fport/tau/releases"
 [project.entry-points."tau.commands"]
 sub = "tau_sub.cli:sub"
 
+[project.entry-points."tau.tools"]
+sub = "tau_sub.tools:TOOLS"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

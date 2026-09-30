@@ -74,11 +74,11 @@ def test_enroll_without_the_face_model_answers_unavailable(tmp_path: Path) -> No
 
 @pytest.mark.parametrize(
     ("op", "reason"),
-    [("enroll", "error"), ("forget", "error"), ("touch_id", "touch_id_unavailable")],
+    [("enroll", "error"), ("forget", "error"), ("touch_id", "error")],
 )
 def test_operations_without_a_usable_request(op: str, reason: str) -> None:
     _, lines, _ = run_worker(op, {"v": 1})
-    if sys.platform != "darwin" and op != "touch_id":
+    if sys.platform != "darwin":
         reason = "unsupported_platform"
     assert lines == [{"type": "verdict", "ok": False, "reason": reason, "method": None}]
 

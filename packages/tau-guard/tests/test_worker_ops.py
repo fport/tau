@@ -17,7 +17,7 @@ from tau_guard.camera import CameraError
 from tau_guard.engine import SFACE_SHA256, ModelError
 from tau_guard.liveness import Calibration
 from tau_guard.local import validate_explain
-from tau_guard.localauth import DEVICE_OWNER
+from tau_guard.localauth import BIOMETRICS, DEVICE_OWNER
 from tau_guard.runner import Progress, parse_line
 from tau_guard.state import Outcome
 from tau_guard.store import (
@@ -30,6 +30,7 @@ from tau_guard.store import (
     template_from,
 )
 from tau_guard.testing import (
+    FINGERPRINTS,
     OWNER,
     STRANGER,
     FakeFrameSource,
@@ -467,7 +468,8 @@ def test_forget_behind_local_authentication(session: Session) -> None:
     answer = session.run("forget", session.request("forget", reason_text="remove it"))
     assert answer["ok"] is True and answer["reason"] is None
     assert set(answer["removed"]) == {TEMPLATE_FILE, MARKER_FILE, "key"}
-    assert session.auth.calls[-1] == (DEVICE_OWNER, "remove it")
+    assert session.auth.calls[-1] == (BIOMETRICS, "remove it")  # the Mac has Touch ID
+    assert session.auth.pins[-1] == FINGERPRINTS  # pinned at enrollment
     assert session.keys.key is None
     parse_line(json.dumps(answer).encode(), op="selftest")  # the CLI reads it like a selftest
 

@@ -124,7 +124,7 @@ STOP_WAIT = 3.0
 """How long :meth:`GuardService.stop` waits for workers to die (SIGTERM, 1 s, SIGKILL)."""
 ATTEMPT_LIMIT = 120.0
 ENROLL_TIMEOUT = 100.0
-"""Seconds an enrollment worker may run: the LocalAuthentication prompt (up to 60 s), then the
+"""Seconds an enrollment worker may run: the LocalAuthentication prompt (up to 30 s), then the
 guided capture (the camera stays on for at most 20 s)."""
 PRESENCE_WAIT = 0.25
 """How long :meth:`GuardService.face_fresh` (synchronous) waits for a presence reading; a

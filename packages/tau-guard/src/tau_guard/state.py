@@ -220,6 +220,8 @@ class Outcome:
     liveness: str | None = None
     camera_ms: int | None = None
     """How long the worker had the camera on (the audit's ``camera_open``)."""
+    local_auth: tuple[str, str, int] | None = None
+    """``(policy, outcome, ms)`` of a LocalAuthentication prompt (the audit's ``touch_id``)."""
 
 
 @dataclass(frozen=True)

@@ -23,7 +23,9 @@ floor of 0.45 is accepted), a presence recheck and a step-up the stricter
 - ``recheck``: always a passive strict match, no challenge (about 1-1.5 s);
 - ``step_up``: the challenge with 3 steps, or a strict passive match when the hub says a check
   passed the challenge within ``step_up_challenge_fresh_seconds`` (``challenge_fresh``) or when
-  ``step_up`` is ``none``; ``step_up = "touch_id"`` has no face part (Touch ID is issue 114).
+  ``step_up`` is ``none`` (the hub asks for no check then, issue 114); ``step_up = "touch_id"``
+  has no face part (the hub runs the worker's ``touch_id`` op instead), and a
+  ``face_or_touch_id`` step-up whose face check could not work asks Touch ID in the worker.
 
 **With the challenge** the frontal match comes first; the median yaw proxy of its frames is the
 baseline. Then the steps of :class:`tau_guard.liveness.Challenge`, then a second frontal match

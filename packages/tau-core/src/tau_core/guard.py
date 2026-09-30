@@ -803,7 +803,7 @@ def _report(on_progress: Callable[[GuardProgress], None] | None, progress: Guard
 
 # -- resolution --------------------------------------------------------------------------------
 
-_GUARDS: dict[tuple[str, str, str], Guard | None] = {}
+_GUARDS: dict[tuple[str, str, str], Guard] = {}
 _GUARDS_LOCK = threading.Lock()
 
 
@@ -841,19 +841,27 @@ def _resolve(config: Config, platform: str) -> Guard | None:
 
 
 def resolve_guard(config: Config, *, platform: str | None = None) -> Guard | None:
-    """The guard for ``config``, memoized per ``(home, data_dir)`` (and platform).
+    """The guard for ``config``; a found guard is memoized per ``(home, data_dir)`` (and
+    platform), so every build in a process gets the same object.
 
     ``None`` when neither the marker nor ``[component.guard] enabled = true`` is present; a
     :class:`LockedGuard` for a non-bool ``enabled``, an unknown key in ``[component.guard]``
     or any platform but darwin; otherwise a :class:`HubGuard`, even when ``enabled = false``
     as long as the marker exists. ``platform`` defaults to ``sys.platform`` (tests pass it).
+
+    ``None`` is never memoized: it would fail open for the life of the process. A ``tau
+    chat`` or ``tau tui`` started before ``tau guard setup`` wrote the marker (or before
+    ``enabled = true``) therefore finds the guard at its next build, for the cost of a stat.
     """
     platform = sys.platform if platform is None else platform
     key = (str(config.home), str(config.data_dir), platform)
     with _GUARDS_LOCK:
-        if key not in _GUARDS:
-            _GUARDS[key] = _resolve(config, platform)
-        return _GUARDS[key]
+        guard = _GUARDS.get(key)
+        if guard is None:
+            guard = _resolve(config, platform)
+            if guard is not None:
+                _GUARDS[key] = guard
+        return guard
 
 
 def reset_guards() -> None:

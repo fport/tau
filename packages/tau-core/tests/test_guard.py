@@ -591,6 +591,34 @@ def test_resolve_guard_with_the_marker_is_a_hub_guard(tmp_path: Path, table: Any
     assert resolve_guard(config, platform="darwin") is not guard
 
 
+def test_no_guard_is_never_memoized(tmp_path: Path) -> None:
+    config = guarded_config(tmp_path)
+    assert resolve_guard(config, platform="darwin") is None
+    write_marker(config)  # `tau guard setup` in another terminal
+    guard = resolve_guard(config, platform="darwin")
+    assert isinstance(guard, HubGuard)
+    assert resolve_guard(config, platform="darwin") is guard
+    other = guarded_config(tmp_path / "other")
+    assert resolve_guard(other, platform="darwin") is None
+    enabled = other.with_overrides(component_tables={"guard": {"enabled": True}})
+    assert isinstance(resolve_guard(enabled, platform="darwin"), HubGuard)  # same home, data
+
+
+def test_a_process_started_before_enrollment_is_guarded_at_its_next_build(
+    config: Config,
+) -> None:
+    model = FakeModel(["one", "never sent"])
+    first = build_agent(config=config, model=model, tools=[])
+    assert first.guard is None
+    assert asyncio.run(first.ask("hi")) == "one"
+    write_marker(config)  # the owner runs `tau guard setup` while this window stays open
+    again = build_agent(config=config, model=model, tools=[])  # /new, /resume, /model
+    assert again.guard is not None and again.gate.guard is again.guard
+    events = asyncio.run(collect(again, "hi"))
+    assert events[-1] == TurnEnd("locked")  # no hub (or not macOS): refused, not unguarded
+    assert len(model.calls) == 1
+
+
 def test_enabled_true_without_a_marker_is_a_hub_guard(tmp_path: Path) -> None:
     guard = resolve_guard(guarded_config(tmp_path, {"enabled": True}), platform="darwin")
     assert isinstance(guard, HubGuard)

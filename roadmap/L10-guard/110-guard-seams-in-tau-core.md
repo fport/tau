@@ -100,7 +100,7 @@ class Guard(Protocol):
   - **Threads.** All blocking HTTP runs in daemon threads, never in `asyncio.to_thread`, which is joined at shutdown.
   - **`unlock` and `step_up`** post `/guard/verify`, then long-poll `GET /guard/status?since=<seq>` until the attempt is done, calling `on_progress` on every change of `seq`. On `asyncio.CancelledError` they post `/guard/cancel`, then re-raise.
   - **Policy.** The request carries the client's own weakening-sensitive policy (`[component.guard]` `step_up`, `unlock_liveness`), and the hub applies the stricter of the two.
-- **`resolve_guard(config) -> Guard | None`** is memoized per `(config.home, config.data_dir)`:
+- **`resolve_guard(config) -> Guard | None`** memoizes a found guard per `(config.home, config.data_dir)`; `None` is never memoized (it would fail open for the rest of the process):
   - `None` when neither the marker nor `enabled = true` is present;
   - `LockedGuard` for a non-bool `enabled`, an unknown key in `[component.guard]` or any platform but darwin (`unsupported_platform`);
   - otherwise `HubGuard(config)`, even when `enabled = false`, as long as the marker exists.
@@ -185,7 +185,7 @@ It never approves anything.
 - [x] A protected answer without a valid proof is `unavailable`: a fake listener on port 0 that answers `{"state": "unlocked"}` without a proof makes `HubGuard.admit` refuse
 - [x] `HubGuard` refuses (`unavailable`) on `off`, 404, 403 twice, 5xx, a timeout, bad JSON, a missing proof and an enrollment mismatch (parametrized against a fake hub), and admits only `unlocked` with a proof and the matching enrollment
 - [x] Cancelling a `HubGuard.unlock` task posts `/guard/cancel` and re-raises; `on_progress` is called once per `seq` change
-- [x] `resolve_guard` returns `None` with neither marker nor `enabled = true`; `LockedGuard` for `enabled = "true"`, `enabled = 1`, an unknown key such as `enable = true` and a non-darwin platform; `HubGuard` with only the marker, including when `enabled = false`; the same object for the same `(home, data_dir)`
+- [x] `resolve_guard` returns `None` with neither marker nor `enabled = true`; `LockedGuard` for `enabled = "true"`, `enabled = 1`, an unknown key such as `enable = true` and a non-darwin platform; `HubGuard` with only the marker, including when `enabled = false`; the same object for the same `(home, data_dir)`; a `None` is never memoized, so a marker written later (or `enabled = true` added later) is found at the next build
 - [x] Repo-rule tests: `guard=None` appears in `packages/*/src` only in `tau_core/channels/telegram.py` and `tau_net/turns.py`; every `TierGate(` call in `packages/*/src` passes `guard=`
 - [x] With the marker present, Telegram turns and network turns still run (they build with `guard=None`)
 - [x] Every verdict reason, admission reason, progress step and lock trigger has `en` and `tr` messages (test); `GUARD_MESSAGES` does not collide with `MESSAGES`; `i18n.py` is unchanged

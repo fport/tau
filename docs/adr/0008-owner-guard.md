@@ -72,7 +72,7 @@ Out of scope, stated plainly:
      - `unlock` and `step_up` post `/guard/verify`, long-poll `/guard/status?since=<seq>` and call `on_progress` on every change. A cancelled caller posts `/guard/cancel` and re-raises.
      - The client sends its own weakening-sensitive policy (`step_up`, `unlock_liveness`), and the hub applies the stricter of the two.
 
-   `resolve_guard(config)` returns `None` (no guard active), a `LockedGuard` or a `HubGuard`, memoized per `(home, data_dir)`. The routes are fixed here, like `/health` and `/status`. All of them are protected and speak JSON:
+   `resolve_guard(config)` returns `None` (no guard active), a `LockedGuard` or a `HubGuard`. A found guard is memoized per `(home, data_dir)`; `None` never is, because a remembered "no guard" would fail open for the life of a process that started before `tau guard setup`. The routes are fixed here, like `/health` and `/status`. All of them are protected and speak JSON:
 
    | Route | Body or query | Answer |
    |---|---|---|

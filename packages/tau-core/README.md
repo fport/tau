@@ -634,7 +634,9 @@ returns `None`.
   "created"}`, written by tau-guard) or `[component.guard] enabled = true`. While the marker
   exists, `enabled = false` is ignored. A non-bool `enabled`, an unknown key in
   `[component.guard]` or any platform but macOS gives a `LockedGuard` that refuses everything;
-  otherwise `resolve_guard` returns a `HubGuard`, memoized per `(home, data_dir)`.
+  otherwise `resolve_guard` returns a `HubGuard`. A found guard is memoized per `(home,
+  data_dir)`; `None` is not, so a process started before `tau guard setup` is guarded from its
+  next build on.
 - **Admission.** `build_agent(guard=DISCOVER, client_id=None)` resolves the guard unless the
   caller passes one; `TauAgent` keeps `channel`, `guard` and `client_id` (random per process).
   `stream()` asks `guard.admit(GuardTurn(channel, session_id, client_id))` inside its lock

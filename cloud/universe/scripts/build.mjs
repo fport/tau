@@ -7,7 +7,11 @@
 //   universe.js    the universe graph (the landing page's hero and /universe), bundled with
 //                  d3-force and d3-polygon (no CDN: the pages' CSP only allows scripts from
 //                  the site itself)
-//   chunks/        the development fixtures, which only localhost ever loads (client/api.ts)
+//   person.js      the person page (/@handle)
+//   sub.js         the sub-tau page and its visitor chat (/<slug>, /@handle/<name>)
+//   claim.js       the claim page (/claim#…)
+//   chunks/        code the pages share (the character generator, the strings), and the
+//                  development fixtures, which only localhost ever loads (client/api.ts)
 //   theme.css      cloud/shared/theme.css: the tokens, fonts and primitives of the hard theme
 //   fonts/         the Jost variable font (latin, latin-ext) and its licence, next to
 //                  theme.css, whose @font-face URLs are relative
@@ -26,7 +30,7 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, "fonts"), { recursive: true });
 
 await build({
-  entryPoints: ["universe"].map((name) => ({
+  entryPoints: ["universe", "person", "sub", "claim"].map((name) => ({
     in: join(root, "client", `${name}.ts`),
     out: name,
   })),

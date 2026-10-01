@@ -74,7 +74,7 @@ This repo is the center. Everything is built so it can be published or split out
 - **State (ADR 0006, 0007):** local mode is the default: life data (sessions, settings, memory, KB, routines) stays under `TAU_DATA_DIR` on the hub; the only cloud copy is a client-side encrypted backup in R2. In local mode no code path puts personal data into D1, KV, Vectorize or AI Search, the spine holds only sealed envelopes in transit, no server sits between an external channel and the hub, and the hub never opens an inbound port. Cloud mode (the hub in a Container, data in the owner's own D1/KV) happens only when the owner deploys the cloud config and runs `tau cloud push`.
 - **tau network (ADR 0007, 0010):** envelopes are always signed and sealed; the spine never sees plaintext or contacts; a network turn never sees `user.md`, gets no tools and refuses every approval; `net_send` stays tier 2. Everything a peer sends is untrusted text. The universe is opt-in: a hub reports only links to listed contacts, only counts, and a link is shown only when both sides report it.
 - **Hosted taus (ADR 0013):** local stays the private default; hosted taus on someone else's tau-host are readable by that operator, and the site says so. Provider and network keys in tau-host are sealed with `VAULT_KEY` and never returned or logged. Hosted tier-2 calls wait for the owner's approval in the app, never auto-approved. Visitors reach only `public` + `web` sub-taus, through the universe, within `web_daily`.
-- **Remote access:** changing `infra/remote/sshd/tau.conf` must keep password auth off and `AllowUsers` restricted to tailnet + localhost; re-run `infra/remote/doctor.sh`.
+- **Remote access:** changing `infra/remote/sshd/tau.conf` must keep password auth off and `AllowUsers` restricted to tailnet + localhost; re-run `infra/remote/doctor.sh`. tau-core ships a copy of `infra/remote` in `tau_core/remote/kit/` for `tau remote` and `tau setup`; a test keeps it byte-identical, so after changing `infra/remote` run `rsync -a --delete --exclude README.md --exclude config.local.env infra/remote/ packages/tau-core/src/tau_core/remote/kit/`. Setup never runs `sudo`: it shows the one command and waits.
 
 ## Commits
 
@@ -89,8 +89,11 @@ infra/remote/setup.sh                                          # re-apply remote
 
 # Python (uv workspace, Python 3.12; never pip-install into the system python)
 uv sync --all-packages --group dev                             # install every package + dev tools
+uv run tau setup [--lang tr]                                   # guided setup: pick features, install and configure them (ADR 0014)
 uv run tau init                                                # first config: tau.toml + persona/user.md from templates
 uv run tau doctor                                              # config, credentials, session store, persona, .env names, hub API
+uv run tau telegram pair                                       # pair the owner's Telegram chat with a one-time code (#172)
+uv run tau remote status                                       # Tailscale, SSH/mosh and the phone values (#173)
 uv run tau components                                          # every tau.* entry point with distribution, version, state
 uv run tau chat                                                # talk to tau in the terminal
 uv run tau tui                                                 # Textual UI (#008)

@@ -217,9 +217,9 @@ def test_a_tau_without_setup_is_upgraded_first(tmp_path: Path) -> None:
         "uv tool list",
         "uv tool dir --bin",
         "tau setup --help",
-        "uv tool upgrade tau-core",
+        "uv tool upgrade --refresh tau-core",
         "tau setup --help",
-        "uv tool install --force tau-core --with tau-tui",
+        "uv tool install --force --refresh tau-core --with tau-tui",
         "tau setup --help",
         "tau setup",
     ]

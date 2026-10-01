@@ -158,9 +158,10 @@ main() {
   # An older tau (before 0.5.0) has no `tau setup`: upgrade it, then install it afresh.
   if ! "$tau" setup --help >/dev/null 2>&1; then
     say "This tau has no \`tau setup\` yet (it is older than 0.5.0); upgrading it..."
-    "$uv" tool upgrade tau-core >/dev/null 2>&1 || true
+    # --refresh: a release minutes old may not be in uv's cached copy of the index yet.
+    "$uv" tool upgrade --refresh tau-core >/dev/null 2>&1 || true
     if ! "$tau" setup --help >/dev/null 2>&1; then
-      "$uv" tool install --force "$core" --with "$tui" || fail "uv tool install $core failed; see above."
+      "$uv" tool install --force --refresh "$core" --with "$tui" || fail "uv tool install $core failed; see above."
     fi
     if ! "$tau" setup --help >/dev/null 2>&1; then
       fail "tau setup needs tau-core 0.5.0 or newer, and the package index does not offer it yet; try again in a few minutes."

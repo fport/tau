@@ -1,10 +1,10 @@
 name: cloud-shared
 
 # cloud/shared holds TypeScript the Workers import by relative path: the tau network protocol's
-# TypeScript half (net/, issue 158). Its tests run in workerd and in Node, and check it against
-# the vectors tau-net wrote (net/vectors.json). The Python half of the check, including the
-# freshness of vectors.json and tau-net's check of net/ts-vectors.json, runs in ci.yml's
-# pytest.
+# TypeScript half (net/, issue 158) and the turn protocol's (turn/, issue 177). Its tests run in
+# workerd and in Node, and check them against the vectors tau-net and tau-core wrote
+# (net/vectors.json, turn/vectors.json). The Python half of the check, including the freshness
+# of both vectors files and tau-net's check of net/ts-vectors.json, runs in ci.yml's pytest.
 
 on:
   push:

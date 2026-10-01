@@ -18,6 +18,7 @@ members = [
     "tau-sim",
     "tau-sub",
     "tau-tui",
+    "tau-web",
     "tau-workspace",
 ]
 
@@ -2158,6 +2159,27 @@ requires-dist = [
 ]
 
 [[package]]
+name = "tau-web"
+version = "0.1.0"
+source = { editable = "packages/tau-web" }
+dependencies = [
+    { name = "click" },
+    { name = "pyjwt", extra = ["crypto"] },
+    { name = "starlette" },
+    { name = "tau-core" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.8" },
+    { name = "starlette", specifier = ">=0.40" },
+    { name = "tau-core", editable = "packages/tau-core" },
+    { name = "uvicorn", specifier = ">=0.30" },
+]
+
+[[package]]
 name = "tau-workspace"
 version = "0.0.0"
 source = { virtual = "." }
@@ -2169,10 +2191,12 @@ dependencies = [
     { name = "tau-sim" },
     { name = "tau-sub" },
     { name = "tau-tui" },
+    { name = "tau-web" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-textual-snapshot" },
@@ -2195,10 +2219,12 @@ requires-dist = [
     { name = "tau-sim", editable = "packages/tau-sim" },
     { name = "tau-sub", editable = "packages/tau-sub" },
     { name = "tau-tui", editable = "packages/tau-tui" },
+    { name = "tau-web", editable = "packages/tau-web" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-textual-snapshot" },

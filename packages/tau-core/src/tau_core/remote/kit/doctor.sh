@@ -79,30 +79,35 @@ fi
 if command -v tau-attach >/dev/null; then ok "tau-attach"; else bad "tau-attach is not on PATH → ./setup.sh"; fi
 
 step "Sleep"
-# Either TauBar (the macOS default once installed) or the com.tau.keepawake agent keeps the Mac
-# awake on AC power; both hold a PreventSystemSleep assertion.
+# Either the tau app (the macOS default once installed; TauBar before it) or the
+# com.tau.keepawake agent keeps the Mac awake on AC power; both hold a PreventSystemSleep assertion.
 agent_loaded=0
 launchctl print "gui/$(id -u)/com.tau.keepawake" >/dev/null 2>&1 && agent_loaded=1
 # Captured first: `pmset | grep -q` under pipefail fails when grep stops reading early.
 assertions=$(pmset -g assertions 2>/dev/null)
 settings=$(pmset -g 2>/dev/null)
-if app=$(taubar_app); then
-  if ! pgrep -xq taubar; then
-    bad "TauBar is installed but not running → open -a \"$app\""
-  elif grep -qF "named: \"$TAUBAR_ASSERTION\"" <<<"$assertions"; then
-    ok "TauBar keeps the Mac awake (PreventSystemSleep; inactive on battery)"
+if app=$(mac_app); then
+  name=$(basename "$app" .app)
+  awake=0
+  for assertion in "${MAC_APP_ASSERTIONS[@]}"; do
+    grep -qF "named: \"$assertion\"" <<<"$assertions" && awake=1
+  done
+  if ! pgrep -xq "$(mac_app_process "$app")"; then
+    bad "$name is installed but not running → open -a \"$app\""
+  elif [[ $awake == 1 ]]; then
+    ok "$name keeps the Mac awake (PreventSystemSleep; inactive on battery)"
   else
-    warn "TauBar is running with the sleep mode Normal: the Mac is unreachable once it sleeps"
+    warn "$name is running with the sleep mode Normal: the Mac is unreachable once it sleeps"
   fi
   if [[ $agent_loaded == 1 ]]; then
-    warn "com.tau.keepawake is still loaded next to TauBar → ./setup.sh removes it"
+    warn "com.tau.keepawake is still loaded next to $name → ./setup.sh removes it"
   fi
 elif [[ $agent_loaded == 1 ]]; then
   ok "com.tau.keepawake is loaded (no sleep on AC power; inactive on battery)"
 elif [[ "$TAU_KEEPAWAKE" == 1 ]]; then
-  bad "nothing keeps the Mac awake → install TauBar (apps/taubar) or run ./setup.sh"
+  bad "nothing keeps the Mac awake → install the tau app (apps/tau) or run ./setup.sh"
 else
-  warn "TAU_KEEPAWAKE=0 and no TauBar: the Mac is unreachable once it sleeps"
+  warn "TAU_KEEPAWAKE=0 and no tau app: the Mac is unreachable once it sleeps"
 fi
 if grep -qE '^[[:space:]]*SleepDisabled[[:space:]]+1' <<<"$settings"; then
   info "Sleep is disabled system-wide (pmset disablesleep 1): also awake with the lid closed"

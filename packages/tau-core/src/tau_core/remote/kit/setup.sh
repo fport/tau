@@ -29,11 +29,11 @@ ok "tau-attach → ~/.local/bin"
 step "4/4 Sleep: stay awake on AC power"
 agent="com.tau.keepawake"
 plist="$HOME/Library/LaunchAgents/$agent.plist"
-if app=$(taubar_app); then
-  # TauBar holds the same PreventSystemSleep assertion (and offers the lid-closed mode).
+if app=$(mac_app); then
+  # The tau app holds the same PreventSystemSleep assertion (and offers the lid-closed mode).
   launchctl bootout "gui/$(id -u)/$agent" 2>/dev/null || true
   rm -f "$plist"
-  ok "TauBar is installed ($app): it keeps the Mac awake; $agent removed"
+  ok "$(basename "$app" .app) is installed ($app): it keeps the Mac awake; $agent removed"
 elif [[ "$TAU_KEEPAWAKE" == 1 ]]; then
   mkdir -p "$HOME/Library/LaunchAgents"
   cp "$REMOTE_DIR/launchd/$agent.plist" "$plist"

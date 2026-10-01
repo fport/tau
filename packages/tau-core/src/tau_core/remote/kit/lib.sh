@@ -53,10 +53,12 @@ ssh_port_open() {
   nc -z -G 2 127.0.0.1 22 >/dev/null 2>&1
 }
 
-# Prints the path of an installed TauBar.app (TAU_TAUBAR_APP, /Applications, ~/Applications).
-taubar_app() {
+# Prints the path of the installed Mac app that keeps the Mac awake: tau.app (apps/tau), or
+# TauBar.app, which it replaced (TAU_MAC_APP, /Applications, ~/Applications).
+mac_app() {
   local app
-  for app in "$TAU_TAUBAR_APP" /Applications/TauBar.app "$HOME/Applications/TauBar.app"; do
+  for app in "$TAU_MAC_APP" /Applications/tau.app "$HOME/Applications/tau.app" \
+    /Applications/TauBar.app "$HOME/Applications/TauBar.app"; do
     if [[ -n "$app" && -d "$app" ]]; then
       echo "$app"
       return 0
@@ -65,5 +67,12 @@ taubar_app() {
   return 1
 }
 
-# The name TauBar gives its PreventSystemSleep assertion (apps/taubar/src-tauri/src/sleep.rs).
-TAUBAR_ASSERTION="TauBar keeps the Mac awake for tau"
+# The process name of an app bundle: its executable (tau-app for tau.app, taubar for TauBar.app).
+mac_app_process() {
+  plutil -extract CFBundleExecutable raw -o - "$1/Contents/Info.plist" 2>/dev/null
+}
+
+# The names the app gives its PreventSystemSleep assertion (apps/tau/src-tauri/src/sleep.rs), and
+# the one TauBar gave it.
+# shellcheck disable=SC2034 # read by doctor.sh
+MAC_APP_ASSERTIONS=("tau keeps the Mac awake" "TauBar keeps the Mac awake for tau")

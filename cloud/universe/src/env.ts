@@ -12,6 +12,8 @@
  *   card and no inbox and cannot relay visitors to hub-run sub-taus.
  * - The Rate Limiting bindings `CHAT_IP_LIMIT`, `INBOX_IP_LIMIT` and `INBOX_SENDER_LIMIT`. A
  *   universe configured before they existed skips those checks and logs it once.
+ * - `DOWNLOADS`, the R2 bucket with the app's release files (src/downloads.ts, roadmap 190).
+ *   Without it every `/download/<file>` answers 503.
  */
 
 export type LimiterName = "CHAT_IP_LIMIT" | "INBOX_IP_LIMIT" | "INBOX_SENDER_LIMIT";
@@ -20,6 +22,7 @@ export type UniverseEnv = Omit<Env, LimiterName> &
   Partial<Pick<Env, LimiterName>> & {
     HOST?: Fetcher;
     UNIVERSE_IDENTITY?: string;
+    DOWNLOADS?: R2Bucket;
   };
 
 /** The one Directory instance every request talks to. */

@@ -23,3 +23,4 @@ The user queues a long-running task ("bu gece şunu araştır"); tau works on it
 
 ## Comments
 - 2026-09-29: rewritten for ADR 0006 (private-first): results go to the local KB and memory (020/021); the queue's settings live in the local settings file (019).
+- 2026-10-01: builds on the scheduled tasks of [182](../L1-agent/182-scheduled-tasks.md) ([ADR 0015](../../docs/adr/0015-web-app-agentic-chat.md) §4). A queued task is a one-off scheduled task with its own budget, and its report lands in the web app's inbox and on Telegram.

@@ -28,3 +28,4 @@ Move the out-of-process approval path onto this mechanism: `TierHook` raises an 
 
 - 2026-09-29: filed as a follow-up of the Strands-correctness pass (064). SDK mechanism (strands-agents 1.57.1): `BeforeToolCallEvent.interrupt` + `interruptResponse` resume; state persisted by `RepositorySessionManager`.
 - 2026-09-29: rewritten for ADR 0006 (private-first): the out-of-process channels are the hub's own Telegram polling loop (014), TauBar (025) and the web UI (074); no relay or Worker holds a pending approval. Packages narrowed to tau-core; the spec is otherwise unchanged and still waits for triage.
+- 2026-10-01: the web UI is now tau-web's in-hub `WebApprover` (178). Its approval is awaited inside the hub, not in another process. Paused tier-2 steps in scheduled tasks (188) are the next out-of-process case.

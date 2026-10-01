@@ -18,7 +18,7 @@ The directory keeps its old name `L3-cloud`, and rewritten issues keep their fil
 | 020 | [Local memory: Strands `MemoryManager` with a tau `MemoryStore` on SQLite + local embeddings](020-memory-self-rag.md) | AFK | – |
 | 021 | [Local knowledge base index and `kb_search`](021-knowledge-base-ai-search.md) | AFK | 020 |
 | 022 | [Move the getporti domain's DNS to Cloudflare](022-move-dns-to-cloudflare.md) | HITL | – |
-| 023 | [`hub.tau.<domain>` through Cloudflare Tunnel + Access in front of the hub's web UI, Tailscale Serve as the no-domain default](023-custom-domain-and-access.md) | AFK | 022, 074, 076 |
+| 023 | [`hub.tau.<domain>` through Cloudflare Tunnel + Access in front of the hub's web UI, Tailscale Serve as the no-domain default](023-custom-domain-and-access.md) | AFK | 022, 076, 178, 179 |
 | 068 | [Interrupt-based tier-2 approvals for out-of-process channels](068-interrupt-based-approvals.md) | AFK | 017 |
 | 070 | [Long-term memory through Strands `MemoryManager` with a tau `MemoryStore` over the Worker](070-memory-manager-store.md) *(wontfix, folded into 020)* | AFK | – |
 | 071 | [Decide `SessionRepository` vs Strands `Storage`/`SnapshotSessionManager` before the D1 backend](071-storage-vs-snapshot-session-manager.md) *(wontfix)* | AFK | – |

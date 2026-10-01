@@ -1,6 +1,6 @@
 # 152 · Generated interfaces in the web UI
 
-Status: needs-triage
+Status: wontfix
 Type: AFK
 Layer: L9 · Cloud mode and the tau network
 Packages: tau-web
@@ -26,3 +26,4 @@ Decide the sandbox and the approval rules (tier) before building.
 ## Comments
 
 - 2026-09-30: filed with ADR 0012; the owner showed tiny's rendered scoreboard as an example.
+- 2026-10-01: wontfix, replaced by [180](../L4-interface/180-render-ui-widgets.md). [ADR 0015](../../docs/adr/0015-web-app-agentic-chat.md) §3 records the decision: a tier-0 `render_ui` tool, and a frame with `sandbox="allow-scripts"`, no same origin and `connect-src 'none'`.

@@ -11,7 +11,9 @@
 | 034 | [Hot-reloaded tools and `_pending` approval for tau-written tools](034-hot-reload-tools-and-pending.md) | AFK | 006 |
 | 035 | [MQTT → Zenoh bridge proven with a simulated device](035-mqtt-zenoh-bridge.md) | AFK | 032 |
 | 036 | [Desk presence: screen unlock → `tau/desk/presence`](036-desk-presence-event.md) | AFK | 024, 032 |
-| 037 | [Reflex engine for user-registered routines](037-reflex-routine-engine.md) | AFK | 006, 032 |
+| 037 | [Reflex engine for user-registered routines](037-reflex-routine-engine.md) | AFK | 006, 032, 181 |
 | 069 | [Tiers for node capabilities loaded through MCP `ToolProvider`s](069-mcp-tool-provider-tiers.md) | AFK | 033 |
+| 181 | [Routines on a clock: the `tau-routines` hub service, one approval at registration](181-routines-on-a-clock.md) | AFK | – |
+| 183 | [A simulated lamp: the first device the app and routines can drive](183-simulated-lamp.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py`

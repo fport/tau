@@ -4,7 +4,7 @@ Status: needs-triage
 Type: AFK
 Layer: L4 · Interface
 Packages: tau-web, tau-voice
-Blocked by: 074, 075
+Blocked by: 075, 179
 
 ## What to build
 
@@ -20,9 +20,10 @@ The second slice of tau-web (ADR 0006 §7 and its consequences): a small page se
 
 ## Blocked by
 
-- [074 · tau-web: the TUI in the browser through `textual-serve`, served by the hub](074-tau-web-textual-serve.md)
+- [179 · The web app](179-web-app-chat.md)
 - [075 · tau-voice: push-to-talk from the TUI with local speech-to-text and text-to-speech](075-tau-voice-push-to-talk.md)
 
 ## Comments
 
 - 2026-09-29: filed while applying ADR 0006 (private-first) so its "voice from the phone uses the web UI's microphone; audio travels over the tunnel to the hub and is transcribed there" has an issue. Not in the original brief of that pass, hence `needs-triage`.
+- 2026-10-01: [ADR 0015](../../docs/adr/0015-web-app-agentic-chat.md) replaces 074. The microphone becomes a button in the web app's composer (179), not a separate page next to a served TUI. Audio still goes only to the hub.

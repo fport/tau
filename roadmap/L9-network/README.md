@@ -41,7 +41,7 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 149 | [Sub-taus: `tau-sub` with drafting, chat, delegation and tools](149-sub-taus.md) | AFK | – |
 | 150 | [Public sub-taus over the network and in the universe](150-sub-taus-network-universe.md) | AFK | 149, 105, 146 |
 | 151 | [Sub-taus from `tau chat`, the TUI and Telegram: `/sub NAME …`](151-sub-tau-slash-commands.md) | AFK | 149 |
-| 152 | [Generated interfaces in the web UI](152-generated-ui.md) | AFK | 074 |
+| 152 | [Generated interfaces in the web UI](152-generated-ui.md) *(wontfix)* | AFK | 074 |
 | 153 | [A persistent spend ledger and every provider key in cloud mode](153-cloud-spend-ledger.md) | AFK | 094 |
 | 154 | [`tau init` asks for the provider key](154-init-asks-for-the-key.md) | AFK | – |
 | 155 | [Handle-based addresses (`host/@handle`) in tau-net and the spine](155-handle-addresses.md) | AFK | – |
@@ -59,5 +59,7 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 168 | [A claim button in tau-host's app for taus on an own host](168-claim-from-the-host-app.md) | AFK | 162 |
 | 174 | [Deploy a spine without Node: the Cloudflare API with a scoped token](174-spine-deploy-without-node.md) | AFK | – |
 | 176 | [The whole site in the portal's language: black sky, a full-page universe](176-site-in-the-portals-language.md) | AFK | – |
+| 185 | [tau-host runs the web app: the turn protocol, `render_ui` and roomier turns](185-tau-host-runs-the-web-app.md) | AFK | 179, 180 |
+| 186 | [Scheduled tasks for hosted taus on Durable Object alarms](186-hosted-scheduled-tasks.md) | AFK | 182, 185 |
 
 Live status: `python3 roadmap/board.py --layer L9`

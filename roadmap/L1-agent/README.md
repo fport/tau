@@ -32,5 +32,7 @@
 | 082 | [`test_doctor_all_green_on_the_test_config` fails while a real hub runs](082-doctor-test-assumes-no-hub.md) | AFK | – |
 | 083 | [Settings and first run inside the TUI: edit tau.toml and .env from `/settings`, set up without `tau init`](083-settings-and-first-run-in-the-tui.md) | AFK | – |
 | 087 | [`tau hub status` reports the launchd agent for every data dir](087-hub-status-launchd-ignores-data-dir.md) | AFK | – |
+| 182 | [Scheduled tasks: agent turns on a clock with a tool allowlist and a per-run cap](182-scheduled-tasks.md) | AFK | 181 |
+| 188 | [Tier-2 steps in scheduled tasks wait for the owner's approval](188-tier-2-in-scheduled-tasks.md) | AFK | 182 |
 
 Live status: `python3 roadmap/board.py`

@@ -4,7 +4,7 @@ Status: ready-for-agent
 Type: AFK
 Layer: L3 · Access and data
 Packages: infra/tunnel, tau-web, docs
-Blocked by: 022, 074, 076
+Blocked by: 022, 076, 178, 179
 
 ## What to build
 
@@ -23,10 +23,12 @@ Verification from outside the tailnet (phone on mobile data): the hostname asks 
 ## Blocked by
 
 - [022 · Move the getporti domain's DNS to Cloudflare](022-move-dns-to-cloudflare.md)
-- [074 · tau-web: the TUI in the browser through `textual-serve`, served by the hub](../L4-interface/074-tau-web-textual-serve.md)
+- [178 · tau-web: the hub's web service](../L4-interface/178-tau-web-hub-service.md)
+- [179 · The web app](../L4-interface/179-web-app-chat.md)
 - [076 · `tau setup tunnel` and `infra/tunnel`: cloudflared, Access policy, Tailscale Serve, doctor checks](076-tau-setup-tunnel.md)
 
 ## Comments
 
 - 2026-09-29: rewritten for ADR 0006 (private-first). Before: the relay at `api.tau.<domain>`, a re-pointed webhook and Access with a service token for the hub. Now: one hostname for the hub's own web UI through Tunnel + Access, Tailscale Serve as the no-domain default; the helper tooling is 076, the web UI is 074. The file keeps its old slug so links stay stable.
 - 2026-09-30: hostname changed by ADR 0010: `tau.<domain>` is now the public site (140), and the web UI moves to `hub.tau.<domain>`. The Tunnel + Access rules are unchanged.
+- 2026-10-01: [ADR 0015](../../docs/adr/0015-web-app-agentic-chat.md) replaces 074. The tunnel now publishes the web app from 178 and 179. That app also needs a paired device for every route, so an Access login alone reads nothing.

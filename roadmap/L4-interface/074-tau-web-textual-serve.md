@@ -1,6 +1,6 @@
 # 074 · tau-web: the TUI in the browser through `textual-serve`, served by the hub
 
-Status: ready-for-agent
+Status: wontfix
 Type: AFK
 Layer: L4 · Interface
 Packages: tau-web, tau-tui, tau-core
@@ -29,3 +29,4 @@ None - can start immediately; the hub service contract (065) and the TUI (063) a
 
 - 2026-09-29: opened for ADR 0006 (private-first): "the web UI is a new package (`tau-web`), served by the hub; first slice: the existing TUI in the browser through `textual-serve`, behind Access". Voice from the phone (browser microphone) is 080.
 - 2026-09-30: ADR 0008 (owner guard): every browser tab runs `tau tui`, so its turns are guarded as `tui` and locked while the owner is not verified at the Mac. Never add a `--channel` flag, an environment variable or a config key that selects a channel, because anyone at the Mac could use it to skip the guard (T7); a tab that should get in while the owner is away needs a hub-issued per-client grant (117).
+- 2026-10-01: wontfix, replaced by [ADR 0015](../../docs/adr/0015-web-app-agentic-chat.md). The owner chose a real web app over the TUI in a tab: a terminal cannot render widgets, device cards or a phone-friendly composer. The package name `tau-web`, the bind rules, the per-device keys and the Access check carry over into [178](178-tau-web-hub-service.md). The app is [179](179-web-app-chat.md).

@@ -33,5 +33,6 @@
 | 180 | [`render_ui`: widgets the model writes, shown in a sandboxed frame](180-render-ui-widgets.md) | AFK | 179 |
 | 184 | [The app's control pages: routines, tasks, devices, the toolbox and sub-taus](184-app-control-pages.md) | AFK | 179, 181, 182, 183 |
 | 187 | [Widgets that talk back: a message bridge the owner confirms](187-widgets-that-talk-back.md) | AFK | 180 |
+| 189 | [The tau app opens the hub's web app in a window](189-app-opens-the-web-app.md) | AFK | 170, 178, 179 |
 
 Live status: `python3 roadmap/board.py --layer L4`

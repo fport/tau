@@ -1,12 +1,31 @@
 name: app
 
-# Builds the tau Mac app (apps/tau; ADR 0014 §3, §4, §6; roadmap 170) for every version tag and
-# attaches it to the tag's GitHub release:
+# Builds the tau Mac app (apps/tau; ADR 0014 §3, §4, §6; roadmap 170) for every version tag,
+# uploads it to the public downloads (roadmap 190) and attaches it to the tag's GitHub release:
 #
 #   tau.dmg              the download: one universal app for Apple silicon and Intel
 #   tau.app.tar.gz       the Tauri updater's archive of the same app
-#   tau.app.tar.gz.sig   its updater signature, bound to the version
-#   latest.json          what installed apps read from the latest release to find an update
+#   tau.app.tar.gz.sig   its updater signature, bound to the version (also inside latest.json)
+#   latest.json          what installed apps read to find an update
+#
+# Public downloads: the repository is private, so release assets on GitHub are not reachable
+# for visitors or for the updater. The `downloads` job puts the files into the R2 bucket
+# tau-downloads, which the universe Worker serves (cloud/universe/src/downloads.ts):
+#
+#   https://tau.getporti.com/download/v<version>/tau.dmg          this release's files, first
+#   https://tau.getporti.com/download/v<version>/tau.app.tar.gz
+#   https://tau.getporti.com/download/tau.app.tar.gz              then the latest copies
+#   https://tau.getporti.com/download/tau.dmg
+#   https://tau.getporti.com/download/latest.json                 last: the updater's endpoint
+#
+# latest.json names the versioned archive, and it is uploaded only after that archive, so an
+# upload that stops halfway never points installed apps at a missing file. A pre-release
+# (0.5.0-rc1) gets only its versioned files. The GitHub release keeps a copy of everything,
+# with the same latest.json. The upload needs two repository secrets:
+#   CLOUDFLARE_ACCOUNT_ID   the Cloudflare account that has the bucket
+#   CLOUDFLARE_API_TOKEN    a token with Account > Workers R2 Storage > Edit (and Workers Scripts
+#                           > Edit, so docs.yml can deploy with the same token)
+# Without them the job warns and uploads nothing; the build still passes.
 #
 # Signing: every build is signed with one stable self-signed code-signing identity, so its
 # designated requirement stays the same from build to build and macOS keeps the camera and
@@ -29,8 +48,8 @@ name: app
 # gets there first creates it; the other one uploads its files to it.
 #
 # A manual run (workflow_dispatch) is a dry run by default: build, sign and pack, keep the files
-# as a workflow artifact, attach nothing. To attach by hand, pick the tag under "Use workflow
-# from" and untick "dry run".
+# as a workflow artifact, attach and upload nothing. To attach and upload by hand, pick the tag
+# under "Use workflow from" and untick "dry run".
 
 on:
   push:
@@ -38,7 +57,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Build, sign and pack only; attach nothing to a release"
+        description: "Build, sign and pack only; attach and upload nothing"
         type: boolean
         default: true
 
@@ -133,7 +152,8 @@ jobs:
           MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAU_RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}
+          # latest.json names https://tau.getporti.com/download/v<version>/tau.app.tar.gz (the
+          # script's default TAU_DOWNLOAD_BASE), on GitHub too.
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           scripts/pack-release.sh src-tauri/target/universal-apple-darwin/release/bundle/macos/tau.app \
@@ -175,3 +195,61 @@ jobs:
               || echo "the release exists now; uploading to it"
           fi
           gh release upload "$GITHUB_REF_NAME" tau-app/* --clobber --repo "$GITHUB_REPOSITORY"
+
+  downloads:
+    name: Upload to the public downloads (R2)
+    needs: build
+    if: github.event_name == 'push' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    env:
+      # `secrets` cannot be read in an `if:`; expose their presence through the environment.
+      HAS_CLOUDFLARE: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+      BUCKET: tau-downloads
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Without the Cloudflare secrets, upload nothing
+        if: env.HAS_CLOUDFLARE != 'true'
+        run: |
+          echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not set: tau $VERSION is not uploaded to the R2 bucket $BUCKET, so https://tau.getporti.com/download and the updater do not offer it. docs/contributing/release.md says how to set them up."
+      - uses: actions/download-artifact@v8
+        if: env.HAS_CLOUDFLARE == 'true'
+        with:
+          name: tau-app
+          path: tau-app
+      - uses: oven-sh/setup-bun@v2
+        if: env.HAS_CLOUDFLARE == 'true'
+        with:
+          bun-version: 1.3.2
+      # Wrangler runs on Node (22 or later), which `bunx` starts through its shebang.
+      - uses: actions/setup-node@v7
+        if: env.HAS_CLOUDFLARE == 'true'
+        with:
+          node-version: 24
+      - name: This release's files first, then the latest copies, latest.json last
+        if: env.HAS_CLOUDFLARE == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          ls -l tau-app
+          put() { # <key> <file> <content type>; a failed upload stops the step here
+            echo "uploading $BUCKET/$1"
+            bunx wrangler@4.144.0 r2 object put "$BUCKET/$1" --file "$2" --content-type "$3" --remote
+          }
+          put "v$VERSION/tau.dmg" tau-app/tau.dmg application/x-apple-diskimage
+          put "v$VERSION/tau.app.tar.gz" tau-app/tau.app.tar.gz application/gzip
+          case "$VERSION" in
+            *-*)
+              echo "::notice::$VERSION is a pre-release: only https://tau.getporti.com/download/v$VERSION/ has it; the latest copies stay as they are."
+              exit 0
+              ;;
+          esac
+          put tau.app.tar.gz tau-app/tau.app.tar.gz application/gzip
+          put tau.dmg tau-app/tau.dmg application/x-apple-diskimage
+          if [ -f tau-app/latest.json ]; then
+            put latest.json tau-app/latest.json application/json
+          else
+            echo "::warning::no latest.json (the updater key is not set): installed apps are not offered $VERSION."
+          fi
+          echo "https://tau.getporti.com/download/tau.dmg is tau $VERSION now."

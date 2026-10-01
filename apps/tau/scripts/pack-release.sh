@@ -5,7 +5,7 @@
 #   tau.dmg              the app with an Applications link, for the download
 #   tau.app.tar.gz       the app for the Tauri updater
 #   tau.app.tar.gz.sig   its updater signature, bound to the version     (with the updater key)
-#   latest.json          what the updater reads from the latest release (with the updater key)
+#   latest.json          what installed apps read to find an update      (with the updater key)
 #
 # Usage: apps/tau/scripts/pack-release.sh <tau.app> <out dir> <version>
 #
@@ -19,8 +19,10 @@
 #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 #     The updater key. Without it there is no signature and no latest.json, and a warning says
 #     so; installed apps then do not see this release as an update.
-#   TAU_RELEASE_URL   where the release's files are downloaded from, for latest.json
-#                     (https://github.com/<owner>/<repo>/releases/download/<tag>)
+#   TAU_DOWNLOAD_BASE where installed apps download releases from (default
+#                     https://tau.getporti.com/download, the universe serving the R2 bucket
+#                     tau-downloads that app.yml uploads to): latest.json names
+#                     <base>/v<version>/tau.app.tar.gz
 #   TAU_RELEASE_NOTES optional notes for latest.json
 #
 # No notarisation (ADR 0014 §6): Gatekeeper warns on first open, and the docs say how to open it.
@@ -34,6 +36,13 @@ fi
 app="$1"
 out="$2"
 version="$3"
+# The version also names the release's directory in the public downloads
+# (/download/v<version>/), which the universe serves only for a semver version.
+semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+if ! [[ "$version" =~ $semver ]]; then
+  echo "error: $version is not a semver version (0.5.0, 0.5.0-rc1)" >&2
+  exit 1
+fi
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$here")"
 entitlements="$root/src-tauri/Entitlements.plist"
@@ -124,8 +133,16 @@ if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
   # version number with an older archive.
   (cd "$root" && bunx tauri signer sign --app-version "$version" "$out/tau.app.tar.gz") >/dev/null
   [ -s "$out/tau.app.tar.gz.sig" ] || { echo "error: the updater signature is missing" >&2; exit 1; }
-  url="${TAU_RELEASE_URL:?TAU_RELEASE_URL names where the release files are downloaded from}"
-  python3 - "$version" "$url/tau.app.tar.gz" "$out/tau.app.tar.gz.sig" "$out/latest.json" <<'PY'
+  # The archive's own versioned URL, which never changes, rather than the "latest" copy that
+  # the next release replaces.
+  base="${TAU_DOWNLOAD_BASE:-https://tau.getporti.com/download}"
+  base="${base%/}"
+  case "$base" in
+    https://*) ;;
+    *) echo "error: TAU_DOWNLOAD_BASE must be an https URL, not $base" >&2; exit 1 ;;
+  esac
+  url="$base/v$version/tau.app.tar.gz"
+  python3 - "$version" "$url" "$out/tau.app.tar.gz.sig" "$out/latest.json" <<'PY'
 import datetime
 import json
 import os
@@ -146,7 +163,7 @@ with open(out, "w", encoding="utf-8") as f:
     json.dump(manifest, f, indent=2)
     f.write("\n")
 PY
-  echo "Wrote the updater signature and latest.json for tau $version."
+  echo "Wrote the updater signature and latest.json for tau $version ($url)."
 else
   warn "TAURI_SIGNING_PRIVATE_KEY is not set: no updater signature and no latest.json, so installed apps do not see this build as an update."
 fi

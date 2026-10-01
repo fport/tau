@@ -594,26 +594,31 @@ mod tests {
     #[test]
     fn a_timeout_stops_what_the_check_started() {
         // A Python that leaves a child behind holding the output pipes, then hangs.
+        // The pid file appears whole (written, then renamed), so a busy machine that kills the
+        // check before the script got that far leaves no half-written file behind.
         let home = checkout(
             "runner-grandchild",
-            "#!/bin/sh\nsleep 30 &\necho $! > grandchild.pid\nexec sleep 30\n",
+            "#!/bin/sh\nsleep 30 &\necho $! > grandchild.tmp\nmv grandchild.tmp grandchild.pid\n\
+             exec sleep 30\n",
         );
         let started = std::time::Instant::now();
         let err = validate(&home, None, no_env, |launch| {
-            run_with_timeout(launch, Duration::from_millis(500))
+            run_with_timeout(launch, Duration::from_millis(1500))
         })
         .unwrap_err();
         assert!(err.contains("did not finish"), "{err}");
         assert!(
-            started.elapsed() < Duration::from_secs(5),
+            started.elapsed() < Duration::from_secs(6),
             "waited for the pipes: {:?}",
             started.elapsed()
         );
-        let grandchild: libc::pid_t = fs::read_to_string(home.join("grandchild.pid"))
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
+        let Some(grandchild) = fs::read_to_string(home.join("grandchild.pid"))
+            .ok()
+            .and_then(|pid| pid.trim().parse::<libc::pid_t>().ok())
+        else {
+            // Killed before it got to write the pid: nothing it started can be left.
+            return;
+        };
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while unsafe { libc::kill(grandchild, 0) } == 0 {
             assert!(

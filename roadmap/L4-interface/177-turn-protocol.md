@@ -1,6 +1,6 @@
 # 177 · The turn protocol: JSON turn events and session history shared by the hub and tau-host
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L4 · Interface
 Packages: tau-core, cloud/shared, docs
@@ -45,11 +45,11 @@ The contract between the web app and either backend ([ADR 0015](../../docs/adr/0
 
 ## Acceptance criteria
 
-- [ ] `docs/reference/turn-protocol.md` specifies every event, the history blocks and the routes, with one example stream
-- [ ] tau-core serializes every `TurnEvent` and approval to the protocol; a golden-file test pins the JSON of each type
-- [ ] `history_blocks` reproduces a recorded session with tool calls, a refusal and an approval (fixture session)
-- [ ] `cloud/shared/turn` validates the same golden files (a shared fixture directory read by pytest and vitest)
-- [ ] `ToolUseStarted.input` exists and the TUI and terminal still pass their tests
+- [x] `docs/reference/turn-protocol.md` specifies every event, the history blocks and the routes, with one example stream
+- [x] tau-core serializes every `TurnEvent` and approval to the protocol; a golden-file test pins the JSON of each type
+- [x] `history_blocks` reproduces a recorded session with tool calls, a refusal and an approval (fixture session)
+- [x] `cloud/shared/turn` validates the same golden files (a shared fixture directory read by pytest and vitest)
+- [x] The complete tool input reaches the stream (as built: a new `ToolInput` turn event, see Comments) and the TUI and terminal still pass their tests
 
 ## Blocked by
 
@@ -58,3 +58,13 @@ None - can start immediately.
 ## Comments
 
 - 2026-10-01: filed with ADR 0015. tau-host's current NDJSON events (`start`, `text`, `tool`, `tool_result`, `notice`, `approval`, `done`, `error`) move to this protocol in 185.
+- 2026-10-01: done (c8598c0, 772597d, 63ca7a5, 5979148).
+  - **Changes from the spec above:**
+    - The input does not ride on `ToolUseStarted`, because that event arrives while the model still streams the input. A new turn event, `ToolInput(tool_use_id, tool, input)`, comes from the SDK's `message` event once the reply is complete, before the tool runs or asks for approval. On the wire this is `tool_use` (no input) followed by `tool_input`.
+    - `throttled` carries `delay_seconds`, and `notice` carries only `text`, which is what tau-core has.
+    - A widget's `id` is its `render_ui` tool use id, so there is no separate `tool_use` field.
+    - `tool_result.status` is `ok`, `error` or `rejected`, as the tier gate records it.
+  - **Python:** `tau_core.turn_protocol` (imported by name), with `frame`, `encode`, `turn_event_body`, `approval_body`, `approval_decided`, `guard_body`, `widget_body`, `error_body`, `turn_started` and `history_blocks`. `ToolInput` and `tool_inputs_of` are exported from `tau_core`.
+  - **Vectors:** `packages/tau-core/scripts/make_turn_vectors.py` writes `cloud/shared/turn/vectors.json`, and pytest fails when the file is stale.
+  - **TypeScript:** `cloud/shared/turn/index.ts` has the types, `parseEvent`, `parseBlock`, `readEvents` and `LineSplitter`. Vitest runs it in workerd and Node.
+  - **For 178:** buffer the framed events per turn and serve `after=` from the buffer. Read history with `store.list_messages(session_id, "tau")` plus `read_events`.

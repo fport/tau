@@ -16,7 +16,7 @@
 #   4. Starts `tau setup`, which asks which features you want and sets them up.
 #
 # It never runs sudo. An existing tau is left as it is: `tau setup` adds features and
-# `tau setup --upgrade` upgrades it.
+# `tau setup --upgrade` upgrades it. A tau older than `tau setup` (0.5.0) is upgraded first.
 #
 # Environment:
 #   TAU_INSTALL_VERSION=x.y.z  install this version of tau-core and tau-tui (default: latest)
@@ -155,6 +155,17 @@ main() {
       fi
       ;;
   esac
+  # An older tau (before 0.5.0) has no `tau setup`: upgrade it, then install it afresh.
+  if ! "$tau" setup --help >/dev/null 2>&1; then
+    say "This tau has no \`tau setup\` yet (it is older than 0.5.0); upgrading it..."
+    "$uv" tool upgrade tau-core >/dev/null 2>&1 || true
+    if ! "$tau" setup --help >/dev/null 2>&1; then
+      "$uv" tool install --force "$core" --with "$tui" || fail "uv tool install $core failed; see above."
+    fi
+    if ! "$tau" setup --help >/dev/null 2>&1; then
+      fail "tau setup needs tau-core 0.5.0 or newer, and the package index does not offer it yet; try again in a few minutes."
+    fi
+  fi
   say ""
 
   if [ "${TAU_INSTALL_NO_SETUP:-}" = 1 ]; then

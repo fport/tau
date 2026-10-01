@@ -134,6 +134,7 @@ def test_it_installs_tau_and_starts_setup_on_the_terminal(tmp_path: Path, shell:
         "uv tool list",
         "uv tool install tau-core --with tau-tui",
         "uv tool dir --bin",
+        "tau setup --help",
         "tau setup",
     ]
     assert "This will:" in result.stdout and "Nothing here runs with sudo." in result.stdout
@@ -145,7 +146,7 @@ def test_piped_without_a_terminal_it_says_how_to_go_on(tmp_path: Path, shell: st
     setup = Setup(tmp_path)
     result = setup.run(shell)
     assert result.returncode == 0, result.stderr
-    assert setup.calls()[-1] == "uv tool dir --bin"  # no `tau setup` without a terminal
+    assert setup.calls()[-1] == "tau setup --help"  # no `tau setup` without a terminal
     assert "run `tau setup` yourself" in result.stdout
     assert f"Note: {setup.tool_bin} is not on your PATH yet" in result.stdout
 
@@ -180,6 +181,7 @@ def test_it_installs_uv_when_missing(tmp_path: Path) -> None:
         "uv tool list",
         "uv tool install tau-core --with tau-tui",
         "uv tool dir --bin",
+        "tau setup --help",
     ]
     assert "install uv, the Python package manager" in result.stdout
     assert "Astral's official installer" in result.stdout
@@ -196,8 +198,32 @@ def test_an_existing_tau_is_left_alone(tmp_path: Path) -> None:
     (setup.tool_bin / "tau").chmod(0o755)
     result = setup.run("/bin/sh", env={"FAKE_TOOL_LIST": "tau-core v0.4.0"}, terminal=True)
     assert result.returncode == 0, result.stderr
-    assert setup.calls() == ["uv tool list", "uv tool dir --bin", "tau setup"]
+    assert setup.calls() == ["uv tool list", "uv tool dir --bin", "tau setup --help", "tau setup"]
     assert "tau setup --upgrade upgrades tau" in result.stdout
+
+
+def test_a_tau_without_setup_is_upgraded_first(tmp_path: Path) -> None:
+    setup = Setup(tmp_path)
+    setup.tool_bin.mkdir()
+    # tau 0.4.0: every command works except `tau setup`
+    (setup.tool_bin / "tau").write_text(
+        f'#!/bin/sh\necho "tau $*" >> "{setup.log}"\n[ "$1" = setup ] && exit 2\nexit 0\n',
+        encoding="utf-8",
+    )
+    (setup.tool_bin / "tau").chmod(0o755)
+    result = setup.run("/bin/sh", env={"FAKE_TOOL_LIST": "tau-core v0.4.0"}, terminal=True)
+    assert result.returncode == 0, result.stderr
+    assert setup.calls() == [
+        "uv tool list",
+        "uv tool dir --bin",
+        "tau setup --help",
+        "uv tool upgrade tau-core",
+        "tau setup --help",
+        "uv tool install --force tau-core --with tau-tui",
+        "tau setup --help",
+        "tau setup",
+    ]
+    assert "older than 0.5.0" in result.stdout
 
 
 def test_a_failed_install_stops(tmp_path: Path) -> None:

@@ -21,8 +21,9 @@ What it does:
   holds the camera and microphone permission for the hub it runs.
 - **Sleep modes:** Normal, Keep awake on AC power (default), Keep awake with the lid closed.
 - **Launch at login:** a switch that registers tau as a login item.
-- **Updates:** release builds from GitHub update themselves (the Tauri updater), signed with the
-  same identity every time, so macOS keeps the camera permission.
+- **Updates:** release builds update themselves from `https://tau.getporti.com/download/` (the
+  Tauri updater), signed with the same identity every time, so macOS keeps the camera
+  permission.
 
 tau starts in the menu bar with no Dock icon. While a chat window is open it is a regular app,
 with a Dock icon and the menu bar (tau, File, Edit, Window); closing the last chat window takes
@@ -59,8 +60,9 @@ Quit tau                                    ⌘Q
 
 ## Install a release
 
-1. Download `tau.dmg` from the [latest release](https://github.com/fport/tau/releases/latest),
-   open it and drag **tau** to **Applications**.
+1. Download [`tau.dmg`](https://tau.getporti.com/download/tau.dmg), the latest release (the
+   [download page](https://tau.getporti.com/download) links the same file), open it and drag
+   **tau** to **Applications**.
 2. Open tau from Applications. The first time, macOS says it cannot check tau for malicious
    software: the app is signed, but not notarised by Apple (ADR 0014 §6). Open **System
    Settings → Privacy & Security**, find the line about tau near the bottom and click **Open
@@ -246,10 +248,15 @@ hand, as a dry run by default) on a macOS runner:
 2. runs [`scripts/pack-release.sh`](scripts/pack-release.sh): imports the identity into a
    temporary keychain, runs `codesign --force --deep --options runtime` with the entitlements,
    checks the signature, and packs `tau.dmg`, `tau.app.tar.gz` with its updater signature
-   (`.sig`, bound to the version) and `latest.json`;
-3. attaches them to the tag's GitHub release, creating it when `release.yml` has not yet.
+   (`.sig`, bound to the version) and `latest.json`, whose archive URL is
+   `https://tau.getporti.com/download/v<version>/tau.app.tar.gz` (`TAU_DOWNLOAD_BASE` changes
+   the part before `/v<version>`);
+3. uploads them to the public downloads ([below](#public-downloads-r2)) and attaches them to the
+   tag's GitHub release, creating it when `release.yml` has not yet. The GitHub copy carries the
+   same `latest.json`: the repository is private, so its own release URLs work only for people
+   with access.
 
-It needs four repository secrets, which the owner creates once on their own Mac:
+Signing needs four repository secrets, which the owner creates once on their own Mac:
 
 ```sh
 apps/tau/scripts/make-signing-identity.sh
@@ -282,6 +289,54 @@ replaces it).
 Without the secrets (a fork) the workflow still succeeds: the app is signed ad hoc and there is
 no `.sig` and no `latest.json`, and warnings say so.
 
+### Public downloads (R2)
+
+Visitors and installed apps download from the universe, which serves the private R2 bucket
+`tau-downloads` (bound to the universe Worker as `DOWNLOADS`; `cloud/universe/src/downloads.ts`,
+roadmap 190). The `downloads` job of `app.yml` uploads each release there with
+`bunx wrangler r2 object put tau-downloads/<key> --file … --content-type … --remote`:
+
+| Order | Key | URL |
+|---|---|---|
+| 1 | `v<version>/tau.dmg`, `v<version>/tau.app.tar.gz` | `https://tau.getporti.com/download/v<version>/…`, cached for good |
+| 2 | `tau.app.tar.gz`, `tau.dmg` | `https://tau.getporti.com/download/tau.dmg`, the latest release |
+| 3 | `latest.json` | `https://tau.getporti.com/download/latest.json`, the updater's endpoint |
+
+`latest.json` comes last and names the versioned archive, so an upload that stops halfway never
+offers installed apps a file that is not there. A pre-release (`0.5.0-rc1`) gets only step 1,
+so the latest copies and the updater stay on the last release. A dry run uploads nothing.
+
+The owner sets it up once:
+
+1. In the Cloudflare dashboard, open **R2 Object Storage** and enable R2 for the account (the
+   free tier covers a few releases a month; Cloudflare may ask for a payment method first).
+2. Create the bucket, with `wrangler` logged in (`bunx wrangler login`):
+
+    ```sh
+    bunx wrangler r2 bucket create tau-downloads
+    ```
+
+    It stays private: no public bucket URL and no custom domain on it; the universe serves it.
+3. Bind it to the universe Worker as `DOWNLOADS` (`r2_buckets` in `cloud/universe`'s
+   `wrangler.jsonc`) and deploy the universe.
+4. Create an API token (**My Profile → API Tokens → Create Token → Custom token**) with
+   **Account · Workers R2 Storage · Edit** and **Account · Workers Scripts · Edit**, for this
+   account only. The second permission lets `docs.yml` deploy the docs site with the same
+   token. Store it and the account id (dashboard sidebar) as repository secrets:
+
+    ```sh
+    gh secret set CLOUDFLARE_API_TOKEN
+    gh secret set CLOUDFLARE_ACCOUNT_ID
+    ```
+
+Without the two secrets the `downloads` job warns and uploads nothing, and the release still
+passes. Check a release from a signed-out shell:
+
+```sh
+curl -sI https://tau.getporti.com/download/tau.dmg | grep -iE '^(HTTP|etag|content-length)'
+curl -s https://tau.getporti.com/download/latest.json
+```
+
 To sign a build from the checkout with the same identity, double-click
 `.signing/tau-signing.p12` to import it into your login keychain (the password is in
 `.signing/tau-signing.p12.password`) and build with
@@ -307,19 +362,19 @@ plutil -p "$APP/Contents/Info.plist" | grep UsageDescription
 "plugins": {
   "updater": {
     "pubkey": "<written by make-signing-identity.sh>",
-    "endpoints": ["https://github.com/fport/tau/releases/latest/download/latest.json"],
+    "endpoints": ["https://tau.getporti.com/download/latest.json"],
     "requireSignedVersion": true
   }
 }
 ```
 
-The app fetches `latest.json` from the latest (non-pre-) release, compares versions, downloads
-`tau.app.tar.gz`, checks its signature against the public key and the version the signature is
+The app fetches `latest.json` of the latest (non-pre-) release from the public downloads,
+compares versions, downloads the versioned `tau.app.tar.gz` it names, checks its signature against the public key and the version the signature is
 bound to, replaces itself, and opens again through its own quit path: the chat windows' TUIs
 quit, the hub stops and restarts with the new app, normal sleep comes back in between. The
 check runs from **Check for Updates…** in any build with a public key, and by itself (a minute
 after the start, then once a day) only in release builds, while **Look for an update once a
-day** is ticked. A check sends GitHub the usual request headers and nothing else.
+day** is ticked. A check sends tau.getporti.com the usual request headers and nothing else.
 
 ## The camera grant
 

@@ -4,7 +4,8 @@ tau ships as three PyPI distributions, `tau-core`, `tau-tui` and `tau-guard`, re
 together with the same version. A release is one tag away: push `vX.Y.Z` and the `release`
 workflow builds the packages, smoke-tests the wheels, publishes them to PyPI through trusted publishing and creates
 the GitHub release with the files attached. For the same tag the `app` workflow builds the Mac
-app, signs it and attaches `tau.dmg` and the updater's files to that release. The docs site
+app, signs it, uploads `tau.dmg` and the updater's files to the public downloads at
+`https://tau.getporti.com/download/` and attaches them to that release. The docs site
 deploys itself on every push to `main`. This is the "installable by anyone" half of
 [ADR 0006](../adr/0006-private-first-topology.md).
 
@@ -46,7 +47,10 @@ deploys itself on every push to `main`. This is the "installable by anyone" half
    uploads each package (one job per package) and `github-release` creates the release.
    Next to it, **Actions → app** builds the universal `tau.app` (Apple silicon and Intel) with
    the same version, signs it and attaches `tau.dmg`, `tau.app.tar.gz`, its `.sig` and
-   `latest.json` to the release; whichever workflow gets there first creates the release.
+   `latest.json` to the release; whichever workflow gets there first creates the release. Its
+   `downloads` job uploads the same files to the R2 bucket `tau-downloads`, which the universe
+   serves to signed-out visitors and to installed apps
+   ([below](#the-mac-app-public-downloads-r2)).
 
 4. Write the changelog. The release is created with notes generated from the pull requests
    and commits since the previous tag. Open it under **Releases**, edit the notes into a few
@@ -127,6 +131,54 @@ new public key before older installs can update past it. Without the secrets (a 
 workflow signs ad hoc and skips the updater files, with warnings. `gh workflow run app.yml
 --ref main` is a dry run: build, sign and pack, with the files as the `tau-app` artifact.
 
+### The Mac app: public downloads (R2)
+
+The repository is private, so the GitHub release's files cannot be downloaded by visitors or
+by the updater. The universe Worker serves them instead from the private R2 bucket
+`tau-downloads`, bound to it as `DOWNLOADS` ([the endpoints](../reference/tau-universe.md#app-downloads)).
+The `downloads` job of `app.yml` uploads every tag's files there with
+`bunx wrangler r2 object put tau-downloads/<key> --file … --content-type … --remote`, in this
+order:
+
+| Step | Keys | Served at `https://tau.getporti.com/download/…` |
+|---|---|---|
+| 1 | `v<version>/tau.dmg`, `v<version>/tau.app.tar.gz` | `v<version>/tau.dmg`, `v<version>/tau.app.tar.gz`, cached for a year |
+| 2 | `tau.app.tar.gz`, `tau.dmg` | `tau.app.tar.gz`, `tau.dmg`: the latest release, cached for five minutes |
+| 3 | `latest.json` | `latest.json`: the updater's endpoint (`tauri.conf.json`) |
+
+`latest.json` names the versioned archive (`pack-release.sh` writes
+`https://tau.getporti.com/download/v<version>/tau.app.tar.gz`), and it is uploaded last, so an
+upload that stops halfway never points installed apps at a missing file. A pre-release such as
+`v0.3.0rc1` gets only step 1. The GitHub release carries the same `latest.json`.
+
+Set it up once:
+
+1. In the Cloudflare dashboard, open **R2 Object Storage** and enable R2 for the account.
+2. Create the bucket, from a shell where `wrangler` is logged in (`bunx wrangler login`):
+
+    ```sh
+    bunx wrangler r2 bucket create tau-downloads
+    ```
+
+    Leave it private: no public bucket URL and no custom domain; the universe serves it.
+
+3. Bind the bucket to the universe (`r2_buckets` in `cloud/universe/wrangler.jsonc`:
+   `{ "binding": "DOWNLOADS", "bucket_name": "tau-downloads" }`) and deploy it.
+4. Give the repository a Cloudflare API token that may write to R2, and the account id. One
+   token serves both this and the docs site ([below](#the-docs-site-on-cloudflare)): a custom
+   token with **Account · Workers R2 Storage · Edit** and **Account · Workers Scripts · Edit**,
+   limited to your account.
+
+    ```sh
+    gh secret set CLOUDFLARE_API_TOKEN
+    gh secret set CLOUDFLARE_ACCOUNT_ID
+    ```
+
+Without the two secrets the `downloads` job warns and uploads nothing; the release passes all
+the same. After a release, `curl -sI https://tau.getporti.com/download/tau.dmg` from a
+signed-out shell shows `200` with the new `etag`, and
+`curl -s https://tau.getporti.com/download/latest.json` the new version.
+
 ### PyPI: trusted publishing
 
 No API token is stored on GitHub. The `publish` job presents its GitHub OIDC token to PyPI,
@@ -187,8 +239,9 @@ code runs at the edge; the Worker `tau-docs` only serves the uploaded files.
 
 2. For the automated deploy, create an API token (**My Profile → API Tokens → Create
    Token → "Edit Cloudflare Workers"** template, or a custom token with *Account · Workers
-   Scripts · Edit*) and note the account id (dashboard sidebar). Store both as repository
-   secrets:
+   Scripts · Edit*; add *Account · Workers R2 Storage · Edit* so the `app` workflow can upload
+   the Mac app with the same token) and note the account id (dashboard sidebar). Store both as
+   repository secrets:
 
     ```sh
     gh secret set CLOUDFLARE_API_TOKEN
@@ -215,3 +268,4 @@ code runs at the edge; the Worker `tau-docs` only serves the uploaded files.
 | wheel smoke test | `release.yml` | the `tau` command, its `tui` subcommand, the templates `tau init` writes or the entry points are missing from the wheels |
 | setup smoke test | `release.yml` | `tau setup --yes --features tui,sub --no-install` fails in a fresh virtualenv, `tau setup status --json` does not parse, or `install.sh` with the real uv and a `tau setup` that adds a feature (one `uv tool install`, then the re-execution) fail |
 | the Mac app | `ci.yml` (job `app`, macOS) and `app.yml` | a vitest, Rust test or clippy lint fails; the tag is not `v<tau-core version>`; the app is not universal; the signed app has no camera entitlement; the updater key is set but `tauri.conf.json` has no public key |
+| public downloads | `app.yml` (job `downloads`) | an upload to the R2 bucket `tau-downloads` fails; without `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` it warns and uploads nothing |

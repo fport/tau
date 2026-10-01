@@ -46,7 +46,8 @@ Quit tau                                    ⌘Q
 
 ### Bir sürümden { #from-a-release }
 
-1. `tau.dmg` dosyasını [son sürümden](https://github.com/fport/tau/releases/latest) indir, aç ve
+1. Son sürüm olan [`tau.dmg`](https://tau.getporti.com/download/tau.dmg) dosyasını indir
+   ([indirme sayfası](https://tau.getporti.com/tr/download) da aynı dosyaya bağlanır), aç ve
    **tau**'yu **Applications** klasörüne sürükle.
 2. tau'yu aç. İlk seferde macOS, tau'yu kötü amaçlı yazılım için denetleyemediğini söyler:
    uygulama imzalıdır ama Apple tarafından noter onayından (notarisation) geçirilmemiştir.
@@ -250,9 +251,10 @@ açılışında bu yolla başlar.
 
 ## Güncellemeler { #updates }
 
-Bir sürüm derlemesi, açıldıktan bir dakika sonra ve sonra günde bir kez GitHub'a tau'nun son
-sürümünü sorar ve daha yeni bir sürümü önerir; sen tıklamadan hiçbir şey kurulmaz. **Check for
+Bir sürüm derlemesi, açıldıktan bir dakika sonra ve sonra günde bir kez tau.getporti.com'a
+tau'nun son sürümünü sorar (`https://tau.getporti.com/download/latest.json`) ve daha yeni bir
+sürümü önerir; sen tıklamadan hiçbir şey kurulmaz. **Check for
 Updates…** hemen sorar. Kurulum uygulamayı değiştirip yeniden açar: sohbet pencereleri kapanır ve
 hub yeni sürümle yeniden başlar. Güncelleme kurulmadan önce tau'nun kendi imza anahtarıyla
 denetlenir. Ayarlar penceresindeki **Look for an update once a day** günlük denetimi kapatır; bir
-denetim GitHub'a olağan istekten başka bir şey göndermez.
+denetim tau.getporti.com'a olağan istekten başka bir şey göndermez.

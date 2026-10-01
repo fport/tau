@@ -43,8 +43,9 @@ Quit tau                                    ⌘Q
 
 ### From a release
 
-1. Download `tau.dmg` from the [latest release](https://github.com/fport/tau/releases/latest),
-   open it and drag **tau** to **Applications**.
+1. Download [`tau.dmg`](https://tau.getporti.com/download/tau.dmg), the latest release (the
+   [download page](https://tau.getporti.com/download) links the same file), open it and drag
+   **tau** to **Applications**.
 2. Open tau. The first time, macOS says it cannot check tau for malicious software: the app is
    signed, but not notarised by Apple. Open **System Settings → Privacy & Security**, find the
    line about tau near the bottom and click **Open Anyway**, then confirm. On macOS 14 and
@@ -236,9 +237,10 @@ at login.
 
 ## Updates
 
-A release build asks GitHub for tau's latest release a minute after it starts and then once a
-day, and offers a newer version; nothing is installed without your click. **Check for Updates…**
+A release build asks tau.getporti.com for tau's latest release
+(`https://tau.getporti.com/download/latest.json`) a minute after it starts and then once a day,
+and offers a newer version; nothing is installed without your click. **Check for Updates…**
 asks at once. Installing replaces the app and opens it again: the chat windows close and the hub
 restarts with the new version. The update is checked against tau's own signing key before it is
 installed. **Look for an update once a day** in the settings window switches the daily check
-off; a check sends GitHub nothing but the usual request.
+off; a check sends tau.getporti.com nothing but the usual request.

@@ -108,6 +108,7 @@ plugins:
             0012 Sub-taus: 0012 Alt-tau'lar
             0013 Hosted taus, handles and public pages: 0013 Barındırılan tau'lar, kullanıcı adları ve açık sayfalar
             0014 One installer and a guided setup: 0014 Tek kurucu ve rehberli kurulum
+            0015 The web app, one agentic chat: 0015 Web uygulaması, tek ajan sohbeti
             Contributing: Katkıda bulunma
             Development setup: Geliştirme ortamı
             Write a plugin: Eklenti yaz
@@ -196,6 +197,7 @@ nav:
           - 0012 Sub-taus: adr/0012-sub-taus.md
           - 0013 Hosted taus, handles and public pages: adr/0013-hosted-taus-handles-and-public-pages.md
           - 0014 One installer and a guided setup: adr/0014-one-installer-and-onboarding.md
+          - 0015 The web app, one agentic chat: adr/0015-web-app-agentic-chat.md
   - Contributing:
       - Development setup: contributing/development.md
       - Write a plugin: contributing/plugins.md

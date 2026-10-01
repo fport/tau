@@ -8,11 +8,18 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Hub** — the one machine currently running the agent, the relay connection, schedulers and `zenohd` (`TAU_ROLE=hub`). Today the MacBook, later the RPi5. There is never more than one active hub. *Avoid: server, master.*
 - **Node** — any other process that joins the mesh and offers capabilities (`TAU_ROLE=node`), e.g. the Mac node or the robot node. *Avoid: agent (reserved for the LLM agent), client.*
 - **Device** — physical hardware (SO-101, XIAO, ESP32, Nicla). A device reaches tau through a node or the MQTT bridge; it is not itself a node.
+- **Simulated device** — a stand-in for a device that is not on hand, such as the lamp of `tau-sim` (183).
+  - It has the same tools and tiers a real one will have, keeps its state under `TAU_DATA_DIR/sim/`, and is marked simulated in every answer and card.
+  - Hub services that know devices, simulated or real, implement tau-core's `DeviceSource`.
 - **Capability** — a tool a node exposes over MCP, namespaced by node (`mac.screenshot`, `arm.play`).
 - **Mesh** — Zenoh network of the hub and nodes. **Control plane** = MCP (calling capabilities). **Data plane** = Zenoh (events, telemetry, liveliness).
 - **Relay** — *retired by ADR 0006*: no server sits between an external channel and the hub; Telegram is polled directly. The universe's `Relay` Durable Object (one visitor thread, ADR 0013 §5) is a different thing: it relays anonymous **visitors** to a web sub-tau, never the owner's own channels.
 - **Config** — static bootstrap configuration from `tau.toml` and `.env` (roles, ports, paths, credentials). Read once at start-up; editable in place from a channel through `tau_core.settings` (the TUI's settings screen, `/settings` in the terminal), never synced anywhere. Distinct from **Settings**, which are runtime data on the hub.
-- **Web UI** — the hub's browser interface (first: the TUI served through `textual-serve`), reached only through the **Tunnel** or the tailnet.
+- **Web app** — the owner's chat in the browser (`apps/web`, React; [ADR 0015](docs/adr/0015-web-app-agentic-chat.md)). The hub's `tau-web` service serves it; tau-host serves it at `/app`.
+  - **What it has:** streaming chat, tool cards, approval cards and **widgets**, plus pages for routines, scheduled tasks, devices, the toolbox and sub-taus when the backend offers them.
+  - **Reaching it on the hub:** only through the **Tunnel** or the tailnet, and only from a **paired device**.
+  - *Avoid: web UI (the older name, which meant the TUI in a tab), dashboard.*
+- **Paired device** — a browser that holds a device key for the hub's web app. `tau web device add <name>` prints a one-time pairing link; the hub keeps only the key's hash. Every route but pairing needs one. The device id is the web channel's `client_id`, so the guard's per-client grants (117) apply per device. *Avoid: login, API key.*
 - **Tunnel** — the outbound Cloudflare Tunnel from the hub that makes `tau.<domain>` reachable without an inbound port; **Access** is the Cloudflare identity policy in front of it. *Avoid: reverse proxy, port forward.*
 - **Backup** — the client-side encrypted copy of `TAU_DATA_DIR` in a private R2 bucket; the key never leaves the hub and the owner's password manager.
 - **Deployment mode** — where the hub runs and where its life data lives ([ADR 0007](docs/adr/0007-cloud-mode-and-tau-network.md)). **Local** (default): the hub runs on the owner's machine and life data stays under `TAU_DATA_DIR` (ADR 0006). **Cloud** (opt-in): the same hub runs as a Cloudflare Container managed by the owner's spine, and life data lives in the owner's own Cloudflare account (D1, KV). A **hosted tau** has no hub, so it is not a deployment mode: it is one of the three ways to run a tau (ADR 0013), next to local and **own host**, with cloud mode as the advanced fourth. *Avoid: SaaS; "hosted" for cloud mode.*
@@ -23,7 +30,10 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 
 ## Talking to tau
 
-- **Channel** — a way to converse with tau: Telegram, TUI, TauBar, voice ("Hey tau"), MCP server. tau Desktop and web tabs run the TUI, so they are the `tui` channel.
+- **Channel** — a way to converse with tau: Telegram, TUI, the web app (`web`), TauBar, voice ("Hey tau"), MCP server.
+  - tau Desktop runs the TUI, so it is the `tui` channel.
+  - The web app's turns run inside the hub as `web`, a guarded and trusted channel.
+  - Scheduled tasks run as `schedule`.
 - **Session** — one recorded conversation: messages, tool calls, approvals. Resumed with `/resume`. Kept forever.
 - **Persona** — tau's character, from `persona/persona.md` (Jarvis-style, Turkish by default, mirrors the user's language) and `persona/user.md` (facts about the user). Combined with the **dynamic context** (time, profile, live nodes, budget) into the system prompt each turn. Everything the model reads around it (headings, labels, gate texts) is English.
 - **Slash command** — a `/name [argument]` line typed into a channel and handled by the channel, never sent to the model: `/help`, `/tools`, `/sessions`, `/resume`, `/new`, `/session`, `/compact`, `/clear`, `/status`, `/model`, `/lang`, `/settings`, `/guard`, `/quit`. Canonical names are English; Turkish aliases are accepted but never shown. Spec in `tau_core.commands`.
@@ -97,12 +107,22 @@ Decided in [ADR 0008](docs/adr/0008-owner-guard.md); the user's side is `docs/gu
 
 - **Event** — something that happened, published on Zenoh as `tau/<area>/<name>` (e.g. `tau/desk/presence`). Summaries of events are stored locally on the hub.
 - **Agent event** — a record of what the agent did in a session (tool call, approval, turn limit, error, notice); distinct from a mesh **Event** on Zenoh.
-- **Turn event** — what a channel receives while one user turn streams: `TextDelta`, `ReasoningDelta`, `ToolUseStarted`, `ToolProgress`, `ToolFinished`, `Throttled`, `Notice`, `TurnEnd`. Rendered by the terminal and the TUI; not stored (agent events are).
+- **Turn event** — what a channel receives while one user turn streams: `TextDelta`, `ReasoningDelta`, `ToolUseStarted`, `ToolProgress`, `ToolFinished`, `Throttled`, `Notice`, `TurnEnd`. Rendered by the terminal and the TUI, and serialized for the web app as the **turn protocol**. Not stored (agent events are).
+- **Turn protocol** — the JSON form of a turn: one `{v, seq, type, …}` line per event over a streaming `fetch`, the history blocks of a session, and the routes to start, re-attach, cancel and approve (`docs/reference/turn-protocol.md`). It is the contract between the web app and both backends: the hub and tau-host. *Avoid: API (too vague), websocket protocol.*
+- **Widget** — an interface the model writes with the tier-0 `render_ui` tool: one self-contained HTML document shown in a sandboxed frame that can reach neither the network, the hub nor the app. It is kept in the session, so it renders again on reopen. Approvals, tool calls, routines, tasks and devices are **cards**, which the app draws itself; they are never widgets. *Avoid: artifact, generated UI.*
 - **Stop reason** — why a turn ended, carried by `TurnEnd`: `end_turn`, `limit_turns`, `limit_total_tokens`, `max_tokens`, `cancelled`, `interrupt`, `error`, `busy`, `locked` (the owner guard refused the turn before any history, prompt or model work; nothing is appended and no repair turn follows).
 - **Repair turn** — when the history ends on an unfinished turn (a failed, cancelled or limited turn, or a crash-restored session), the next turn sends an assistant notice before the user's prompt so the history keeps alternating. Only the SDK appends to history; tau never does by hand.
 - **Telemetry** — high-frequency raw data (sensor streams, joint states). Never stored with the sessions; batched to local files and backed up encrypted with the rest of the data dir.
-- **Routine** — a user-registered rule: event pattern → action, with optional conditions (time window, cooldown). Registering a tier-2 routine needs one approval; its firings do not.
-- **Reflex engine** — runs routines locally without an LLM or the cloud.
+- **Routine** — a user-registered rule: trigger → one tool call with fixed arguments, with no LLM.
+  - **Triggers:** a clock trigger (`daily 07:00`, weekdays, once, every N minutes; 181), or later an event pattern with conditions (time window, cooldown; 037).
+  - **Approval:** registering or changing one is one tier-2 approval on every path (form, tool, CLI), and its firings do not ask again.
+  - **Where it lives:** `tau-routines`, `TAU_DATA_DIR/routines/`.
+- **Reflex engine** — runs routines locally without an LLM, the cloud or the owner at the Mac.
+- **Scheduled task** — a registered prompt that runs on a clock as a headless agent turn on the `schedule` channel (182).
+  - **Limits:** its own model role, a tool allowlist (never tier 2) and a per-run cost cap.
+  - **Output:** every run is a new session, and its result goes to the web app's inbox and, when asked, to Telegram.
+  - **Approval:** registration is one tier-2 approval.
+  - Distinct from a routine, which never calls a model. *Avoid: cron job, automation.*
 - **Ambient mode** — tau thinking proactively about events. Off by default; the user turns it on per **profile**.
 - **Profile** — a named bundle of settings (`home`, `travel`, `sport`; `home` is the default): which events to watch, where to notify, the ambient budget.
 - **Settings** — runtime configuration stored as data on the hub (a file under `TAU_DATA_DIR`) and hot-reloaded; never synced to a third party. Planned in issue 019. Until then `/settings` (and the TUI's **settings screen**, F10) edits the bootstrap **Config** (`tau.toml`, `.env`): model roles, credentials, UI language, profile, agent options. The **setup screen** is what `tau tui` shows when there is no `tau.toml` yet; it runs the same code as `tau init`.

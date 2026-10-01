@@ -7,6 +7,7 @@ registered; :class:`ToolCatalog` is the only way tools reach ``build_agent``.
 
 from __future__ import annotations
 
+import copy
 import logging
 from collections.abc import Callable, Iterable
 from enum import IntEnum
@@ -112,6 +113,34 @@ def effect_of(tool: AgentTool) -> str:
         return str(effect)
     spec = getattr(tool, "tool_spec", None) or {}
     return str(spec.get("description") or getattr(tool, "tool_name", ""))
+
+
+DESCRIBE_ATTRIBUTE = "tau_describe"
+"""An optional attribute of a tool: a function ``arguments → str`` that words one call."""
+
+
+def effect_for(tool: AgentTool, arguments: dict[str, Any]) -> str:
+    """What this one call does, for its approval prompt.
+
+    A tool may carry ``tau_describe``, a function that gets a deep copy of the call's arguments
+    and returns the call in plain words (tau-routines shows a routine's whole definition this
+    way). A non-empty ``str`` is used as is; anything else, or an exception, falls back to
+    :func:`effect_of`. The text only words the request: it never decides anything.
+    """
+    describe = getattr(tool, DESCRIBE_ATTRIBUTE, None)
+    if callable(describe):
+        try:
+            text = describe(copy.deepcopy(dict(arguments)))
+        except Exception:
+            logger.warning(
+                "tool %s could not describe a call; showing its effect",
+                getattr(tool, "tool_name", repr(tool)),
+                exc_info=True,
+            )
+        else:
+            if isinstance(text, str) and text.strip():
+                return text
+    return effect_of(tool)
 
 
 class ToolCatalog:

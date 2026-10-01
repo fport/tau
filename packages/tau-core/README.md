@@ -340,6 +340,11 @@ records the tier and effect in the tool spec (`tool_spec["annotations"]["tau"] =
 instance (Strands builds a new tool object for bound methods); `tier_of`/`effect_of` read the
 annotation first and the older `tau_tier`/`tau_effect` attributes second.
 
+A tool whose calls differ too much for one sentence may also carry `tau_describe`, a function
+that gets a copy of one call's arguments and returns that call in plain words; the approval
+request shows it instead of the effect (`tau_core.tiers.effect_for`). An exception or an empty
+answer falls back to the effect. tau-routines words a routine's whole definition this way.
+
 Every call passes `TierGate` (`build_agent` wires it in through `TierHook`, registered at
 `HookOrder.SDK_LAST` so the `tool_use` the gate sees is the one Strands runs, whatever other
 hooks, interventions or plugins rewrite before it):

@@ -34,7 +34,7 @@ from strands.hooks import (
 from tau_core.events import AgentEvent, EventBus
 from tau_core.guard import LOCKED_NOTE, STEP_UP_NOTE, Guard, GuardProgress, GuardTurn, admit_turn
 from tau_core.i18n import DEFAULT_LANGUAGE, t
-from tau_core.tiers import Tier, ToolCatalog, UntieredToolError, effect_of
+from tau_core.tiers import Tier, ToolCatalog, UntieredToolError, effect_for
 
 logger = logging.getLogger(__name__)
 
@@ -335,7 +335,7 @@ class TierGate:
             tool=tool_name,
             tier=tier,
             arguments=_copy_arguments(arguments),
-            effect=effect_of(tool) if tool is not None else "",
+            effect=effect_for(tool, arguments) if tool is not None else "",
             session_id=self.session_id,
             channel=self.channel,
         )

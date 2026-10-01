@@ -279,6 +279,69 @@ async def test_effect_falls_back_to_the_description() -> None:
     assert approver.requests[0].effect == "Kedinin mama kabını doldurur."
 
 
+@tau_tool(tier=Tier.PHYSICAL, effect="Waters a plant.")
+def water(plant: str, litres: int = 1) -> str:
+    """Waters a plant.
+
+    Args:
+        plant: Which plant.
+        litres: How much.
+    """
+    return "watered"
+
+
+async def test_a_tool_can_word_each_call_for_its_approval(monkeypatch) -> None:
+    seen: list[dict] = []
+
+    def describe(arguments: dict) -> str:
+        seen.append(arguments)
+        arguments["plant"] = "changed by describe"  # a copy: the call itself is untouched
+        return f"Pours {arguments['litres']} l on the fern."
+
+    monkeypatch.setattr(water, "tau_describe", describe, raising=False)
+    approver = ScriptedApprover([Decision.APPROVED])
+    gate = TierGate(
+        ToolCatalog([water]), approver, EventBus(), session_id=None, channel="t", guard=None
+    )
+    arguments = {"plant": "fern", "litres": 2}
+    assert await gate.check("water", arguments, tool_use_id="t1") == (True, None, "approved")
+    assert approver.requests[0].effect == "Pours 2 l on the fern."
+    assert approver.requests[0].arguments == {"plant": "fern", "litres": 2}
+    assert arguments == {"plant": "fern", "litres": 2} and len(seen) == 1
+
+
+@pytest.mark.parametrize("answer", [ValueError("broken"), "", "   ", None, 42])
+async def test_a_failing_description_falls_back_to_the_effect(monkeypatch, answer) -> None:
+    def describe(arguments: dict):
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(water, "tau_describe", describe, raising=False)
+    approver = ScriptedApprover()
+    gate = TierGate(
+        ToolCatalog([water]), approver, EventBus(), session_id=None, channel="t", guard=None
+    )
+    await gate.check("water", {"plant": "fern"}, tool_use_id="t1")
+    assert approver.requests[0].effect == "Waters a plant."
+
+
+async def test_an_exempt_call_is_not_described(monkeypatch) -> None:
+    calls: list[dict] = []
+    monkeypatch.setattr(water, "tau_describe", calls.append, raising=False)
+    gate = TierGate(
+        ToolCatalog([water]),
+        ScriptedApprover(),
+        EventBus(),
+        session_id=None,
+        channel="t",
+        exemptions=[lambda name, args: True],
+        guard=None,
+    )
+    assert await gate.check("water", {"plant": "fern"}, tool_use_id="t1") == (True, None, "exempt")
+    assert calls == []
+
+
 @pytest.mark.parametrize("decision", [Decision.REJECTED, Decision.TIMEOUT])
 async def test_tier2_not_approved(decision: Decision) -> None:
     gate, seen = make_gate(ScriptedApprover([decision]))

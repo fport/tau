@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-wizard-install"
+description = "Enables the wizard_install command without any pre-configured scope."
+commands.allow = ["wizard_install"]
+
+[[permission]]
+identifier = "deny-wizard-install"
+description = "Denies the wizard_install command without any pre-configured scope."
+commands.deny = ["wizard_install"]

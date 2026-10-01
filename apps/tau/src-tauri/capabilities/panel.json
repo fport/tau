@@ -16,6 +16,7 @@
     "allow-lock-guard",
     "allow-open-camera-settings",
     "allow-open-settings",
+    "allow-open-wizard",
     "allow-new-chat",
     "allow-check-updates",
     "allow-panel-fit",

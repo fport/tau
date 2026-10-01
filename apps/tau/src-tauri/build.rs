@@ -1,8 +1,10 @@
 //! Every command of the app gets an ACL permission (`allow-<command>`), so a window can call
 //! only what its capability grants it: the settings window and the panel get the hub, sleep
 //! and login commands (`capabilities/settings.json`, `panel.json`), a chat window only its own
-//! PTY, the first-run folder choice and links (`capabilities/chat.json`). A chat page can never
-//! change how the hub is started, which would run a program under the app's camera grant.
+//! PTY, the first-run folder choice and links (`capabilities/chat.json`), the setup wizard its
+//! jobs, its terminal and the permission requests (`capabilities/wizard.json`). A chat page can
+//! never change how the hub is started, which would run a program under the app's camera grant,
+//! and the wizard can only save the tau its own discovery found.
 
 const COMMANDS: &[&str] = &[
     // The settings window and the panel (`src/commands.rs`).
@@ -31,6 +33,16 @@ const COMMANDS: &[&str] = &[
     "pty_write",
     "pty_resize",
     "open_link",
+    // The setup wizard (`src/wizard/commands.rs`); `open_wizard` for the other windows.
+    "wizard_discover",
+    "wizard_status",
+    "wizard_run",
+    "wizard_install",
+    "wizard_cancel",
+    "wizard_pty_start",
+    "wizard_permission",
+    "wizard_permission_settings",
+    "open_wizard",
 ];
 
 fn main() {

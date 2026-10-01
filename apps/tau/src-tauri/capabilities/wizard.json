@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "wizard",
+  "description": "The setup wizard: its jobs (tau setup, Telegram pairing, the spine deploy, installing uv and tau), always with the tau its own discovery found and never a program or a path the page names; its own terminal for steps that need one; the permission requests; links, a chat window and the hub and login switches. No core, dialog, opener or shell permissions and no free-form hub settings.",
+  "windows": ["wizard"],
+  "permissions": [
+    "allow-wizard-discover",
+    "allow-wizard-status",
+    "allow-wizard-run",
+    "allow-wizard-install",
+    "allow-wizard-cancel",
+    "allow-wizard-pty-start",
+    "allow-wizard-permission",
+    "allow-wizard-permission-settings",
+    "allow-pty-write",
+    "allow-pty-resize",
+    "allow-open-link",
+    "allow-new-chat",
+    "allow-set-run-hub",
+    "allow-set-launch-at-login",
+    "allow-open-settings"
+  ]
+}

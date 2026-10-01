@@ -24,6 +24,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let settings = MenuItemBuilder::with_id(ids::SETTINGS, "Settings…")
         .accelerator(SETTINGS_ACCELERATOR)
         .build(app)?;
+    let wizard = MenuItemBuilder::with_id(ids::WIZARD, "Set up tau…").build(app)?;
     let quit = MenuItemBuilder::with_id(ids::QUIT_ASK, "Quit tau")
         .accelerator(QUIT_ACCELERATOR)
         .build(app)?;
@@ -35,6 +36,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&updates)
         .separator()
         .item(&settings)
+        .item(&wizard)
         .separator()
         .services()
         .separator()

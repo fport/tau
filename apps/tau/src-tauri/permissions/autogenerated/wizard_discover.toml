@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-wizard-discover"
+description = "Enables the wizard_discover command without any pre-configured scope."
+commands.allow = ["wizard_discover"]
+
+[[permission]]
+identifier = "deny-wizard-discover"
+description = "Denies the wizard_discover command without any pre-configured scope."
+commands.deny = ["wizard_discover"]

@@ -46,6 +46,8 @@ pub mod ids {
     pub const LOGIN: &str = "login";
     pub const NEW_CHAT: &str = "chat.new";
     pub const SETTINGS: &str = "settings";
+    /// "Set up tau…": the setup wizard (roadmap 171).
+    pub const WIZARD: &str = "wizard";
     pub const UPDATES: &str = "updates";
     pub const OPEN_LOG: &str = "log";
     /// Quit at once (this menu, the panel).
@@ -193,6 +195,7 @@ impl<R: Runtime> TrayMenu<R> {
         let login = CheckMenuItem::with_id(app, ids::LOGIN, "Launch at login", true, false, none)?;
         let settings =
             MenuItem::with_id(app, ids::SETTINGS, "Settings…", true, Some("CmdOrCtrl+,"))?;
+        let wizard = MenuItem::with_id(app, ids::WIZARD, "Set up tau…", true, none)?;
         let updates = MenuItem::with_id(app, ids::UPDATES, "Check for Updates…", true, none)?;
         let open_log = MenuItem::with_id(app, ids::OPEN_LOG, "Open App Log", true, none)?;
         let quit = MenuItem::with_id(app, ids::QUIT, "Quit tau", true, Some("CmdOrCtrl+Q"))?;
@@ -215,6 +218,7 @@ impl<R: Runtime> TrayMenu<R> {
                 &PredefinedMenuItem::separator(app)?,
                 &login,
                 &settings,
+                &wizard,
                 &updates,
                 &open_log,
                 &PredefinedMenuItem::separator(app)?,

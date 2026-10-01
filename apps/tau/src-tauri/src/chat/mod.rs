@@ -60,7 +60,8 @@ impl Chats {
         }
     }
 
-    fn session(&self, label: &str) -> Option<Arc<Session>> {
+    /// The PTY session of the window `label` (a chat window, or the wizard's terminal).
+    pub(crate) fn session(&self, label: &str) -> Option<Arc<Session>> {
         self.sessions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -68,11 +69,40 @@ impl Chats {
             .cloned()
     }
 
-    fn remove_session(&self, label: &str) -> Option<Arc<Session>> {
+    pub(crate) fn remove_session(&self, label: &str) -> Option<Arc<Session>> {
         self.sessions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(label)
+    }
+
+    /// Give the window `label` a new session, unless it still runs one. `start` is called with
+    /// the sessions locked, so two calls cannot both start one.
+    pub(crate) fn start_session(
+        &self,
+        label: &str,
+        start: impl FnOnce() -> Result<Arc<Session>, String>,
+    ) -> Result<(), String> {
+        let mut sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(running) = sessions.get(label) {
+            if running.exited().is_none() {
+                return Err("A command is still running in this window.".into());
+            }
+        }
+        let session = start()?;
+        sessions.insert(label.to_string(), session);
+        Ok(())
+    }
+
+    /// The chat windows' `chat.json`.
+    pub fn settings_file(&self) -> &std::path::Path {
+        &self.settings_file
+    }
+
+    /// Forget the home validated in this run, so the next window resolves it again (after the
+    /// setup wizard saved a new one).
+    pub fn forget_home(&self) {
+        *self.home.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
     /// The app is quitting: no new windows, and TUI exits no longer close windows.
@@ -172,8 +202,9 @@ fn cascade_from_front(app: &AppHandle) -> Option<(f64, f64)> {
     Some((position.x + CASCADE, position.y + CASCADE))
 }
 
-/// A chat page may only ever show the app's own bundle (`tauri://localhost`, or Vite in dev).
-fn is_app_url(url: &Url) -> bool {
+/// A chat page (and the wizard's) may only ever show the app's own bundle (`tauri://localhost`,
+/// or Vite in dev).
+pub(crate) fn is_app_url(url: &Url) -> bool {
     match url.scheme() {
         "tauri" => url.host_str() == Some("localhost"),
         "http" if cfg!(dev) => url.host_str() == Some("localhost") && url.port() == Some(1420),
@@ -281,7 +312,7 @@ mod tests {
     fn chat_windows_are_told_apart_by_their_label() {
         assert!(is_chat_window("chat-1"));
         assert!(is_chat_window("chat-12"));
-        for label in ["settings", "panel", "wizard", "chat"] {
+        for label in ["settings", "panel", crate::wizard::WINDOW, "chat"] {
             assert!(!is_chat_window(label), "{label}");
         }
     }

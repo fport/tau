@@ -8,6 +8,9 @@
 //!   its child and restarts it after a crash; the camera grant the hub's guard needs belongs to
 //!   the app (ADR 0008).
 //! - **Chat windows** (`chat/`): `tau tui` in a PTY with xterm.js, one per window.
+//! - **The setup wizard** (`wizard/`, roadmap 171): on the first start and from "Set up tau…",
+//!   it finds or installs tau and drives `tau setup`'s JSON protocol, asking macOS for the
+//!   permissions of the chosen features only (`permissions.rs`).
 //! - **Updates** (`update.rs`) from the GitHub release, signed for the Tauri updater.
 //!
 //! The app starts without a Dock icon; it has one, and the menu bar (`app_menu.rs`), while a
@@ -24,12 +27,14 @@ pub mod hub;
 pub mod login;
 pub mod migrate;
 pub mod panel;
+pub mod permissions;
 pub mod settings;
 mod signals;
 pub mod sleep;
 pub mod tray;
 pub mod update;
 pub mod webview;
+pub mod wizard;
 
 use crate::chat::Chats;
 use crate::core::{Core, Dirs};
@@ -73,7 +78,10 @@ pub fn run() {
         .menu(app_menu::build)
         // The one menu handler: the tray menu's clicks and the app menu's (shared ids).
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
-        .on_window_event(chat::on_window_event)
+        .on_window_event(|window, event| {
+            chat::on_window_event(window, event);
+            wizard::on_window_event(window, event);
+        })
         .invoke_handler(tauri::generate_handler![
             commands::snapshot,
             commands::set_sleep_mode,
@@ -99,6 +107,15 @@ pub fn run() {
             chat::commands::pty_write,
             chat::commands::pty_resize,
             chat::commands::open_link,
+            wizard::commands::wizard_discover,
+            wizard::commands::wizard_status,
+            wizard::commands::wizard_run,
+            wizard::commands::wizard_install,
+            wizard::commands::wizard_cancel,
+            wizard::commands::wizard_pty_start,
+            wizard::commands::wizard_permission,
+            wizard::commands::wizard_permission_settings,
+            wizard::commands::open_wizard,
         ])
         .setup(|app| {
             // The menu bar only, until a chat window opens (Info.plist also sets LSUIElement).
@@ -135,6 +152,7 @@ pub fn run() {
                 user_home,
             ));
             app.manage(update::Updates::default());
+            app.manage(wizard::Wizard::default());
             let menu = TrayMenu::build(app.handle(), panel::toggle)?;
             app.manage(menu);
             app.manage(panel::PanelState::default());
@@ -153,8 +171,10 @@ pub fn run() {
             spawn_ticker(app.handle().clone());
             spawn_hub_thread(app.handle().clone());
             update::spawn_automatic_checks(app.handle().clone());
+            // The first start shows the setup wizard (roadmap 171): it finds or installs tau
+            // and sets it up; the settings window stays one click away.
             if first_run {
-                open_settings(app.handle());
+                wizard::open(app.handle());
             }
             Ok(())
         })
@@ -276,8 +296,8 @@ fn resolve_dirs(app: &AppHandle) -> Result<(Dirs, bool), Box<dyn std::error::Err
 }
 
 /// Opening the app again, or a second launch: the window in front comes forward; with none,
-/// a chat window, or the settings window while tau is not set up yet (no checkout for the hub
-/// and none for the chat windows).
+/// a chat window, or the setup wizard while tau is not set up yet (no tau for the hub and none
+/// for the chat windows).
 fn show(app: &AppHandle) {
     let front = app.webview_windows().into_iter().find(|(label, window)| {
         label != panel::PANEL_WINDOW && window.is_visible().unwrap_or(false)
@@ -291,7 +311,7 @@ fn show(app: &AppHandle) {
     if hub_checkout || app.state::<Chats>().has_home() {
         chat::open_window(app);
     } else {
-        open_settings(app);
+        wizard::open(app);
     }
 }
 
@@ -375,6 +395,10 @@ fn on_menu(app: &AppHandle, id: &str) {
             return;
         }
         ids::SETTINGS => open_settings(app),
+        ids::WIZARD => {
+            wizard::open(app);
+            return;
+        }
         ids::UPDATES => {
             update::check(app, true);
             return;

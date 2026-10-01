@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "The settings window: core events, the folder picker, and the hub, sleep, login, guard and update commands. The only window that may change how the hub is started.",
+  "description": "The settings window: core events, the folder picker, and the hub, sleep, login, guard and update commands. The only window that may type how the hub is started (the setup wizard can only save the tau its discovery found).",
   "windows": ["settings"],
   "permissions": [
     "core:default",
@@ -20,6 +20,7 @@
     "allow-lock-guard",
     "allow-open-camera-settings",
     "allow-new-chat",
-    "allow-check-updates"
+    "allow-check-updates",
+    "allow-open-wizard"
   ]
 }

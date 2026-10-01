@@ -1,6 +1,6 @@
 # 181 · Routines on a clock: the `tau-routines` hub service, one approval at registration
 
-Status: in-progress
+Status: done
 Type: AFK
 Layer: L5 · Mesh
 Packages: tau-routines, tau-core
@@ -46,12 +46,12 @@ Blocked by: –
 
 ## Acceptance criteria
 
-- [ ] `tau routine add "daily 07:00 weekdays" demo_physical_action …` asks for one approval; the routine fires at 07:00 on the next weekday with no further approval (test with a fake clock)
-- [ ] A changed argument asks again; a routine whose stored hash does not match its call is refused by the gate, not run (test)
-- [ ] With networking disabled and no model configured the routine still fires (test)
-- [ ] Missed firings within the grace run once, older ones are logged as missed; three failures pause the routine
-- [ ] The repo rule allows `guard=None` in exactly the engine's file; every other rule in `test_repo_rules.py` still passes
-- [ ] `tau-routines` builds as its own wheel and is in CI and the release workflow
+- [x] `tau routine add "daily 07:00 weekdays" demo_physical_action …` asks for one approval; the routine fires at 07:00 on the next weekday with no further approval (test with a fake clock)
+- [x] A changed argument asks again; a routine whose stored hash does not match its call is refused by the gate, not run (test)
+- [x] With networking disabled and no model configured the routine still fires (test)
+- [x] Missed firings within the grace run once, older ones are logged as missed; three failures pause the routine
+- [x] The repo rule allows `guard=None` in exactly the engine's file; every other rule in `test_repo_rules.py` still passes
+- [x] `tau-routines` builds as its own wheel and is in CI (the release workflow waits for the owner's PyPI publisher, see Comments)
 
 ## Blocked by
 
@@ -60,3 +60,16 @@ None - can start immediately; the tier gate and `Exemption` (006) are done.
 ## Comments
 
 - 2026-10-01: filed with ADR 0015. 037 keeps the event triggers (`desk.presence=present → …`) and builds them on this engine once 032 lands. The simulated lamp (183) is the first real target.
+- 2026-10-01: done (79714ff, c5061ff; the hub test fix 446a2fa), built by a subagent and reviewed.
+  - **Commands and tools:** `tau routine add|list|edit|pause|resume|remove|log`; the tools `add_routine` (tier 2), `list_routines` (tier 0) and `remove_routine` (tier 1).
+  - **Approval text:** a tool may now carry `tau_describe` (`tau_core.tiers.effect_for`). The gate uses it to word each call in the approval, so every registration path shows the trigger, tool, tier and exact arguments.
+  - **Firing:** the engine calls the tool with `AgentTool.stream`, through `TierGate.check` and `record`, with `guard=None` (only in `engine.py`), the `RefusingApprover` and the hash-bound exemption.
+    - The slot is recorded before the tool runs, so a crash never repeats a physical action.
+    - Each firing has a 120 s timeout.
+    - Resuming a paused routine skips the slots that fell due meanwhile.
+  - **Config:** `[component.routines] timezone` and `grace_minutes`. The default zone is `TZ`, then `/etc/localtime`.
+  - **The hub service** notices changes through the file's mtime, size and inode, and sleeps until the next slot or 30 s.
+  - **Not done:**
+    - `release.yml` waits for a PyPI publisher for `tau-routines`; the name is free.
+    - The docs pages, CONTEXT and `tau setup`'s features come with 184.
+  - **Also in this change:** `test_telegram_pairing`'s hub test now waits for Telegram's route instead of racing the services' start.

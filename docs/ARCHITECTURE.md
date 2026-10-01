@@ -57,7 +57,7 @@ tau is a personal "smart body" that automates life: an agent platform you talk t
 
 ### Subdomain scheme
 
-- `tau.getporti.<tld>` → the public site: what tau is, and `/universe`, the opt-in map of taus (`cloud/universe`, [ADR 0010](adr/0010-public-site-and-tau-universe.md))
+- `tau.getporti.<tld>` → the public site: what tau is, and `/universe`, the opt-in map of taus (`cloud/universe`, [ADR 0010](adr/0010-public-site-and-tau-universe.md); a Next.js App Router on vinext in the same Worker, [ADR 0016](adr/0016-public-site-on-nextjs.md))
 - `<name>.tau.getporti.<tld>` → a tau's spine and network address (the owner's: `furkan.tau.getporti.<tld>`)
 - `hub.tau.getporti.<tld>` → the hub's web UI and API through Cloudflare Tunnel, behind Cloudflare Access
 - `docs.tau.getporti.<tld>` → the docs site (static)
@@ -111,7 +111,7 @@ tau/
 ├── apps/tau/                 # the Mac app "tau": Tauri v2 + React/TS + xterm.js (menu bar, hub supervisor, chat windows)
 ├── apps/web/                 # the web app (React + Vite): chat, widgets, control pages; bundled into tau-web and tau-host
 ├── cloud/spine/              # tau-spine Worker (TS): card, mailbox, hub doorbell and long poll; cloud mode: brain container + D1/KV store
-├── cloud/universe/           # tau-universe Worker (TS): the public site at tau.<domain> and the opt-in directory of taus
+├── cloud/universe/           # tau-universe Worker (TS): the public site at tau.<domain> (Next.js on vinext) and the opt-in directory of taus
 ├── persona/                  # persona.md, user.example.md (user.md gitignored)
 ├── tools/                    # hot-reloaded tools
 │   └── _pending/             # tools tau wrote, waiting for approval

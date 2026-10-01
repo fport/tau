@@ -111,6 +111,7 @@ plugins:
             0013 Hosted taus, handles and public pages: 0013 Barındırılan tau'lar, kullanıcı adları ve açık sayfalar
             0014 One installer and a guided setup: 0014 Tek kurucu ve rehberli kurulum
             0015 The web app, one agentic chat: 0015 Web uygulaması, tek ajan sohbeti
+            0016 The public site on Next.js: 0016 Next.js üzerinde açık site
             Contributing: Katkıda bulunma
             Development setup: Geliştirme ortamı
             Write a plugin: Eklenti yaz
@@ -202,6 +203,7 @@ nav:
           - 0013 Hosted taus, handles and public pages: adr/0013-hosted-taus-handles-and-public-pages.md
           - 0014 One installer and a guided setup: adr/0014-one-installer-and-onboarding.md
           - 0015 The web app, one agentic chat: adr/0015-web-app-agentic-chat.md
+          - 0016 The public site on Next.js: adr/0016-public-site-on-nextjs.md
   - Contributing:
       - Development setup: contributing/development.md
       - Write a plugin: contributing/plugins.md

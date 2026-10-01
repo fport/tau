@@ -124,7 +124,7 @@ Effects:
 - A claim is valid for an hour. Its nonce, not its `ts`, guards against replay: a `report` the hub sends after the link was made does not make the link stale, and an accepted claim does not move the address's `ts` guard. Only an accepted claim uses its nonce, so after `401 not_signed_in` the owner signs in and posts the same claim again; a nonce used before is `stale`.
 - A handle goes with its tau when the tau leaves or expires.
 
-**Slugs.** A sub-tau's short page `/<name>` belongs to the first tau whose report lists a public sub-tau with that name while the name is free. The name keeps belonging to that tau until the tau leaves or expires, also while its reports stop listing the sub-tau (the page is then 404). Every other tau's sub-tau with that name lives only at `/@<handle>/<name>`, or has no page when its tau has no handle. The names the site uses are never slugs: every page and template (`universe`, `how-it-works`, `claim`, `person`, `sub`, …), every top-level name under `public/` (`brand`, `styles`, `app`, `fonts`, …), every path prefix of the Worker and of tau-host (`api`, `auth`, `net`, `hub`, `tr`) and a few kept for later (`docs`, `about`, `login`, `logout`, `settings`, `new`, `help`, `static`, `assets`). The list is `RESERVED_NAMES` in `cloud/universe/src/routes.ts`.
+**Slugs.** A sub-tau's short page `/<name>` belongs to the first tau whose report lists a public sub-tau with that name while the name is free. The name keeps belonging to that tau until the tau leaves or expires, also while its reports stop listing the sub-tau (the page is then 404). Every other tau's sub-tau with that name lives only at `/@<handle>/<name>`, or has no page when its tau has no handle. The names the site uses are never slugs: every page and template (`universe`, `how-it-works`, `claim`, `person`, `sub`, …), every top-level name under `public/` (`brand`, `styles`, `app`, `fonts`, …), the internal routes the pages render from (`page`), every path prefix of the Worker and of tau-host (`api`, `auth`, `net`, `hub`, `tr`) and a few kept for later (`docs`, `about`, `login`, `logout`, `settings`, `new`, `help`, `static`, `assets`). The list is `RESERVED_NAMES` in `cloud/universe/src/routes.ts`.
 
 The public snapshot:
 
@@ -198,7 +198,7 @@ The directory lives in one SQLite-backed Durable Object (`Directory`, one instan
 
 A cron job runs every hour. It deletes taus whose `last_seen` is older than 30 days, together with their links, handles and slugs, and prunes rate-limit rows, replay clocks and claim nonces older than one hour.
 
-Pages send `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`. The person, sub-tau and claim pages send them too; the paths forwarded to tau-host carry tau-host's own headers.
+Pages send `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'nonce-<n>'; script-src 'self' 'nonce-<n>'; connect-src 'self'; frame-ancestors 'none'`, with a fresh random `<n>` for every page, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`. The pages are rendered by React ([ADR 0016](../adr/0016-public-site-on-nextjs.md)), which streams their payload in inline scripts; every script and style on a page carries that page's nonce, and every script comes from the site itself. The person, sub-tau and claim pages send the same; the API and every other answer send the policy without a nonce (`script-src 'self'`); the paths forwarded to tau-host carry tau-host's own headers.
 
 ### App downloads
 
@@ -216,7 +216,7 @@ The tau Mac app's release files (roadmap 190) are served by the Worker from the 
 - **Validators and ranges.** Answers carry `ETag` and `Last-Modified` from R2 and `Accept-Ranges: bytes`. A matching `If-None-Match` (or, without it, an `If-Modified-Since` not older than the file) is `304`. A single byte range in `Range` is `206` with `Content-Range`; several ranges or a malformed one get the whole file (`200`); a range that starts past the end is `416` with `Content-Range: bytes */<size>`. An `If-Range` naming another ETag or date gets the whole file. `HEAD` ignores `Range`.
 - **Errors.** Other methods are `405` with `Allow: GET, HEAD`. Without the binding every file is `503 {"error": "downloads_unavailable"}`; a file the bucket does not have is `404 {"error": "not_found"}`; both with `Cache-Control: no-store`.
 - **Order.** CI uploads a release's versioned files first, then `tau.app.tar.gz` and `tau.dmg`, and `latest.json` last, so the manifest never names an archive that is not there. A pre-release gets only its versioned files.
-- **Routing.** The Worker runs first for `/download/*` (`run_worker_first`), so the asset store never answers these paths; `/download` itself stays the page.
+- **Routing.** No static file lives under `/download/`, so these paths always reach the Worker; `/download` itself stays the page.
 
 ## 3. Hub behaviour (`tau-net`)
 

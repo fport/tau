@@ -11,6 +11,7 @@ Read before non-trivial work:
 - `docs/adr/0007-cloud-mode-and-tau-network.md` + `docs/reference/tau-network.md` — the opt-in cloud mode and the protocol taus use to talk to each other
 - `docs/adr/0010-public-site-and-tau-universe.md` + `docs/reference/tau-universe.md` — the public site, the opt-in universe directory and the spine kit
 - `docs/adr/0012-sub-taus.md` — sub-taus: named, task-specific specialists of a tau (`tau sub`)
+- `docs/adr/0016-public-site-on-nextjs.md` — the public site (`cloud/universe`) is a Next.js App Router on vinext in the same Worker: the server in front decides every route, React renders the pages with a CSP nonce
 - `docs/adr/0013-hosted-taus-handles-and-public-pages.md` — three ways to run a tau (local, hosted on tau-host, own host), `host/@handle` addresses, handles, person and sub-tau pages, visitor chats
 
 ## Language
@@ -33,7 +34,7 @@ infra/remote/          L0: Tailscale + OpenSSH + tmux/mosh setup (done, see its 
 packages/              publishable Python packages (tau-core, tau-tui, tau-net, tau-cloud, tau-sub, tau-guard, …) — from #004 on
 packages/tau-guard/    the owner guard: `guard` hub service, face worker, `tau guard` (macOS) — from #111 on
 cloud/spine/           tau-spine Worker (TS, bun): card, mailbox, hub long poll; cloud mode brain container — from #092 on
-cloud/universe/        tau-universe Worker (TS, bun): the public site tau.<domain> and the opt-in universe — from #140 on
+cloud/universe/        tau-universe Worker (TS, bun): the public site tau.<domain> (Next.js on vinext, ADR 0016) and the opt-in universe — from #140 on
 cloud/host/            tau-host Worker (TS, bun): hosted taus, GitHub sign-in, the owner's web app — from #159 on
 cloud/shared/          TypeScript shared by the Workers: the protocol's TS half, the character generator — from #158 on
 apps/tau/              the Mac app "tau": Tauri v2 + React + xterm.js; menu bar, hub supervisor, chat windows (`tau tui` in a PTY) — from #024/#116, one app since #170
@@ -108,7 +109,8 @@ uv run tau net init|status|add|accept|send|log|poll --once     # tau network (#0
 uv run tau cloud push|pull|status                              # cloud mode: persona + tau.toml to the spine (#094)
 uv run tau net spine init DIR --address HOST && uv run tau net spine deploy DIR   # a spine from the kit (#142)
 uv run tau net universe join|leave|status                      # the opt-in universe at tau.<domain> (#141)
-(cd cloud/universe && bun install && bun run configure && bun run dev)   # the public site locally (#140)
+(cd cloud/universe && bun install && bun run configure && bun run dev)   # the public site locally on :8790 (vite dev; #140, #191)
+(cd cloud/universe && bun run build && bun run test)           # universe tests: the server, then the built pages
 (cd cloud/spine && bun install && bun run configure && bun run dev)   # spine locally on :8787 (#092)
 (cd cloud/spine && bun run test)                               # spine tests (vitest, workerd)
 (cd cloud/spine && bun run deploy)                             # deploy the spine (after bunx wrangler login)

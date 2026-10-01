@@ -100,8 +100,11 @@ impl Chats {
     }
 }
 
-fn check(folder: &std::path::Path) -> Result<Validated, String> {
-    home::validate(folder, inherited_env, |launch| {
+fn check(
+    folder: &std::path::Path,
+    installed: Option<&std::path::Path>,
+) -> Result<Validated, String> {
+    home::validate(folder, installed, inherited_env, |launch| {
         home::run_with_timeout(launch, home::VERSION_TIMEOUT)
     })
 }
@@ -171,7 +174,7 @@ pub fn pty_start(
     output: Channel<InvokeResponseBody>,
     exit: Channel<ExitInfo>,
 ) -> Result<(), String> {
-    let home = chats.home().ok_or("No tau checkout is chosen yet.")?.home;
+    let home = chats.home().ok_or("No tau checkout is chosen yet.")?;
     let label = window.label().to_string();
     let mut sessions = chats.sessions.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(running) = sessions.get(&label).cloned() {
@@ -191,7 +194,7 @@ pub fn pty_start(
         }
         // Its exit was already reported: that TUI is over, start a new one.
     }
-    let launch = Launch::tui(&home, inherited_env);
+    let launch = Launch::tui(&home.home, &home.python, inherited_env);
     let session = Session::spawn(
         &launch,
         pty_size(cols, rows),

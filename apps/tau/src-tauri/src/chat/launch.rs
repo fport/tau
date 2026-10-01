@@ -1,13 +1,16 @@
-//! How a chat window starts tau: `<TAU_HOME>/.venv/bin/python -m tau_core tui` in `TAU_HOME`,
-//! with a small, explicit environment built like the hub's (`hub/launch.rs`).
+//! How a chat window starts tau: `<python> -m tau_core tui` in `TAU_HOME`, with a small,
+//! explicit environment built like the hub's (`hub/launch.rs`). The Python is the checkout's
+//! `<TAU_HOME>/.venv/bin/python`, or, for a folder without one (`~/.tau` next to a
+//! `uv tool install tau-core`), the tau-core Python the setup wizard found (`chat/home.rs`).
 //!
 //! A GUI app gets launchd's minimal environment (no `TERM`, no locale, a short `PATH`), and one
 //! opened from a terminal gets that terminal's whole environment. Neither is assumed: the child
 //! starts from an empty environment, inherits a fixed allowlist and gets the terminal variables
 //! xterm.js needs, so the TUI behaves the same however the app was opened.
 //!
-//! The Python is always derived from `TAU_HOME`, never configured: an editable interpreter path
-//! would let anyone at the Mac run an arbitrary executable through the app.
+//! The Python is never typed into a chat window: an editable interpreter path would let anyone
+//! at the Mac run an arbitrary executable through the app. It is the checkout's own venv, or
+//! the one the wizard's discovery found and checked (`wizard/discover.rs`).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -54,18 +57,28 @@ pub struct Launch {
 
 impl Launch {
     /// `python -m tau_core tui`: what every window runs in its PTY.
-    pub fn tui(home: &Path, inherited: impl Fn(&str) -> Option<String>) -> Self {
-        Self::tau(home, &["tui"], inherited)
+    pub fn tui(home: &Path, python: &Path, inherited: impl Fn(&str) -> Option<String>) -> Self {
+        Self::tau(home, python, &["tui"], inherited)
     }
 
     /// `python -m tau_core version`: the check a folder must pass before a chat window uses it.
-    pub fn version_check(home: &Path, inherited: impl Fn(&str) -> Option<String>) -> Self {
-        Self::tau(home, &["version"], inherited)
+    pub fn version_check(
+        home: &Path,
+        python: &Path,
+        inherited: impl Fn(&str) -> Option<String>,
+    ) -> Self {
+        Self::tau(home, python, &["version"], inherited)
     }
 
-    fn tau(home: &Path, args: &[&str], inherited: impl Fn(&str) -> Option<String>) -> Self {
+    /// `python -m tau_core <args>` in `home`, with the terminal environment.
+    pub fn tau(
+        home: &Path,
+        python: &Path,
+        args: &[&str],
+        inherited: impl Fn(&str) -> Option<String>,
+    ) -> Self {
         Self {
-            program: venv_python(home),
+            program: python.to_path_buf(),
             args: ["-m", "tau_core"]
                 .iter()
                 .chain(args)
@@ -159,7 +172,8 @@ mod tests {
 
     #[test]
     fn runs_the_checkout_python_m_tau_core_tui_in_tau_home() {
-        let launch = Launch::tui(Path::new("/path/to/tau"), inherit);
+        let python = venv_python(Path::new("/path/to/tau"));
+        let launch = Launch::tui(Path::new("/path/to/tau"), &python, inherit);
         assert_eq!(
             launch.program,
             PathBuf::from("/path/to/tau/.venv/bin/python")
@@ -170,10 +184,19 @@ mod tests {
             launch.display(),
             "/path/to/tau/.venv/bin/python -m tau_core tui"
         );
-        let check = Launch::version_check(Path::new("/path/to/tau"), inherit);
+        let check = Launch::version_check(Path::new("/path/to/tau"), &python, inherit);
         assert_eq!(check.args, ["-m", "tau_core", "version"]);
         assert_eq!(check.program, launch.program);
         assert_eq!(check.env, launch.env);
+    }
+
+    #[test]
+    fn runs_an_installed_tau_core_python_in_a_home_without_a_venv() {
+        let python = PathBuf::from("/example/home/.local/share/uv/tools/tau-core/bin/python");
+        let launch = Launch::tui(Path::new("/example/home/.tau"), &python, inherit);
+        assert_eq!(launch.program, python);
+        assert_eq!(launch.cwd, PathBuf::from("/example/home/.tau"));
+        assert_eq!(launch.env["TAU_HOME"], "/example/home/.tau");
     }
 
     #[test]
@@ -244,7 +267,8 @@ mod tests {
 
     #[test]
     fn the_pty_command_starts_from_an_empty_environment() {
-        let launch = Launch::tui(Path::new("/path/to/tau"), inherit);
+        let python = venv_python(Path::new("/path/to/tau"));
+        let launch = Launch::tui(Path::new("/path/to/tau"), &python, inherit);
         let command = launch.pty_command();
         let env: BTreeMap<&str, &str> = command.iter_full_env_as_str().collect();
         let expected: BTreeMap<&str, &str> = launch

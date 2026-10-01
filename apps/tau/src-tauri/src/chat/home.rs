@@ -1,16 +1,19 @@
-//! Which tau checkout a chat window runs: `TAU_HOME`, the folder with `tau.toml` and `.venv`.
+//! Which tau a chat window runs: `TAU_HOME`, the folder with `tau.toml`, and the Python that
+//! has tau-core.
 //!
-//! In this order:
+//! The folder, in this order:
 //!
 //! 1. the `TAU_HOME` environment variable (an app opened from a terminal, or `launchctl setenv`);
-//! 2. the folder chosen for the chat windows earlier (`chat.json` in the app's config dir);
+//! 2. the folder chosen for the chat windows earlier, or written by the setup wizard
+//!    (`chat.json` in the app's config dir);
 //! 3. otherwise the window asks. It offers the checkout the app runs the hub from as a hint (the
 //!    hub settings' `tau_home`, never used without a click) and a native folder picker.
 //!
-//! Every folder must pass [`validate`] before it is used: `<folder>/.venv/bin/python -m tau_core
-//! version` has to run and report tau-core. The Python is always the checkout's own venv, never a
-//! path anyone can type, so a chat window cannot be turned into a launcher for an arbitrary
-//! program.
+//! The Python is the folder's own `.venv/bin/python` (a checkout), else the tau-core Python the
+//! setup wizard found and saved in `chat.json` (a `uv tool install tau-core` next to `~/.tau`,
+//! roadmap 171). It is never a path anyone types into a chat window, so a chat window cannot be
+//! turned into a launcher for an arbitrary program. Every choice must pass [`validate`] before
+//! it is used: `<python> -m tau_core version` has to run and report tau-core.
 
 use super::launch::{venv_python, Launch};
 use serde::{Deserialize, Serialize};
@@ -37,7 +40,7 @@ pub const KILL_GRACE: Duration = Duration::from_secs(1);
 pub enum Source {
     /// The `TAU_HOME` environment variable.
     Env,
-    /// Chosen on an earlier run and saved.
+    /// Chosen on an earlier run (or by the setup wizard) and saved.
     Saved,
     /// Chosen just now in the folder picker.
     Picked,
@@ -45,11 +48,13 @@ pub enum Source {
     Hub,
 }
 
-/// A checkout that passed [`validate`].
+/// A home that passed [`validate`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Validated {
     /// The canonical folder (symlinks resolved).
     pub home: PathBuf,
+    /// The Python that runs tau-core for it.
+    pub python: PathBuf,
     /// `tau-core <version>`, the first line `tau version` printed.
     pub version: String,
 }
@@ -64,11 +69,25 @@ pub fn configured(env_home: Option<String>, saved: Option<PathBuf>) -> Option<(P
         .map(|p| (p, Source::Saved))
 }
 
-/// Check that `folder` is a tau checkout a chat window can run: a directory with
-/// `.venv/bin/python`, where `python -m tau_core version` succeeds and names tau-core.
-/// `run` executes the check (tests pass a fake; the app passes [`run_with_timeout`]).
+/// The Python for `home`: its own `.venv/bin/python` when there is one, else `installed` (the
+/// tau-core Python the wizard found), else `None`.
+pub fn python_for(home: &Path, installed: Option<&Path>) -> Option<PathBuf> {
+    let venv = venv_python(home);
+    if venv.is_file() {
+        return Some(venv);
+    }
+    installed
+        .filter(|p| !p.as_os_str().is_empty() && p.is_file())
+        .map(Path::to_path_buf)
+}
+
+/// Check that `folder` is a tau home a chat window can run: a directory with a Python
+/// ([`python_for`]) where `python -m tau_core version` succeeds and names tau-core. `installed`
+/// is the tau-core Python the wizard saved, for a folder without a venv. `run` executes the
+/// check (tests pass a fake; the app passes [`run_with_timeout`]).
 pub fn validate(
     folder: &Path,
+    installed: Option<&Path>,
     inherited: impl Fn(&str) -> Option<String>,
     run: impl FnOnce(&Launch) -> Result<Output, String>,
 ) -> Result<Validated, String> {
@@ -78,56 +97,67 @@ pub fn validate(
     let home = folder
         .canonicalize()
         .map_err(|err| format!("{} cannot be opened: {err}", folder.display()))?;
-    let python = venv_python(&home);
-    if !python.is_file() {
-        return Err(format!(
-            "{} has no .venv/bin/python. Pick the tau checkout (the folder with tau.toml), \
-             or run `uv sync --all-packages` in it first.",
+    let python = python_for(&home, installed).ok_or_else(|| {
+        format!(
+            "{} has no .venv/bin/python, and tau has not found an installed tau-core yet. Run \
+             Set up tau… from the menu, or pick a tau checkout (the folder with tau.toml) after \
+             `uv sync --all-packages` in it.",
             home.display()
-        ));
-    }
-    let check = Launch::version_check(&home, inherited);
+        )
+    })?;
+    let check = Launch::version_check(&home, &python, inherited);
     let output = run(&check)?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let first = stdout.lines().next().unwrap_or("").trim().to_string();
-    if !output.status.success() || !first.starts_with("tau-core ") {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let detail = stderr
-            .lines()
-            .rev()
-            .find(|l| !l.trim().is_empty())
-            .unwrap_or(first.as_str())
-            .trim();
+    let version = tau_core_version(&output).map_err(|detail| {
         let status = match output.status.code() {
             Some(code) => format!("exit code {code}"),
             None => "killed by a signal".to_string(),
         };
-        return Err(if detail.is_empty() {
+        if detail.is_empty() {
             format!("`{}` failed ({status}).", check.display())
         } else {
             format!("`{}` failed ({status}): {detail}", check.display())
-        });
-    }
+        }
+    })?;
     Ok(Validated {
         home,
-        version: first,
+        python,
+        version,
     })
 }
 
-/// A checkout that passed the check, and where it came from.
+/// `tau-core <version>` from the output of `python -m tau_core version`, or the most useful
+/// line of what went wrong (the last line of stderr, else the first of stdout).
+pub fn tau_core_version(output: &Output) -> Result<String, String> {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let first = stdout.lines().next().unwrap_or("").trim().to_string();
+    if output.status.success() && first.starts_with("tau-core ") {
+        return Ok(first);
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(stderr
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or(first.as_str())
+        .trim()
+        .to_string())
+}
+
+/// A home that passed the check, and where it came from.
 pub type Found = (Validated, Source);
 
 /// The home to use without asking: `TAU_HOME` (`env_home`), else the choice saved in
-/// `settings_file`, and only if it passes `check`. `Err(None)`: nothing is configured yet;
+/// `settings_file`, and only if it passes `check`, which gets the folder and the installed
+/// tau-core Python saved for folders without a venv. `Err(None)`: nothing is configured yet;
 /// `Err(Some(problem))`: something is, but it does not work, and the window says why.
 pub fn resolve(
     env_home: Option<String>,
     settings_file: &Path,
-    check: impl FnOnce(&Path) -> Result<Validated, String>,
+    check: impl FnOnce(&Path, Option<&Path>) -> Result<Validated, String>,
 ) -> Result<Found, Option<String>> {
-    let saved = ChatSettings::load(settings_file).tau_home;
-    let (folder, source) = configured(env_home, saved).ok_or(None)?;
-    match check(&folder) {
+    let saved = ChatSettings::load(settings_file);
+    let (folder, source) = configured(env_home, saved.tau_home).ok_or(None)?;
+    match check(&folder, saved.python.as_deref()) {
         Ok(validated) => Ok((validated, source)),
         Err(problem) => Err(Some(match source {
             Source::Env => format!("TAU_HOME is set to a folder tau cannot use. {problem}"),
@@ -136,17 +166,20 @@ pub fn resolve(
     }
 }
 
-/// A folder the person just chose (in the picker, or the hub's checkout with a click): check it, and
-/// save it in `settings_file` so the next run finds it (as [`Source::Saved`]).
+/// A folder the person just chose (in the picker, or the hub's checkout with a click): check it,
+/// and save it in `settings_file` so the next run finds it (as [`Source::Saved`]). The installed
+/// Python the wizard saved stays.
 pub fn accept(
     folder: &Path,
     source: Source,
     settings_file: &Path,
-    check: impl FnOnce(&Path) -> Result<Validated, String>,
+    check: impl FnOnce(&Path, Option<&Path>) -> Result<Validated, String>,
 ) -> Result<Found, String> {
-    let validated = check(folder)?;
+    let saved = ChatSettings::load(settings_file);
+    let validated = check(folder, saved.python.as_deref())?;
     let settings = ChatSettings {
         tau_home: Some(validated.home.clone()),
+        python: saved.python,
     };
     if let Err(err) = settings.save(settings_file) {
         eprintln!("tau: {} could not be saved: {err}", settings_file.display());
@@ -159,7 +192,7 @@ pub fn accept(
 pub fn accept_hint(
     hint: Option<PathBuf>,
     settings_file: &Path,
-    check: impl FnOnce(&Path) -> Result<Validated, String>,
+    check: impl FnOnce(&Path, Option<&Path>) -> Result<Validated, String>,
 ) -> Result<Found, String> {
     let folder = hint.ok_or("The hub has no tau checkout set yet.")?;
     accept(&folder, Source::Hub, settings_file, check)
@@ -208,8 +241,11 @@ pub fn run_with_timeout(launch: &Launch, timeout: Duration) -> Result<Output, St
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ChatSettings {
-    /// The checkout chosen on the first run.
+    /// The folder chosen on the first run, or written by the setup wizard.
     pub tau_home: Option<PathBuf>,
+    /// The tau-core Python the setup wizard found, for a folder without `.venv/bin/python`.
+    /// Only the wizard's discovery writes it; a chat window never does.
+    pub python: Option<PathBuf>,
 }
 
 impl ChatSettings {
@@ -254,14 +290,16 @@ mod tests {
         dir.canonicalize().unwrap()
     }
 
+    fn script(path: &Path, text: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
     /// A folder that looks like a checkout: `.venv/bin/python` is a shell script.
     fn checkout(name: &str, python: &str) -> PathBuf {
         let home = tmpdir(name);
-        let bin = home.join(".venv/bin");
-        fs::create_dir_all(&bin).unwrap();
-        let script = bin.join("python");
-        fs::write(&script, python).unwrap();
-        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+        script(&home.join(".venv/bin/python"), python);
         home
     }
 
@@ -295,12 +333,13 @@ mod tests {
     fn accepts_a_checkout_whose_python_reports_tau_core() {
         let home = checkout("valid", "#!/bin/sh\n");
         let mut seen = None;
-        let validated = validate(&home, no_env, |launch| {
+        let validated = validate(&home, None, no_env, |launch| {
             seen = Some(launch.clone());
             Ok(output(0, "tau-core 0.3.1\ntau-tui 0.3.1\n", ""))
         })
         .unwrap();
         assert_eq!(validated.home, home);
+        assert_eq!(validated.python, home.join(".venv/bin/python"));
         assert_eq!(validated.version, "tau-core 0.3.1");
         let launch = seen.unwrap();
         assert_eq!(launch.program, home.join(".venv/bin/python"));
@@ -310,19 +349,50 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_folder_without_a_venv() {
+    fn a_folder_without_a_venv_runs_the_installed_python() {
+        // `~/.tau` next to a `uv tool install tau-core`: no venv in the folder.
+        let root = tmpdir("installed");
+        let home = root.join(".tau");
+        fs::create_dir_all(&home).unwrap();
+        let python = root.join("tools/tau-core/bin/python");
+        script(&python, "#!/bin/sh\n");
+        let mut seen = None;
+        let validated = validate(&home, Some(&python), no_env, |launch| {
+            seen = Some(launch.clone());
+            Ok(output(0, "tau-core 0.5.0\n", ""))
+        })
+        .unwrap();
+        assert_eq!(validated.python, python);
+        assert_eq!(seen.unwrap().program, python);
+        // A checkout's own venv wins over the installed Python.
+        let venv = home.join(".venv/bin/python");
+        script(&venv, "#!/bin/sh\n");
+        assert_eq!(python_for(&home, Some(&python)), Some(venv));
+        // A saved Python that is gone does not count.
+        assert_eq!(
+            python_for(&root, Some(&root.join("gone/python"))),
+            None,
+            "a missing installed Python is no Python"
+        );
+    }
+
+    #[test]
+    fn rejects_a_folder_without_a_venv_or_an_installed_python() {
         let dir = tmpdir("no-venv");
-        let err = validate(&dir, no_env, |_| panic!("nothing may run")).unwrap_err();
+        let err = validate(&dir, None, no_env, |_| panic!("nothing may run")).unwrap_err();
         assert!(err.contains("no .venv/bin/python"), "{err}");
-        let err =
-            validate(&dir.join("missing"), no_env, |_| panic!("nothing may run")).unwrap_err();
+        assert!(err.contains("Set up tau"), "{err}");
+        let err = validate(&dir.join("missing"), None, no_env, |_| {
+            panic!("nothing may run")
+        })
+        .unwrap_err();
         assert!(err.contains("is not a folder"), "{err}");
     }
 
     #[test]
     fn rejects_a_folder_where_tau_core_version_fails() {
         let home = checkout("broken", "#!/bin/sh\n");
-        let err = validate(&home, no_env, |_| {
+        let err = validate(&home, None, no_env, |_| {
             Ok(output(
                 1,
                 "",
@@ -335,10 +405,13 @@ mod tests {
         assert!(err.contains("No module named 'tau_core'"), "{err}");
 
         // Exit 0 but not tau: some other Python answering.
-        let err = validate(&home, no_env, |_| Ok(output(0, "Python 3.12.0\n", ""))).unwrap_err();
+        let err = validate(&home, None, no_env, |_| {
+            Ok(output(0, "Python 3.12.0\n", ""))
+        })
+        .unwrap_err();
         assert!(err.contains("failed"), "{err}");
 
-        let err = validate(&home, no_env, |_| Err("could not start".into())).unwrap_err();
+        let err = validate(&home, None, no_env, |_| Err("could not start".into())).unwrap_err();
         assert_eq!(err, "could not start");
     }
 
@@ -351,7 +424,7 @@ mod tests {
              [ \"$PWD\" = \"$TAU_HOME\" ] || exit 7\n\
              echo 'tau-core 9.9.9'\necho 'tau-tui 9.9.9'\n",
         );
-        let validated = validate(&good, no_env, |launch| {
+        let validated = validate(&good, None, no_env, |launch| {
             run_with_timeout(launch, Duration::from_secs(10))
         })
         .unwrap();
@@ -361,7 +434,7 @@ mod tests {
             "runner-bad",
             "#!/bin/sh\necho 'No module named tau_core' >&2\nexit 1\n",
         );
-        let err = validate(&bad, no_env, |launch| {
+        let err = validate(&bad, None, no_env, |launch| {
             run_with_timeout(launch, Duration::from_secs(10))
         })
         .unwrap_err();
@@ -372,7 +445,7 @@ mod tests {
     fn the_real_runner_gives_up_on_a_hanging_python() {
         let slow = checkout("runner-slow", "#!/bin/sh\nexec sleep 30\n");
         let started = std::time::Instant::now();
-        let err = validate(&slow, no_env, |launch| {
+        let err = validate(&slow, None, no_env, |launch| {
             run_with_timeout(launch, Duration::from_millis(300))
         })
         .unwrap_err();
@@ -381,11 +454,12 @@ mod tests {
     }
 
     /// A stand-in for the version check: `good` passes, anything else fails.
-    fn check_only(good: &Path) -> impl Fn(&Path) -> Result<Validated, String> + '_ {
-        move |folder| {
+    fn check_only(good: &Path) -> impl Fn(&Path, Option<&Path>) -> Result<Validated, String> + '_ {
+        move |folder, _| {
             if folder == good {
                 Ok(Validated {
                     home: folder.to_path_buf(),
+                    python: venv_python(folder),
                     version: "tau-core 0.3.1".into(),
                 })
             } else {
@@ -409,6 +483,7 @@ mod tests {
         // A working TAU_HOME wins over the saved choice.
         ChatSettings {
             tau_home: Some("/saved/tau".into()),
+            python: None,
         }
         .save(&file)
         .unwrap();
@@ -424,11 +499,14 @@ mod tests {
         let good = PathBuf::from("/path/to/tau");
         // Nothing configured: ask, with no problem, and check nothing.
         assert_eq!(
-            resolve(None, &file, |_| panic!("nothing to check")),
+            resolve(None, &file, |_: &Path, _: Option<&Path>| panic!(
+                "nothing to check"
+            )),
             Err(None)
         );
         ChatSettings {
             tau_home: Some("/moved/tau".into()),
+            python: None,
         }
         .save(&file)
         .unwrap();
@@ -438,6 +516,37 @@ mod tests {
         assert!(
             problem.starts_with("The folder chosen earlier no longer works."),
             "{problem}"
+        );
+    }
+
+    #[test]
+    fn the_saved_installed_python_reaches_the_check() {
+        let dir = tmpdir("resolve-python");
+        let file = dir.join("settings.json");
+        ChatSettings {
+            tau_home: Some("/example/home/.tau".into()),
+            python: Some("/example/tools/tau-core/bin/python".into()),
+        }
+        .save(&file)
+        .unwrap();
+        let mut seen = None;
+        let _ = resolve(None, &file, |folder: &Path, python: Option<&Path>| {
+            seen = Some((folder.to_path_buf(), python.map(Path::to_path_buf)));
+            Err("checked".to_string())
+        });
+        assert_eq!(
+            seen,
+            Some((
+                PathBuf::from("/example/home/.tau"),
+                Some(PathBuf::from("/example/tools/tau-core/bin/python"))
+            ))
+        );
+        // Picking another folder keeps the installed Python for it.
+        let good = PathBuf::from("/path/to/tau");
+        accept(&good, Source::Picked, &file, check_only(&good)).unwrap();
+        assert_eq!(
+            ChatSettings::load(&file).python,
+            Some(PathBuf::from("/example/tools/tau-core/bin/python"))
         );
     }
 
@@ -472,7 +581,10 @@ mod tests {
         let file = dir.join("settings.json");
         let good = PathBuf::from("/path/to/tau");
         assert_eq!(
-            accept_hint(None, &file, |_| panic!("nothing to check")).unwrap_err(),
+            accept_hint(None, &file, |_: &Path, _: Option<&Path>| panic!(
+                "nothing to check"
+            ))
+            .unwrap_err(),
             "The hub has no tau checkout set yet."
         );
         let (found, source) = accept_hint(Some(good.clone()), &file, check_only(&good)).unwrap();
@@ -487,7 +599,7 @@ mod tests {
             "#!/bin/sh\nsleep 30 &\necho $! > grandchild.pid\nexec sleep 30\n",
         );
         let started = std::time::Instant::now();
-        let err = validate(&home, no_env, |launch| {
+        let err = validate(&home, None, no_env, |launch| {
             run_with_timeout(launch, Duration::from_millis(500))
         })
         .unwrap_err();
@@ -519,8 +631,12 @@ mod tests {
         assert_eq!(ChatSettings::load(&file), ChatSettings::default());
         let chosen = ChatSettings {
             tau_home: Some("/path/to/tau".into()),
+            python: None,
         };
         chosen.save(&file).unwrap();
+        assert_eq!(ChatSettings::load(&file), chosen);
+        // A file from before the wizard (no `python`) still loads.
+        fs::write(&file, r#"{"tau_home": "/path/to/tau"}"#).unwrap();
         assert_eq!(ChatSettings::load(&file), chosen);
         fs::write(&file, "{not json").unwrap();
         assert_eq!(ChatSettings::load(&file), ChatSettings::default());

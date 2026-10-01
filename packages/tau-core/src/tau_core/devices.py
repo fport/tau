@@ -1,14 +1,14 @@
 """Device sources: how hub services tell the rest of tau about devices (ADR 0015 §5).
 
-A *device source* is anything that knows devices and their state: the ``sim`` hub service of
-tau-sim with its simulated lamps today, the mesh (032, 033) later. tau-web finds every started
-hub service that implements :class:`DeviceSource`, serves ``/api/devices`` from
-:meth:`DeviceSource.devices` and pushes each change from :meth:`DeviceSource.subscribe` as a
-``device`` event, serialized with :func:`to_json`.
+A *device source* is anything that knows devices and their state: the ``sim`` hub service of the
+built-in ``sim`` component (``tau_core.sim``) with its simulated lamps today, the mesh (032, 033)
+later. tau-web finds every started hub service that implements :class:`DeviceSource`, serves
+``/api/devices`` from :meth:`DeviceSource.devices` and pushes each change from
+:meth:`DeviceSource.subscribe` as a ``device`` event, serialized with :func:`to_json`.
 
 - :class:`DeviceState` is one device at one moment. ``updated`` is a timezone-aware
   :class:`~datetime.datetime` in UTC: when the state last changed, as far as the source knows.
-  ``simulated`` is ``True`` for a stand-in such as tau-sim's lamp, and every channel that shows
+  ``simulated`` is ``True`` for a stand-in such as the simulated lamp, and every channel that shows
   the device must say so.
 - :class:`DeviceSource` is a structural protocol (``runtime_checkable``): a service needs no base
   class, only the two methods. ``isinstance`` checks that the methods exist, not their types.

@@ -122,8 +122,8 @@ DESCRIBE_ATTRIBUTE = "tau_describe"
 def effect_for(tool: AgentTool, arguments: dict[str, Any]) -> str:
     """What this one call does, for its approval prompt.
 
-    A tool may carry ``tau_describe``, a function that gets a deep copy of the call's arguments
-    and returns the call in plain words (tau-routines shows a routine's whole definition this
+    A tool may carry ``tau_describe``, a function that gets a deep copy of the call's arguments and
+    returns the call in plain words (the routines component shows a routine's whole definition this
     way). A non-empty ``str`` is used as is; anything else, or an exception, falls back to
     :func:`effect_of`. The text only words the request: it never decides anything.
     """

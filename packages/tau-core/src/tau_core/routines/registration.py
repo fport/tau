@@ -23,13 +23,19 @@ from datetime import UTC, datetime
 from typing import Any
 
 from strands.types.tools import AgentTool
+
 from tau_core import Config, Tier, TierGate, UntieredToolError, effect_of, tier_of
 from tau_core.agent import discovered_tools
-
-from tau_routines.model import NAME_LIMIT, Routine, canonical_json, check_arguments, routine_hash
-from tau_routines.settings import RoutineError, RoutineSettings
-from tau_routines.store import RoutineStore, find_routine
-from tau_routines.triggers import Every, Once, Trigger, parse_trigger
+from tau_core.routines.model import (
+    NAME_LIMIT,
+    Routine,
+    canonical_json,
+    check_arguments,
+    routine_hash,
+)
+from tau_core.routines.settings import RoutineError, RoutineSettings
+from tau_core.routines.store import RoutineStore, find_routine
+from tau_core.routines.triggers import Every, Once, Trigger, parse_trigger
 
 __all__ = [
     "ADD_TOOL",
@@ -309,7 +315,7 @@ class RoutineContext:
         tools: Iterable[AgentTool] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> RoutineContext:
-        """:class:`~tau_routines.settings.RoutineConfigError` for a bad
+        """:class:`~tau_core.routines.settings.RoutineConfigError` for a bad
         ``[component.routines]``."""
         return cls(
             settings=RoutineSettings.from_config(config),

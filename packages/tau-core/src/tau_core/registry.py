@@ -334,6 +334,11 @@ def _build_all(
         factory = factories.get(name)
         if factory is None:
             continue
+        if (component := config.opted_out(factory)) is not None:
+            logger.debug(
+                "%s component %s is off until [component.%s] enabled", group, name, component
+            )
+            continue
         try:
             obj = factory(config)
         except Exception as exc:

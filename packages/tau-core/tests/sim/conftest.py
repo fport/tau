@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 from tau_core import Config
+from tau_core.sim import tools
 from tau_core.testing import test_config
-from tau_sim import tools
 
 
 @pytest.fixture(autouse=True)
@@ -46,8 +46,8 @@ def make_config(tmp_path: Path) -> Callable[[str], Config]:
 
 @pytest.fixture
 def config(make_config: Callable[[str], Config]) -> Config:
-    """Two lamps, ``desk`` and ``living-room``."""
-    return make_config('[component.sim]\nlamps = ["desk", "living-room"]\n')
+    """The simulated lamps switched on (opt-in) with two lamps, ``desk`` and ``living-room``."""
+    return make_config('[component.sim]\nenabled = true\nlamps = ["desk", "living-room"]\n')
 
 
 @pytest.fixture

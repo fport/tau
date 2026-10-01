@@ -1,4 +1,5 @@
-"""tau-sim: simulated devices, stand-ins for hardware that is not on hand (ADR 0015 §5).
+"""Simulated devices, stand-ins for hardware that is not on hand (ADR 0015 §5): a built-in,
+opt-in component of tau-core (``[component.sim] enabled = true``).
 
 The first one is a lamp. tau drives it with the tools and tiers a real lamp will have:
 ``lamp_list`` (tier 0) and ``lamp_set`` (tier 2, every call asks the owner). Its state lives in
@@ -17,7 +18,7 @@ Public API (other packages import these names)::
 
 from __future__ import annotations
 
-from tau_sim.lamps import (
+from tau_core.sim.lamps import (
     COMPONENT,
     DEFAULT_LAMPS,
     KIND,
@@ -30,10 +31,8 @@ from tau_sim.lamps import (
     device_id,
     normalize_name,
 )
-from tau_sim.service import POLL_SECONDS, SERVICE_NAME, SimService, make_service
-from tau_sim.tools import SET_EFFECT, SIMULATED_NOTE, TOOLS
-
-__version__ = "0.1.0"
+from tau_core.sim.service import POLL_SECONDS, SERVICE_NAME, SimService, make_service
+from tau_core.sim.tools import SET_EFFECT, SIMULATED_NOTE, TOOLS
 
 __all__ = [
     "COMPONENT",
@@ -51,7 +50,6 @@ __all__ = [
     "SimService",
     "SimSettings",
     "UnknownLamp",
-    "__version__",
     "device_id",
     "make_service",
     "normalize_name",

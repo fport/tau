@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from routine_helpers import ZONE, local
-from tau_routines import Daily, Every, Once, TriggerError, parse_trigger
-from tau_routines.triggers import ALL_DAYS, WEEKDAYS, WEEKENDS
+from tau_core.routines import Daily, Every, Once, TriggerError, parse_trigger
+from tau_core.routines.triggers import ALL_DAYS, WEEKDAYS, WEEKENDS
 
 ANCHOR = local(2026, 10, 1, 6, 0)
 

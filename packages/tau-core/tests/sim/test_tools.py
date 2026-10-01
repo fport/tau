@@ -17,9 +17,9 @@ from tau_core import (
     effect_of,
     tier_of,
 )
+from tau_core.sim import SET_EFFECT, TOOLS, LampStore, tools
+from tau_core.sim.tools import lamp_list, lamp_set
 from tau_core.testing import FakeGuard, FakeModel, ScriptedApprover, ToolCall
-from tau_sim import SET_EFFECT, TOOLS, LampStore, tools
-from tau_sim.tools import lamp_list, lamp_set
 
 TURN_ON = [ToolCall("lamp_set", {"name": "desk", "on": True})]
 LIST = [ToolCall("lamp_list", {})]

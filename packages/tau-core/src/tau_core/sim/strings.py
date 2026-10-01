@@ -12,8 +12,8 @@ from tau_core.i18n import MESSAGES, register_messages
 
 SIM_MESSAGES: dict[str, dict[str, str]] = {
     "sim.lamps.header": {
-        "en": "Simulated lamps (tau-sim; no real lamp is connected):",
-        "tr": "Simüle lambalar (tau-sim; bağlı gerçek bir lamba yok):",
+        "en": "Simulated lamps (no real lamp is connected):",
+        "tr": "Simüle lambalar (bağlı gerçek bir lamba yok):",
     },
     "sim.lamps.row": {
         "en": "  {name}  {state}  (simulated, since {since})",
@@ -27,11 +27,16 @@ SIM_MESSAGES: dict[str, dict[str, str]] = {
         "en": "State: {path}",
         "tr": "Durum: {path}",
     },
+    "sim.disabled": {
+        "en": "Simulated devices are off. Turn them on with [component.sim] enabled = true "
+        "in tau.toml.",
+        "tr": "Simüle cihazlar kapalı. tau.toml'da [component.sim] enabled = true ile aç.",
+    },
     "sim.on": {"en": "on", "tr": "açık"},
     "sim.off": {"en": "off", "tr": "kapalı"},
 }
 
 _collisions = set(SIM_MESSAGES) & set(MESSAGES)
-assert not _collisions, f"tau-sim message keys collide with tau-core: {sorted(_collisions)}"
+assert not _collisions, f"sim message keys collide with tau-core: {sorted(_collisions)}"
 
 register_messages(SIM_MESSAGES)

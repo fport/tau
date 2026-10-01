@@ -9,8 +9,8 @@ import socket
 import pytest
 from routine_helpers import CATALOG, Clock, SideEffects, local, run_cli
 from tau_core import Config, Decision
+from tau_core.routines import RoutineEngine, RoutineSettings, RoutineStore, routine_hash
 from tau_core.testing import ScriptedApprover, record_events
-from tau_routines import RoutineEngine, RoutineSettings, RoutineStore, routine_hash
 
 
 def test_one_approval_then_it_fires_on_the_next_weekday_without_asking(

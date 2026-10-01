@@ -176,6 +176,11 @@ class ComponentsConfig:
         return distribution is not None and f"{DIST_PREFIX}{distribution}" in self.tools_disabled
 
 
+OPT_IN_ATTRIBUTE = "tau_opt_in"
+"""Names the ``[component.<name>]`` whose ``enabled = true`` turns an opt-in tool or hub
+service on (:meth:`Config.opted_out`)."""
+
+
 @dataclass(frozen=True)
 class Config:
     """Everything tau needs to start. Build it with :meth:`Config.load`."""
@@ -198,6 +203,23 @@ class Config:
     def component(self, name: str) -> dict[str, Any]:
         """The ``[component.<name>]`` table as a fresh dict (``{}`` when there is none)."""
         return copy.deepcopy(self.component_tables.get(name, {}))
+
+    def component_enabled(self, name: str) -> bool:
+        """Is ``[component.<name>] enabled = true``? Opt-in components (a tool or a hub service
+        factory with ``tau_opt_in = "<name>"``) load only then."""
+        return self.component_tables.get(name, {}).get("enabled") is True
+
+    def opted_out(self, obj: Any) -> str | None:
+        """The component ``obj`` opts into when that component is not enabled, else ``None``.
+
+        ``obj`` is a tool or a hub service factory. Built-in components that most installs do
+        not want (the simulated lamp) carry ``tau_opt_in = "<name>"`` and stay off until
+        ``[component.<name>] enabled = true``.
+        """
+        name = getattr(obj, OPT_IN_ATTRIBUTE, None)
+        if isinstance(name, str) and name and not self.component_enabled(name):
+            return name
+        return None
 
     @property
     def persona_dir(self) -> Path:

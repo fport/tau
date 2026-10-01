@@ -116,7 +116,7 @@ def run_cli(
     tools: list | None = None,
     input: str | None = None,
 ) -> Result:
-    from tau_routines.cli import routine
+    from tau_core.routines.cli import routine
 
     obj: dict[str, Any] = {
         "home": config.home,

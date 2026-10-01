@@ -1,4 +1,4 @@
-"""tau-routines: routines on a clock, the reflex engine of ADR 0015 §4.
+"""Routines on a clock: tau-core's reflex engine (ADR 0015 §4), a built-in component.
 
 A routine is a trigger plus one tool call with fixed arguments, and no LLM: "lamps on at 07:00
 on weekdays". Registering one, or changing what it does, is one tier-2 approval on every path
@@ -21,7 +21,7 @@ Public API (other packages import these names)::
 
 from __future__ import annotations
 
-from tau_routines.engine import (
+from tau_core.routines.engine import (
     CHANNEL,
     PAUSE_AFTER,
     Firing,
@@ -30,8 +30,8 @@ from tau_routines.engine import (
     approved_call,
     run_tool,
 )
-from tau_routines.model import Routine, canonical_json, check_arguments, routine_hash
-from tau_routines.registration import (
+from tau_core.routines.model import Routine, canonical_json, check_arguments, routine_hash
+from tau_core.routines.registration import (
     ADD_TOOL,
     OWN_TOOLS,
     Draft,
@@ -46,8 +46,8 @@ from tau_routines.registration import (
     set_enabled,
     tool_catalog,
 )
-from tau_routines.service import RoutinesService, make_service
-from tau_routines.settings import (
+from tau_core.routines.service import RoutinesService, make_service
+from tau_core.routines.settings import (
     COMPONENT,
     GRACE_DEFAULT,
     RoutineConfigError,
@@ -55,8 +55,8 @@ from tau_routines.settings import (
     RoutineSettings,
     local_zone,
 )
-from tau_routines.store import RoutineNotFound, RoutineStore, RoutineStoreError, find_routine
-from tau_routines.tools import (
+from tau_core.routines.store import RoutineNotFound, RoutineStore, RoutineStoreError, find_routine
+from tau_core.routines.tools import (
     TOOLS,
     add_routine,
     current_context,
@@ -64,9 +64,7 @@ from tau_routines.tools import (
     remove_routine,
     using,
 )
-from tau_routines.triggers import Daily, Every, Once, Trigger, TriggerError, parse_trigger
-
-__version__ = "0.1.0"
+from tau_core.routines.triggers import Daily, Every, Once, Trigger, TriggerError, parse_trigger
 
 __all__ = [
     "ADD_TOOL",
@@ -95,7 +93,6 @@ __all__ = [
     "RoutinesService",
     "Trigger",
     "TriggerError",
-    "__version__",
     "add_routine",
     "approved_call",
     "canonical_json",

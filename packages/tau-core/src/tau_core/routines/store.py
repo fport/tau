@@ -30,9 +30,8 @@ from pathlib import Path
 from typing import Any
 
 from tau_core import Config
-
-from tau_routines.model import ID_RE, Routine, stamp
-from tau_routines.settings import RoutineError
+from tau_core.routines.model import ID_RE, Routine, stamp
+from tau_core.routines.settings import RoutineError
 
 __all__ = [
     "DIR_MODE",
@@ -139,8 +138,7 @@ class RoutineStore:
         version = data.get("version")
         if version != FILE_VERSION:
             raise RoutineStoreError(
-                f"{self.path} has version {version!r}; this tau-routines reads version "
-                f"{FILE_VERSION}."
+                f"{self.path} has version {version!r}; this tau reads version {FILE_VERSION}."
             )
         contents = _Contents([], [])
         seen: set[str] = set()

@@ -117,6 +117,6 @@ ROUTINE_MESSAGES: dict[str, dict[str, str]] = {
 }
 
 _collisions = set(ROUTINE_MESSAGES) & set(MESSAGES)
-assert not _collisions, f"tau-routines message keys collide with tau-core: {sorted(_collisions)}"
+assert not _collisions, f"routine message keys collide with tau-core: {sorted(_collisions)}"
 
 register_messages(ROUTINE_MESSAGES)

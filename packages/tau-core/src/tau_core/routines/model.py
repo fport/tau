@@ -20,8 +20,8 @@ from typing import Any
 
 from strands.types.tools import AgentTool
 
-from tau_routines.settings import RoutineError
-from tau_routines.triggers import Trigger, TriggerError, parse_trigger
+from tau_core.routines.settings import RoutineError
+from tau_core.routines.triggers import Trigger, TriggerError, parse_trigger
 
 __all__ = [
     "ID_RE",
@@ -96,7 +96,7 @@ class Routine:
     last_slot: datetime | None = None
     failures: int = 0
     extra: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
-    """Keys a newer tau-routines wrote; kept and written back unchanged."""
+    """Keys a newer tau wrote; kept and written back unchanged."""
 
     def call_hash(self) -> str:
         return routine_hash(self.id, self.tool, self.arguments)

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from tau_core import Config, ConfigError
-from tau_sim import (
+from tau_core.sim import (
     DEFAULT_LAMPS,
     Lamp,
     LampStore,

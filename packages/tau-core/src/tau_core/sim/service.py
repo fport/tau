@@ -1,12 +1,12 @@
 """The ``sim`` hub service: the simulated lamps as a :class:`tau_core.DeviceSource`.
 
-A ``tau.hub_services`` component (``sim = "tau_sim.service:make_service"``) that runs inside
+A ``tau.hub_services`` component (``sim = "tau_core.sim.service:make_service"``) that runs inside
 ``tau hub run``. tau-web (178) finds it, like every started hub service that implements
 ``DeviceSource``, serves its lamps at ``/api/devices`` and pushes every change as a ``device``
 event.
 
 - :meth:`SimService.devices` reads the state file (and adds a configured lamp it does not know
-  yet, see :mod:`tau_sim.lamps`).
+  yet, see :mod:`tau_core.sim.lamps`).
 - :meth:`SimService.subscribe` calls back with the lamp's new :class:`~tau_core.DeviceState` on
   every change, wherever it was made: a ``lamp_set`` in the hub (Telegram, the web app) or in
   another process (``tau tui``, ``tau chat``). The service watches the state file with a cheap
@@ -14,9 +14,11 @@ event.
   Callbacks run on the hub's event loop; one that raises is logged and the others still run.
 - ``GET /status`` gains ``sim``: ``simulated: true``, each lamp's ``on`` as last seen, the
   number of subscribers and the last error of the watcher.
-- A ``[component.sim]`` that is not valid fails :func:`make_service`; the hub logs it and runs
-  without the service. ``[components.hub] services`` without ``sim`` switches it off, and
-  ``[components.tools] disabled = ["dist:tau-sim"]`` the tools.
+- The component is opt-in: the hub starts the service, and agents get the tools, only with
+  ``[component.sim] enabled = true``. A ``[component.sim]`` that is not valid fails
+  :func:`make_service`; the hub logs it and runs without the service. ``[components.hub]
+  services`` without ``sim`` also switches it off, and ``[components.tools] disabled`` the
+  tools.
 
 Nothing here talks to hardware.
 """
@@ -32,8 +34,7 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from tau_core import Config, DeviceState
-
-from tau_sim.lamps import COMPONENT, Lamp, LampStore
+from tau_core.sim.lamps import COMPONENT, Lamp, LampStore
 
 if TYPE_CHECKING:
     from tau_core.hub.daemon import Hub
@@ -193,5 +194,9 @@ class SimService:
 
 
 def make_service(config: Config) -> SimService:
-    """The ``tau.hub_services`` factory."""
+    """The ``tau.hub_services`` factory; opt-in: the hub starts it only with
+    ``[component.sim] enabled = true``."""
     return SimService(config)
+
+
+make_service.tau_opt_in = COMPONENT  # type: ignore[attr-defined]

@@ -849,6 +849,95 @@ Public API: `Guard` (protocol: `status`, `watch`, `admit`, `unlock`, `cancel`, `
 `tau_core.testing.FakeGuard(state, verdicts=..., step_ups=..., progress=..., admissions=...)`,
 which replays scripted answers and never approves anything.
 
+## Routines
+
+Routines are rules like "lamps on at 07:00 on weekdays": a trigger plus one tool call with fixed arguments, and no LLM ([ADR 0015](../../docs/adr/0015-web-app-agentic-chat.md) §4). The hub runs them without a model, without the internet and without the owner at the Mac. This is the reflex engine of Principle 1. It is a built-in component (`tau_core.routines`), on by default:
+
+| Group | Name | What it adds |
+|---|---|---|
+| `tau.hub_services` | `routines` | the engine that fires routines inside `tau hub run` |
+| `tau.commands` | `routine` | `tau routine add\|edit\|list\|pause\|resume\|remove\|log` |
+| `tau.tools` | `routines` | `add_routine` (tier 2), `list_routines` (tier 0), `remove_routine` (tier 1) |
+
+### Triggers
+
+| Trigger | Fires |
+|---|---|
+| `daily 07:00` | every day at 07:00 |
+| `daily 07:00 weekdays` | Monday to Friday. `weekends`, `mon,wed,fri` and `mon-fri` work too |
+| `once 2026-10-05 07:00` | once, at that local date and time |
+| `every 15 minutes` | every 15 minutes after registration, for 5 to 10080 minutes |
+
+- **Time zone.** Times are wall-clock times in the hub's local zone: `TZ`, otherwise the zone `/etc/localtime` names. `[component.routines] timezone` overrides it.
+- **Missed slots.** Slots missed while the hub was off run once if they are at most `grace_minutes` old (default 10). Older ones are logged as `missed`.
+
+### One approval at registration
+
+**Every way of registering is a tier-2 approval.** That covers `tau routine add` (the terminal's approver), the `add_routine` tool (the approver of the chat) and the web app's form (issue 184). The approval shows the whole definition in plain words, through the tool's `tau_describe` (see `effect_for` in `tau_core.tiers`), and the owner guard applies as on any tier-2 call.
+
+**The approval is pinned to the definition.** The routine is stored with `approved_hash`, the SHA-256 of `[id, tool, arguments]`. A change of the trigger, the tool or the arguments asks again. Renaming, pausing, resuming and removing ask nothing. Without an interactive terminal `tau routine add` is refused.
+
+### Firing
+
+The engine calls the tool through a `TierGate` built for that one call:
+
+- **`guard=None`.** The engine is an in-hub caller identified by its approved registration, so it is in the repo rule's allowlist (`tau_core/routines/engine.py`).
+- **A `RefusingApprover`.** Nobody is asked at firing time.
+- **An exemption.** It covers only the routine's own tool, with arguments that hash to `approved_hash`.
+
+What happens around a firing:
+
+- **Before the tool runs**, the slot is recorded, so a crash never repeats a physical action.
+- **A failure** is logged, and three failures in a row pause the routine.
+- **Every outcome** is a `routine` agent event on `RoutinesService.events`.
+- **Never** does the engine build a model or open a connection.
+
+```sh
+tau routine add "daily 07:00 weekdays" lamp_set "name=desk" "on=true" --name "Lamps on"
+tau routine list
+tau routine edit "Lamps on" "name=living-room"     # asks again
+tau routine pause "Lamps on"
+tau routine log "Lamps on" -n 50
+tau routine remove "Lamps on" --yes
+```
+
+State lives in `TAU_DATA_DIR/routines/`:
+
+- `routines.json` is written atomically under a lock, with mode `0600`.
+- `log.jsonl` is rotated at 512 KiB, and three old files are kept.
+
+```toml
+[component.routines]
+timezone = "Europe/Istanbul"   # an IANA zone; default: the hub's local zone
+grace_minutes = 10             # 0 to 1440
+```
+
+## Simulated devices
+
+The first device is a **simulated lamp**, a stand-in for hardware that is not on hand ([ADR 0015](../../docs/adr/0015-web-app-agentic-chat.md) §5). tau, the web app and routines drive it with the same tools and tiers a real lamp will have. Nothing talks to hardware, and every answer and card says the lamp is simulated.
+
+It is a built-in component (`tau_core.sim`) and **opt-in**: its tools and hub service stay off until you enable it.
+
+```toml
+[component.sim]
+enabled = true
+lamps = ["desk", "living-room"]   # default ["desk"]; lower-case slugs
+```
+
+The component has three parts:
+
+- **Tools.** `lamp_list` (tier 0) lists the lamps. `lamp_set(name, on)` (tier 2) switches one, and every call asks for approval, as a real lamp will.
+- **Hub service.** The `sim` service implements `DeviceSource` (`tau_core.devices`):
+  - `devices()` returns `sim:lamp:<name>` with `{"on": …}`;
+  - `subscribe` reports every change, including one made from another process.
+- **Command.** `tau sim lamps` shows the state.
+
+The state is in `TAU_DATA_DIR/sim/lamps.json`, written atomically under a lock. A real lamp will arrive later as an MCP node with the same tool names, and routines that call `lamp_set` keep working.
+
+### Opt-in components
+
+A tool or a hub service factory can carry `tau_opt_in = "<name>"`. tau then loads it only with `[component.<name>] enabled = true` (`Config.opted_out`). Until then, `tau components` lists it as off, with the reason. This is how a built-in component that most installs do not want stays out of the agent's tool list.
+
 ## Components
 
 Every pluggable part of tau is a *component*: it reaches tau through a built-in seed

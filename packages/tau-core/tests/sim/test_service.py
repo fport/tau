@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 import pytest
 from tau_core import Config, DeviceSource, DeviceState, HubService, device_to_json
 from tau_core.hub.daemon import Hub
-from tau_sim import LampStore, SimConfigError, SimService, make_service
+from tau_core.sim import LampStore, SimConfigError, SimService, make_service
 
 
 def test_the_service_is_a_device_source_and_a_hub_service(config: Config) -> None:
@@ -67,7 +67,7 @@ def test_a_failing_subscriber_does_not_stop_the_others(
     service.subscribe(broken)
     service.subscribe(seen.append)
     LampStore.from_config(config).set("living-room", True)
-    with caplog.at_level(logging.ERROR, logger="tau_sim.service"):
+    with caplog.at_level(logging.ERROR, logger="tau_core.sim.service"):
         service.check()
     assert [device.name for device in seen] == ["living-room"]
     assert "subscriber failed on sim:lamp:living-room" in caplog.text
@@ -88,7 +88,7 @@ def switch_in_another_process(config: Config, name: str, on: bool) -> None:
     code = (
         "import sys\n"
         "from tau_core import Config\n"
-        "from tau_sim import LampStore\n"
+        "from tau_core.sim import LampStore\n"
         "config = Config.load(sys.argv[1])\n"
         "LampStore.from_config(config).set(sys.argv[2], sys.argv[3] == 'on')\n"
     )

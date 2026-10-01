@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 from routine_helpers import CATALOG, Clock, SideEffects, local, routine_config
 from tau_core import Config
+from tau_core.routines import RoutineConfigError, RoutineContext, RoutinesService, commit
+from tau_core.routines.service import make_service
 from tau_core.testing import record_events
-from tau_routines import RoutineConfigError, RoutineContext, RoutinesService, commit
-from tau_routines.service import make_service
 
 
 class StubHub:

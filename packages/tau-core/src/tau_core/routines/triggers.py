@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, tzinfo
 
-from tau_routines.settings import RoutineError
+from tau_core.routines.settings import RoutineError
 
 __all__ = [
     "DAY_NAMES",

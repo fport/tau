@@ -90,7 +90,7 @@ def test_no_personal_paths_in_tracked_files() -> None:
 GUARD_NONE_ALLOWED = {
     Path("packages/tau-core/src/tau_core/channels/telegram.py"),
     Path("packages/tau-net/src/tau_net/turns.py"),
-    Path("packages/tau-routines/src/tau_routines/engine.py"),
+    Path("packages/tau-core/src/tau_core/routines/engine.py"),
 }
 """The identified in-hub callers, the only code that may opt out of the guard: the Telegram
 channel, network turns and the routine engine (ADR 0015 §4: bounded by an approved

@@ -18,7 +18,7 @@ from tau_core import Config
 sys.path.insert(0, str(Path(__file__).parent))
 
 from routine_helpers import CATALOG, Clock, SideEffects, local, routine_config  # noqa: E402
-from tau_routines import (  # noqa: E402
+from tau_core.routines import (  # noqa: E402
     RoutineContext,
     RoutineEngine,
     RoutineSettings,

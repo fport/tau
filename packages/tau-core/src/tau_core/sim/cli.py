@@ -15,11 +15,11 @@ from __future__ import annotations
 from typing import Any
 
 import click
+
 from tau_core import Config, ConfigError, t
 from tau_core.cli import help_option
-
-from tau_sim import strings as _strings  # noqa: F401  (registers the message keys)
-from tau_sim.lamps import LampStore
+from tau_core.sim import strings as _strings  # noqa: F401  (registers the message keys)
+from tau_core.sim.lamps import COMPONENT, LampStore
 
 __all__ = ["sim"]
 
@@ -51,6 +51,9 @@ def sim() -> None:
 def lamps_command(ctx: click.Context) -> None:
     config = _config(ctx)
     language = config.ui.language
+    if not config.component_enabled(COMPONENT):
+        click.echo(t("sim.disabled", language))
+        return
     try:
         store = LampStore.from_config(config)
         lamps = store.lamps()

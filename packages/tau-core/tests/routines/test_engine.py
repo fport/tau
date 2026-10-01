@@ -9,8 +9,7 @@ from datetime import timedelta
 import pytest
 from routine_helpers import CATALOG, Clock, SideEffects, local
 from tau_core import Decision, EventBus, Tier, tau_tool
-from tau_core.testing import record_events
-from tau_routines import (
+from tau_core.routines import (
     RefusingApprover,
     RoutineContext,
     RoutineEngine,
@@ -18,7 +17,8 @@ from tau_routines import (
     commit,
     run_tool,
 )
-from tau_routines.engine import MIN_SLEEP, POLL_SECONDS
+from tau_core.routines.engine import MIN_SLEEP, POLL_SECONDS
+from tau_core.testing import record_events
 
 
 def register(context: RoutineContext, **fields) -> object:

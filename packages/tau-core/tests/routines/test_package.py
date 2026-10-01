@@ -1,4 +1,4 @@
-"""Packaging rules: entry points, the public API, the message table, the build."""
+"""The routines component of tau-core: entry points, the public API, the message table."""
 
 from __future__ import annotations
 
@@ -6,24 +6,20 @@ import re
 from importlib import metadata
 from pathlib import Path
 
-import tau_routines
+import tau_core.routines
 from tau_core.i18n import LANGUAGES, MESSAGES
-from tau_routines.strings import ROUTINE_MESSAGES
+from tau_core.routines.strings import ROUTINE_MESSAGES
 
-PACKAGE = Path(__file__).resolve().parents[1]
-ROOT = PACKAGE.parents[1]
+PACKAGE = Path(__file__).resolve().parents[2]  # packages/tau-core
 
 
 def test_entry_points() -> None:
     points = {
-        (ep.group, ep.name): ep.value for ep in metadata.distribution("tau-routines").entry_points
+        (ep.group, ep.name): ep.value for ep in metadata.distribution("tau-core").entry_points
     }
-    assert points == {
-        ("tau.hub_services", "routines"): "tau_routines.service:make_service",
-        ("tau.commands", "routine"): "tau_routines.cli:routine",
-        ("tau.tools", "routines"): "tau_routines.tools:TOOLS",
-    }
-    assert metadata.version("tau-routines") == tau_routines.__version__ == "0.1.0"
+    assert points[("tau.hub_services", "routines")] == "tau_core.routines.service:make_service"
+    assert points[("tau.commands", "routine")] == "tau_core.routines.cli:routine"
+    assert points[("tau.tools", "routines")] == "tau_core.routines.tools:TOOLS"
 
 
 def test_the_tau_command_mounts_routine() -> None:
@@ -37,9 +33,9 @@ def test_the_tau_command_mounts_routine() -> None:
 
 
 def test_public_api_is_explicit() -> None:
-    assert sorted(tau_routines.__all__) == sorted(set(tau_routines.__all__))
-    for name in tau_routines.__all__:
-        assert hasattr(tau_routines, name), name
+    assert sorted(tau_core.routines.__all__) == sorted(set(tau_core.routines.__all__))
+    for name in tau_core.routines.__all__:
+        assert hasattr(tau_core.routines, name), name
 
 
 def test_every_message_has_both_languages() -> None:
@@ -53,7 +49,7 @@ def test_every_message_has_both_languages() -> None:
 
 def test_no_turkish_outside_the_message_table() -> None:
     turkish = re.compile(r"[çğıöşüÇĞİÖŞÜ]")
-    for path in Path(tau_routines.__file__).parent.glob("*.py"):
+    for path in Path(tau_core.routines.__file__).parent.glob("*.py"):
         if path.name == "strings.py":
             continue
         assert not turkish.search(path.read_text(encoding="utf-8")), path.name
@@ -63,19 +59,11 @@ def test_only_the_engine_mentions_a_guard_opt_out() -> None:
     """The AST rule is ``test_repo_rules.py`` in tau-core; this keeps the text honest too."""
     sources = {
         path.name: path.read_text(encoding="utf-8")
-        for path in Path(tau_routines.__file__).parent.glob("*.py")
+        for path in Path(tau_core.routines.__file__).parent.glob("*.py")
     }
     assert [name for name, text in sources.items() if "guard=None" in text] == ["engine.py"]
 
 
-def test_the_package_ships_its_license_and_readme() -> None:
-    assert "MIT License" in (PACKAGE / "LICENSE").read_text(encoding="utf-8")
+def test_the_core_readme_documents_routines() -> None:
     readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
     assert "tau routine add" in readme and "ADR 0015" in readme
-
-
-def test_ci_builds_the_package() -> None:
-    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-    assert "uv build --package tau-routines" in ci
-    root = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert '"tau-routines"' in root and "tau-routines = { workspace = true }" in root

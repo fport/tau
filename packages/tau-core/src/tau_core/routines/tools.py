@@ -24,10 +24,9 @@ from contextvars import ContextVar
 from typing import Any
 
 from tau_core import Config, ConfigError, Tier, tau_tool
-
-from tau_routines.model import canonical_json
-from tau_routines.registration import RoutineContext, commit, describe, remove
-from tau_routines.settings import RoutineError
+from tau_core.routines.model import canonical_json
+from tau_core.routines.registration import RoutineContext, commit, describe, remove
+from tau_core.routines.settings import RoutineError
 
 __all__ = [
     "ADD_EFFECT",

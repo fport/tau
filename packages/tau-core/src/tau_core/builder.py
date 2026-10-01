@@ -168,6 +168,9 @@ def _tool_rows(config: Config | None) -> list[ComponentRow]:
                 tool.tool_name, item.distribution
             )
             note = f"tier {int(tier)}" if tier is not None else "no tier: never registered"
+            opt_in = config.opted_out(tool) if config is not None else None
+            if opt_in is not None:
+                enabled, note = False, f"{note}; opt-in: [component.{opt_in}] enabled = true"
             rows.append(
                 ComponentRow(
                     item.group,
@@ -256,7 +259,9 @@ def _lookup_row(item: registry.Loaded, source: str, config: Config | None) -> Co
     )
 
 
-def _switched_rows(group: str, enabled_names: tuple[str, ...]) -> list[ComponentRow]:
+def _switched_rows(
+    group: str, enabled_names: tuple[str, ...], config: Config | None = None
+) -> list[ComponentRow]:
     rows: list[ComponentRow] = []
     for item in registry.load_group(group):
         if item.error is not None:
@@ -273,6 +278,10 @@ def _switched_rows(group: str, enabled_names: tuple[str, ...]) -> list[Component
             )
             continue
         enabled = not enabled_names or item.name in enabled_names
+        note = "" if enabled else "not listed in [components]"
+        opt_in = config.opted_out(item.obj) if config is not None else None
+        if enabled and opt_in is not None:
+            enabled, note = False, f"opt-in: [component.{opt_in}] enabled = true"
         rows.append(
             ComponentRow(
                 item.group,
@@ -281,7 +290,7 @@ def _switched_rows(group: str, enabled_names: tuple[str, ...]) -> list[Component
                 item.version,
                 "entry point",
                 enabled,
-                note="" if enabled else "not listed in [components]",
+                note=note,
             )
         )
     return rows
@@ -321,7 +330,7 @@ def inventory(config: Config | None) -> list[ComponentRow]:
     rows += _seeded_rows(registry.SESSIONS_GROUP, config)
     rows += _switched_rows(registry.CONTEXT_GROUP, components.context if components else ())
     rows += _switched_rows(
-        registry.HUB_SERVICES_GROUP, components.hub_services if components else ()
+        registry.HUB_SERVICES_GROUP, components.hub_services if components else (), config
     )
     return rows
 

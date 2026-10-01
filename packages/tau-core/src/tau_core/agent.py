@@ -737,12 +737,16 @@ def hooks_behind_gate(agent: Agent, tier_hook: TierHook) -> list[str]:
 
 
 def discovered_tools(config: Config) -> list[AgentTool]:
-    """Every ``tau.tools`` tool minus ``[components] tools.disabled`` (by name or ``dist:``)."""
+    """Every ``tau.tools`` tool minus ``[components] tools.disabled`` (by name or ``dist:``)
+    and minus opt-in tools whose ``[component.<name>]`` is not enabled."""
     kept: list[AgentTool] = []
     for tool in discover_tools():
         distribution = getattr(tool, "tau_distribution", None)
         if config.components.tool_disabled(tool.tool_name, distribution):
             logger.info("tool %s from %s is disabled in [components]", tool.tool_name, distribution)
+            continue
+        if (component := config.opted_out(tool)) is not None:
+            logger.debug("tool %s is off until [component.%s] enabled", tool.tool_name, component)
             continue
         kept.append(tool)
     return kept

@@ -1,5 +1,5 @@
-"""Packaging rules: entry points, the public API, the message table, ``tau sim``, and switching
-the component off through ``[components]``."""
+"""The sim component of tau-core: entry points, the public API, the message table, ``tau sim``,
+opt-in through ``[component.sim] enabled`` and switching it off through ``[components]``."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ import re
 from importlib import metadata
 from pathlib import Path
 
-import tau_sim
+import tau_core.sim
 from click.testing import CliRunner, Result
 from tau_core import Config, build_agent, registry
 from tau_core.cli import cli
 from tau_core.i18n import LANGUAGES, MESSAGES
+from tau_core.sim import LampStore
+from tau_core.sim.strings import SIM_MESSAGES
 from tau_core.testing import FakeGuard, FakeModel
-from tau_sim import LampStore
-from tau_sim.strings import SIM_MESSAGES
 
 SIM_TOOLS = {"lamp_list", "lamp_set"}
 
@@ -26,19 +26,18 @@ def invoke(config: Config, *args: str) -> Result:
 
 
 def test_entry_points() -> None:
-    points = {(ep.group, ep.name): ep.value for ep in metadata.distribution("tau-sim").entry_points}
-    assert points == {
-        ("tau.commands", "sim"): "tau_sim.cli:sim",
-        ("tau.tools", "sim"): "tau_sim.tools:TOOLS",
-        ("tau.hub_services", "sim"): "tau_sim.service:make_service",
+    points = {
+        (ep.group, ep.name): ep.value for ep in metadata.distribution("tau-core").entry_points
     }
-    assert metadata.version("tau-sim") == tau_sim.__version__
+    assert points[("tau.commands", "sim")] == "tau_core.sim.cli:sim"
+    assert points[("tau.tools", "sim")] == "tau_core.sim.tools:TOOLS"
+    assert points[("tau.hub_services", "sim")] == "tau_core.sim.service:make_service"
 
 
 def test_public_api_is_explicit() -> None:
-    assert sorted(tau_sim.__all__) == sorted(set(tau_sim.__all__))
-    for name in tau_sim.__all__:
-        assert hasattr(tau_sim, name), name
+    assert sorted(tau_core.sim.__all__) == sorted(set(tau_core.sim.__all__))
+    for name in tau_core.sim.__all__:
+        assert hasattr(tau_core.sim, name), name
 
 
 def test_every_message_has_both_languages() -> None:
@@ -52,7 +51,7 @@ def test_every_message_has_both_languages() -> None:
 
 def test_no_turkish_outside_the_message_table() -> None:
     turkish = re.compile(r"[çğıöşüÇĞİÖŞÜ]")
-    for path in Path(tau_sim.__file__).parent.glob("*.py"):
+    for path in Path(tau_core.sim.__file__).parent.glob("*.py"):
         if path.name == "strings.py":
             continue
         assert not turkish.search(path.read_text(encoding="utf-8")), path.name
@@ -77,10 +76,10 @@ def test_tau_sim_lamps_marks_every_lamp_simulated(config: Config) -> None:
 
 
 def test_tau_sim_lamps_with_none_and_with_a_bad_table(make_config) -> None:
-    empty = make_config("[component.sim]\nlamps = []\n")
+    empty = make_config("[component.sim]\nenabled = true\nlamps = []\n")
     result = invoke(empty, "sim", "lamps")
     assert result.exit_code == 0 and result.output.strip() == SIM_MESSAGES["sim.lamps.none"]["en"]
-    broken = make_config("[component.sim]\nlamp = ['desk']\n")
+    broken = make_config("[component.sim]\nenabled = true\nlamp = ['desk']\n")
     result = invoke(broken, "sim", "lamps")
     assert result.exit_code == 1
     assert "[component.sim] has unknown keys: lamp" in result.output
@@ -100,7 +99,8 @@ def components(config: Config) -> list[dict]:
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["config_error"] is None
-    return [row for row in payload["components"] if row["distribution"] == "tau-sim"]
+    names = {*SIM_TOOLS, "sim"}
+    return [row for row in payload["components"] if row["name"] in names]
 
 
 def by_group(rows: list[dict]) -> dict[tuple[str, str], bool]:
@@ -113,7 +113,25 @@ def catalog(config: Config) -> set[str]:
     return set(agent.catalog.names())
 
 
-def test_tau_components_lists_it_enabled_by_default(config: Config) -> None:
+def test_it_is_off_until_enabled(make_config) -> None:
+    config = make_config()
+    rows = components(config)
+    assert by_group(rows) == {
+        ("tau.tools", "lamp_list"): False,
+        ("tau.tools", "lamp_set"): False,
+        ("tau.commands", "sim"): True,
+        ("tau.hub_services", "sim"): False,
+    }
+    assert all(
+        "[component.sim] enabled = true" in row["note"] for row in rows if not row["enabled"]
+    )
+    assert not SIM_TOOLS & catalog(config)
+    assert "sim" not in registry.hub_services(config)
+    result = invoke(config, "sim", "lamps")
+    assert result.exit_code == 0 and result.output.strip() == SIM_MESSAGES["sim.disabled"]["en"]
+
+
+def test_enabled_it_lists_and_loads_everything(config: Config) -> None:
     assert by_group(components(config)) == {
         ("tau.tools", "lamp_list"): True,
         ("tau.tools", "lamp_set"): True,
@@ -121,11 +139,13 @@ def test_tau_components_lists_it_enabled_by_default(config: Config) -> None:
         ("tau.hub_services", "sim"): True,
     }
     assert SIM_TOOLS <= catalog(config)
+    assert "sim" in registry.hub_services(config)
 
 
 def test_it_can_be_switched_off_through_components(make_config) -> None:
     config = make_config(
-        '[components.tools]\ndisabled = ["dist:tau-sim"]\n\n'
+        "[component.sim]\nenabled = true\n\n"
+        '[components.tools]\ndisabled = ["lamp_list", "lamp_set"]\n\n'
         '[components.hub]\nservices = ["spend"]\n'
     )
     rows = by_group(components(config))

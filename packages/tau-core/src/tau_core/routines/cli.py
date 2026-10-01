@@ -26,6 +26,7 @@ from collections.abc import Iterable
 from typing import Any, NoReturn
 
 import click
+
 from tau_core import (
     Approver,
     Config,
@@ -40,21 +41,20 @@ from tau_core import (
 from tau_core.cli import help_option
 from tau_core.guard import process_client_id
 from tau_core.i18n import MESSAGES
-
-from tau_routines import strings as _strings  # noqa: F401  (registers the message keys)
-from tau_routines.engine import RefusingApprover
-from tau_routines.model import ID_RE, Routine, canonical_json, parse_time
-from tau_routines.registration import (
+from tau_core.routines import strings as _strings  # noqa: F401  (registers the message keys)
+from tau_core.routines.engine import RefusingApprover
+from tau_core.routines.model import ID_RE, Routine, canonical_json, parse_time
+from tau_core.routines.registration import (
     RoutineContext,
     register,
     remove,
     rename,
     set_enabled,
 )
-from tau_routines.settings import RoutineConfigError, RoutineError
-from tau_routines.store import find_routine
-from tau_routines.tools import add_routine, using
-from tau_routines.triggers import parse_trigger
+from tau_core.routines.settings import RoutineConfigError, RoutineError
+from tau_core.routines.store import find_routine
+from tau_core.routines.tools import add_routine, using
+from tau_core.routines.triggers import parse_trigger
 
 __all__ = ["NOT_INTERACTIVE_NOTE", "routine"]
 

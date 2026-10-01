@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from routine_helpers import Clock, SideEffects, local, routine_config, run_cli
 from tau_core import Config, Decision
+from tau_core.routines import RoutineStore
 from tau_core.testing import FakeGuard, ScriptedApprover
-from tau_routines import RoutineStore
 
 
 def add(config: Config, clock: Clock, *args: str, approver=None, **kwargs):

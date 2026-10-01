@@ -15,8 +15,6 @@ members = [
     "tau-example-tool",
     "tau-guard",
     "tau-net",
-    "tau-routines",
-    "tau-sim",
     "tau-sub",
     "tau-tui",
     "tau-web",
@@ -2109,38 +2107,6 @@ requires-dist = [
 ]
 
 [[package]]
-name = "tau-routines"
-version = "0.1.0"
-source = { editable = "packages/tau-routines" }
-dependencies = [
-    { name = "click" },
-    { name = "strands-agents" },
-    { name = "tau-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "click", specifier = ">=8.1" },
-    { name = "strands-agents", specifier = ">=1.57" },
-    { name = "tau-core", editable = "packages/tau-core" },
-]
-
-[[package]]
-name = "tau-sim"
-version = "0.1.0"
-source = { editable = "packages/tau-sim" }
-dependencies = [
-    { name = "click" },
-    { name = "tau-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "click", specifier = ">=8.1" },
-    { name = "tau-core", editable = "packages/tau-core" },
-]
-
-[[package]]
 name = "tau-sub"
 version = "0.1.0"
 source = { editable = "packages/tau-sub" }
@@ -2206,8 +2172,6 @@ dependencies = [
     { name = "tau-core" },
     { name = "tau-guard" },
     { name = "tau-net" },
-    { name = "tau-routines" },
-    { name = "tau-sim" },
     { name = "tau-sub" },
     { name = "tau-tui" },
     { name = "tau-web" },
@@ -2235,8 +2199,6 @@ requires-dist = [
     { name = "tau-core", editable = "packages/tau-core" },
     { name = "tau-guard", editable = "packages/tau-guard" },
     { name = "tau-net", editable = "packages/tau-net" },
-    { name = "tau-routines", editable = "packages/tau-routines" },
-    { name = "tau-sim", editable = "packages/tau-sim" },
     { name = "tau-sub", editable = "packages/tau-sub" },
     { name = "tau-tui", editable = "packages/tau-tui" },
     { name = "tau-web", editable = "packages/tau-web" },

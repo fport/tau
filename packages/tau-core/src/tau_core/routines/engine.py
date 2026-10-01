@@ -44,6 +44,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from strands.types.tools import AgentTool
+
 from tau_core import (
     AgentEvent,
     ApprovalRequest,
@@ -54,12 +55,11 @@ from tau_core import (
     TierGate,
     ToolCatalog,
 )
-
-from tau_routines.model import Routine, routine_hash, stamp
-from tau_routines.registration import OWN_TOOLS
-from tau_routines.settings import RoutineError, RoutineSettings
-from tau_routines.store import RoutineStore
-from tau_routines.triggers import Once
+from tau_core.routines.model import Routine, routine_hash, stamp
+from tau_core.routines.registration import OWN_TOOLS
+from tau_core.routines.settings import RoutineError, RoutineSettings
+from tau_core.routines.store import RoutineStore
+from tau_core.routines.triggers import Once
 
 __all__ = [
     "CHANNEL",

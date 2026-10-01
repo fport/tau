@@ -17,13 +17,12 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from tau_core import Config, ConfigError, Tier, tau_tool
-
-from tau_sim.lamps import LampStore, UnknownLamp
+from tau_core.sim.lamps import COMPONENT, LampStore, UnknownLamp
 
 __all__ = ["SET_EFFECT", "SIMULATED_NOTE", "TOOLS", "config_factory", "lamp_list", "lamp_set"]
 
 SET_EFFECT = "Switches a simulated lamp on or off. It is a simulation: no real device changes."
-SIMULATED_NOTE = "These lamps are simulated by tau-sim: no real lamp is connected."
+SIMULATED_NOTE = "These lamps are simulated by tau: no real lamp is connected."
 
 config_factory: Callable[[], Config] | None = None
 """Replaces ``Config.load()`` (tests); ``None`` = the default."""
@@ -45,7 +44,7 @@ def _unavailable(exc: BaseException) -> str:
 
 @tau_tool(tier=Tier.READ)
 def lamp_list() -> str:
-    """Lists the owner's lamps and whether each one is on. They are simulated by tau-sim: no
+    """Lists the owner's lamps and whether each one is on. They are simulated by tau: no
     real lamp is connected, so say so when you tell the owner about them."""
     try:
         lamps = _store().lamps()
@@ -55,14 +54,14 @@ def lamp_list() -> str:
         return (
             f"No simulated lamps are configured ([component.sim] lamps is empty). {SIMULATED_NOTE}"
         )
-    lines = ["Simulated lamps (tau-sim; no real lamp is connected):"]
+    lines = ["Simulated lamps (no real lamp is connected):"]
     lines += [f"- {lamp.name}: {_word(lamp.on)} (simulated)" for lamp in lamps]
     return "\n".join(lines)
 
 
 @tau_tool(tier=Tier.PHYSICAL, effect=SET_EFFECT)
 def lamp_set(name: str, on: bool) -> str:
-    """Switches one of the owner's lamps on or off. The lamps are simulated by tau-sim: no
+    """Switches one of the owner's lamps on or off. The lamps are simulated by tau: no
     real lamp changes, so say so when you tell the owner.
 
     Args:
@@ -86,3 +85,5 @@ def lamp_set(name: str, on: bool) -> str:
 
 
 TOOLS = [lamp_list, lamp_set]
+for _tool in TOOLS:  # off until [component.sim] enabled = true (Config.opted_out)
+    _tool.tau_opt_in = COMPONENT  # type: ignore[attr-defined]

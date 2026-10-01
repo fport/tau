@@ -1,8 +1,8 @@
 """The ``routines`` hub service (``tau.hub_services`` entry point ``routines``).
 
-It runs the :class:`~tau_routines.engine.RoutineEngine` for as long as the hub runs. It needs
+It runs the :class:`~tau_core.routines.engine.RoutineEngine` for as long as the hub runs. It needs
 no credentials, no model and no network; it reads ``TAU_DATA_DIR/routines/routines.json`` and
-picks up what ``tau routine`` and the tools write there within :data:`~tau_routines.engine.
+picks up what ``tau routine`` and the tools write there within :data:`~tau_core.routines.engine.
 POLL_SECONDS` (the file's stamp changes with every write). A bad ``[component.routines]``
 table makes :meth:`RoutinesService.start` raise; the hub logs it and runs on without routines.
 
@@ -21,13 +21,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from strands.types.tools import AgentTool
-from tau_core import Config, EventBus
 
-from tau_routines.engine import RoutineEngine
-from tau_routines.model import stamp
-from tau_routines.registration import tool_catalog
-from tau_routines.settings import COMPONENT, RoutineSettings
-from tau_routines.store import RoutineStore
+from tau_core import Config, EventBus
+from tau_core.routines.engine import RoutineEngine
+from tau_core.routines.model import stamp
+from tau_core.routines.registration import tool_catalog
+from tau_core.routines.settings import COMPONENT, RoutineSettings
+from tau_core.routines.store import RoutineStore
 
 if TYPE_CHECKING:
     from tau_core.hub.daemon import Hub

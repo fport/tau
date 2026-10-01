@@ -8,8 +8,6 @@ dependencies = [
     "tau-core",
     "tau-guard",
     "tau-net",
-    "tau-routines",
-    "tau-sim",
     "tau-sub",
     "tau-tui",
     "tau-web",
@@ -31,8 +29,6 @@ tau-cloud = { workspace = true }
 tau-core = { workspace = true }
 tau-guard = { workspace = true }
 tau-net = { workspace = true }
-tau-routines = { workspace = true }
-tau-sim = { workspace = true }
 tau-sub = { workspace = true }
 tau-tui = { workspace = true }
 tau-web = { workspace = true }

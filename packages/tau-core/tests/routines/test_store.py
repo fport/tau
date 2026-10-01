@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from routine_helpers import ZONE_NAME, local, routine_config
 from tau_core import Config
-from tau_routines import (
+from tau_core.routines import (
     Daily,
     Routine,
     RoutineConfigError,
@@ -23,7 +23,7 @@ from tau_routines import (
     RoutineStoreError,
     routine_hash,
 )
-from tau_routines.store import LOG_BACKUPS, LOG_MAX_BYTES
+from tau_core.routines.store import LOG_BACKUPS, LOG_MAX_BYTES
 
 
 def lamp(routine_id: str = "0a1b2c3d", **changes) -> Routine:

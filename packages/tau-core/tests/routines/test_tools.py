@@ -5,8 +5,7 @@ from __future__ import annotations
 import pytest
 from routine_helpers import CATALOG, Clock
 from tau_core import Config, Decision, Tier, ToolFinished, build_agent, effect_of, tier_of
-from tau_core.testing import FakeGuard, FakeModel, ScriptedApprover, ToolCall
-from tau_routines import (
+from tau_core.routines import (
     TOOLS,
     RoutineContext,
     RoutineStore,
@@ -16,7 +15,8 @@ from tau_routines import (
     routine_hash,
     tools,
 )
-from tau_routines.tools import ADD_EFFECT, describe_call
+from tau_core.routines.tools import ADD_EFFECT, describe_call
+from tau_core.testing import FakeGuard, FakeModel, ScriptedApprover, ToolCall
 
 LAMP_CALL = {
     "trigger": "daily 07:00 weekdays",

@@ -36,6 +36,8 @@ tau = "tau_core.cli:main"
 
 [project.entry-points."tau.tools"]
 builtin = "tau_core.builtin_tools:TOOLS"
+routines = "tau_core.routines.tools:TOOLS"
+sim = "tau_core.sim.tools:TOOLS"
 
 [project.entry-points."tau.commands"]
 chat = "tau_core.channels.terminal:chat"
@@ -47,6 +49,8 @@ init = "tau_core.builder:init"
 remote = "tau_core.remote.cli:remote"
 setup = "tau_core.setup.cli:setup"
 spend = "tau_core.spend:spend_command"
+routine = "tau_core.routines.cli:routine"
+sim = "tau_core.sim.cli:sim"
 
 [project.entry-points."tau.context"]
 budget = "tau_core.spend:context_source"
@@ -54,6 +58,8 @@ budget = "tau_core.spend:context_source"
 [project.entry-points."tau.hub_services"]
 telegram = "tau_core.channels.telegram:make_service"
 spend = "tau_core.spend:make_service"
+routines = "tau_core.routines.service:make_service"
+sim = "tau_core.sim.service:make_service"
 
 [build-system]
 requires = ["hatchling"]

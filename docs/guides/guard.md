@@ -4,6 +4,9 @@ The owner guard makes tau work only for you. After you set it up, `tau tui`, `ta
 
 The guard runs inside the hub and does not need a model or the internet. Your face template never leaves the Mac, and a copy of the data folder or a backup cannot read it. The decision and its full threat model are in [ADR 0008](../adr/0008-owner-guard.md). Every key, route and log field is listed in the [guard reference](../reference/guard.md).
 
+!!! tip "The easy way: `tau setup` → Owner guard"
+    At the Mac, tick **Owner guard** in `tau setup` or in the Mac app's setup wizard, or run `tau setup run guard` later. It installs `tau-guard`, checks the prerequisites (`tau guard doctor`), runs `tau guard setup` and reminds you to restart the hub. In the app the enrollment runs in the wizard's own terminal, so the camera permission belongs to tau. [Set it up](#set-it-up) below is the same by hand; [Setup features](setup-features.md#owner-guard) says how to remove it.
+
 !!! info "What is not here yet"
     - **Touch ID is the fallback.** After two failed face checks, or when the camera cannot be used, the lock screen offers Touch ID: press `t` in `tau tui`, or type `t` and press Enter at the `locked>` prompt of `tau chat`. The macOS prompt appears on the Mac's screen. `step_up` can also ask for Touch ID (`face_or_touch_id` or `touch_id`). Touch ID pins your fingerprint set at enrollment: after you add or remove a finger in System Settings, run `tau guard enroll --add` so Touch ID is accepted again.
     - **Remote unlock:** a TUI over SSH or mosh works only while you are unlocked at the Mac. Grants for a phone, issued from Telegram, come with issue 117.

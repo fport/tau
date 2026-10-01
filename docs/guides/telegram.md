@@ -2,6 +2,9 @@
 
 Telegram is tau's channel for when you are away from the terminal: you write from your phone and the hub replies. The channel is a hub service in tau-core, so it runs whenever `tau hub run` (or the launchd/systemd service) runs. This page covers creating the bot, pairing your chat with it (no chat id to look up), starting the channel and what it does.
 
+!!! tip "The easy way: `tau setup` → Telegram"
+    Tick **Telegram** in `tau setup` or in the Mac app's setup wizard, or run `tau setup run telegram` later. It runs the pairing of section 2 for you: paste the bot's token from BotFather at the hidden prompt, then send `/start` with the one-time code from your phone. Make the bot first (section 1). [Setup features](setup-features.md#telegram) lists what the step needs and how to undo it.
+
 
 ## Why the hub polls, and no server sits in between
 

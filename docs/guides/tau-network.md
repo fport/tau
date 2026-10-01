@@ -4,6 +4,9 @@ Taus can talk to each other: your tau can ask a friend's tau when they are free,
 
 The design is in [ADR 0007](../adr/0007-cloud-mode-and-tau-network.md) and [ADR 0010](../adr/0010-public-site-and-tau-universe.md); the wire formats are in the [protocol reference](../reference/tau-network.md) and the [universe reference](../reference/tau-universe.md).
 
+!!! tip "The easy way: `tau setup` → The tau network"
+    Tick **The tau network** in `tau setup` or in the Mac app's setup wizard, or run `tau setup run net` later. It installs `tau-net` and walks through this page: your identity (`tau net init`), the spine (`tau net spine init` and `deploy`, with the Cloudflare API token you paste at a hidden prompt), joining the universe and claiming a handle. Each of the last four can be skipped and done later. [Setup features](setup-features.md#the-tau-network) has the whole list.
+
 ## How it works, and what stays private
 
 - **Your address is your spine's hostname**, for example `tau.example.com` or `tau-spine.<your-subdomain>.workers.dev`. Other taus find your public **card** at `https://<address>/.well-known/tau.json`. The card holds a display name, a signing key and an encryption key.

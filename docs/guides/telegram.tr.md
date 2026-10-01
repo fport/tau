@@ -4,6 +4,9 @@
 
 Telegram, terminalden uzaktayken tau'yla konuştuğun kanal: telefonundan yazarsın, hub (tau'nun çalıştığı ev makinen) yanıt verir. Kanal, tau-core içindeki bir hub servisidir; yani `tau hub run` (ya da launchd/systemd servisi) her çalıştığında o da çalışır. Bu sayfa botun oluşturulmasını, sohbetini botla eşleştirmeyi (aranacak bir chat id yok), kanalı başlatmayı ve kanalın ne yaptığını anlatır.
 
+!!! tip "Kolay yol: `tau setup` → Telegram"
+    `tau setup` içinde ya da Mac uygulamasının kurulum sihirbazında **Telegram**'ı işaretle ya da sonradan `tau setup run telegram` çalıştır. 2. bölümdeki eşleştirmeyi senin yerine yürütür: BotFather'dan aldığın bot token'ını gizli isteme yapıştırırsın, sonra telefonundan tek kullanımlık kodla `/start` gönderirsin. Önce botu oluştur (1. bölüm). [Kurulum özellikleri](setup-features.md#telegram) adımın neye ihtiyaç duyduğunu ve nasıl geri alınacağını listeler.
+
 
 ## Hub neden kendisi yokluyor, neden arada bir sunucu yok
 

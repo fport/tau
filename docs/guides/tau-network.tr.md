@@ -6,6 +6,9 @@ tau'lar birbiriyle konuşabilir: senin tau'n bir arkadaşının tau'suna ne zama
 
 Tasarım [ADR 0007](../adr/0007-cloud-mode-and-tau-network.md) ve [ADR 0010](../adr/0010-public-site-and-tau-universe.md)'da; kablo üzerindeki biçimler [protokol referansında](../reference/tau-network.md) ve [evren referansında](../reference/tau-universe.md).
 
+!!! tip "Kolay yol: `tau setup` → tau ağı"
+    `tau setup` içinde ya da Mac uygulamasının kurulum sihirbazında **tau ağı**'nı işaretle ya da sonradan `tau setup run net` çalıştır. `tau-net`'i kurar ve bu sayfadan geçirir: kimliğin (`tau net init`), spine (`tau net spine init` ve `deploy`; Cloudflare API token'ını gizli bir isteme yapıştırırsın), evrene katılmak ve bir kullanıcı adı almak. Son dördünün her biri atlanabilir ve sonra yapılabilir. Listenin tamamı [Kurulum özellikleri](setup-features.md#the-tau-network) sayfasında.
+
 ## Nasıl çalışır, neler gizli kalır
 
 - **Adresin, spine'ının hostname'idir**; örneğin `tau.example.com` ya da `tau-spine.<your-subdomain>.workers.dev`. Diğer tau'lar herkese açık **kartını** `https://<address>/.well-known/tau.json` adresinde bulur. Kartta bir görünen ad, bir imza anahtarı ve bir şifreleme anahtarı bulunur.

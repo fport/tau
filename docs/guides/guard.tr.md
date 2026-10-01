@@ -6,6 +6,9 @@ Sahip koruması (owner guard), tau'nun yalnızca senin için çalışmasını sa
 
 Koruma hub'ın (tau'nun çalıştığı, sana ait makine) içinde çalışır; ne bir modele ne de internete ihtiyaç duyar. Yüz şablonun Mac'ten asla çıkmaz ve veri klasörünün bir kopyası ya da bir yedek onu okuyamaz. Karar ve tüm tehdit modeli [ADR 0008](../adr/0008-owner-guard.md)'de. Her anahtar, route ve kayıt alanı [koruma referansında](../reference/guard.md) listelenir.
 
+!!! tip "Kolay yol: `tau setup` → Sahip koruması"
+    Mac'in başında, `tau setup` içinde ya da Mac uygulamasının kurulum sihirbazında **Sahip koruması**'nı işaretle ya da sonradan `tau setup run guard` çalıştır. `tau-guard`'ı kurar, ön koşulları denetler (`tau guard doctor`), `tau guard setup`'ı çalıştırır ve hub'ı yeniden başlatmanı hatırlatır. Uygulamada yüz kaydı sihirbazın kendi terminalinde çalışır; böylece kamera izni tau'ya ait olur. Aşağıdaki kurulum adımları aynı işin elle yapılışıdır; nasıl kaldırılacağını [Kurulum özellikleri](setup-features.md#owner-guard) anlatır.
+
 !!! info "Henüz olmayanlar"
     - **Touch ID yedek yoldur.** İki başarısız yüz kontrolünden sonra ya da kamera kullanılamadığında kilit ekranı Touch ID'yi önerir: `tau tui`'de `t`'ye bas, `tau chat`'in `kilitli>` isteminde `t` yazıp Enter'a bas. macOS isteği Mac'in ekranında çıkar. `step_up` da Touch ID isteyebilir (`face_or_touch_id` ya da `touch_id`). Touch ID kayıt sırasında parmak izi setini sabitler: Sistem Ayarları'nda parmak ekler ya da silersen Touch ID'nin yeniden kabul edilmesi için `tau guard enroll --add` çalıştır.
     - **Uzaktan kilit açma:** SSH ya da mosh üzerinden bir TUI, yalnızca Mac'in başında kilidi açtığın sürece çalışır. Telegram'dan verilen telefon izinleri issue 117 ile geliyor.

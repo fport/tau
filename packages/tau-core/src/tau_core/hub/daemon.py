@@ -93,6 +93,11 @@ class Hub:
                 return service
         return None
 
+    def started_services(self) -> list[HubService]:
+        """The services that have started, in start order (a copy): a component that looks
+        for every service of a kind (tau-web: device sources) reads them here."""
+        return list(self._started)
+
     def add_status_source(self, source: StatusSource) -> None:
         """Merge ``source()`` into :meth:`status` (later issues: spend, approvals, nodes)."""
         self._status_sources.append(source)

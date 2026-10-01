@@ -108,6 +108,7 @@ def test_find_service_sees_only_started_services(config: Config) -> None:
             seen["earlier"] = hub.find_service("earlier")
             seen["self"] = hub.find_service("later")  # not started yet: its own start is running
             seen["stopper"] = hub.find_service("stopper")  # starts after this one
+            seen["started"] = [service.name for service in hub.started_services()]
 
         async def stop(self) -> None:
             pass
@@ -120,8 +121,15 @@ def test_find_service_sees_only_started_services(config: Config) -> None:
     hub.add_service(Stopper())
     assert hub.find_service("earlier") is None  # nothing has started before run()
     assert hub.run() == 0
-    assert seen == {"failing": None, "earlier": earlier, "self": None, "stopper": None}
+    assert seen == {
+        "failing": None,
+        "earlier": earlier,
+        "self": None,
+        "stopper": None,
+        "started": ["earlier"],
+    }
     assert hub.find_service("earlier") is None  # and nothing is running after it
+    assert hub.started_services() == []
 
 
 def test_a_service_cannot_replace_health_or_status(tmp_path: Path, caplog) -> None:

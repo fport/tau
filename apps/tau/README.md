@@ -7,6 +7,9 @@ into one app with one set of permissions ([ADR 0014](../../docs/adr/0014-one-ins
 
 What it does:
 
+- **Sets tau up:** on the first start a wizard finds or installs tau, takes the model key, and
+  sets up the features you choose, asking macOS only for the permissions they need
+  ([First launch](#first-launch)).
 - **Runs the hub:** with "Run the hub" switched on, tau starts `tau hub run`, restarts it after a
   crash, leaves it stopped after `tau hub stop`, stops it when tau quits, and never starts a
   second hub. It shows whether the hub is up, its Telegram poller and its last crash.
@@ -48,6 +51,7 @@ Launch at login                          [ on]
 Open Hub Log
 Open App Log
 Settings…                                   ⌘,
+Set up tau…
 Check for Updates…
 ──────────────────────────────────────────────
 Quit tau                                    ⌘Q
@@ -62,9 +66,10 @@ Quit tau                                    ⌘Q
    Settings → Privacy & Security**, find the line about tau near the bottom and click **Open
    Anyway**, then confirm. On macOS 14 and earlier, right-click tau.app → **Open** does the
    same. In a terminal: `xattr -dr com.apple.quarantine /Applications/tau.app`.
-3. The first start opens tau's settings window. Pick your tau checkout under **How tau starts
-   the hub**, tick **Run the hub** and **Launch at login**.
-4. The first time the hub's guard uses the camera, macOS asks in tau's name: allow it.
+3. The first start opens the setup wizard ([First launch](#first-launch)): it finds or installs
+   tau, takes the model key, and sets up the features you choose.
+4. The first time the hub's guard uses the camera, macOS asks in tau's name: allow it (the
+   wizard asks for it when you choose the guard).
 
 Updates come by themselves: a release build looks for one a minute after it starts and then
 once a day, and asks before it installs (**Check for Updates…** asks at once; the settings
@@ -83,7 +88,8 @@ tau has a new bundle id, `com.tau.app` (TauBar was `com.tau.taubar`, tau Desktop
 3. Open tau. On its first start it takes over TauBar's settings (sleep mode, "Run the hub", how
    the hub is started) and tau Desktop's folder, read from
    `~/Library/Application Support/com.tau.taubar/settings.json` and `…/com.tau.desktop/settings.json`
-   and never changed; then it opens its settings window once.
+   and never changed; then it opens the setup wizard once, which finds the checkout those
+   settings name.
 4. Tick **Launch at login** again: the login item belongs to the app.
 5. macOS asks for the camera once more, now for tau: permissions belong to an app, and tau is a
    new one. TauBar's old entry can go: `tccutil reset Camera com.tau.taubar`.
@@ -117,8 +123,85 @@ that copy with LaunchServices, and Spotlight may then prefer it; after testing,
 removes it again.
 
 **Opening tau again** (Spotlight, Finder, the Dock, `open -a tau`) brings its front window
-forward; with none open it opens a chat window, or the settings window while no checkout is set
-up yet. That is also the way in when macOS hides the menu bar icon behind the notch.
+forward; with none open it opens a chat window, or the setup wizard while tau is not set up yet.
+That is also the way in when macOS hides the menu bar icon behind the notch.
+
+## First launch
+
+The first start opens the **setup wizard** (roadmap 171, [ADR 0014](../../docs/adr/0014-one-installer-and-onboarding.md)
+§2 and §5): the app's front door to the same engine as `tau setup` in a terminal, over its JSON
+protocol ([`docs/reference/setup.md`](../../docs/reference/setup.md)). **Set up tau…** in the
+menu, the panel, the settings window and a chat window's first page opens it again at any time,
+to add or remove features. The steps are on the left; each one can be skipped and opened again.
+
+1. **Language**, English or Turkish: the wizard's own words, and `tau --lang` for everything tau
+   says (feature names, step labels, errors).
+2. **Install tau.** The wizard looks for tau first (below). Without one it installs it with
+   [uv](https://docs.astral.sh/uv/): `uv tool install tau-core --with tau-tui`, streamed, in your
+   home folder, no administrator password. Without uv it says so, then downloads Astral's official
+   installer with `curl` into a private temporary folder and runs it with `/bin/sh` (the one-line
+   installer's logic without a pipe); uv lands in `~/.local/bin`. `TAU_INSTALL_VERSION` pins the
+   version, as for `install.sh`. A tau-core older than `tau setup` gets **Update tau**
+   (`uv tool upgrade tau-core`); a checkout says to update it there.
+3. **Model key.** The provider (Anthropic, OpenAI, Gemini, Bedrock, or the scripted `fake` one to
+   look around without a key) and the key at a hidden field. The key goes to `tau setup run init`
+   on stdin, never on a command line; the field empties as it is sent. tau checks it with one
+   small request and writes it to `<TAU_HOME>/.env` (mode `0600`); a key that holds spaces or is
+   refused is shown at the field, and nothing is written.
+4. **About you** (optional): name, how tau should address you, your languages, into
+   `persona/user.md`.
+5. **Features:** the catalog from `tau setup status --json` with tau's labels, what is on or
+   installed, why a feature is missing on this Mac, the advanced ones apart, and what a feature
+   turns on with it. The packages of the chosen ones are installed with `tau setup install`. On a
+   first run the defaults are chosen, as in the terminal.
+6. **Permissions:** only those the chosen features need (their `permissions`): the camera for the
+   owner guard, notifications for the app, the microphone only once a feature asks for it. Each
+   comes with one sentence of why and **Allow…**, which shows macOS's own prompt (AVFoundation,
+   UserNotifications); the answer stays visible, with the System Settings pane to change it. The
+   app never grants anything itself.
+7. **Feature steps:** each chosen feature through `tau setup run`, its optional steps and inputs
+   on the page, its progress live. A step that needs you:
+    - **the guard's enrollment** runs `tau guard setup` in the wizard's own terminal, as the app's
+      child, so the camera prompt and grant are tau's;
+    - **Telegram** asks for the bot token (hidden), then shows the one-time code, its `t.me` link
+      and the wait for your `/start` (`tau telegram pair --json`);
+    - **the spine** opens Cloudflare's pre-filled token page, takes the token (hidden) and the
+      account when there are several (`tau net spine deploy --json`);
+    - **remote access** shows each check as a checklist, and what only you can do as text, a
+      command to copy (never run: not by tau, not by the app) with "asks for your password in
+      Terminal" when it uses `sudo`, what it changes and the script to read first. **Done, check
+      again** checks again; **Skip this step** goes on without it. The phone step's values make a
+      card for Termius;
+    - anything else runs in the wizard's terminal.
+   On macOS **Start at login** means this app runs the hub and opens at login, not a launchd
+   agent: only a hub the app runs can use the camera.
+8. **Summary:** what is on, partly set up or skipped, `tau doctor`'s checks, **Open a chat
+   window** and **Start the hub**.
+
+**How the wizard finds tau**, first match wins, each one checked with `python -m tau_core
+version`:
+
+1. the hub settings' Python (`hub.python`) with their `TAU_HOME`;
+2. a checkout's `.venv/bin/python`: `TAU_HOME` from the app's environment, the hub's `tau_home`,
+   the chat windows' folder;
+3. uv's tool environment for tau-core: the directory `uv tool dir` prints, `UV_TOOL_DIR`,
+   `$XDG_DATA_HOME/uv/tools`, `~/.local/share/uv/tools`;
+4. a `tau` command in uv's bin dir (`UV_TOOL_BIN_DIR`, `XDG_BIN_HOME`, `~/.local/bin`) or on the
+   hub's `PATH`, through the Python its `#!` line names (or the `python` next to uv's relocatable
+   launcher).
+
+For an installed tau, `TAU_HOME` is the app's `TAU_HOME`, else the hub settings', else `~/.tau`.
+What it finds goes into the hub settings and the chat windows' `chat.json` where they have none
+that works; settings that work are kept.
+
+**What the wizard runs.** Its page names a job, never a program: Rust runs `<python> -m tau_core
+--lang <en|tr> …` with the tau discovery found (`setup status|install|run --json`, `telegram pair
+--json`, `net spine deploy DIR --json`), uv, or `curl` and `/bin/sh` for Astral's installer. Each
+job runs in its own process group with an allowlisted environment (the user basics, a UTF-8
+locale, uv's own `UV_*` and `XDG_*` variables, `PATH` with uv's dir, `TAU_HOME`, the hub's
+`TAU_DATA_DIR`), one at a time, with a timeout; **Cancel** sends Ctrl-C, then a kill. Keys and
+tokens go to the job's stdin as one JSON line and nowhere else: not argv, not the environment,
+not the app's log, which names only the `tau` words. Nothing runs with `sudo`.
 
 ## Signing
 
@@ -290,13 +373,15 @@ Bar → Allow in the Menu Bar (and check that tau is allowed there).
 ## Chat windows
 
 **New Chat Window** (⌘N in the app menu and the panel, or the menu bar icon's menu) opens a
-window with its own PTY running `<TAU_HOME>/.venv/bin/python -m tau_core tui` in `TAU_HOME`. The
-TUI's channel is `tui`, as in Terminal; no flag or variable changes it.
+window with its own PTY running `<python> -m tau_core tui` in `TAU_HOME`. The TUI's channel is
+`tui`, as in Terminal; no flag or variable changes it.
 
 ### How a chat window finds tau
 
-It needs `TAU_HOME`: the tau checkout with `tau.toml` and the `.venv` that
-`uv sync --all-packages` created. It looks in this order:
+It needs `TAU_HOME`, the folder with `tau.toml`, and a Python with tau-core: the folder's own
+`.venv/bin/python` (a checkout after `uv sync --all-packages`), else the tau-core Python the
+setup wizard found and saved (a `uv tool install tau-core` next to `~/.tau`). The setup wizard
+writes both; without it, the window looks in this order:
 
 1. The `TAU_HOME` environment variable. An app opened from Finder or the Dock does not see your
    shell's variables, so pass it explicitly: `open --env TAU_HOME=/path/to/tau -a tau`.
@@ -306,10 +391,11 @@ It needs `TAU_HOME`: the tau checkout with `tau.toml` and the `.venv` that
    `tau_home`, never its Python) as **Use This Folder**. **Choose Folder…** opens the macOS
    folder picker.
 
-Before a window uses a folder, tau runs `<folder>/.venv/bin/python -m tau_core version` there.
-The folder is refused unless that succeeds and reports `tau-core`. The Python is always the
-checkout's own `.venv/bin/python`; there is no field for another interpreter, so a chat window
-cannot be turned into a launcher for any program. The check does not look for `tau.toml`: a
+Before a window uses a folder, tau runs `<python> -m tau_core version` there. The folder is
+refused unless that succeeds and reports `tau-core`. The Python is the checkout's own
+`.venv/bin/python`, else the one the wizard's discovery saved in `chat.json` (`python`); there is
+no field for another interpreter, so a chat window cannot be turned into a launcher for any
+program. The first page also offers **Set up tau…**. The check does not look for `tau.toml`: a
 fresh checkout opens tau's setup wizard in the window, as `tau tui` does in Terminal. Quitting
 the wizard ends the TUI with an error code, so the window stays open with the exit notice, and
 Enter starts it again.
@@ -539,7 +625,7 @@ a checkout, Downloads, the mounted `tau.dmg`) shows "Launch at login needs tau.a
 | Path | What |
 |---|---|
 | `~/Library/Application Support/com.tau.app/settings.json` | your choices: `sleep_mode`, `run_hub`, `hub` (how the hub is started), `check_updates` |
-| `~/Library/Application Support/com.tau.app/chat.json` | the folder chosen for the chat windows: `tau_home` |
+| `~/Library/Application Support/com.tau.app/chat.json` | the chat windows' folder, `tau_home`, and the tau-core `python` the setup wizard found for a folder without a venv |
 | `~/Library/Application Support/com.tau.app/state.json` | what tau changed and must undo or take over: `lid_engaged`, `hub_pid` |
 | `~/Library/Logs/com.tau.app/app.log` | tau's short log (rotated once at 256 KB) |
 | `<TAU_DATA_DIR>/hub/logs/app.{out,err}.log` | the hub's stdout and stderr while tau runs it |
@@ -561,16 +647,28 @@ second copy.
 ## Development
 
 ```sh
-bun run test                       # vitest: the panel's and window's display and form logic; the chat windows' output coalescing, input order, terminal and key options
+bun run test                       # vitest: the panel's and window's display and form logic; the chat windows' output coalescing, input order, terminal and key options; the setup wizard's state machine, event reducers and message table
 bun run build                      # tsc + vite
-(cd src-tauri && cargo test)       # Rust: supervisor, restart policy, sleep modes, settings, the chat windows' PTYs and TAU_HOME, the migration, the bundle config
+(cd src-tauri && cargo test)       # Rust: supervisor, restart policy, sleep modes, settings, the chat windows' PTYs and TAU_HOME, the wizard's discovery, jobs, runner and JSON lines, the migration, the bundle config
 (cd src-tauri && cargo clippy --all-targets -- -D warnings)
 ```
 
 To work on the settings window or the panel without the app, run `bun run dev` and open
 http://localhost:1420/ (the settings window) or http://localhost:1420/#panel (the panel) in a
 browser: outside Tauri a development build answers the commands from `src/devmock.ts`, a
-stand-in with example values. No build contains it. A chat window (`#chat`) needs the app.
+stand-in with example values. http://localhost:1420/#wizard is the setup wizard against
+`src/wizard/devmock.ts`, which replays the recorded `tau setup` streams of
+`src/wizard/fixtures/` (`?scenario=notau`, `nouv` or `old` start without tau, without uv, or with
+a tau-core older than `tau setup`). No build contains either. A chat window (`#chat`) needs the
+app.
+
+The wizard's fixtures are real output: `tau setup status|install|run --json` of this repository's
+tau-core in a throwaway `uv tool` environment (`UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` and
+`UV_FIND_LINKS` pointing at locally built wheels) with a scratch `TAU_HOME`, paths and this Mac's
+names replaced by example values. The discovery tests build fake homes (a uv tool env with its
+`~/.local/bin/tau` symlink, `UV_TOOL_DIR`, a relocatable launcher, checkouts, settings), and the
+runner tests run `/bin/sh` scripts as a fake `tau` that prints events, reads its stdin, ignores
+Ctrl-C or leaves a child holding its pipes.
 
 The supervisor tests run real `/bin/sh` children as stand-in hubs (crash, `kill -9`, clean exit,
 a SIGTERM-deaf hub, a foreign lock holder, an orphan to adopt) against a fake probe, so they need
@@ -593,17 +691,20 @@ taking over a running TUI.
 | `src-tauri/src/chat/commands.rs` | the commands a chat window may call (its own PTY, the first-run choice, links) |
 | `src-tauri/src/chat/home.rs`, `launch.rs` | finding and validating `TAU_HOME`; the TUI command and its environment |
 | `src-tauri/src/chat/pty.rs`, `modes.rs` | one PTY session: raw output batching, input, resize, exit, shutdown, a new page taking over; the terminal modes replayed for it |
+| `src-tauri/src/wizard/` | the setup wizard: its window (`mod.rs`), finding tau (`discover.rs`), the jobs it may run (`jobs.rs`), the child-process runner (`runner.rs`) and JSON lines (`jsonl.rs`), its commands (`commands.rs`) |
+| `src-tauri/src/permissions.rs` | the camera, microphone and notification permissions: status, the macOS prompt, the System Settings panes |
 | `src-tauri/src/update.rs` | the Tauri updater: check, ask, install, restart |
 | `src-tauri/src/migrate.rs` | the first start: TauBar's and tau Desktop's settings taken over |
 | `src-tauri/src/webview.rs` | denies every webview permission request |
-| `src-tauri/capabilities/` | what each window may call: `settings.json`, `panel.json`, `chat.json` (`chat-*`) |
+| `src-tauri/capabilities/` | what each window may call: `settings.json`, `panel.json`, `chat.json` (`chat-*`), `wizard.json` |
 | `src-tauri/Info.plist`, `Entitlements.plist` | usage descriptions and the camera/microphone entitlements (checked by `tests/bundle_config.rs`) |
 | `src-tauri/src/sleep.rs` | the three modes behind a `Power` trait (a fake in tests) |
 | `src-tauri/src/login.rs` | `SMAppService.mainApp` |
 | `src-tauri/src/tray.rs` | the icon and the native menu (right click) |
 | `src-tauri/src/panel.rs` | the panel's window: open under the icon, hide on focus loss, fit its height |
 | `src-tauri/src/settings.rs`, `eventlog.rs`, `signals.rs`, `commands.rs` | settings files, tau's log, quit on signals, the commands the settings window and the panel call |
-| `src/main.tsx` | which view a window shows: `#panel`, `#chat`, else the settings window |
+| `src/main.tsx` | which view a window shows: `#panel`, `#chat`, `#wizard`, else the settings window |
+| `src/wizard/` | the setup wizard: `Wizard.tsx` (the steps), `FeatureSteps.tsx` (each feature, `needs_ui`), `machine.ts` and `events.ts` (pure state, tested), `strings.ts` (en/tr), `api.ts`, `devmock.ts`, `fixtures/` |
 | `src/Panel.tsx`, `src/panel.css`, `src/icons.tsx` | the panel |
 | `src/App.tsx`, `src/styles.css` | the settings window |
 | `src/api.ts`, `src/format.ts`, `src/devmock.ts` | the commands, display helpers, the browser stand-in |
@@ -621,5 +722,7 @@ The icons are generated from `docs/brand/tau-app-icon.svg` (`bun run tauri icon`
 icon is `src-tauri/icons/tray-template.png`, and the chat window's mark is
 `docs/brand/tau-mark.svg`, imported as is.
 
-The UI is English only for now; tau's other UIs take their strings from the `tau_core.i18n`
-table, which the app cannot read yet (roadmap 086).
+The UI is English only for now, except the setup wizard, which has a small en/tr table of its
+own (`src/wizard/strings.ts`) and asks tau for everything else in the chosen language; tau's
+other UIs take their strings from the `tau_core.i18n` table, which the app cannot read yet
+(roadmap 086).

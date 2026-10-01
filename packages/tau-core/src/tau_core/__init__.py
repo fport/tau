@@ -3,8 +3,9 @@
 Public API (other tau packages import only these names and ``tau_core.testing``)::
 
     Config, ConfigError, ConfigNotFound, MissingCredentials, ProviderNotSupported
-    build_agent, TauAgent, TurnEvent, TextDelta, ReasoningDelta, ToolUseStarted, ToolProgress,
-    ToolFinished, Throttled, Notice, TurnEnd, STOP_REASONS, to_turn_event
+    build_agent, TauAgent, TurnEvent, TextDelta, ReasoningDelta, ToolUseStarted, ToolInput,
+    ToolProgress, ToolFinished, Throttled, Notice, TurnEnd, STOP_REASONS, to_turn_event,
+    tool_inputs_of
     SessionStore, MemorySessionStore, open_session_store, SESSION_BACKENDS,
     register_session_backend
     PROVIDERS, register_provider
@@ -28,6 +29,8 @@ The owner guard's helpers (``admit_turn``, ``guard_status_line``, ``guard_doctor
 and ``HubError`` in ``tau_core.hub``.
 
 The bootstrap-config editor behind ``/settings`` is ``tau_core.settings`` (imported by name).
+The turn protocol for the web app (ADR 0015), event bodies and history blocks, is
+``tau_core.turn_protocol`` (imported by name).
 """
 
 from __future__ import annotations
@@ -42,12 +45,14 @@ from tau_core.agent import (
     TextDelta,
     Throttled,
     ToolFinished,
+    ToolInput,
     ToolProgress,
     ToolUseStarted,
     TurnEnd,
     TurnEvent,
     build_agent,
     to_turn_event,
+    tool_inputs_of,
 )
 from tau_core.approval import (
     ApprovalRequest,
@@ -164,6 +169,7 @@ __all__ = [
     "TierHook",
     "ToolCatalog",
     "ToolFinished",
+    "ToolInput",
     "ToolProgress",
     "ToolUseStarted",
     "TurnEnd",
@@ -195,4 +201,5 @@ __all__ = [
     "tau_tool",
     "tier_of",
     "to_turn_event",
+    "tool_inputs_of",
 ]

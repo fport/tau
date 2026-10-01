@@ -116,6 +116,20 @@ class ToolUseStarted:
 
 
 @dataclass
+class ToolInput:
+    """The complete input of a tool call, once the model has finished writing it.
+
+    It comes from the SDK's ``message`` event for the model's reply, after the call's
+    :class:`ToolUseStarted` (which arrives while the input still streams) and before the tool
+    runs or asks for approval. ``input`` is what the SDK parsed, normally a ``dict``.
+    """
+
+    tool_use_id: str
+    tool: str
+    input: Any
+
+
+@dataclass
 class ToolProgress:
     """Progress a streaming tool reports while it runs (SDK key ``tool_stream_event``)."""
 
@@ -173,6 +187,7 @@ TurnEvent = (
     TextDelta
     | ReasoningDelta
     | ToolUseStarted
+    | ToolInput
     | ToolProgress
     | ToolFinished
     | Throttled
@@ -248,6 +263,27 @@ def to_turn_event(event: dict[str, Any]) -> TurnEvent | None:
         logger.warning("agent loop force-stopped: %s", event.get("force_stop_reason", "?"))
         return None
     return None
+
+
+def tool_inputs_of(event: dict[str, Any]) -> list[ToolInput]:
+    """The :class:`ToolInput` of every tool use in a ``message`` event of ``stream_async``.
+
+    Pure, like :func:`to_turn_event`. Only the model's own reply counts (role ``assistant``);
+    the tool-result message the SDK also announces as ``message`` yields nothing.
+    """
+    message = event.get("message")
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        return []
+    found = []
+    for block in message.get("content") or []:
+        use = block.get("toolUse") if isinstance(block, dict) else None
+        if not isinstance(use, dict):
+            continue
+        tool_use_id = str(use.get("toolUseId") or "")
+        name = str(use.get("name") or "")
+        if tool_use_id and name:
+            found.append(ToolInput(tool_use_id=tool_use_id, tool=name, input=use.get("input")))
+    return found
 
 
 def _repair_message(text: str) -> Message:
@@ -520,6 +556,10 @@ class TauAgent:
                         if "result" in event:
                             result = event["result"]
                             stop_reason = str(getattr(result, "stop_reason", stop_reason))
+                            continue
+                        if isinstance(event.get("message"), dict):
+                            for item in tool_inputs_of(event):
+                                yield item
                             continue
                         mapped = to_turn_event(event)
                         if mapped is None:

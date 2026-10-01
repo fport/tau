@@ -52,6 +52,7 @@ This repo is the center. Everything is built so it can be published or split out
 - Every directory in `packages/` is an independently publishable PyPI distribution named `tau-<name>` with the flat import name `tau_<name>`. Do not use a `tau` namespace package: `tau` is taken on PyPI (as are `tau-hub` and `tau-agent`).
 - Each package has its own `pyproject.toml`, version, README and tests, and depends on other packages only through their public API as declared dependencies — no path hacks, no private imports.
 - Extension goes through entry points (`tau.tools`, `tau.commands`, `tau.providers`, `tau.sessions`, `tau.context`, `tau.hub_services`; later `tau.nodes`, `tau.channels`). A package developed in another repo plugs in with `pip install`, without changes here. `tau components` lists what is installed.
+- A new distribution needs a reason: a heavy or platform-specific dependency, a build of its own (a web bundle, a kit) or its own release cadence. Otherwise the feature is a built-in component of tau-core, registered through tau-core's own entry points and switchable in `[components]`; one most installs do not want is opt-in (`tau_opt_in`, `[component.<name>] enabled = true`) (ADR 0015 §8).
 - Split a package into its own repo when it needs its own release cadence, firmware or contributors; tau then consumes it from PyPI and the entry-point contract stays the same.
 - Python 3.12+ with a uv workspace. TypeScript parts (`cloud/`, `apps/taubar`, `apps/tau-desktop`) use bun (and Node 24: `bun run` starts Vitest and Wrangler on Node).
 

@@ -8,7 +8,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Hub** — the one machine currently running the agent, the relay connection, schedulers and `zenohd` (`TAU_ROLE=hub`). Today the MacBook, later the RPi5. There is never more than one active hub. *Avoid: server, master.*
 - **Node** — any other process that joins the mesh and offers capabilities (`TAU_ROLE=node`), e.g. the Mac node or the robot node. *Avoid: agent (reserved for the LLM agent), client.*
 - **Device** — physical hardware (SO-101, XIAO, ESP32, Nicla). A device reaches tau through a node or the MQTT bridge; it is not itself a node.
-- **Simulated device** — a stand-in for a device that is not on hand, such as the lamp of `tau-sim` (183).
+- **Simulated device** — a stand-in for a device that is not on hand, such as the lamp of tau-core's opt-in `sim` component (183).
   - It has the same tools and tiers a real one will have, keeps its state under `TAU_DATA_DIR/sim/`, and is marked simulated in every answer and card.
   - Hub services that know devices, simulated or real, implement tau-core's `DeviceSource`.
 - **Capability** — a tool a node exposes over MCP, namespaced by node (`mac.screenshot`, `arm.play`).
@@ -26,6 +26,7 @@ Use these terms exactly in code, issues, tests and docs. If a concept you need i
 - **Spine** — a tau's own Cloudflare Worker (`cloud/spine`, `tau-spine`): its address, card and mailbox; in cloud mode also the host of the brain container and its store. In local mode it only stores and forwards sealed envelopes. *Avoid: relay (retired), server, backend.*
 - **Control API** — the hub's loopback HTTP API on `127.0.0.1:<control_port>`. Only `GET /health` and `GET /status` are open; every other **control route** (`/spend`, `/guard/*`, any route a hub service adds) is protected: the request is signed with the hub's control token (`TAU_DATA_DIR/hub/control.token`, never sent) and the answer carries a proof ([ADR 0008](docs/adr/0008-owner-guard.md)). Clients use `tau_core.hub.HubClient`. *Avoid: API key, auth header (the token never travels).*
 - **Component** — a pluggable part of tau registered through a `tau.*` entry-point group (`tau.tools`, `tau.commands`, `tau.providers`, `tau.sessions`, `tau.context`, `tau.hub_services`) or a registry, enabled or disabled through `[components]` in `tau.toml`, and listed by `tau components`. *Avoid: plugin (use it only for a third-party distribution that provides components).*
+- **Opt-in component** — a built-in component that stays off until `[component.<name>] enabled = true`: its tools and hub service factory carry `tau_opt_in = "<name>"` (`Config.opted_out`), and `tau components` shows why it is off. The simulated lamp (`sim`) is the first one. *Avoid: feature flag.*
 - **Setup feature** — one entry of `tau setup`'s catalog (`tau_core/templates/features.toml`, [ADR 0014](docs/adr/0014-one-installer-and-onboarding.md)): something the owner picks in the wizard or the app (the TUI, sub-taus, Telegram, the owner guard, the network, start at login, …), with its package, platforms, macOS permissions and setup steps, which are `tau` subcommands. A feature may install a package that brings several **Components**, or none. *Avoid: plugin, module.*
 - **Check step** — a setup step that reports a state instead of changing one: `tau <command> --json` prints a check object with its lines, a summary, the values it found and the **action** only the owner can take ([setup reference](docs/reference/setup.md#check-steps)). The wizard shows the action and waits for "done" or "skip"; the app gets it as `needs_ui`. The action's command is shown, never run by tau, which is how remote access (`tau remote`) hands over the one command that needs `sudo`. *Avoid: probe; doctor (that is `tau doctor`).*
 
@@ -116,7 +117,7 @@ Decided in [ADR 0008](docs/adr/0008-owner-guard.md); the user's side is `docs/gu
 - **Routine** — a user-registered rule: trigger → one tool call with fixed arguments, with no LLM.
   - **Triggers:** a clock trigger (`daily 07:00`, weekdays, once, every N minutes; 181), or later an event pattern with conditions (time window, cooldown; 037).
   - **Approval:** registering or changing one is one tier-2 approval on every path (form, tool, CLI), and its firings do not ask again.
-  - **Where it lives:** `tau-routines`, `TAU_DATA_DIR/routines/`.
+  - **Where it lives:** tau-core's `routines` component (`tau_core.routines`), with its state in `TAU_DATA_DIR/routines/`.
 - **Reflex engine** — runs routines locally without an LLM, the cloud or the owner at the Mac.
 - **Scheduled task** — a registered prompt that runs on a clock as a headless agent turn on the `schedule` channel (182).
   - **Limits:** its own model role, a tool allowlist (never tier 2) and a per-run cost cap.

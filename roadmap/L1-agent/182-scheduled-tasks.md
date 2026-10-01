@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Type: AFK
 Layer: L1 · Agent
-Packages: tau-routines, tau-core
+Packages: tau-core
 Blocked by: 181
 
 ## What to build

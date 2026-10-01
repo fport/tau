@@ -75,7 +75,7 @@ Each layer sits on the previous one and the next starts once the current one is 
 | **2** | **Models** | `brain`/`fast`/`local` roles on the user's provider (Anthropic, OpenAI, Gemini) and Ollama, hard budgets per role with degrade and failover inside tau, spend reporting ([ADR 0011](adr/0011-budgets-in-tau-no-litellm.md)); in-process failover through Strands `ModelRouter` deferred ([ADR 0009](adr/0009-anthropic-only-models-behind-the-proxy.md)) |
 | **3** | **Access and data** | Domain NS → Cloudflare, Tunnel + Access in front of the hub's web UI (Tailscale Serve alternative), Telegram by direct polling + **startup status report**, local settings/memory/KB, encrypted R2 backups, `tau ask` |
 | **4** | **Interface** | The tau app (menu bar, hub supervisor, sleep modes, chat windows, one signed download), the web app (turn protocol, `tau-web`, chat, widgets, control pages; [ADR 0015](adr/0015-web-app-agentic-chat.md)), tau-voice (push-to-talk, local STT/TTS), voice from the phone through the web app, tau MCP server, Claude Code hook, Hey tau |
-| **5** | **Mesh** | `zenohd` + MCP node discovery, hot-reloaded `tools/` + `_pending`, ESPHome/MQTT, clock routines (`tau-routines`) and a simulated lamp (`tau-sim`), then event routines |
+| **5** | **Mesh** | `zenohd` + MCP node discovery, hot-reloaded `tools/` + `_pending`, ESPHome/MQTT, clock routines and a simulated lamp (tau-core components), then event routines |
 | **6** | **Robot** | SO-101 (sim → real → a wave when you sit down at the desk), necklace (XIAO → Nicla) |
 | **7** | **Lab** | AgentCore, autonomous task queue |
 | **8** | **Distribution** | PyPI release path (trusted publishing on tags, `uv tool install tau-core --with tau-tui` verified from the wheels), docs site (MkDocs Material, strict build in CI, Cloudflare Pages at `docs.tau.<domain>`) |
@@ -94,15 +94,13 @@ tau/
 ├── docs/                     # ARCHITECTURE.md, agents/, adr/
 ├── pyproject.toml            # uv workspace root
 ├── packages/                 # each an independent PyPI distribution: tau-<name> / import tau_<name>
-│   ├── tau-core/             # build_agent, persona, tiers, roles, session store, `tau` CLI, `tau hub`
+│   ├── tau-core/             # build_agent, persona, tiers, roles, session store, `tau` CLI, `tau hub`; built-in components: routines, the opt-in simulated lamp
 │   ├── tau-tui/              # Textual
 │   ├── tau-net/              # tau network: identity, envelopes, contacts, `net` hub service, `tau net`
 │   ├── tau-cloud/            # cloud mode: `spine` session backend, `tau cloud push|pull|status|run`
 │   ├── tau-sub/              # sub-taus: `tau sub`, `ask_sub`, `create_sub`
 │   ├── tau-guard/            # owner guard: `guard` hub service, face worker, `tau guard`
 │   ├── tau-web/              # `web` hub service: serves the web app, runs its turns, paired devices, `render_ui`
-│   ├── tau-routines/         # `routines` hub service: clock routines (no LLM) and scheduled tasks, `tau routine|task`
-│   ├── tau-sim/              # simulated devices (the lamp) until real ones arrive
 │   ├── tau-voice/            # hub service + channel: microphone, local STT/TTS
 │   ├── tau-mesh/             # Zenoh + MCP discovery
 │   ├── tau-robot/            # strands-robots / SO-101 node
@@ -139,6 +137,8 @@ Each one is tracked as a `ready-for-human` issue.
 ## Changes
 
 Decisions that were replaced, with the date, so the history stays readable.
+
+- **2026-10-01 — Built-in components instead of small packages ([ADR 0015](adr/0015-web-app-agentic-chat.md) §8).** Before: every feature was its own PyPI distribution, so routines and the simulated lamp became `tau-routines` and `tau-sim`. Now: a separate distribution needs a heavy or platform-specific dependency, a build of its own or its own release cadence. Everything else is a built-in tau-core component, switchable in `[components]`, and it can be opt-in (`tau_opt_in`). Routines and the simulated lamp moved into tau-core before they were ever published; tau-web stays its own package for the web bundle.
 
 - **2026-10-01 — The web app ([ADR 0015](adr/0015-web-app-agentic-chat.md)).** Before: the web UI was to be the TUI in a browser tab through `textual-serve` (074). Generated interfaces were out of scope (152), routines waited for Zenoh (037), and the hub had no turn API. Now: one React web app is the owner's chat for both the hub and tau-host, over one turn protocol. The hub's `tau-web` service runs the Strands agent inside the hub for paired devices. The model can render widgets in a sandboxed frame. `tau-routines` adds clock routines without an LLM and scheduled agent tasks, each approved once at registration. A simulated lamp is the first device. Hosted taus keep their TypeScript loop and get the same app.
 - **2026-10-01 — One Mac app, "tau" ([ADR 0014](adr/0014-one-installer-and-onboarding.md), issue 170).** Before: two Mac apps built from the checkout and signed ad hoc: TauBar (`apps/taubar`, the menu bar and the hub's supervisor, holding the camera permission) and tau Desktop (`apps/tau-desktop`, chat windows running `tau tui`, with no device permission). Now: one app, "tau" (`apps/tau`, bundle id `com.tau.app`), with both; CI builds it on every tag as a universal `tau.dmg`, signs it with one stable self-signed identity so macOS keeps its permissions across updates, and it updates itself through the Tauri updater. Reason: one download, one set of permissions and one place for the setup wizard, with no toolchain on the owner's Mac.

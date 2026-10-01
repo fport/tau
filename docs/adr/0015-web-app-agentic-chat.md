@@ -103,7 +103,7 @@ The owner decided on 2026-10-01:
 
 ### 4. Two kinds of schedule
 
-Both live in a new package, `packages/tau-routines` (import `tau_routines`, hub service `routines`). Their state is under `TAU_DATA_DIR/routines/`, written atomically with mode `0600`. Times follow the hub's local time zone.
+Both live in tau-core as the built-in `routines` component (`tau_core.routines`, hub service `routines`; see §8). Their state is under `TAU_DATA_DIR/routines/`, written atomically with mode `0600`. Times follow the hub's local time zone.
 
 - **A routine** is a trigger plus one tool call with fixed arguments, and no LLM. This is the reflex engine of Principle 1.
   - **Triggers.** v1 has clock triggers: daily at `HH:MM`, on chosen weekdays, once at a time, or every N minutes (at least 5). Event triggers from the mesh stay with 037.
@@ -127,8 +127,8 @@ Both live in a new package, `packages/tau-routines` (import `tau_routines`, hub 
 
 No smart lamp is on hand, so the first device is simulated.
 
-- **The package.** `packages/tau-sim` offers `lamp_list` (tier 0) and `lamp_set(name, on)` (tier 2) through `tau.tools`.
-  - The lamps are named in `[sim] lamps`.
+- **The component.** tau-core's opt-in `sim` component (`tau_core.sim`, see §8) offers `lamp_list` (tier 0) and `lamp_set(name, on)` (tier 2) through `tau.tools`.
+  - It is off until `[component.sim] enabled = true`, and the lamps are named in `[component.sim] lamps`.
   - Their state is in `TAU_DATA_DIR/sim/lamps.json`.
   - Every UI marks them as simulated.
 - **Device sources.** tau-core's public API gains a small `DeviceSource` protocol (`devices()`, `subscribe(callback)`). The sim service implements it, and tau-web lists every hub service that does. The mesh (032, 033) implements it later.
@@ -148,6 +148,19 @@ No smart lamp is on hand, so the first device is simulated.
 - **The brain** stays the TypeScript loop in the `Tau` Durable Object (owner's decision). It speaks the turn protocol, adds `render_ui`, and gets roomier limits: more steps and output tokens, bounded by the monthly budget.
 - **Scheduled tasks** run on the Durable Object's alarm, which already multiplexes approval expiry and the universe report. Hosted taus get no routines and no devices (ADR 0013).
 - **Out of scope.** The hosted network code (`cloud/host/src/net*`, `cloud/shared/net`) does not change here.
+
+### 8. Where the code lives (amended 2026-10-01)
+
+The first build put the routines and the simulated lamp in packages of their own (`tau-routines`, `tau-sim`). The owner then asked whether that split was right, and the rule is now:
+
+- **A separate distribution needs a reason.** That means at least one of:
+  - a heavy or platform-specific dependency (tau-guard: OpenCV; tau-tui: Textual; later voice and the robot);
+  - a build of its own (tau-web ships the web app's bundle; tau-net the spine kit);
+  - a release cadence of its own.
+- **Everything else is a built-in component of tau-core.** It is registered through tau-core's own entry points and can be switched off in `[components]` like any other.
+- **So routines and the simulated lamp are tau-core components** (`tau_core.routines`, `tau_core.sim`). Neither brings a dependency: starlette, uvicorn and pyjwt already come with tau-core through Strands. They were never published, so moving them cost no deprecation, and the `tau-sim` name, which is taken on PyPI, is gone.
+- **Opt-in components.** A built-in that most installs do not want can stay off until its table says `enabled = true`. Its tools and hub service factory carry `tau_opt_in = "<name>"` (`Config.opted_out`), and `tau components` shows why it is off. The simulated lamp is the first one.
+- **tau-web stays its own package.** It ships the web app's bundle and follows the app's releases.
 
 ## Consequences
 

@@ -3,7 +3,7 @@
 Status: done
 Type: AFK
 Layer: L5 · Mesh
-Packages: tau-sim, tau-core
+Packages: tau-core
 Blocked by: –
 
 ## What to build
@@ -54,3 +54,4 @@ None - can start immediately.
   - **Config:** the lamps live in `[component.sim] lamps` (default `["desk"]`), following the `[component.<name>]` convention rather than the `[sim]` table written above.
   - **`demo_physical_action`** stays as the minimal example.
   - **PyPI name:** `tau-sim` is taken by an unrelated project, so the owner picks a free name before publishing (`tau-devices` and `tau-simulator` were free on 2026-10-01). The package is not in `release.yml` yet. Once tau-core ships `tau_core.devices`, raise tau-sim's `tau-core` floor.
+- 2026-10-01: moved into tau-core before publishing ([ADR 0015](../../docs/adr/0015-web-app-agentic-chat.md) §8). The package is now the built-in `sim` component (`tau_core.sim`), registered through tau-core's entry points. It is opt-in: its tools and hub service load only with `[component.sim] enabled = true`. That also retires the PyPI name question. Ignore the text above where it names `tau-sim`: there is no such distribution any more and no PyPI publisher is needed.

@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Type: AFK
 Layer: L4 · Interface
-Packages: apps/web, tau-web, tau-routines, tau-sub
+Packages: apps/web, tau-web, tau-core, tau-sub
 Blocked by: 179, 181, 182, 183
 
 ## What to build

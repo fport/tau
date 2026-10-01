@@ -3,7 +3,7 @@
 Status: needs-triage
 Type: AFK
 Layer: L1 · Agent
-Packages: tau-routines, tau-core
+Packages: tau-core
 Blocked by: 182
 
 ## What to build

@@ -3,7 +3,7 @@
 Status: done
 Type: AFK
 Layer: L5 · Mesh
-Packages: tau-routines, tau-core
+Packages: tau-core
 Blocked by: –
 
 ## What to build
@@ -73,3 +73,4 @@ None - can start immediately; the tier gate and `Exemption` (006) are done.
     - `release.yml` waits for a PyPI publisher for `tau-routines`; the name is free.
     - The docs pages, CONTEXT and `tau setup`'s features come with 184.
   - **Also in this change:** `test_telegram_pairing`'s hub test now waits for Telegram's route instead of racing the services' start.
+- 2026-10-01: moved into tau-core before publishing ([ADR 0015](../../docs/adr/0015-web-app-agentic-chat.md) §8). The package is now the built-in `routines` component (`tau_core.routines`), registered through tau-core's entry points. Ignore the text above where it names `tau-routines`: there is no such distribution any more and no PyPI publisher is needed.

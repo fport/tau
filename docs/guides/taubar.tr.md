@@ -66,6 +66,43 @@ Ardından **Launch at login** anahtarını aç ve `infra/remote/setup.sh` komutu
 [uzaktan erişim kurulumundaki](phone-tailscale-termius.md) `com.tau.keepawake` agent'ını
 kaldırır, çünkü aynı işi TauBar yapar. `infra/remote/doctor.sh` ikisini de kabul eder.
 
+## İlk açılış { #first-launch }
+
+TauBar ile tau Desktop'ın birleştiği tau uygulaması ([ADR 0014](../adr/0014-one-installer-and-onboarding.md)),
+ilk açılışında bir **kurulum sihirbazı** açar. Menüsündeki, panelindeki, ayarlar penceresindeki
+ve boş bir sohbet penceresindeki **Set up tau…** onu yeniden açar; özellikleri sonra eklemek ya
+da çıkarmak için de bunu kullanırsın. Sihirbaz, terminaldeki `tau setup` ile aynı motoru
+[JSON protokolü](../reference/setup.md#the-json-protocol) üzerinden çalıştırır; iki yol da aynı
+tau'ya varır. Adımlar soldadır ve her adım atlanabilir.
+
+1. **Dil:** sihirbaz ve tau'nun orada söylediği her şey için İngilizce ya da Türkçe.
+2. **tau'yu kur:** sihirbaz önce tau'yu arar: uygulamanın hub ayarları, bir kaynak kopyasının
+   `.venv`'i, bir `uv tool install tau-core` (`uv tool dir`, `UV_TOOL_DIR`,
+   `~/.local/share/uv/tools`) ya da bir `tau` komutu. Bulduğunu hub'a ve sohbet pencerelerine
+   gösterir. tau yoksa onu ev klasörüne [uv](https://docs.astral.sh/uv/) ile kurar
+   (`uv tool install tau-core --with tau-tui`); uv de yoksa önce bunu söyler, sonra Astral'ın
+   resmî kurulum betiğini [tek satırlık kurucunun](../reference/setup.md#the-installer) yaptığı
+   gibi indirip çalıştırır. Hiçbir adım yönetici parolası istemez.
+3. **Model anahtarı:** sağlayıcıyı seç ve anahtarı gizli bir alana yapıştır. tau anahtarı küçük
+   bir istekle kontrol eder ve yalnızca senin okuyabildiğin `.env` dosyasında saklar; reddedilen
+   bir anahtar orada gösterilir ve hiçbir şey yazılmaz. Henüz anahtarın yok mu? Hazır cevaplı
+   `fake` sağlayıcıyla etrafa bakabilirsin.
+4. **Hakkında** (isteğe bağlı): adın, tau'nun sana nasıl hitap edeceği, konuştuğun diller.
+5. **Özellikler:** tau'nun bu Mac'te ne yapacağı; zaten açık olanlar ve bir özelliğin neden
+   olmadığı da görünür. Uygulama seçtiklerinin paketlerini kurar.
+6. **İzinler:** yalnızca özelliklerinin ihtiyaç duydukları, her biri bir cümlelik gerekçesiyle:
+   sahip koruması için kamera, uygulama için bildirimler. **Allow…** macOS'un kendi sorusunu tau
+   adına gösterir; uygulama hiçbir izni kendi kendine vermez, **Open System Settings** de önceki
+   bir cevabı değiştirir.
+7. **Özellik adımları:** her özelliğin adımları, canlı olarak. Sahip korumasının kaydı
+   sihirbazın kendi terminalinde çalışır, bu yüzden macOS kamerayı tau için sorar. Telegram bot
+   token'ını ister ve botuna göndereceğin kodu bağlantısıyla gösterir. Omurga (spine)
+   Cloudflare'in token sayfasını açar ve token'ı alır. Uzaktan erişim kontrollerini ve yalnızca
+   senin Terminal'de çalıştıracağın tek komutu gösterir (`sudo` ile parolanı orada ister): kopyala,
+   çalıştır, sonra **Done, check again**. Uygulama onu asla çalıştırmaz. Oturum açılınca başlatma,
+   uygulamanın hub'ı çalıştırması ve oturum açılınca açılması demektir.
+8. **Özet:** açık olanlar, `tau doctor` kontrolleri, **Open a chat window** ve **Start the hub**.
+
 ## Hub'ı çalıştır
 
 **Run the hub** anahtarını aç; TauBar bu Mac'te hub'ın gözetmeni olur. macOS'ta varsayılan

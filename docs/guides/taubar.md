@@ -63,6 +63,40 @@ Then switch on **Launch at login** and run `infra/remote/setup.sh` once: with Ta
 [remote access setup](phone-tailscale-termius.md), because TauBar does the same job.
 `infra/remote/doctor.sh` accepts either.
 
+## First launch
+
+The tau app, which TauBar and tau Desktop became ([ADR 0014](../adr/0014-one-installer-and-onboarding.md)),
+opens a **setup wizard** on its first start. **Set up tau…** in its menu, its panel, its settings
+window and an empty chat window opens it again, to add or remove features later. It drives the
+same engine as `tau setup` in a terminal, through its [JSON protocol](../reference/setup.md#the-json-protocol),
+so both ways end with the same tau. The steps are on the left, and every step can be skipped.
+
+1. **Language:** English or Turkish, for the wizard and everything tau says in it.
+2. **Install tau:** the wizard looks for tau first: the app's hub settings, a checkout's
+   `.venv`, a `uv tool install tau-core` (`uv tool dir`, `UV_TOOL_DIR`, `~/.local/share/uv/tools`)
+   or a `tau` command, and points the hub and the chat windows at what it finds. Without tau it
+   installs it with [uv](https://docs.astral.sh/uv/) (`uv tool install tau-core --with tau-tui`)
+   in your home folder; without uv it says so, then downloads and runs Astral's official
+   installer, the way the [one-line installer](../reference/setup.md#the-installer) does. Nothing
+   asks for an administrator password.
+3. **Model key:** choose the provider and paste the key into a hidden field. tau checks it with
+   one small request and keeps it in `.env`, which only you can read; a refused key is shown
+   there and nothing is written. No key yet? The scripted `fake` provider lets you look around.
+4. **About you** (optional): your name, how tau should address you, your languages.
+5. **Features:** what tau should do on this Mac, with what is on already and why a feature is
+   missing. The app installs the packages of the ones you choose.
+6. **Permissions:** only those your features need, each with one sentence of why: the camera
+   for the owner guard, notifications for the app. **Allow…** shows macOS's own question, in
+   tau's name; the app never grants anything itself, and **Open System Settings** changes an
+   earlier answer.
+7. **Feature steps:** each feature's steps, live. The guard's enrollment runs in the wizard's
+   own terminal, so macOS asks for the camera for tau. Telegram asks for the bot token and shows
+   the code to send your bot, with its link. The spine opens Cloudflare's token page and takes
+   the token. Remote access shows its checks, and the one command only you run in Terminal
+   (with `sudo`, it asks for your password there): copy it, run it, then **Done, check again**.
+   The app never runs it. Start at login means the app runs the hub and opens at login.
+8. **Summary:** what is on, `tau doctor`'s checks, **Open a chat window** and **Start the hub**.
+
 ## Run the hub
 
 Switch on **Run the hub** and TauBar becomes the hub's supervisor on this Mac, the macOS default (a

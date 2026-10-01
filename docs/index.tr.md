@@ -62,7 +62,7 @@ Gerekçe [ADR 0006](adr/0006-private-first-topology.md)'da yazılı; sade anlat�
 
     ---
 
-    Python 3.12, `uv`, `tau init`, `tau doctor` ve ilk `tau chat`'in. On dakika sürer; kimlik bilgisi gerektirmeyen deneme için hesap da gerekmez.
+    Mac uygulaması ya da macOS'ta, Linux'ta ve Raspberry Pi'de tek bir komut; ardından `tau setup` özellikleri seçtirir. Kimlik bilgisi gerektirmeyen deneme için hesap da gerekmez.
 
     [:octicons-arrow-right-24: Kurulum](getting-started/install.md)
 

@@ -1,4 +1,4 @@
-<!-- tr twin of getting-started/three-ways.md, translated 2026-09-30 -->
+<!-- tr twin of getting-started/three-ways.md, translated 2026-09-30, updated 2026-10-01 -->
 
 # Başlamanın üç yolu
 
@@ -13,7 +13,7 @@ Bir tau'yu üç yoldan çalıştırabilirsin. Hepsi yalnızca kendi model anahta
 | | Yerel | Barındırılan | Kendi kurulumun |
 |---|---|---|---|
 | **tau nerede çalışır** | makinendeki hub'da (`tau hub run`) | `tau.getporti.com` üzerindeki tau-host'ta, işletmecinin Cloudflare hesabında | kendi Cloudflare hesabındaki tau-host'ta |
-| **Ne gerekir** | macOS ya da Linux, [uv](https://docs.astral.sh/uv/), model anahtarın | bir GitHub hesabı, model anahtarın | bir Cloudflare hesabı, bir GitHub OAuth App, bun ve Node.js 24, model anahtarın |
+| **Ne gerekir** | macOS ya da Linux, model anahtarın (gerisini uygulama ya da kurucu getirir) | bir GitHub hesabı, model anahtarın | bir Cloudflare hesabı, bir GitHub OAuth App, bun ve Node.js 24, model anahtarın |
 | **tau'nu kim okuyabilir** | yalnızca sen | sen **ve** sunucunun **işletmecisi** | yalnızca sen |
 | **Onunla nerede konuşursun** | terminal, TUI, Telegram | tarayıcı | tarayıcı |
 | **Neler yapabilir** | hub'ın yaptığı her şey: tier denetiminden geçen araçlar, sub-tau'lar ve açık sayfaları, ağ, evren; geldikçe node'lar, ses ve robot kol | sohbet, sub-tau'lar, sub-tau'lar için açık sayfalar, ağ ve evren | barındırılanla aynı |
@@ -32,7 +32,20 @@ Model sağlayıcı, tau'nun düşünmek için ona gönderdiklerini her üç yold
 
 ## Yerel: tau senin makinende
 
-Her şey kendi bilgisayarında olur. `tau init` önce arayüz dilini sorar; ortamda ya da `.env`'de anahtar bulamazsa sağlayıcını (`anthropic`, `openai` ya da `gemini`) ve anahtarını ister, anahtar yazılırken görünmez. Anahtarı küçük bir istekle dener ve `0600` izinle `~/.tau/.env` dosyasına yazar.
+Her şey kendi bilgisayarında olur. tau'yu iki giriş kapısı kurar ve ikisi de aynı kurulum sihirbazına, `tau setup`'a çıkar ([ADR 0014](../adr/0014-one-installer-and-onboarding.md)):
+
+- **Mac'te:** uygulamayı [tau.getporti.com/tr/download](https://tau.getporti.com/tr/download) adresinden indir (macOS 13 ya da sonrası), Uygulamalar klasörüne sürükle ve aç. İlk açılışı sihirbazdır. Uygulama henüz Apple'ın noter onayından geçmedi; bu yüzden macOS onu açmadan önce bir kez sorar. İndirme sayfası nasıl izin vereceğini gösterir.
+- **Terminalde**, macOS'ta, Linux'ta ya da Raspberry Pi'de:
+
+    ```sh
+    curl -fsSL https://tau.getporti.com/install.sh | sh
+    ```
+
+    [uv](https://docs.astral.sh/uv/) yoksa önce onu, sonra tau'yu kurar ve `tau setup`'ı başlatır. Hiçbir zaman `sudo` çalıştırmaz.
+
+Sihirbaz önce arayüz dilini sorar; ortamda ya da `.env`'de anahtar bulamazsa sağlayıcını (`anthropic`, `openai` ya da `gemini`) ve anahtarını ister, anahtar yazılırken görünmez. Anahtarı küçük bir istekle dener ve `0600` izinle `~/.tau/.env` dosyasına yazar. Sonra özellikleri sunar: terminal arayüzü, sub-tau'lar, Telegram, uzaktan erişim, sahip koruması, tau ağı ve fazlası. [Kurulum özellikleri](../guides/setup-features.md) her birinin neye ihtiyaç duyduğunu anlatır. Ardından konuş: `tau chat`, `tau tui` ya da uygulamanın bir sohbet penceresi.
+
+Elle yapıldığında aynı iş dört komuta iner:
 
 ```sh
 uv tool install tau-core --with tau-tui
@@ -50,7 +63,7 @@ Checking the key with one small request to anthropic...
 anthropic accepted the key.
 ```
 
-`tau init --yes` hiçbir şey sormaz ve senaryolu `fake` modeli kurar; her komutu denemek için bu yeterli. Dil olarak `tr` seçersen sonraki sorular Türkçe gelir. Ağ ve sub-tau'lar `uv tool install tau-core --with tau-tui --with tau-net --with tau-sub` ile gelir ([Kurulum](install.md)); bulut modu için `tau-cloud` eklenir.
+`tau init --yes` hiçbir şey sormaz ve senaryolu `fake` modeli kurar; her komutu denemek için bu yeterli. Dil olarak `tr` seçersen sonraki sorular Türkçe gelir. Elle kurulumda ağ ve sub-tau'lar `uv tool install tau-core --with tau-tui --with tau-net --with tau-sub` ile gelir ([Kurulum](install.md)); bulut modu için `tau-cloud` eklenir. Onları işaretlediğinde `tau setup` senin yerine kurar.
 
 Sonra:
 

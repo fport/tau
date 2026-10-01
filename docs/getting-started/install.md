@@ -2,6 +2,18 @@
 
 tau is a set of Python packages. `tau-core` holds the agent and the `tau` command; `tau-tui` adds the Textual interface. You install them once, create a configuration root with `tau init`, check it with `tau doctor`, and talk.
 
+Two front doors do all of that for you and then set up the features you pick: the **Mac app** and the **one-line installer**. Both run the same engine, `tau setup` ([ADR 0014](../adr/0014-one-installer-and-onboarding.md)). The rest of this page is the manual way, one step at a time.
+
+## The Mac app
+
+On a Mac with macOS 13 or later, Apple silicon or Intel:
+
+1. Download `tau.dmg` from [tau.getporti.com/download](https://tau.getporti.com/download), open it and drag **tau** to **Applications**.
+2. Open tau. The first time, macOS says it cannot check tau for malicious software: the app is signed but not yet notarised by Apple, so this is expected. Open **System Settings → Privacy & Security**, choose **Open Anyway** next to the line about tau and confirm. On macOS 13 and 14, right-click tau → **Open** does the same.
+3. The first launch opens the setup wizard: the language, installing tau (with uv, in your home folder, no administrator password), your model key, a few lines about you, the features, the macOS permissions they need, each feature's steps and a summary. Every step can be skipped, and **Set up tau…** in the menu opens the wizard again.
+
+The app puts a **τ** in the menu bar, runs the hub and opens chat windows with `tau tui` in them. [The app guide](../guides/taubar.md#first-launch) describes the wizard step by step.
+
 ## The one-line installer
 
 On macOS and Linux, including a Raspberry Pi, one command installs tau and asks what you want:
@@ -10,11 +22,32 @@ On macOS and Linux, including a Raspberry Pi, one command installs tau and asks 
 curl -fsSL https://tau.getporti.com/install.sh | sh
 ```
 
-- **What it installs.** It installs [uv](https://docs.astral.sh/uv/) when it is missing, then tau with `uv tool install tau-core --with tau-tui`, and starts `tau setup`. It never runs `sudo`. Read it first with `curl -fsSL https://tau.getporti.com/install.sh | less`.
-- **What `tau setup` does.** It shows a checklist of features: the terminal UI, sub-taus, Telegram, remote access, the owner guard, the tau network, start at login and cloud mode. It installs their packages with one command, then sets them up: `tau init` (the provider and its key, below), a short "about you" for `persona/user.md`, each feature's steps and `tau doctor`.
-- **Later.** Run `tau setup` again to add a feature; what is set up is never asked again. `tau setup --upgrade` upgrades tau.
+It installs [uv](https://docs.astral.sh/uv/) when it is missing, then tau with `uv tool install tau-core --with tau-tui`, and starts `tau setup`. It never runs `sudo`.
 
-[`tau setup`](../reference/setup.md) lists every feature and option. The rest of this page is the manual way, one step at a time.
+- **Read it first:** `curl -fsSL https://tau.getporti.com/install.sh | less`.
+- **Install only:** `curl -fsSL https://tau.getporti.com/install.sh | TAU_INSTALL_NO_SETUP=1 sh`, then run `tau setup` yourself.
+- **A given version:** `TAU_INSTALL_VERSION=x.y.z` in the same place.
+
+## `tau setup`
+
+The wizard behind both doors, in the terminal:
+
+```sh
+tau setup                 # the checklist, then install and set up
+tau setup run telegram    # one feature's steps, any time later
+tau setup --remove guard  # uninstall a feature's package; settings and data stay
+tau setup --upgrade       # the newest releases
+```
+
+- **The checklist.** The terminal UI, the tau app, sub-taus, Telegram, remote access, the owner guard, the tau network, start at login and cloud mode. On the first run the defaults for your platform are ticked; what is set up already is marked `✓` and never asked again.
+- **Install.** The packages of the chosen features are installed with one command, pinned to the running tau-core.
+- **Set up.** `tau init` (the provider and its key, [below](#create-a-configuration-root)), a short "about you" for `persona/user.md`, each feature's steps and `tau doctor`. Every step asks first and can be skipped. A step that needs the administrator password shows the one command and waits for you to run it; tau never runs `sudo`.
+
+[Setup features](../guides/setup-features.md) goes through every feature: what it needs, what it changes and how to remove it. The [`tau setup` reference](../reference/setup.md) has every option.
+
+## By hand
+
+Everything below is what the wizard does, one step at a time: the requirements, the packages, the configuration root, the check and the first conversation.
 
 ## Requirements
 
@@ -55,7 +88,7 @@ curl -fsSL https://tau.getporti.com/install.sh | sh
 
     Everything below applies unchanged; read `tau …` as `uv run tau …` while you are inside the checkout. The repository root holds a `tau.toml`, so it is also your configuration root until you run `tau init` elsewhere. That file puts `brain` and `fast` on Anthropic with budgets and `local` on Ollama, so it needs `ANTHROPIC_API_KEY` in the checkout's `.env`; with another provider, use a root that `tau init` wrote for it.
 
-The documented install is one `uv tool` command that puts `tau` on your `PATH` with the TUI, the network (`tau-net`) and sub-taus (`tau-sub`) included:
+By hand, the install is one `uv tool` command that puts `tau` on your `PATH` with the TUI, the network (`tau-net`) and sub-taus (`tau-sub`) included:
 
 ```sh
 uv tool install tau-core --with tau-tui --with tau-net --with tau-sub

@@ -60,7 +60,7 @@ The reasoning is written down in [ADR 0006](adr/0006-private-first-topology.md);
 
     ---
 
-    Python 3.12, `uv`, `tau init`, `tau doctor`, your first `tau chat`. Ten minutes, no account needed for the credential-free try.
+    The Mac app, or one command on macOS, Linux and the Raspberry Pi, then `tau setup` picks the features. No account needed for the credential-free try.
 
     [:octicons-arrow-right-24: Install](getting-started/install.md)
 

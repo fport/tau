@@ -1,10 +1,22 @@
-<!-- tr twin of getting-started/install.md, translated 2026-09-30 -->
+<!-- tr twin of getting-started/install.md, translated 2026-09-30, updated 2026-10-01 -->
 
 # Kurulum
 
 tau bir Python paketleri kümesidir. `tau-core` ajanı ve `tau` komutunu barındırır; `tau-tui` ise Textual arayüzünü ekler. Onları bir kez kurarsın, `tau init` ile bir yapılandırma kökü oluşturursun, `tau doctor` ile kontrol edersin ve konuşmaya başlarsın.
 
-## Tek satırlık kurucu
+İki giriş kapısı bunların hepsini senin yerine yapar, sonra seçtiğin özellikleri kurar: **Mac uygulaması** ve **tek satırlık kurucu**. İkisi de aynı motoru, `tau setup`'ı çalıştırır ([ADR 0014](../adr/0014-one-installer-and-onboarding.md)). Bu sayfanın geri kalanı elle kurulumu adım adım anlatır.
+
+## Mac uygulaması { #the-mac-app }
+
+macOS 13 ya da sonrası olan, Apple silicon ya da Intel işlemcili bir Mac'te:
+
+1. `tau.dmg` dosyasını [tau.getporti.com/tr/download](https://tau.getporti.com/tr/download) adresinden indir, aç ve **tau**'yu **Uygulamalar** klasörüne sürükle.
+2. tau'yu aç. macOS ilk seferde tau'yu kötü amaçlı yazılım açısından denetleyemediğini söyler: uygulama imzalı ama henüz Apple'ın noter onayından geçmedi, yani bu beklenen bir durum. **Sistem Ayarları → Gizlilik ve Güvenlik**'i aç, tau ile ilgili satırın yanındaki **Yine de Aç**'ı seç ve onayla. macOS 13 ve 14'te tau'ya sağ tıklayıp **Aç**'ı seçmek de aynı işi görür.
+3. İlk açılış kurulum sihirbazını açar: dil, tau'nun kurulumu (uv ile, ev klasörüne, yönetici parolası olmadan), model anahtarın, senin hakkında birkaç satır, özellikler, onların gerektirdiği macOS izinleri, her özelliğin adımları ve bir özet. Her adım atlanabilir; menüdeki **Set up tau…** sihirbazı yeniden açar.
+
+Uygulama menü çubuğuna bir **τ** koyar, hub'ı çalıştırır ve içinde `tau tui` çalışan sohbet pencereleri açar. [Uygulama rehberi](../guides/taubar.md#first-launch) sihirbazı adım adım anlatır.
+
+## Tek satırlık kurucu { #the-one-line-installer }
 
 macOS ve Linux'ta, Raspberry Pi dahil, tek bir komut tau'yu kurar ve ne istediğini sorar:
 
@@ -12,11 +24,32 @@ macOS ve Linux'ta, Raspberry Pi dahil, tek bir komut tau'yu kurar ve ne istediğ
 curl -fsSL https://tau.getporti.com/install.sh | sh
 ```
 
-- **Ne kurar.** [uv](https://docs.astral.sh/uv/) yoksa önce onu, sonra `uv tool install tau-core --with tau-tui` ile tau'yu kurar ve `tau setup`'ı başlatır. Hiçbir zaman `sudo` çalıştırmaz. Çalıştırmadan önce `curl -fsSL https://tau.getporti.com/install.sh | less` ile okuyabilirsin.
-- **`tau setup` ne yapar.** Özelliklerin bir kontrol listesini gösterir: terminal arayüzü, alt-tau'lar, Telegram, uzaktan erişim, sahip koruması, tau ağı, oturum açılınca başlatma ve bulut modu. Paketlerini tek bir komutla kurar, sonra onları ayarlar: `tau init` (sağlayıcı ve anahtarı, aşağıda), `persona/user.md` için kısa bir "senin hakkında", her özelliğin adımları ve `tau doctor`.
-- **Sonra.** Bir özellik eklemek için `tau setup`'ı yeniden çalıştır; kurulu olanlar bir daha sorulmaz. `tau setup --upgrade` tau'yu yükseltir.
+[uv](https://docs.astral.sh/uv/) yoksa önce onu, sonra `uv tool install tau-core --with tau-tui` ile tau'yu kurar ve `tau setup`'ı başlatır. Hiçbir zaman `sudo` çalıştırmaz.
 
-[`tau setup`](../reference/setup.md) her özelliği ve seçeneği listeler. Bu sayfanın geri kalanı elle kurulumu adım adım anlatır.
+- **Önce oku:** `curl -fsSL https://tau.getporti.com/install.sh | less`.
+- **Yalnızca kur:** `curl -fsSL https://tau.getporti.com/install.sh | TAU_INSTALL_NO_SETUP=1 sh`, sonra `tau setup`'ı kendin çalıştır.
+- **Belirli bir sürüm:** aynı yerde `TAU_INSTALL_VERSION=x.y.z`.
+
+## `tau setup` { #tau-setup }
+
+İki kapının arkasındaki sihirbaz, terminalde:
+
+```sh
+tau setup                 # kontrol listesi, sonra kurulum ve ayarlar
+tau setup run telegram    # tek bir özelliğin adımları, sonradan istediğin zaman
+tau setup --remove guard  # bir özelliğin paketini kaldır; ayarlar ve veriler kalır
+tau setup --upgrade       # en yeni sürümler
+```
+
+- **Kontrol listesi.** Terminal arayüzü, tau uygulaması, sub-tau'lar, Telegram, uzaktan erişim, sahip koruması, tau ağı, oturum açılınca başlatma ve bulut modu. İlk çalıştırmada platformunun varsayılanları işaretlidir; zaten kurulu olanlar `✓` ile gösterilir ve bir daha sorulmaz.
+- **Kurulum.** Seçilen özelliklerin paketleri, çalışan tau-core'a sabitlenmiş tek bir komutla kurulur.
+- **Ayarlar.** `tau init` (sağlayıcı ve anahtarı, [aşağıda](#create-a-configuration-root)), `persona/user.md` için kısa bir "senin hakkında", her özelliğin adımları ve `tau doctor`. Her adım önce sorar ve atlanabilir. Yönetici parolası gerektiren bir adım o tek komutu gösterir ve senin çalıştırmanı bekler; tau asla `sudo` çalıştırmaz.
+
+[Kurulum özellikleri](../guides/setup-features.md) her özelliği anlatır: neye ihtiyaç duyduğunu, neyi değiştirdiğini ve nasıl kaldırılacağını. [`tau setup` başvurusu](../reference/setup.md) her seçeneği içerir.
+
+## Elle { #by-hand }
+
+Aşağıdaki her şey sihirbazın yaptığının adım adım hâlidir: gereksinimler, paketler, yapılandırma kökü, kontrol ve ilk konuşma.
 
 ## Gereksinimler
 
@@ -57,7 +90,7 @@ curl -fsSL https://tau.getporti.com/install.sh | sh
 
     Aşağıdaki her şey aynen geçerli; checkout'un (deponun yerel kopyası) içindeyken `tau …` komutlarını `uv run tau …` olarak oku. Depo kökünde bir `tau.toml` bulunur, yani başka bir yerde `tau init` çalıştırana kadar orası aynı zamanda yapılandırma köküdür. O dosya `brain` ve `fast` rollerini bütçeleriyle Anthropic'e, `local` rolünü de Ollama'ya koyar; bu yüzden checkout'un `.env` dosyasında `ANTHROPIC_API_KEY` gerekir. Başka bir sağlayıcı kullanıyorsan `tau init`'in o sağlayıcı için yazdığı bir kök kullan.
 
-Belgelenen kurulum, `tau`'yu TUI, ağ (`tau-net`) ve sub-tau'lar (`tau-sub`) dahil olarak `PATH`'ine koyan tek bir `uv tool` komutudur:
+Elle kurulum, `tau`'yu TUI, ağ (`tau-net`) ve sub-tau'lar (`tau-sub`) dahil olarak `PATH`'ine koyan tek bir `uv tool` komutudur:
 
 ```sh
 uv tool install tau-core --with tau-tui --with tau-net --with tau-sub
@@ -66,7 +99,7 @@ tau --help
 
 `uv tool install`, tau'yu kendi sanal ortamında tutar ve sistem Python'una asla dokunmaz. Sonradan `tau setup --upgrade` ile yükselt. `tau setup` henüz bir şey kurmadıysa `uv tool upgrade tau-core` de çalışır: `tau setup` paketleri tek bir sürüme sabitler.
 
-## Bir yapılandırma kökü oluştur
+## Bir yapılandırma kökü oluştur { #create-a-configuration-root }
 
 `tau init`, tau'nun ihtiyaç duyduğu dosyaları bir **yapılandırma köküne**, varsayılan olarak `~/.tau` dizinine yazar:
 

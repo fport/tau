@@ -11,7 +11,7 @@ You can run a tau in three ways. Each needs only your own model key, from Anthro
 | | Local | Hosted | Own host |
 |---|---|---|---|
 | **Where tau runs** | the hub on your machine (`tau hub run`) | tau-host on `tau.getporti.com`, in the operator's Cloudflare account | tau-host in your own Cloudflare account |
-| **You need** | macOS or Linux, [uv](https://docs.astral.sh/uv/), your model key | a GitHub account, your model key | a Cloudflare account, a GitHub OAuth App, bun and Node.js 24, your model key |
+| **You need** | macOS or Linux, your model key (the app or the installer brings the rest) | a GitHub account, your model key | a Cloudflare account, a GitHub OAuth App, bun and Node.js 24, your model key |
 | **Who can read your tau** | only you | you **and the operator** of the host | only you |
 | **You talk to it in** | the terminal, the TUI, Telegram | the browser | the browser |
 | **What it can do** | everything the hub does: tier-gated tools, sub-taus and their public pages, the network, the universe, and nodes, voice and the robot arm as they land | chat, sub-taus, public pages for sub-taus, the network and the universe | the same as hosted |
@@ -30,7 +30,20 @@ The model provider sees what tau sends it to think, in every way. Pick one you t
 
 ## Local: tau on your machine
 
-Everything happens on your computer. `tau init` asks for the UI language, then, when it finds no key, for your provider (`anthropic`, `openai` or `gemini`) and the key, typed hidden. It checks the key with one small request and writes it to `~/.tau/.env` with mode `0600`.
+Everything happens on your computer. Two front doors install tau, and both end in the same setup wizard, `tau setup` ([ADR 0014](../adr/0014-one-installer-and-onboarding.md)):
+
+- **On a Mac:** download the app from [tau.getporti.com/download](https://tau.getporti.com/download) (macOS 13 or later), drag it to Applications and open it. Its first launch is the wizard. The app is not notarised by Apple yet, so macOS asks once before it opens it; the download page shows how to allow it.
+- **In a terminal**, on macOS, Linux or a Raspberry Pi:
+
+    ```sh
+    curl -fsSL https://tau.getporti.com/install.sh | sh
+    ```
+
+    It installs [uv](https://docs.astral.sh/uv/) when it is missing, then tau, and starts `tau setup`. It never runs `sudo`.
+
+The wizard asks for the UI language, then, when it finds no key, for your provider (`anthropic`, `openai` or `gemini`) and the key, typed hidden. It checks the key with one small request and writes it to `~/.tau/.env` with mode `0600`. Then it offers the features: the terminal UI, sub-taus, Telegram, remote access, the owner guard, the tau network and more. [Setup features](../guides/setup-features.md) says what each one needs. Then talk: `tau chat`, `tau tui`, or a chat window of the app.
+
+By hand, the same comes down to four commands:
 
 ```sh
 uv tool install tau-core --with tau-tui
@@ -48,7 +61,7 @@ Checking the key with one small request to anthropic...
 anthropic accepted the key.
 ```
 
-`tau init --yes` asks nothing and sets up the scripted `fake` model, which is enough to try every command. Choose `tr` as the language and the questions after it come in Turkish. The network and sub-taus come with `uv tool install tau-core --with tau-tui --with tau-net --with tau-sub` ([Install](install.md)); cloud mode adds `tau-cloud`.
+`tau init --yes` asks nothing and sets up the scripted `fake` model, which is enough to try every command. Choose `tr` as the language and the questions after it come in Turkish. By hand, the network and sub-taus come with `uv tool install tau-core --with tau-tui --with tau-net --with tau-sub` ([Install](install.md)); cloud mode adds `tau-cloud`. `tau setup` installs them for you when you tick them.
 
 Next:
 

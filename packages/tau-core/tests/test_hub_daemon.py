@@ -156,7 +156,7 @@ def test_a_service_cannot_replace_health_or_status(tmp_path: Path, caplog) -> No
         thread.start()
         try:
             deadline = time.monotonic() + 10
-            while (api.port == 0 or hub.state is None) and time.monotonic() < deadline:
+            while (api.port == 0 or not hub.ready.is_set()) and time.monotonic() < deadline:
                 time.sleep(0.02)
             code, payload = get_json(f"{api.url}/health")
             assert code == 200 and payload["pid"] == os.getpid() and "x" not in payload
@@ -205,7 +205,7 @@ def test_hub_in_a_thread_serves_health_and_status(config: Config) -> None:
     thread.start()
     try:
         deadline = time.monotonic() + 10
-        while (api.port == 0 or hub.state is None) and time.monotonic() < deadline:
+        while (api.port == 0 or not hub.ready.is_set()) and time.monotonic() < deadline:
             time.sleep(0.02)
         code, health = get_json(f"{api.url}/health")
         assert code == 200 and health["ok"] is True and health["pid"] == os.getpid()
@@ -337,7 +337,7 @@ def run_assembled(config: Config, check) -> int:
     thread.start()
     try:
         deadline = time.monotonic() + 10
-        while (api.port == 0 or hub.state is None) and time.monotonic() < deadline:
+        while (api.port == 0 or not hub.ready.is_set()) and time.monotonic() < deadline:
             time.sleep(0.02)
         check(hub, api)
     finally:
@@ -431,7 +431,7 @@ def test_failing_service_is_skipped_and_the_hub_runs(
         thread.start()
         try:
             deadline = time.monotonic() + 10
-            while (api.port == 0 or hub.state is None) and time.monotonic() < deadline:
+            while (api.port == 0 or not hub.ready.is_set()) and time.monotonic() < deadline:
                 time.sleep(0.02)
             check(hub, api)
         finally:

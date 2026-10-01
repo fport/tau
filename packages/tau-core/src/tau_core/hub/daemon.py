@@ -72,6 +72,9 @@ class Hub:
         self._started: list[HubService] = []  # the services whose ``start`` succeeded, in order
         self._stop_event: asyncio.Event | None = None
         self._stop_requested = False
+        self.ready = threading.Event()
+        """Set once every service has had its start (from any thread: ``hub.ready.wait(10)``),
+        cleared when the hub stops. ``state`` exists earlier, before the services start."""
 
     # -- wiring ---------------------------------------------------------------------------
 
@@ -231,10 +234,12 @@ class Hub:
                     await service.start(self)
                 started.append(service)
             heartbeat = asyncio.create_task(self._heartbeat(), name="tau-hub-heartbeat")
+            self.ready.set()
             logger.info("tau hub running (pid %s)", os.getpid())
             assert self._stop_event is not None
             await self._stop_event.wait()
         finally:
+            self.ready.clear()
             if heartbeat is not None:
                 heartbeat.cancel()
                 with suppress(asyncio.CancelledError):

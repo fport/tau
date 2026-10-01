@@ -329,7 +329,7 @@ def test_the_token_lifecycle_with_a_real_hub(tmp_path: Path) -> None:
     thread, result = run_hub_in_thread(hub)
     try:
         until = time.monotonic() + 10
-        while (api.port == 0 or hub.state is None) and time.monotonic() < until:
+        while (api.port == 0 or not hub.ready.is_set()) and time.monotonic() < until:
             time.sleep(0.02)
         assert api.hub_dir == config.hub_dir
         assert token_file.stat().st_mode & 0o777 == 0o600

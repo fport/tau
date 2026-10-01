@@ -13,7 +13,7 @@ English · [Türkçe](README.tr.md)
 [![Docs](https://img.shields.io/badge/docs-docs.tau.getporti.com-FF7A3D)](https://docs.tau.getporti.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-05071A)](LICENSE)
 
-[Docs](https://docs.tau.getporti.com) · [Tutorial](https://docs.tau.getporti.com/getting-started/build-your-own-tau/) · [How it works](https://tau.getporti.com/how-it-works) · [Universe](https://tau.getporti.com/universe) · [Roadmap](roadmap/README.md)
+[Docs](https://docs.tau.getporti.com) · [Download](https://tau.getporti.com/download) · [Tutorial](https://docs.tau.getporti.com/getting-started/build-your-own-tau/) · [How it works](https://tau.getporti.com/how-it-works) · [Universe](https://tau.getporti.com/universe) · [Roadmap](roadmap/README.md)
 
 </div>
 
@@ -53,13 +53,15 @@ tau is in early development. The status table under [Where things are](#where-th
 
 ## First, on your own machine
 
-Everything in this part happens on your computer. You need macOS or Linux and [uv](https://docs.astral.sh/uv/), which brings Python 3.12 if you have none.
+Everything in this part happens on your computer. You need macOS or Linux; the installer brings [uv](https://docs.astral.sh/uv/), and uv brings Python 3.12 if you have none.
 
 **1. Install.** One command installs uv when it is missing, then tau, and starts `tau setup`, which asks which features you want (the TUI, sub-taus, Telegram, the owner guard, the network, …) and sets them up. It never runs `sudo`; read it first with `curl -fsSL https://tau.getporti.com/install.sh | less`:
 
 ```sh
 curl -fsSL https://tau.getporti.com/install.sh | sh
 ```
+
+On a Mac you can [download the app](https://tau.getporti.com/download) instead: `tau.dmg`, for macOS 13 or later on Apple silicon and Intel. It puts a **τ** in the menu bar, runs the hub, opens chat windows, and its first launch runs the same setup as a wizard. Apple has not notarised it yet, so macOS asks once before it opens it; the download page shows how to allow it.
 
 By hand, everything is on PyPI: the agent and the `tau` command (`tau-core`), the TUI (`tau-tui`), the network (`tau-net`) and sub-taus (`tau-sub`):
 
@@ -107,14 +109,13 @@ tau hub status       # from another terminal
 
 On a Mac, the **tau app** runs the hub for you from the menu bar, restarts it after a crash, keeps the Mac awake and opens chat windows with `tau tui`. Each release attaches it as `tau.dmg`, or it builds from source ([the tau app](https://docs.tau.getporti.com/guides/taubar/)). The alternatives are a launchd agent (`tau hub install`) and, on Linux or a Raspberry Pi, a systemd unit (`tau hub systemd-unit`).
 
-**5. Telegram.** Make a bot with [@BotFather](https://t.me/botfather), add two lines to `~/.tau/.env` and restart the hub:
+**5. Telegram.** Make a bot with [@BotFather](https://t.me/botfather), then pair your chat with it:
 
 ```sh
-TELEGRAM_BOT_TOKEN=123456789:AA...
-TELEGRAM_ALLOWED_CHAT_IDS=123456789
+tau telegram pair
 ```
 
-The hub fetches your messages from Telegram itself. There is no webhook and no server in between, and only the chat ids on your list reach tau ([Telegram](https://docs.tau.getporti.com/guides/telegram/)).
+It asks for the bot's token (hidden), checks it with Telegram and shows a one-time code. Send `/start` with the code to your bot from your phone, or tap the link it prints: that chat becomes the only one tau answers, and there is no chat id to look up. `tau setup` runs the same step. The hub fetches your messages from Telegram itself. There is no webhook and no server in between ([Telegram](https://docs.tau.getporti.com/guides/telegram/)).
 
 **6. Approvals.** Tools that read (tier 0) or change digital things (tier 1) just run. Tier-2 tools touch the physical world, activate code tau wrote itself, create a sub-tau or speak for you to another tau. Each one waits for your yes, every time, on the channel you are using:
 
@@ -251,7 +252,7 @@ Also true: your model provider sees what tau sends it to think, and if you join 
 | [`cloud/universe`](cloud/universe/README.md) | The public site at tau.getporti.com, the universe, and the visitor chats of public sub-taus |
 | [`cloud/host`](cloud/host/README.md) | tau-host: hosted taus in the browser, with GitHub sign-in; the same Worker is your own host |
 | [`cloud/shared`](cloud/shared/README.md) | TypeScript shared by the Workers: the protocol's TypeScript half and the character generator |
-| [`apps/tau`](apps/tau/README.md) | the tau app for macOS: the menu bar, the hub's supervisor and chat windows running `tau tui` (Tauri, xterm.js) |
+| [`apps/tau`](apps/tau/README.md) | tau, the Mac app: the menu bar, the hub's supervisor, chat windows with `tau tui` and the setup wizard (Tauri, xterm.js) |
 
 Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name>`) and plugs in through entry points; `tau components` lists what is installed. The docs site lives in `docs/`, the issues in `roadmap/`, phone access over Tailscale in [`infra/remote`](infra/remote/README.md).
 
@@ -267,7 +268,8 @@ Every package is its own PyPI distribution (`tau-<name>`, imported as `tau_<name
 | The tau network: spine, card, contacts, sealed envelopes, network turns, the spine kit | Works | [L9](roadmap/L9-network/README.md) |
 | The public site and the universe | Works | [L9](roadmap/L9-network/README.md) |
 | Sub-taus from the command line and through `ask_sub` | Works | [L9](roadmap/L9-network/README.md) |
-| The tau app: menu bar, runs the hub, sleep modes, chat windows | Built; a signed `tau.dmg` with each release from the next tag | [L4](roadmap/L4-interface/README.md) |
+| One installer: `install.sh`, `tau setup`, Telegram pairing, the remote access step | Built; ships with the next tau-core release | [L8](roadmap/L8-distribution/README.md) |
+| The Mac app: menu bar, the hub, sleep modes, chat windows, the setup wizard | Built; the first release of `tau.dmg` pending | [L4](roadmap/L4-interface/README.md) |
 | Owner guard (face check at the Mac, step-up after approvals) | Built; live test on a Mac pending; Touch ID and remote unlock planned | [L10](roadmap/L10-guard/README.md) |
 | Cloud mode: the hub in a Cloudflare Container | Built; first live run pending | [L9](roadmap/L9-network/README.md) |
 | PyPI releases | `tau-core` and `tau-tui` 0.4.0, `tau-net`, `tau-cloud` and `tau-sub` 0.1.0 published; `tau-guard` next | [L8](roadmap/L8-distribution/README.md) |

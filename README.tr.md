@@ -15,7 +15,7 @@
 [![Dokümanlar](https://img.shields.io/badge/docs-docs.tau.getporti.com-FF7A3D)](https://docs.tau.getporti.com/tr/)
 [![Lisans: MIT](https://img.shields.io/badge/license-MIT-05071A)](LICENSE)
 
-[Dokümanlar](https://docs.tau.getporti.com/tr/) · [Kendi tau'nu kur](https://docs.tau.getporti.com/tr/getting-started/build-your-own-tau/) · [Nasıl çalışır](https://tau.getporti.com/tr/how-it-works) · [Evren](https://tau.getporti.com/tr/universe) · [Yol haritası](roadmap/README.md)
+[Dokümanlar](https://docs.tau.getporti.com/tr/) · [İndir](https://tau.getporti.com/tr/download) · [Kendi tau'nu kur](https://docs.tau.getporti.com/tr/getting-started/build-your-own-tau/) · [Nasıl çalışır](https://tau.getporti.com/tr/how-it-works) · [Evren](https://tau.getporti.com/tr/universe) · [Yol haritası](roadmap/README.md)
 
 </div>
 
@@ -55,13 +55,15 @@ tau henüz erken geliştirme aşamasında. Bugün neyin çalıştığını, neyi
 
 ## Önce kendi makinende
 
-Bu bölümdeki her şey kendi bilgisayarında olur. macOS ya da Linux ve [uv](https://docs.astral.sh/uv/) yeterli; Python 3.12 yoksa uv onu da getirir.
+Bu bölümdeki her şey kendi bilgisayarında olur. macOS ya da Linux yeterli; kurucu [uv](https://docs.astral.sh/uv/)'yi getirir, Python 3.12 yoksa uv onu da getirir.
 
 **1. Kur.** Tek bir komut, yoksa önce uv'yi, sonra tau'yu kurar ve `tau setup`'ı başlatır; o da hangi özellikleri istediğini sorar (TUI, sub-tau'lar, Telegram, sahip koruması, ağ, …) ve onları ayarlar. Hiçbir zaman `sudo` çalıştırmaz; önce `curl -fsSL https://tau.getporti.com/install.sh | less` ile okuyabilirsin:
 
 ```sh
 curl -fsSL https://tau.getporti.com/install.sh | sh
 ```
+
+Mac'te bunun yerine [uygulamayı indirebilirsin](https://tau.getporti.com/tr/download): macOS 13 ve sonrası için, Apple silicon ve Intel'de çalışan `tau.dmg`. Menü çubuğuna bir **τ** koyar, hub'ı çalıştırır, sohbet pencereleri açar ve ilk açılışında aynı kurulumu bir sihirbaz olarak yürütür. Apple'ın noter onayından henüz geçmedi; bu yüzden macOS onu açmadan önce bir kez sorar. İndirme sayfası nasıl izin vereceğini gösterir.
 
 Elle kurmak istersen hepsi PyPI'da: ajan ve `tau` komutu (`tau-core`), TUI (`tau-tui`), ağ (`tau-net`) ve sub-tau'lar (`tau-sub`):
 
@@ -107,14 +109,13 @@ tau hub status       # from another terminal
 
 `tau hub run` hub'ı ön planda çalıştırır; `Ctrl-C` ya da başka bir terminalden `tau hub stop` onu durdurur. Mac'te **tau uygulaması** hub'ı menü çubuğundan senin yerine çalıştırır, çökerse yeniden başlatır, Mac'i uyanık tutar ve `tau tui` ile sohbet pencereleri açar. Her sürüme `tau.dmg` olarak eklenir ya da kaynaktan derlenir ([tau uygulaması](https://docs.tau.getporti.com/tr/guides/taubar/)). Alternatifler: bir launchd ajanı (`tau hub install`) ve Linux ya da Raspberry Pi'de bir systemd birimi (`tau hub systemd-unit`).
 
-**5. Telegram.** [@BotFather](https://t.me/botfather) ile bir bot oluştur, `~/.tau/.env` dosyasına iki satır ekle ve hub'ı yeniden başlat:
+**5. Telegram.** [@BotFather](https://t.me/botfather) ile bir bot oluştur, sonra sohbetini onunla eşleştir:
 
 ```sh
-TELEGRAM_BOT_TOKEN=123456789:AA...
-TELEGRAM_ALLOWED_CHAT_IDS=123456789
+tau telegram pair
 ```
 
-Hub, mesajlarını Telegram'dan kendisi çeker. Arada ne bir webhook ne de bir sunucu var; tau'ya yalnızca listendeki chat id'leri ulaşır ([Telegram](https://docs.tau.getporti.com/tr/guides/telegram/)).
+Komut botun token'ını sorar (gizli), Telegram'a doğrulatır ve tek kullanımlık bir kod gösterir. Telefonundan bota kodla birlikte `/start` gönder ya da yazdığı bağlantıya dokun: o sohbet tau'nun yanıt verdiği tek sohbet olur ve aranacak bir chat id yoktur. `tau setup` aynı adımı çalıştırır. Hub, mesajlarını Telegram'dan kendisi çeker. Arada ne bir webhook ne de bir sunucu var ([Telegram](https://docs.tau.getporti.com/tr/guides/telegram/)).
 
 **6. Onaylar.** Her aracın bir **tier**'ı, yani izin seviyesi vardır. Yalnızca okuyan (tier 0) ya da dijital bir şeyi değiştiren (tier 1) araçlar doğrudan çalışır. Tier-2 araçlar ise fiziksel dünyaya dokunur, tau'nun kendi yazdığı kodu devreye alır, bir sub-tau oluşturur ya da senin adına başka bir tau'ya konuşur. Bunların her biri, her seferinde, kullandığın kanalda senin "evet"ini bekler:
 
@@ -255,7 +256,7 @@ Her yazılımda hata olabilir ve tau henüz genç. Dürüst hâli şu:
 | [`cloud/universe`](cloud/universe/README.md) | tau.getporti.com'daki herkese açık site, evren ve açık sub-tau'ların ziyaretçi sohbetleri |
 | [`cloud/host`](cloud/host/README.md) | tau-host: GitHub girişiyle tarayıcıda barındırılan tau'lar; aynı Worker senin kendi kurulumun da olur |
 | [`cloud/shared`](cloud/shared/README.md) | Worker'ların paylaştığı TypeScript: protokolün TypeScript yarısı ve karakter üreticisi |
-| [`apps/tau`](apps/tau/README.md) | macOS için tau uygulaması: menü çubuğu, hub'ın gözetmeni ve `tau tui` çalıştıran sohbet pencereleri (Tauri, xterm.js) |
+| [`apps/tau`](apps/tau/README.md) | tau, Mac uygulaması: menü çubuğu, hub'ın gözetmeni, `tau tui` çalıştıran sohbet pencereleri ve kurulum sihirbazı (Tauri, xterm.js) |
 
 Her paket kendi başına bir PyPI dağıtımıdır (`tau-<name>`, `tau_<name>` olarak import edilir) ve entry point'ler (Python paketlerinin eklenti kayıt noktaları) üzerinden takılır; kurulu olanları `tau components` listeler. Doküman sitesi `docs/`, issue'lar `roadmap/`, Tailscale üzerinden telefon erişimi [`infra/remote`](infra/remote/README.md) içinde. Paket README'leri, ADR'ler ve katkı sayfaları yalnızca İngilizce.
 
@@ -271,7 +272,8 @@ Her paket kendi başına bir PyPI dağıtımıdır (`tau-<name>`, `tau_<name>` o
 | tau ağı: spine, kart, kişiler, mühürlü zarflar, ağdan gelen mesajlara dar yanıtlar, spine kiti | Çalışıyor | [L9](roadmap/L9-network/README.md) |
 | Herkese açık site ve evren | Çalışıyor | [L9](roadmap/L9-network/README.md) |
 | Komut satırından ve `ask_sub` üzerinden sub-tau'lar | Çalışıyor | [L9](roadmap/L9-network/README.md) |
-| tau uygulaması: menü çubuğu, hub'ı çalıştırır, uyku modları, sohbet pencereleri | Hazır; bir sonraki etiketten itibaren her sürümle imzalı bir `tau.dmg` | [L4](roadmap/L4-interface/README.md) |
+| Tek kurucu: `install.sh`, `tau setup`, Telegram eşleştirme, uzaktan erişim adımı | Hazır; bir sonraki tau-core sürümüyle gelir | [L8](roadmap/L8-distribution/README.md) |
+| Mac uygulaması: menü çubuğu, hub, uyku modları, sohbet pencereleri, kurulum sihirbazı | Hazır; `tau.dmg`'nin ilk sürümü bekleniyor | [L4](roadmap/L4-interface/README.md) |
 | Sahip koruması (Mac'in başında yüz kontrolü, onaylardan sonra step-up) | Hazır; bir Mac'te canlı deneme bekleniyor; Touch ID ve uzaktan kilit açma planlı | [L10](roadmap/L10-guard/README.md) |
 | Bulut modu: hub'ın bir Cloudflare Container'ında çalışması | Hazır; ilk canlı çalıştırma bekleniyor | [L9](roadmap/L9-network/README.md) |
 | PyPI sürümleri | `tau-core` ve `tau-tui` 0.4.0, `tau-net`, `tau-cloud` ve `tau-sub` 0.1.0 yayında; sırada `tau-guard` var | [L8](roadmap/L8-distribution/README.md) |

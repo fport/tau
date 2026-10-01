@@ -141,10 +141,12 @@ jobs:
             --config "{\"version\": \"$VERSION\"}"
           archs="$(lipo -archs src-tauri/target/universal-apple-darwin/release/bundle/macos/tau.app/Contents/MacOS/tau-app)"
           echo "architectures: $archs"
-          case " $archs " in
-            *" x86_64 "*" arm64 "* | *" arm64 "*" x86_64 "*) ;;
-            *) echo "::error::tau.app is not universal: $archs"; exit 1 ;;
-          esac
+          for arch in x86_64 arm64; do
+            case " $archs " in
+              *" $arch "*) ;;
+              *) echo "::error::tau.app is not universal: $archs"; exit 1 ;;
+            esac
+          done
 
       - name: Sign and pack
         env:

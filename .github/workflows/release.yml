@@ -188,8 +188,8 @@ jobs:
 
       # tau-net, tau-cloud and tau-sub on top of tau-core, from the files that will be uploaded. The
       # spine kit must work without the repository: `tau net spine init` writes the project,
-      # Wrangler bundles it offline (`deploy --dry-run`), and `tau net spine deploy` stops at
-      # the login check because this runner has no Cloudflare credentials.
+      # Wrangler bundles it offline (`deploy --dry-run`), and `tau net spine deploy` stops
+      # without a token (the API path) or a login (`--wrangler`): this runner has no credentials.
       - name: Smoke-test tau-net (spine kit), tau-cloud and tau-sub in a fresh virtualenv
         env:
           TAU_HOME: ${{ runner.temp }}/tau-net-home
@@ -210,13 +210,24 @@ jobs:
           "$tau" net spine init "$kit" --address tau.example.com
           ls -la "$kit"
           (cd "$kit" && npm install --no-audit --no-fund && npx wrangler deploy --dry-run)
-          if "$tau" net spine deploy "$kit" > "$RUNNER_TEMP/deploy.log" 2>&1; then
+          # The default deploy goes through the Cloudflare API (issue 174): without a token it
+          # shows the token page and stops at the hidden prompt (stdin is empty here).
+          if "$tau" net spine deploy "$kit" < /dev/null > "$RUNNER_TEMP/deploy.log" 2>&1; then
             cat "$RUNNER_TEMP/deploy.log"
-            echo "::error::tau net spine deploy succeeded without a Cloudflare login"
+            echo "::error::tau net spine deploy succeeded without a Cloudflare token"
             exit 1
           fi
           cat "$RUNNER_TEMP/deploy.log"
-          grep -q "npx wrangler login" "$RUNNER_TEMP/deploy.log"
+          grep -q "needs a Cloudflare API token" "$RUNNER_TEMP/deploy.log"
+          grep -q "dash.cloudflare.com/profile/api-tokens" "$RUNNER_TEMP/deploy.log"
+          # The Wrangler path stops at the login check.
+          if "$tau" net spine deploy --wrangler "$kit" < /dev/null > "$RUNNER_TEMP/deploy-wrangler.log" 2>&1; then
+            cat "$RUNNER_TEMP/deploy-wrangler.log"
+            echo "::error::tau net spine deploy --wrangler succeeded without a Cloudflare login"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/deploy-wrangler.log"
+          grep -q "npx wrangler login" "$RUNNER_TEMP/deploy-wrangler.log"
           test ! -e "$TAU_HOME/.env" || ! grep -q TAU_SPINE "$TAU_HOME/.env"
 
       - uses: actions/upload-artifact@v7

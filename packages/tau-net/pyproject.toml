@@ -1,6 +1,6 @@
 [project]
 name = "tau-net"
-version = "0.1.0"
+version = "0.2.0"
 description = "The tau network: identity keys, signed and sealed envelopes, contacts, the net hub service, owner tools and the tau net command."
 readme = "README.md"
 license = "MIT"

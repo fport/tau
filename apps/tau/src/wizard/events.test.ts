@@ -50,7 +50,7 @@ describe("tau setup run --json", () => {
     expect(run.logs.filter((l) => l.step === "init").length).toBeGreaterThan(3);
     expect(run.needsUi).toMatchObject({ feature: "net", step: "spine-deploy" });
     expect(needsUiKind(run.needsUi!)).toBe("spine");
-    expect(run.needsUi!.command[3]).toBe("/Users/example/tau-spine");
+    expect(run.needsUi!.command[3]).toBe("/example/home/tau-spine");
     expect(run.done).toMatchObject({ ok: true, configured: true, pending: [] });
     expect(run.error).toBeNull();
   });
@@ -76,7 +76,7 @@ describe("tau setup run --json", () => {
       { event: "progress", feature: "guard", step: "doctor", status: "running", label: "Check the guard's prerequisites", command: ["guard", "doctor"] },
       { event: "log", feature: "guard", step: "doctor", line: "fail sface: …" },
       { event: "progress", feature: "guard", step: "doctor", status: "done", reason: "advisory", detail: "reported problems (exit code 1)", code: 1, label: "Check the guard's prerequisites" },
-      { event: "needs_ui", feature: "guard", step: "setup", label: "Enroll your face and switch the guard on", command: ["guard", "setup"], argv: ["/Users/example/.local/share/uv/tools/tau-core/bin/python", "-m", "tau_core", "guard", "setup"] },
+      { event: "needs_ui", feature: "guard", step: "setup", label: "Enroll your face and switch the guard on", command: ["guard", "setup"], argv: ["/example/home/.local/share/uv/tools/tau-core/bin/python", "-m", "tau_core", "guard", "setup"] },
       { event: "done", feature: "guard", ok: true, configured: false, results: [{ step: "doctor", status: "done", reason: "advisory", code: 1 }, { step: "setup", status: "needs_ui" }], pending: ["restart"] },
     ]);
     expect(run.steps[0]).toMatchObject({ status: "done", reason: "advisory", code: 1 });

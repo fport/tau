@@ -21,7 +21,7 @@ import {
   toggle,
 } from "./machine";
 // Recorded with `tau setup status --json` (tau-core from this repository in a throwaway
-// `uv tool` environment, a scratch TAU_HOME; paths replaced by /Users/example).
+// `uv tool` environment, a scratch TAU_HOME; paths replaced by /example/home).
 import freshEn from "./fixtures/status-fresh-en.json";
 import freshTr from "./fixtures/status-fresh-tr.json";
 import afterEn from "./fixtures/status-after-en.json";

@@ -9,7 +9,7 @@
     "mode": "uv-tool",
     "can_install": true
   },
-  "home": "/Users/example/.tau",
+  "home": "/example/home/.tau",
   "config": true,
   "about": true,
   "core_steps": [

@@ -1,10 +1,10 @@
 {"event": "progress", "feature": "setup", "step": "init", "status": "running", "label": "Model provider and key", "command": ["init", "--yes", "--language", "en", "--provider", "fake"]}
-{"event": "log", "feature": "setup", "step": "init", "line": "wrote /Users/example/.tau/tau.toml"}
-{"event": "log", "feature": "setup", "step": "init", "line": "wrote /Users/example/.tau/persona/persona.md"}
-{"event": "log", "feature": "setup", "step": "init", "line": "wrote /Users/example/.tau/persona/user.example.md"}
-{"event": "log", "feature": "setup", "step": "init", "line": "wrote /Users/example/.tau/persona/user.md"}
-{"event": "log", "feature": "setup", "step": "init", "line": "wrote /Users/example/.tau/.env.example"}
-{"event": "log", "feature": "setup", "step": "init", "line": "Configuration root: /Users/example/.tau (UI language: en)."}
+{"event": "log", "feature": "setup", "step": "init", "line": "wrote /example/home/.tau/tau.toml"}
+{"event": "log", "feature": "setup", "step": "init", "line": "wrote /example/home/.tau/persona/persona.md"}
+{"event": "log", "feature": "setup", "step": "init", "line": "wrote /example/home/.tau/persona/user.example.md"}
+{"event": "log", "feature": "setup", "step": "init", "line": "wrote /example/home/.tau/persona/user.md"}
+{"event": "log", "feature": "setup", "step": "init", "line": "wrote /example/home/.tau/.env.example"}
+{"event": "log", "feature": "setup", "step": "init", "line": "Configuration root: /example/home/.tau (UI language: en)."}
 {"event": "log", "feature": "setup", "step": "init", "line": "Next: edit persona/user.md, then run `tau doctor` and `tau chat`."}
 {"event": "progress", "feature": "setup", "step": "init", "status": "done", "code": 0, "label": "Model provider and key"}
 {"event": "done", "feature": "setup", "step": "init", "ok": true, "results": [{"step": "init", "status": "done", "code": 0}], "pending": []}

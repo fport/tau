@@ -56,19 +56,19 @@ function discovery(): Discovery {
   return {
     tau: tau
       ? {
-          python: "/Users/example/.local/share/uv/tools/tau-core/bin/python",
-          home: "/Users/example/.tau",
+          python: "/example/home/.local/share/uv/tools/tau-core/bin/python",
+          home: "/example/home/.tau",
           kind: "uv_tool",
-          via: "/Users/example/.local/share/uv/tools/tau-core",
+          via: "/example/home/.local/share/uv/tools/tau-core",
           version: old ? "tau-core 0.4.0" : "tau-core 0.5.0",
           uv_tool: true,
         }
       : null,
-    uv: uv ? "/Users/example/.local/bin/uv" : null,
+    uv: uv ? "/example/home/.local/bin/uv" : null,
     rejected: [],
     saved_hub: tau,
     saved_chat: tau,
-    default_home: "/Users/example/.tau",
+    default_home: "/example/home/.tau",
     install_version: null,
     hub_ready: tau,
   };
@@ -202,7 +202,7 @@ mockIPC(async (cmd, payload) => {
           { event: "progress", phase: "download", url: "https://astral.sh/uv/install.sh" },
           { event: "progress", phase: "install_uv" },
           { event: "text", line: "downloading uv 0.10.11 aarch64-apple-darwin" },
-          { event: "text", line: "installing to /Users/example/.local/bin" },
+          { event: "text", line: "installing to /example/home/.local/bin" },
         ]);
       }
       tau = true;

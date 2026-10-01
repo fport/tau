@@ -1,2 +1,2 @@
-{"event": "needs_ui", "feature": "telegram", "step": "pair", "label": "Pair your bot", "command": ["telegram", "pair"], "argv": ["/Users/example/.local/share/uv/tools/tau-core/bin/python", "-m", "tau_core", "telegram", "pair"]}
+{"event": "needs_ui", "feature": "telegram", "step": "pair", "label": "Pair your bot", "command": ["telegram", "pair"], "argv": ["/example/home/.local/share/uv/tools/tau-core/bin/python", "-m", "tau_core", "telegram", "pair"]}
 {"event": "done", "feature": "telegram", "ok": true, "configured": false, "results": [{"step": "pair", "status": "needs_ui"}], "pending": []}

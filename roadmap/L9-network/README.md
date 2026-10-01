@@ -61,5 +61,6 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 176 | [The whole site in the portal's language: black sky, a full-page universe](176-site-in-the-portals-language.md) | AFK | – |
 | 185 | [tau-host runs the web app: the turn protocol, `render_ui` and roomier turns](185-tau-host-runs-the-web-app.md) | AFK | 179, 180 |
 | 186 | [Scheduled tasks for hosted taus on Durable Object alarms](186-hosted-scheduled-tasks.md) | AFK | 182, 185 |
+| 191 | [The public site on Next.js (vinext), in the same Worker](191-public-site-on-nextjs.md) | AFK | 176 |
 
 Live status: `python3 roadmap/board.py --layer L9`

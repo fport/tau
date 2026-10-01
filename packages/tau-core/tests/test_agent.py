@@ -410,7 +410,7 @@ def test_tools_disabled_applies_after_discovery(tmp_path: Path) -> None:
         tmp_path,
         "\n[components.tools]\n"
         "disabled = ['demo_physical_action', 'dist:tau-example-tool', 'dist:tau-net', "
-        "'dist:tau-sub', 'dist:tau-sim']\n",
+        "'dist:tau-sub', 'dist:tau-sim', 'dist:tau-routines']\n",
     )
     agent = build_agent(config=config)
     assert agent.catalog.names() == ["current_time"]

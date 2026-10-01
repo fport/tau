@@ -3,7 +3,17 @@ name = "tau-workspace"
 version = "0.0.0"
 description = "uv workspace root for the tau monorepo (not published)."
 requires-python = ">=3.12"
-dependencies = ["tau-cloud", "tau-core", "tau-guard", "tau-net", "tau-sim", "tau-sub", "tau-tui", "tau-web"]
+dependencies = [
+    "tau-cloud",
+    "tau-core",
+    "tau-guard",
+    "tau-net",
+    "tau-routines",
+    "tau-sim",
+    "tau-sub",
+    "tau-tui",
+    "tau-web",
+]
 
 [tool.uv]
 package = false
@@ -21,6 +31,7 @@ tau-cloud = { workspace = true }
 tau-core = { workspace = true }
 tau-guard = { workspace = true }
 tau-net = { workspace = true }
+tau-routines = { workspace = true }
 tau-sim = { workspace = true }
 tau-sub = { workspace = true }
 tau-tui = { workspace = true }

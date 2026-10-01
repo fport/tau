@@ -12,5 +12,6 @@
 | 172 | [Telegram pairing without looking up a chat id](172-telegram-pairing.md) | AFK | 169 |
 | 173 | [Remote access in setup: Tailscale and the phone](173-remote-access-step.md) | AFK | 169 |
 | 175 | [Docs and site for the installer and the app](175-installer-docs-and-site.md) | AFK | 169, 170 |
+| 190 | [Public downloads for the tau app and its updates](190-public-app-downloads.md) | AFK | 170 |
 
 Live status: `python3 roadmap/board.py --layer L8`

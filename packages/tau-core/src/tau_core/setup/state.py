@@ -3,9 +3,10 @@
 - A feature's package is installed when its distribution is in this environment
   (``importlib.metadata``, through the :class:`~tau_core.setup.host.Host`).
 - It is set up when the catalog's ``[feature.configured]`` rules hold: files under the
-  configuration root, the data dir or the home directory, and variables in the environment
+  configuration root, the data dir or the home directory, variables in the environment
   or ``<home>/.env`` (the guard's enrollment marker, the network identity, the Telegram
-  token, the launchd agent).
+  token, the launchd agent), and a ``tau`` command that exits 0 (remote access:
+  ``tau remote status``).
 - The configuration exists when ``<home>/tau.toml`` does, and "about you" is done when
   ``persona/user.md`` holds something other than the shipped example.
 - tau runs from a ``uv tool`` environment when ``sys.prefix`` holds ``uv-receipt.toml``; the
@@ -172,20 +173,27 @@ def read_receipt(prefix: Path) -> Receipt | None:
 
 
 def _configured(
-    feature: Feature, *, home: Path, data: Path, env: Mapping[str, str], root: Path
+    feature: Feature, host: Host, *, home: Path, data: Path, env: Mapping[str, str]
 ) -> bool:
     rules = feature.configured
     assert rules is not None
     environ = env
 
     def exists(path: str) -> bool:
-        return expand(path, home=home, data=data, environ=environ, root=root).exists()
+        return expand(path, home=home, data=data, environ=environ, root=host.root).exists()
 
     if not all(exists(path) for path in rules.files):
         return False
     if rules.any_files and not any(exists(path) for path in rules.any_files):
         return False
-    return all((env.get(name) or "").strip() for name in rules.env)
+    if not all((env.get(name) or "").strip() for name in rules.env):
+        return False
+    if rules.command:
+        # Last, because it starts a subprocess: `tau remote status` exits 0 once remote access
+        # works end to end.
+        code, _ = host.capture([*host.tau(), *rules.command])
+        return code == 0
+    return True
 
 
 def feature_state(
@@ -195,8 +203,8 @@ def feature_state(
     version = host.version_of(feature.package) if feature.package else None
     installed = feature.package is None or version is not None
     if feature.configured is not None:
-        configured = installed and _configured(
-            feature, home=home, data=data, env=env, root=host.root
+        configured = (
+            available and installed and _configured(feature, host, home=home, data=data, env=env)
         )
     else:
         configured = installed and feature.package is not None

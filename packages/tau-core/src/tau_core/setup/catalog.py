@@ -107,6 +107,10 @@ class Step:
     text: str | None = None
     url: str | None = None
     inputs: tuple[Input, ...] = ()
+    check: bool = False
+    """The command is a check (:mod:`tau_core.setup.checks`): ``tau <command> --json`` prints
+    one check object. The wizard shows it and waits while the owner does its action; JSON mode
+    reports it as a ``check`` event and its action as ``needs_ui``."""
 
     def applies_to(self, platform: str, feature_platforms: tuple[str, ...]) -> bool:
         return platform in (self.platforms or feature_platforms)
@@ -115,12 +119,14 @@ class Step:
 @dataclass(frozen=True)
 class Configured:
     """When a feature counts as set up: every file in ``files`` exists, at least one of
-    ``any_files`` exists (when given), and every variable in ``env`` is set in the environment
-    or ``<home>/.env``."""
+    ``any_files`` exists (when given), every variable in ``env`` is set in the environment or
+    ``<home>/.env``, and ``tau <command>`` exits 0 (when given; asked last, as it costs a
+    subprocess)."""
 
     files: tuple[str, ...] = ()
     any_files: tuple[str, ...] = ()
     env: tuple[str, ...] = ()
+    command: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -223,6 +229,7 @@ _STEP_KEYS = {
     "text",
     "url",
     "input",
+    "check",
 }
 _INPUT_KEYS = {
     "name",
@@ -235,7 +242,7 @@ _INPUT_KEYS = {
     "default",
     "path",
 }
-_CONFIGURED_KEYS = {"files", "any_files", "env"}
+_CONFIGURED_KEYS = {"files", "any_files", "env", "command"}
 
 
 def _where(*parts: str) -> str:
@@ -384,6 +391,7 @@ def _parse_step(
         text=_message(_str(raw, "text", where), where, messages),
         url=_str(raw, "url", where),
         inputs=inputs,
+        check=_bool(raw, "check", where),
     )
     if step.url is not None and not step.url.startswith("https://"):
         raise CatalogError(f"{where}: `url` must be an https URL")
@@ -401,6 +409,12 @@ def _parse_step(
         raise CatalogError(f"{where}: `when_command` needs `unavailable`, the text shown instead")
     if step.needs and not step.needs_text:
         raise CatalogError(f"{where}: `needs` needs `needs_text`, the text shown instead")
+    if step.check:
+        if kind != "command":
+            raise CatalogError(f"{where}: `check` is for command steps")
+        if step.interactive or step.advisory or step.inputs:
+            # The engine does the waiting of a check; it takes no inputs and never fails softly.
+            raise CatalogError(f"{where}: a check is neither interactive nor advisory, no inputs")
     return step
 
 
@@ -414,8 +428,9 @@ def _parse_configured(raw: Any, where: str) -> Configured | None:
         files=_strings(raw, "files", where),
         any_files=_strings(raw, "any_files", where),
         env=_strings(raw, "env", where),
+        command=_command(_strings(raw, "command", where), f"{where} configured"),
     )
-    if not (configured.files or configured.any_files or configured.env):
+    if not (configured.files or configured.any_files or configured.env or configured.command):
         raise CatalogError(f"{where}: `configured` is empty")
     if any(not _ENV.match(name) for name in configured.env):
         raise CatalogError(f"{where}: invalid variable name in `configured.env`")

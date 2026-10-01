@@ -65,7 +65,15 @@ def test_no_step_runs_anything_but_tau() -> None:
         for step in feature.steps:
             assert "sudo" not in step.command
             if step.kind == "command":
-                assert step.command[0] in {"guard", "net", "hub", "telegram", "sub", "cloud"}
+                assert step.command[0] in {
+                    "guard",
+                    "net",
+                    "hub",
+                    "telegram",
+                    "sub",
+                    "cloud",
+                    "remote",
+                }
 
 
 def test_every_setup_message_has_both_languages_and_the_same_fields() -> None:

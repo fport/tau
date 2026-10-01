@@ -2,7 +2,8 @@
 
 Nothing here runs a program: ``run`` records the argv and answers from a table (and can
 simulate what a step does, e.g. ``tau init`` writing ``tau.toml``), ``execv`` records the
-re-execution and returns, ``capture`` answers ``--help`` probes and ``uv tool dir --bin``.
+re-execution and returns, ``capture`` answers ``--help`` probes and ``uv tool dir --bin`` and
+plays check objects (``checks``) back in order, ``open_url`` records the page.
 The environment is a plain dict with ``TAU_HOME``, ``TAU_DATA_DIR`` and ``HOME`` under
 ``tmp_path``, so no test sees ``~/.tau``, the real data dir or the real uv tool dir.
 """
@@ -37,6 +38,7 @@ class FakeHost(Host):
         codes: Mapping[tuple[str, ...], int] | None = None,
         effects: Mapping[tuple[str, ...], Effect] | None = None,
         output: Mapping[tuple[str, ...], Sequence[str]] | None = None,
+        checks: Mapping[tuple[str, ...], Sequence[tuple[int, str]]] | None = None,
         key_answer: KeyCheck | None = None,
         stdin: str = "",
         environ: Mapping[str, str] | None = None,
@@ -67,9 +69,14 @@ class FakeHost(Host):
         self.tty = tty
         self.commands = {tuple(c) for c in commands}
         self.programs = set(programs)
-        self.codes = dict(codes or {})
+        # Remote access is not set up unless a test says so (`tau remote status` exits 0).
+        self.codes = {("remote", "status"): 1, **(codes or {})}
         self.effects = dict(effects or {})
         self.output = dict(output or {})
+        self.checks = {key: list(answers) for key, answers in (checks or {}).items()}
+        """``tau <command> --json`` of a check step: the answers in order, the last one repeats."""
+        self.captures: list[list[str]] = []
+        self.opened: list[str] = []
         self.key_answer = key_answer or KeyCheck("ok", status=200)
         self.key_calls: list[tuple[str, str]] = []
         self.stdin = stdin
@@ -121,6 +128,11 @@ class FakeHost(Host):
         return int(code) if code is not None else 0  # type: ignore[call-overload]
 
     def capture(self, argv: Sequence[str]) -> tuple[int, str]:
+        self.captures.append(list(argv))
+        key = self._key(argv)
+        if key and key[-1] == "--json" and key[:-1] in self.checks:
+            answers = self.checks[key[:-1]]
+            return answers.pop(0) if len(answers) > 1 else answers[0]
         if list(argv[:4]) == [UV, "tool", "dir", "--bin"]:
             return 0, f"{self.bin}\n"
         if argv and argv[0] == TAU and argv[-1] == "--help":
@@ -144,6 +156,10 @@ class FakeHost(Host):
 
     def read_stdin(self, limit: int) -> str:
         return self.stdin[: limit + 1]
+
+    def open_url(self, url: str) -> bool:
+        self.opened.append(url)
+        return True
 
     # -- helpers for the tests -------------------------------------------------------------------
 

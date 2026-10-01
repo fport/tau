@@ -90,7 +90,11 @@ interactive = true
 when_command = ["telegram", "pair"]
 unavailable = "setup.note.telegram.manual"
 
-# -- remote access (issue 173 turns this into guided steps) ---------------------------------------
+# -- remote access (issue 173): three check steps of `tau remote` ---------------------------------
+# A check step runs `tau <command> --json` quietly and shows what the owner has to do. The SSH
+# part needs sudo, so its step shows one command (infra/remote/setup-all.sh) and waits; tau never
+# runs it. Set up = `tau remote status` exits 0: Tailscale connected, sshd hardened, mosh, tmux
+# and a key for the phone.
 
 [[feature]]
 id = "remote"
@@ -100,11 +104,26 @@ platforms = ["darwin", "linux"]
 default = false
 docs = "guides/phone-tailscale-termius/"
 
+[feature.configured]
+command = ["remote", "status"]
+
 [[feature.step]]
-id = "guide"
-kind = "note"
-label = "setup.step.remote.guide"
-text = "setup.note.remote.guide"
+id = "tailscale"
+label = "setup.step.remote.tailscale"
+command = ["remote", "tailscale"]
+check = true
+
+[[feature.step]]
+id = "ssh"
+label = "setup.step.remote.ssh"
+command = ["remote", "ssh"]
+check = true
+
+[[feature.step]]
+id = "phone"
+label = "setup.step.remote.phone"
+command = ["remote", "phone"]
+check = true
 
 # -- the owner guard (ADR 0008: at the Mac, never over SSH) ---------------------------------------
 

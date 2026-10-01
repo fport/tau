@@ -13,6 +13,9 @@
   never from argv. A secret input goes to ``<home>/.env`` (mode 0600) before its step runs.
 - A step that needs its own UI (``interactive`` in the catalog, e.g. ``tau guard setup``) is
   not run: ``needs_ui`` names its argv and the run stops there, so the app can run it itself.
+- A check step (``check`` in the catalog, e.g. ``tau remote ssh``) runs quietly: a ``check``
+  event carries its result, and while it fails with an action ``needs_ui`` carries that action
+  (a command to show, never to run) and the run stops, with the check first in ``pending``.
 """
 
 from __future__ import annotations
@@ -41,6 +44,7 @@ from tau_core.setup.engine import (
     parse_ids,
     preflight,
     render_user_md,
+    run_check,
     step_argv,
     store_secrets,
     write_user_md,
@@ -90,6 +94,7 @@ def _step_json(step: Step, language: str) -> dict[str, Any]:
         "interactive": step.interactive,
         "optional": step.optional,
         "local_only": step.local_only,
+        "check": step.check,
     }
     if step.kind == "command":
         payload["command"] = list(step.command)
@@ -366,6 +371,15 @@ def _run_feature(
             results.append(outcome)
             emit("progress", feature=feature.id, step=step.id, status="info", label=label, **extra)
             continue
+        if step.check:
+            outcome = _check_step(host, feature, step, label, emit, language)
+            if outcome is None:  # needs_ui: the owner acts, then the app runs it again
+                results.append(Outcome(feature.id, step.id, label, "needs_ui"))
+                pending = [s.id for s in selected[index:]]
+                break
+            results.append(outcome)
+            emit("progress", feature=feature.id, **outcome.as_json(), label=label)
+            continue
         args, missing = step_argv(step, values, host.environ)
         if missing is not None:
             detail = t("setup.skip.no_input", language, input=missing)
@@ -426,6 +440,42 @@ def _run_feature(
         pending=pending,
     )
     return 0 if ok else 1
+
+
+def _check_step(
+    host: Host, feature: Feature, step: Step, label: str, emit: Emit, language: str
+) -> Outcome | None:
+    """Run a check step: its outcome, or ``None`` after ``needs_ui`` (it failed with an action
+    the owner has to do). Nothing of the action is run here."""
+    emit(
+        "progress",
+        feature=feature.id,
+        step=step.id,
+        status="checking",
+        label=label,
+        command=list(step.command),
+    )
+    result, code = run_check(host, step.command)
+    if result is None:
+        detail = t("setup.check.invalid", language, code=code)
+        return Outcome(feature.id, step.id, label, "failed", "exit", detail, code)
+    payload = result.as_json()
+    del payload["check"]
+    emit("check", feature=feature.id, step=step.id, **payload)
+    if result.ok:
+        return Outcome(feature.id, step.id, label, "done", code=0)
+    if result.action is None:
+        detail = result.summary or t("setup.fail.exit", language, code=code)
+        return Outcome(feature.id, step.id, label, "failed", "check", detail, code)
+    emit(
+        "needs_ui",
+        feature=feature.id,
+        step=step.id,
+        label=label,
+        summary=result.summary,
+        action=result.action.as_json(),
+    )
+    return None
 
 
 # -- the core steps --------------------------------------------------------------------------------

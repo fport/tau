@@ -441,15 +441,6 @@ SETUP_MESSAGES: dict[str, dict[str, str]] = {
         "tr": "Bu makinede Tailscale",
     },
     "setup.step.remote.ssh": {"en": "SSH and mosh", "tr": "SSH ve mosh"},
-    "setup.step.remote.guide": {"en": "Tailscale and SSH", "tr": "Tailscale ve SSH"},
-    "setup.note.remote.guide": {
-        "en": "Guided remote access comes with a later version. Its SSH part needs sudo, "
-        "which tau setup never runs: follow the guide to install Tailscale and run the one "
-        "sudo command yourself.",
-        "tr": "Rehberli uzaktan erişim sonraki bir sürümle geliyor. SSH kısmı sudo ister, "
-        "tau setup ise sudo'yu hiç çalıştırmaz: Tailscale'i kurmak ve tek sudo komutunu "
-        "kendin çalıştırmak için rehberi izle.",
-    },
     "setup.step.remote.phone": {"en": "Your phone (Termius)", "tr": "Telefonun (Termius)"},
     "setup.step.guard.doctor": {
         "en": "Check the guard's prerequisites",

@@ -12,7 +12,9 @@
 5. A summary: what is on, skipped (and why) or failed, what to run next and where the docs are.
 
 Every text comes from the message table; the steps run as subprocesses of this installation's
-``tau``, with the terminal when they are interactive.
+``tau``, with the terminal when they are interactive. A check step (remote access) runs quietly:
+the wizard shows its result and what the owner has to do, offers to open its page, and waits for
+"done" (check again) or "skip". It never runs the command it shows.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import click
 
 from tau_core.i18n import DEFAULT_LANGUAGE, LANGUAGES, t
 from tau_core.setup.catalog import Catalog, Feature, Step
+from tau_core.setup.checks import Action, render_action, render_checks
 from tau_core.setup.engine import (
     InstallPlan,
     Outcome,
@@ -35,6 +38,7 @@ from tau_core.setup.engine import (
     preflight,
     read_state,
     render_user_md,
+    run_check,
     step_argv,
     store_secrets,
     write_state,
@@ -620,6 +624,12 @@ class Wizard:
         command = command_text(step.command)
         if self.yes and step.optional:
             return self._skipped(feature, step, "optional", self.t("setup.skip.optional"))
+        if step.check:
+            if step.optional and not self.yes:
+                ask = self.t("setup.step.ask", label=label, command=command)
+                if not self.confirm(ask, default=False):
+                    return self._skipped(feature, step, "declined", self.t("setup.skip.declined"))
+            return self._check_step(feature, step, label)
         if self.yes and step.interactive:
             text = self.t("setup.skip.interactive", command=command)
             return self._skipped(feature, step, "interactive", text)
@@ -648,6 +658,58 @@ class Wizard:
         detail = problem or self.t("setup.fail.exit", code=code)
         self.echo(self.t("setup.step.failed", label=label, reason=detail))
         return Outcome(feature.id, step.id, label, "failed", "exit", detail, code)
+
+    def _check_step(self, feature: Feature, step: Step, label: str) -> Outcome:
+        """Check, show what the owner has to do, wait for "done" or "skip", check again. The
+        action's command is shown, never run: it may need sudo, which only the owner types."""
+        self.echo(self.t("setup.check.running", label=label))
+        offered: set[str] = set()
+        shown: Action | None = None
+        while True:
+            result, code = run_check(self.host, step.command)
+            if result is None:
+                detail = self.t("setup.check.invalid", code=code)
+                self.echo(self.t("setup.step.failed", label=label, reason=detail))
+                return Outcome(feature.id, step.id, label, "failed", "exit", detail, code)
+            for line in render_checks(result.checks):
+                self.echo(line)
+            if result.ok:
+                done = f"{label}: {result.summary}" if result.summary else label
+                self.echo(self.t("setup.step.done", label=done))
+                return Outcome(feature.id, step.id, label, "done", code=0)
+            action = result.action
+            if action is None:
+                detail = result.summary or self.t("setup.fail.exit", code=code)
+                self.echo(self.t("setup.step.failed", label=label, reason=detail))
+                return Outcome(feature.id, step.id, label, "failed", "check", detail, code)
+            if self.yes:
+                detail = self.t("setup.skip.action", summary=result.summary, feature=feature.id)
+                return self._skipped(feature, step, "action", detail)
+            for line in render_action(action, self.language, brief=action == shown):
+                self.echo(line)
+            self.echo()
+            shown = action
+            if action.url and action.url not in offered:
+                offered.add(action.url)
+                if self.confirm(self.t("setup.check.open", url=action.url), default=False):
+                    if not self.host.open_url(action.url):
+                        self.echo(self.t("setup.check.open_failed", url=action.url))
+            if not self._done_or_skip():
+                return self._skipped(feature, step, "declined", self.t("setup.skip.declined"))
+            self.echo(self.t("setup.check.again", label=label))
+
+    def _done_or_skip(self) -> bool:
+        """``True`` for "done" (or Enter): check again; ``False`` for "skip"."""
+        done_words = set(self.t("setup.check.done_words").split(","))
+        skip_words = set(self.t("setup.check.skip_words").split(","))
+        while True:
+            answer = click.prompt(self.t("setup.check.wait"), default="", show_default=False)
+            answer = str(answer).strip().casefold()
+            if not answer or answer in done_words:
+                return True
+            if answer in skip_words:
+                return False
+            self.echo(self.t("setup.check.wait_invalid"))
 
     def _skipped(self, feature: Feature, step: Step, reason: str, detail: str) -> Outcome:
         label = self.t(step.label)

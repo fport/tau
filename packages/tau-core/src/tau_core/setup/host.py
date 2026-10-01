@@ -84,6 +84,11 @@ class Host:
         """Up to ``limit`` characters of stdin (JSON mode's input object)."""
         raise NotImplementedError
 
+    def open_url(self, url: str) -> bool:
+        """Open ``url`` in the owner's browser (asked first by the wizard); ``True`` when a
+        browser took it."""
+        raise NotImplementedError
+
     def over_ssh(self) -> bool:
         return bool(self.environ.get("SSH_CONNECTION") or self.environ.get("SSH_TTY"))
 
@@ -167,3 +172,11 @@ class SystemHost(Host):
         if self.stdin_isatty():
             return ""
         return sys.stdin.read(limit + 1)
+
+    def open_url(self, url: str) -> bool:
+        import webbrowser
+
+        try:
+            return webbrowser.open(url)
+        except webbrowser.Error:
+            return False

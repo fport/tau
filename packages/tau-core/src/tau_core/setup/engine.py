@@ -7,6 +7,7 @@
   environment: a JSON file of mode 0600 in a fresh temporary directory, removed when read.
 - :func:`preflight`, :func:`step_argv` and :func:`store_secrets` decide whether a step can run,
   build its argv from the inputs and put secret inputs into ``<home>/.env``, never argv.
+- :func:`run_check` runs a check step's ``tau <command> --json`` and reads its check object.
 - :func:`write_user_md` writes "about you" into ``persona/user.md``.
 """
 
@@ -24,6 +25,7 @@ from typing import Any
 
 from tau_core.builder import write_env_key
 from tau_core.setup.catalog import Catalog, Feature, Input, Step
+from tau_core.setup.checks import CheckResult, parse_check
 from tau_core.setup.host import Host
 from tau_core.setup.state import Snapshot, expand
 
@@ -41,6 +43,7 @@ __all__ = [
     "preflight",
     "read_state",
     "render_user_md",
+    "run_check",
     "step_argv",
     "store_secrets",
     "write_state",
@@ -216,7 +219,9 @@ class Outcome:
     reason: str | None = None
     """Machine code for skipped and failed: ``platform``, ``ssh``, ``missing_command``,
     ``needs``, ``declined``, ``optional``, ``interactive``, ``no_input``, ``not_installed``,
-    ``configured``, ``unavailable``, ``exit``, ``start``, ``interrupted``, ``advisory``."""
+    ``configured``, ``unavailable``, ``exit``, ``start``, ``interrupted``, ``advisory``,
+    ``action`` (a check that needs the owner, under ``--yes``), ``check`` (a check failed with
+    nothing the owner can do)."""
     detail: str = ""
     """The localized explanation shown to the owner."""
     code: int | None = None
@@ -298,6 +303,16 @@ def step_argv(
             assert item.flag is not None
             flags += [item.flag, value]
     return [*step.command, *positional, *flags], None
+
+
+def run_check(host: Host, command: Sequence[str]) -> tuple[CheckResult | None, int]:
+    """``tau <command> --json`` of a check step, quietly: ``(its check object, exit code)``, or
+    ``(None, exit code)`` when it printed none (it crashed or is not a check)."""
+    code, out = host.capture([*host.tau(), *command, "--json"])
+    try:
+        return parse_check(out), code
+    except ValueError:
+        return None, code
 
 
 def store_secrets(step: Step, values: Mapping[str, str], home: Path) -> list[tuple[str, bool]]:

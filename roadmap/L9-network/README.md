@@ -62,5 +62,6 @@ Protocol and API: [`docs/reference/tau-network.md`](../../docs/reference/tau-net
 | 185 | [tau-host runs the web app: the turn protocol, `render_ui` and roomier turns](185-tau-host-runs-the-web-app.md) | AFK | 179, 180 |
 | 186 | [Scheduled tasks for hosted taus on Durable Object alarms](186-hosted-scheduled-tasks.md) | AFK | 182, 185 |
 | 191 | [The public site on Next.js (vinext), in the same Worker](191-public-site-on-nextjs.md) | AFK | 176 |
+| 192 | [`tau net spine deploy` refuses to repoint a live spine](192-spine-deploy-refuses-to-repoint.md) | AFK | – |
 
 Live status: `python3 roadmap/board.py --layer L9`

@@ -278,7 +278,7 @@ console.log(
 const steps = [
   "bun run dev                        # the site and the API at http://127.0.0.1:8790",
   "bunx wrangler login              # once, to deploy",
-  "bun run deploy                 # builds the page script, deploys the Worker and its Durable Objects",
+  "bun run deploy                 # builds the site with Vite, deploys the Worker and its Durable Objects",
   "bun run identity               # once: the universe's network identity, in .universe-identity",
   `bunx wrangler secret put ${IDENTITY} < .universe-identity`,
   "bun run configure --check-identity   # the deployed Worker has the secret",

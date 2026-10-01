@@ -1,8 +1,7 @@
-# Headers for files the asset store serves without the Worker (styles, scripts, brand
-# SVGs, fonts, and /404 or /tr/404 when asked for by name). The Worker sets the security
-# headers of docs/reference/tau-universe.md §2 on every page in both languages, the 404
-# answers and the API itself (src/pages.ts); keep the policy below identical to
-# CONTENT_SECURITY_POLICY there.
+# Headers for files the asset store serves without the Worker (styles, the pages' bundles
+# under /_next/static/, brand SVGs, fonts, install.sh). No page is a file: the Worker renders
+# every page and sets the security headers of docs/reference/tau-universe.md §2 itself
+# (src/pages.ts, worker/index.ts).
 #
 # The page policy goes on HTML only: an SVG loaded as an image keeps its own <style>
 # (the hero's motion), which a `style-src 'self'` on the SVG response could block.
@@ -10,11 +9,8 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
-/404
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'
-
-/tr/404
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
 
 /static/fonts/*
   Cache-Control: public, max-age=604800

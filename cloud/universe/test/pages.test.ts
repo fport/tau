@@ -1,35 +1,40 @@
+/**
+ * What the server decides about the pages (src/pages.ts): which app route each path renders,
+ * in which language, with which status and headers, and the language choice. The server under
+ * test renders a stand-in that names the route (test/worker.ts); the rendered pages
+ * themselves are checked in the built Worker (test/site.test.ts).
+ */
+
 import { describe, expect, it } from "vitest";
 import headersFile from "../public/_headers?raw";
 import installScript from "../public/install.sh?raw";
-import wranglerConfig from "../wrangler.example.jsonc?raw";
 import {
   CONTENT_SECURITY_POLICY,
   PAGES,
   cookieLanguage,
+  pageSecurityPolicy,
   preferredLanguage,
+  newNonce,
 } from "../src/pages";
+import { createUniverse } from "../src/server";
+import { env } from "cloudflare:workers";
 import { universe } from "./helpers";
+import { renderStandIn } from "./worker";
 
 const EXPECTED_CSP =
   "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; " +
   "connect-src 'self'; frame-ancestors 'none'";
 
-/** Each English page and its Turkish twin. */
-const TWINS: readonly (readonly [string, string])[] = [
-  ["/", "/tr/"],
-  ["/how-it-works", "/tr/how-it-works"],
-  ["/universe", "/tr/universe"],
-  ["/download", "/tr/download"],
+/** Each English page, its Turkish twin, and the app routes they render. */
+const TWINS: readonly (readonly [string, string, string, string])[] = [
+  ["/", "/tr/", "/", "/tr"],
+  ["/how-it-works", "/tr/how-it-works", "/how-it-works", "/tr/how-it-works"],
+  ["/universe", "/tr/universe", "/universe", "/tr/universe"],
+  ["/download", "/tr/download", "/download", "/tr/download"],
+  ["/soon", "/tr/soon", "/soon", "/tr/soon"],
 ];
 
-const ALL_PAGES = TWINS.flat();
-const SITE = "https://tau.getporti.com";
-const DOCS = "https://docs.tau.getporti.com/";
-const TURKISH_DOCS = `${DOCS}tr/`;
 const TURKISH = "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7";
-/** The Mac app's disk image, attached to every GitHub release (issue 170). */
-const DMG = "https://github.com/fport/tau/releases/latest/download/tau.dmg";
-const INSTALL = "curl -fsSL https://tau.getporti.com/install.sh | sh";
 
 function expectSecurityHeaders(res: Response): void {
   expect(res.headers.get("content-security-policy")).toBe(EXPECTED_CSP);
@@ -37,130 +42,62 @@ function expectSecurityHeaders(res: Response): void {
   expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
 }
 
-async function html(path: string, init?: RequestInit): Promise<string> {
-  const res = await universe(path, init);
-  expect(res.status, path).toBe(200);
-  return res.text();
-}
-
-function hrefs(page: string): string[] {
-  return [...page.matchAll(/\shref="([^"]*)"/g)].map((match) => match[1]!);
-}
-
-function ids(page: string): string[] {
-  return [...page.matchAll(/\sid="([^"]*)"/g)].map((match) => match[1]!);
+/** The app route the stand-in renderer was asked for. */
+function routeOf(page: string): string | null {
+  return /data-route="([^"]*)"/.exec(page)?.[1] ?? null;
 }
 
 describe("pages", () => {
-  it("serves the landing page at / with the security headers", async () => {
-    const res = await universe("/");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
-    expectSecurityHeaders(res);
-    const page = await res.text();
-    expect(page).toContain("A personal agent that lives on your own machine.");
-    expect(page).toContain('href="https://docs.tau.getporti.com/"');
-    expect(page).toContain('href="/universe"');
-    expect(page).not.toMatch(/github\.com/i);
-    // The hero is the universe on a canvas, drawn by its own script (client/landing.ts).
-    expect(page).toContain('<canvas class="hero-cosmos" id="cosmos" aria-hidden="true"></canvas>');
-    expect(page).toContain('<script type="module" src="/static/landing.js"></script>');
-    expect(page).not.toContain("/static/universe.js");
-  });
-
-  it("offers the Mac app and the one-line installer as the local way, in both languages", async () => {
-    for (const [path, download, copy] of [
-      ["/", "/download", "Copy"],
-      ["/tr/", "/tr/download", "Kopyala"],
-    ] as const) {
-      const page = await html(path);
-      const local = /<li class="way way-local">[\s\S]*?<\/li>/.exec(page)?.[0] ?? "";
-      expect(local, path).toContain(`<a class="button" href="${download}">`);
-      expect(page, path).toContain(`<code id="install-command">${INSTALL}</code>`);
-      expect(page, path).toContain(
-        `<button class="copy" type="button" data-copy="install-command" aria-describedby="install-command">${copy}</button>`,
-      );
-    }
-  });
-
-  it("serves the download page with the app, its first open, the wizard and the terminal way", async () => {
-    const res = await universe("/download");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
-    expectSecurityHeaders(res);
-    const english = await res.text();
-    const turkish = await html("/tr/download");
-    for (const page of [english, turkish]) {
-      expect(page).toContain('<script type="module" src="/static/download.js"></script>');
-      expect(page).toContain(`href="${DMG}"`);
-      expect(page).toContain("macOS 13");
-      for (const id of ["first-open", "first-launch", "terminal", "manual", "features"]) {
-        expect(page, id).toMatch(new RegExp(`<section class="chapter" id="${id}"`));
+  it("renders every page in English and in Turkish, from its app route", async () => {
+    for (const [en, tr, enRoute, trRoute] of TWINS) {
+      for (const [path, route, lang] of [
+        [en, enRoute, "en"],
+        [tr, trRoute, "tr"],
+      ] as const) {
+        const res = await universe(path);
+        expect(res.status, path).toBe(200);
+        expect(res.headers.get("content-type"), path).toMatch(/^text\/html/);
+        expect(res.headers.get("content-language"), path).toBe(lang);
+        expectSecurityHeaders(res);
+        expect(routeOf(await res.text()), path).toBe(route);
       }
-      expect(page).toContain(INSTALL);
-      expect(page).toContain("curl -fsSL https://tau.getporti.com/install.sh | less");
-      expect(page).toContain("TAU_INSTALL_NO_SETUP=1");
-      expect(page).toContain("uv tool install tau-core --with tau-tui --with tau-net --with tau-sub");
-      // The wizard's eight steps.
-      expect([...page.matchAll(/<li class="chamfer">/g)]).toHaveLength(8);
     }
-    expect(english).toContain("Open Anyway");
-    expect(english).toContain(`${DOCS}guides/setup-features/`);
-    expect(turkish).toContain("Yine de Aç");
-    expect(turkish).toContain(`${TURKISH_DOCS}guides/setup-features/`);
+    expect(Object.keys(PAGES).sort()).toEqual(TWINS.flatMap(([en, tr]) => [en, tr]).sort());
   });
 
-  it("serves the universe page at /universe with the security headers", async () => {
-    const res = await universe("/universe");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
-    expectSecurityHeaders(res);
-    const page = await res.text();
-    expect(page).toContain("The tau universe");
-    expect(page).toContain('<script type="module" src="/static/universe.js"></script>');
-    // The whole page is the universe: one canvas, the list and the join steps in its panel.
-    expect(page).toContain('<link rel="stylesheet" href="/styles/universe.css">');
-    expect(page).toContain('id="cosmos"');
-    expect(page).toContain('id="tau-list"');
-    expect(page).toContain("tau net universe join");
-  });
-
-  it("answers HEAD for the pages", async () => {
+  it("answers HEAD for the pages, without a body", async () => {
     for (const path of ["/", "/tr/how-it-works"]) {
       const res = await universe(path, { method: "HEAD" });
       expect(res.status, path).toBe(200);
+      expect(await res.text(), path).toBe("");
       expectSecurityHeaders(res);
     }
   });
 
-  it("keeps the pages free of inline scripts and styles (the CSP would block them)", async () => {
-    for (const path of [...ALL_PAGES, "/nowhere", "/tr/nowhere"]) {
-      const page = await (await universe(path)).text();
-      expect(page).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/);
-      expect(page).not.toMatch(/<style[\s>]/);
-      expect(page).not.toMatch(/\sstyle="/);
-      expect(page).not.toMatch(/\son[a-z]+="/);
+  it("answers unknown paths with the 404 page of their language", async () => {
+    for (const [path, route, lang] of [
+      ["/nowhere", "/page/missing", "en"],
+      ["/tr/nowhere", "/tr/page/missing", "tr"],
+      ["/a/b/c", "/page/missing", "en"],
+    ] as const) {
+      const res = await universe(path);
+      expect(res.status, path).toBe(404);
+      expect(res.headers.get("content-type"), path).toMatch(/^text\/html/);
+      expect(res.headers.get("content-language"), path).toBe(lang);
+      expect(res.headers.get("cache-control"), path).toBe("no-store");
+      expectSecurityHeaders(res);
+      expect(routeOf(await res.text()), path).toBe(route);
     }
   });
 
-  it("answers unknown paths with the 404 page and the security headers", async () => {
-    const res = await universe("/nowhere");
+  it("answers plain text when the 404 page itself cannot be rendered", async () => {
+    const broken = createUniverse(async () => {
+      throw new Error("no renderer");
+    });
+    const res = await broken.fetch(new Request("https://universe.example/nowhere"), env);
     expect(res.status).toBe(404);
-    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
-    expect(res.headers.get("content-language")).toBe("en");
+    expect(res.headers.get("content-type")).toMatch(/^text\/plain/);
     expectSecurityHeaders(res);
-    expect(await res.text()).toContain("Nothing at this address.");
-  });
-
-  it("answers unknown paths under /tr/ with the Turkish 404 page", async () => {
-    const res = await universe("/tr/nowhere");
-    expect(res.status).toBe(404);
-    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
-    expect(res.headers.get("content-language")).toBe("tr");
-    expectSecurityHeaders(res);
-    const page = await res.text();
-    expect(page).toContain('<html lang="tr">');
-    expect(page).toContain("Bu adreste bir şey yok.");
   });
 
   it("refuses other methods on pages", async () => {
@@ -172,28 +109,38 @@ describe("pages", () => {
     }
   });
 
-  it("puts the same policy into public/_headers for /404 and /tr/404", () => {
-    expect(CONTENT_SECURITY_POLICY).toBe(EXPECTED_CSP);
-    for (const path of ["/404", "/tr/404"]) {
-      const rule = headersFile
-        .split(/\n\s*\n/)
-        .find((block) => new RegExp(`^${path.replaceAll("/", "\\/")}$`, "m").test(block));
-      expect(rule, path).toBeDefined();
-      expect(rule).toContain(`Content-Security-Policy: ${EXPECTED_CSP}`);
-    }
-    expect(headersFile).toContain("X-Content-Type-Options: nosniff");
-    expect(headersFile).toContain("Referrer-Policy: strict-origin-when-cross-origin");
+  it("keeps a page's own policy, the one with its nonce", async () => {
+    const nonce = newNonce();
+    const withNonce = createUniverse(async (request, target, e, ctx) => {
+      const page = await renderStandIn(request, target, e, ctx);
+      const response = new Response(page.body, page);
+      response.headers.set("content-security-policy", pageSecurityPolicy(nonce));
+      return response;
+    });
+    const res = await withNonce.fetch(new Request("https://universe.example/universe"), env);
+    expect(res.headers.get("content-security-policy")).toBe(pageSecurityPolicy(nonce));
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  it("serves install.sh as plain text straight from the asset store", () => {
-    const rule = headersFile
-      .split(/\n\s*\n/)
-      .find((block) => /^\/install\.sh$/m.test(block));
+  it("makes each page's nonce fresh, and allows it for scripts and styles only", () => {
+    const a = newNonce();
+    expect(a).toMatch(/^[A-Za-z0-9+/]{22}==$/);
+    expect(newNonce()).not.toBe(a);
+    const policy = pageSecurityPolicy(a);
+    expect(policy).toContain(`script-src 'self' 'nonce-${a}'`);
+    expect(policy).toContain(`style-src 'self' 'nonce-${a}'`);
+    expect(policy.replace(` 'nonce-${a}'`, "").replace(` 'nonce-${a}'`, "")).toBe(
+      CONTENT_SECURITY_POLICY,
+    );
+    expect(CONTENT_SECURITY_POLICY).toBe(EXPECTED_CSP);
+  });
+
+  it("keeps the asset store's headers for the files it serves", () => {
+    expect(headersFile).toContain("X-Content-Type-Options: nosniff");
+    expect(headersFile).toContain("Referrer-Policy: strict-origin-when-cross-origin");
+    const rule = headersFile.split(/\n\s*\n/).find((block) => /^\/install\.sh$/m.test(block));
     expect(rule).toBeDefined();
     expect(rule).toContain("Content-Type: text/plain; charset=utf-8");
-    const match = /"run_worker_first":\s*(\[[^\]]*\])/.exec(wranglerConfig);
-    const routes = JSON.parse(match![1]!) as string[];
-    expect(routes).not.toContain("/install.sh");
   });
 
   it("keeps install.sh safe to pipe into sh", () => {
@@ -205,129 +152,6 @@ describe("pages", () => {
       .filter((line) => line.trim() !== "" && !line.trimStart().startsWith("#"));
     // `sudo` appears only in what the script says, never as a command it runs
     expect(code.some((line) => /\bsudo\b/.test(line) && !line.includes('say "'))).toBe(false);
-  });
-
-  it("runs the Worker first for every page, so every page gets the headers", () => {
-    const match = /"run_worker_first":\s*(\[[^\]]*\])/.exec(wranglerConfig);
-    expect(match).not.toBeNull();
-    const routes = JSON.parse(match![1]!) as string[];
-    expect(routes).toContain("/api/*");
-    expect(routes).toContain("/tr");
-    for (const path of Object.keys(PAGES)) expect(routes, path).toContain(path);
-    expect(Object.keys(PAGES).sort()).toEqual([...ALL_PAGES].sort());
-  });
-});
-
-describe("pages in two languages", () => {
-  it("serves every page in English and in Turkish with its language", async () => {
-    for (const [en, tr] of TWINS) {
-      for (const [path, lang] of [
-        [en, "en"],
-        [tr, "tr"],
-      ] as const) {
-        const res = await universe(path);
-        expect(res.status, path).toBe(200);
-        expect(res.headers.get("content-type")).toMatch(/^text\/html/);
-        expect(res.headers.get("content-language"), path).toBe(lang);
-        expectSecurityHeaders(res);
-        expect(await res.text(), path).toContain(`<html lang="${lang}">`);
-      }
-    }
-  });
-
-  it("names both versions of each page with hreflang, English as the default", async () => {
-    for (const [en, tr] of TWINS) {
-      for (const path of [en, tr]) {
-        const page = await html(path);
-        expect(page, path).toContain(`<link rel="alternate" hreflang="en" href="${SITE}${en}">`);
-        expect(page, path).toContain(`<link rel="alternate" hreflang="tr" href="${SITE}${tr}">`);
-        expect(page, path).toContain(
-          `<link rel="alternate" hreflang="x-default" href="${SITE}${en}">`,
-        );
-      }
-    }
-  });
-
-  it("puts a switcher on every page that links the same page in the other language", async () => {
-    for (const [en, tr] of TWINS) {
-      const english = await html(en);
-      expect(english).toContain('<nav class="lang-switch" aria-label="Language">');
-      expect(english).toContain(`<a href="${tr}?lang=tr" hreflang="tr" lang="tr">`);
-      const turkish = await html(tr);
-      expect(turkish).toContain('<nav class="lang-switch" aria-label="Dil">');
-      expect(turkish).toContain(`<a href="${en}?lang=en" hreflang="en" lang="en">`);
-    }
-    const missing = await (await universe("/nowhere")).text();
-    expect(missing).toContain('<a href="/tr/?lang=tr" hreflang="tr" lang="tr">');
-    const eksik = await (await universe("/tr/nowhere")).text();
-    expect(eksik).toContain('<a href="/?lang=en" hreflang="en" lang="en">');
-  });
-
-  it("keeps each language's links in that language, the docs included", async () => {
-    // Assets, and the sign-in (tau-host's, one path for both languages).
-    const asset = /^\/(brand|styles|static|auth)\//;
-    for (const [en, tr] of TWINS) {
-      for (const href of hrefs(await html(tr))) {
-        const where = `${tr}: ${href}`;
-        // The disk image is the one link outside the site and the docs (the download page).
-        if (href === DMG) continue;
-        if (href.startsWith("https://")) {
-          expect(href.startsWith(TURKISH_DOCS) || href.startsWith(`${SITE}/`), where).toBe(true);
-        } else if (href.startsWith("/") && !asset.test(href)) {
-          expect(href.startsWith("/tr/") || href.endsWith("?lang=en"), where).toBe(true);
-        }
-      }
-      for (const href of hrefs(await html(en))) {
-        const where = `${en}: ${href}`;
-        expect(href.startsWith("/tr/") && !href.endsWith("?lang=tr"), where).toBe(false);
-        expect(href.startsWith(TURKISH_DOCS), where).toBe(false);
-      }
-    }
-  });
-
-  it("gives each Turkish page the same structure as its English source", async () => {
-    for (const [en, tr] of TWINS) {
-      expect(ids(await html(tr)), tr).toEqual(ids(await html(en)));
-    }
-  });
-
-  it("links how it works from the landing page, in the nav and under the hero", async () => {
-    const english = await html("/");
-    expect(english).toMatch(/<nav class="site-nav" aria-label="Main">\s*<a href="\/how-it-works">/);
-    expect(english).toMatch(/<p class="hero-more">[^<]*<a href="\/how-it-works">/);
-    const turkish = await html("/tr/");
-    expect(turkish).toMatch(
-      /<nav class="site-nav" aria-label="Ana menü">\s*<a href="\/tr\/how-it-works">/,
-    );
-    expect(turkish).toMatch(/<p class="hero-more">[^<]*<a href="\/tr\/how-it-works">/);
-  });
-
-  it("explains how tau works in both languages, security and start included", async () => {
-    const sections = [
-      "machine",
-      "address",
-      "talking",
-      "subs",
-      "visitors",
-      "universe",
-      "ways",
-      "hacked",
-      "start",
-    ];
-    const english = await html("/how-it-works");
-    const turkish = await html("/tr/how-it-works");
-    for (const id of sections) {
-      expect(english, id).toMatch(new RegExp(`<section class="chapter[^"]*" id="${id}"`));
-      expect(turkish, id).toMatch(new RegExp(`<section class="chapter[^"]*" id="${id}"`));
-    }
-    expect(english).toContain("Can I be hacked?");
-    expect(english).toContain("When is Bob free on Friday?");
-    expect(english).toContain(`${DOCS}getting-started/build-your-own-tau/`);
-    expect(english).toContain(`${DOCS}getting-started/try-locally/`);
-    expect(turkish).toContain("Hacklenebilir miyim?");
-    expect(turkish).toContain("Bob cuma ne zaman müsait?");
-    expect(turkish).toContain(`${TURKISH_DOCS}getting-started/build-your-own-tau/`);
-    expect(turkish).toContain(`${TURKISH_DOCS}getting-started/try-locally/`);
   });
 
   it("redirects /tr to /tr/", async () => {

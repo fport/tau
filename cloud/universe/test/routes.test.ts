@@ -1,14 +1,13 @@
 /**
  * ADR 0013 §6 routing: the person, sub-tau and claim pages, and the paths forwarded to
- * tau-host. The page templates (public/person.html, sub.html, claim.html) belong to the
- * site's pages; these tests serve stand-ins through a fake ASSETS binding, so they check the
- * routing and not the pages' content.
+ * tau-host. The pages are React (app/, ADR 0016); the server under test renders a stand-in
+ * that names the app route it was asked for (test/worker.ts), so these tests check the
+ * routing and not the pages' content (test/site.test.ts does).
  */
 
 import { reset } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import wranglerConfig from "../wrangler.example.jsonc?raw";
 import {
   isForwarded,
   isReservedName,
@@ -28,35 +27,15 @@ import {
   universe,
   universeWith,
 } from "./helpers";
+import worker from "./worker";
 
 const EXPECTED_CSP =
   "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; " +
   "connect-src 'self'; frame-ancestors 'none'";
 
-const TEMPLATE_FILES = ["/person", "/sub", "/claim", "/tr/person", "/tr/sub", "/tr/claim"];
-
-/**
- * ASSETS with stand-in templates (`template <path>`); every other file comes from the real
- * asset store, so the 404 pages are the site's own. `missing` templates answer 404.
- */
-function fakeAssets(missing: string[] = []) {
-  const asked: string[] = [];
-  const binding = {
-    fetch: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const request = new Request(input, init);
-      const path = new URL(request.url).pathname;
-      if (!TEMPLATE_FILES.includes(path)) return env.ASSETS.fetch(request);
-      asked.push(path);
-      if (missing.includes(path)) return new Response("Not Found", { status: 404 });
-      return new Response(request.method === "HEAD" ? null : `<!doctype html>template ${path}`, {
-        headers: { "content-type": "text/html; charset=utf-8", etag: '"t"' },
-      });
-    },
-    connect: () => {
-      throw new Error("no sockets in tests");
-    },
-  } as unknown as Fetcher;
-  return { binding, asked };
+/** The app route the stand-in renderer was asked for (test/worker.ts). */
+function routeOf(page: string): string | null {
+  return /data-route="([^"]*)"/.exec(page)?.[1] ?? null;
 }
 
 beforeAll(prepareTaus);
@@ -84,26 +63,24 @@ describe("page routes", () => {
     await sendClaim(host, ALICE, { account: GITHUB_ALICE });
   });
 
-  it("serve the person, sub-tau and claim templates in both languages", async () => {
+  it("render the person, sub-tau and claim pages in both languages", async () => {
     const cases: [string, string, "en" | "tr"][] = [
-      ["/@alice", "/person", "en"],
-      ["/tr/@alice", "/tr/person", "tr"],
-      ["/coach", "/sub", "en"],
-      ["/landing", "/sub", "en"],
-      ["/tr/coach", "/tr/sub", "tr"],
-      ["/@alice/coach", "/sub", "en"],
-      ["/tr/@alice/landing", "/tr/sub", "tr"],
+      ["/@alice", "/page/person", "en"],
+      ["/tr/@alice", "/tr/page/person", "tr"],
+      ["/coach", "/page/sub", "en"],
+      ["/landing", "/page/sub", "en"],
+      ["/tr/coach", "/tr/page/sub", "tr"],
+      ["/@alice/coach", "/page/sub", "en"],
+      ["/tr/@alice/landing", "/tr/page/sub", "tr"],
       ["/claim", "/claim", "en"],
       ["/tr/claim", "/tr/claim", "tr"],
     ];
-    for (const [path, template, lang] of cases) {
-      const assets = fakeAssets();
-      const res = await universeWith({ ASSETS: assets.binding }, path);
+    for (const [path, route, lang] of cases) {
+      const res = await universe(path);
       expect(res.status, path).toBe(200);
-      expect(await res.text(), path).toBe(`<!doctype html>template ${template}`);
+      expect(routeOf(await res.text()), path).toBe(route);
       expect(res.headers.get("content-language"), path).toBe(lang);
       expectSecurityHeaders(res);
-      expect(assets.asked).toEqual([template]);
     }
   });
 
@@ -118,23 +95,51 @@ describe("page routes", () => {
       "/tr/@nobody",
       "/tr/nope",
     ]) {
-      const assets = fakeAssets();
-      const res = await universeWith({ ASSETS: assets.binding }, path);
+      const res = await universe(path);
+      const turkish = path.startsWith("/tr/");
       expect(res.status, path).toBe(404);
       expect(res.headers.get("content-type"), path).toMatch(/^text\/html/);
-      expect(res.headers.get("content-language"), path).toBe(path.startsWith("/tr/") ? "tr" : "en");
+      expect(res.headers.get("content-language"), path).toBe(turkish ? "tr" : "en");
+      expect(res.headers.get("cache-control"), path).toBe("no-store");
       expectSecurityHeaders(res);
-      expect(await res.text(), path).toMatch(/Nothing at this address|Bu adreste bir şey yok/);
-      expect(assets.asked, path).toEqual([]);
+      expect(routeOf(await res.text()), path).toBe(turkish ? "/tr/page/missing" : "/page/missing");
     }
   });
 
-  it("never serve a template bare, nor a site name as a slug", async () => {
-    for (const path of ["/person", "/sub", "/tr/person", "/tr/sub", "/api", "/app/x"]) {
-      const assets = fakeAssets();
-      const res = await universeWith({ ASSETS: assets.binding }, path);
+  it("never render an internal page from outside, nor a site name as a slug", async () => {
+    for (const path of [
+      "/person",
+      "/sub",
+      "/tr/person",
+      "/tr/sub",
+      "/page",
+      "/page/person",
+      "/page/sub",
+      "/page/missing",
+      "/tr/page/person",
+      "/api",
+      "/app/x",
+    ]) {
+      const res = await universe(path);
       expect(res.status, path).toBe(404);
-      expect(assets.asked, path).toEqual([]);
+      const route = routeOf(await res.text());
+      if (route !== null) expect(route, path).toMatch(/\/page\/missing$/);
+    }
+  });
+
+  it("show a page without the lookup only for ?fixture=1 on a local host", async () => {
+    const local = await worker.fetch(new Request("http://localhost:8790/@nobody?fixture=1"), env);
+    expect(local.status).toBe(200);
+    expect(routeOf(await local.text())).toBe("/page/person");
+    const sub = await worker.fetch(new Request("http://127.0.0.1:8790/tr/nope?fixture=1"), env);
+    expect(routeOf(await sub.text())).toBe("/tr/page/sub");
+    for (const url of [
+      "https://universe.example/@nobody?fixture=1",
+      "http://localhost:8790/@nobody",
+      "http://localhost:8790/@nobody?fixture=0",
+    ]) {
+      const res = await worker.fetch(new Request(url), env);
+      expect(res.status, url).toBe(404);
     }
   });
 
@@ -157,20 +162,13 @@ describe("page routes", () => {
     expect(res.headers.get("set-cookie")).toMatch(/^lang=tr; /);
   });
 
-  it("answer HEAD, and refuse other methods", async () => {
-    const assets = fakeAssets();
-    const head = await universeWith({ ASSETS: assets.binding }, "/@alice", { method: "HEAD" });
+  it("answer HEAD without a body, and refuse other methods", async () => {
+    const head = await universe("/@alice", { method: "HEAD" });
     expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
     expectSecurityHeaders(head);
     const res = await universe("/@alice", { method: "POST" });
     expect(res.status).toBe(405);
-  });
-
-  it("answer the 404 page when a deployment lacks the template", async () => {
-    const assets = fakeAssets(["/person"]);
-    const res = await universeWith({ ASSETS: assets.binding }, "/@alice");
-    expect(res.status).toBe(404);
-    expect(await res.text()).toContain("Nothing at this address.");
   });
 });
 
@@ -353,11 +351,16 @@ describe("the route table", () => {
     }
   });
 
-  it("runs the Worker first for the template pages", () => {
-    const match = /"run_worker_first":\s*(\[[^\]]*\])/.exec(wranglerConfig);
-    const routes = JSON.parse(match![1]!) as string[];
-    for (const path of ["/@*", "/tr/@*", "/claim", "/tr/claim", ...TEMPLATE_FILES]) {
-      expect(routes, path).toContain(path);
+  it("reserves every page of app/ from slugs, the internal routes included", () => {
+    // Parentheses are glob syntax: list every page and keep the English ones.
+    const prefix = "../app/(en)/";
+    const pages = Object.keys(import.meta.glob("../app/**/page.tsx")).filter(
+      (file) => file.startsWith(prefix) && file !== `${prefix}page.tsx`,
+    );
+    expect(pages.length).toBeGreaterThan(6);
+    for (const file of pages) {
+      const name = file.slice(prefix.length).split("/")[0]!;
+      expect(isReservedName(name), name).toBe(true);
     }
   });
 });

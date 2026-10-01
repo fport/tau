@@ -415,7 +415,7 @@ describe("GET /api/universe", () => {
 
   it("names the UNIVERSE host when it is set", async () => {
     const { env } = await import("cloudflare:workers");
-    const worker = (await import("../src/index")).default;
+    const worker = (await import("./worker")).default;
     const res = await worker.fetch(new Request("https://other.example/api/universe"), {
       ...env,
       UNIVERSE: "Tau.Example.com",
@@ -791,7 +791,7 @@ describe("POST checks, in the reference's order", () => {
   it("uses http for a loopback tau when ALLOW_INSECURE_PEERS=1, and still answers an https url", async () => {
     vi.restoreAllMocks();
     const { env } = await import("cloudflare:workers");
-    const worker = (await import("../src/index")).default;
+    const worker = (await import("./worker")).default;
     const local = { ...ALICE, address: "127.0.0.1:8791" };
     const spy = mockCards({ "http://127.0.0.1:8791": card(local) });
     // A local universe on http://127.0.0.1:8790, as in `bun run dev`.

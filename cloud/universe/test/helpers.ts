@@ -4,7 +4,7 @@ import { env, exports } from "cloudflare:workers";
 import { vi } from "vitest";
 import { b64uDecode, b64uEncode } from "../src/crypto";
 import { directoryOf, type UniverseEnv } from "../src/env";
-import worker from "../src/index";
+import worker from "./worker";
 import type { Snapshot } from "../src/snapshot";
 
 /** The universe under test answers as this host (UNIVERSE is empty in the tests). */

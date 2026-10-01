@@ -3,7 +3,7 @@
  * which paths go to tau-host, which are handle and sub-tau pages, and which names a sub-tau
  * can never take as its short page `/<slug>`.
  *
- * Pure: no bindings, no storage. src/index.ts dispatches on what these functions return.
+ * Pure: no bindings, no storage. src/server.ts and src/pages.ts dispatch on what these functions return.
  */
 
 import { isHandle } from "./address";
@@ -38,6 +38,8 @@ export const RESERVED_NAMES: ReadonlySet<string> = new Set([
   ".well-known",
   "_headers",
   "install.sh",
+  // The internal routes the person, sub-tau and 404 pages render from (app/(en)/page/).
+  "page",
   // The Worker's paths and tau-host's (forwarded).
   "api",
   "auth",
@@ -77,7 +79,7 @@ export function isForwarded(path: string): boolean {
 
 export type PageLanguage = "en" | "tr";
 
-/** A page the Worker serves from a template after it looked the target up. */
+/** A page the server renders after it looked the target up (src/pages.ts `serveRoute`). */
 export type PageRoute =
   | { kind: "claim"; lang: PageLanguage }
   | { kind: "person"; lang: PageLanguage; handle: string }
@@ -85,11 +87,8 @@ export type PageRoute =
   | { kind: "slug"; lang: PageLanguage; slug: string }
   /** `/@Alice` and the like: the same page at the lower-case handle. */
   | { kind: "redirect"; location: string }
-  /** A template asked for by its own name (`/person`, `/sub`): never served bare. */
+  /** A page asked for by its old template name (`/person`, `/sub`): never served bare. */
   | { kind: "template" };
-
-/** The template file of each page kind, under public/ and public/tr/. */
-export const TEMPLATES = { claim: "claim", person: "person", sub: "sub", slug: "sub" } as const;
 
 /**
  * Which page a path is: `/claim`, `/@<handle>`, `/@<handle>/<name>` or `/<slug>`, each also

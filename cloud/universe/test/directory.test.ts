@@ -4,7 +4,7 @@ import { createScheduledController, reset, runInDurableObject } from "cloudflare
 import { env } from "cloudflare:workers";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RATE_LIMIT_PER_HOUR, SCHEMA_V1, SCHEMA_V2, SCHEMA_VERSION } from "../src/directory";
-import worker from "../src/index";
+import worker from "./worker";
 import {
   ALICE,
   BOB,

@@ -25,7 +25,7 @@ import {
 } from "../../shared/net/index.ts";
 import { parseChatPath, visitorId, visitorToken } from "../src/chat";
 import type { UniverseEnv } from "../src/env";
-import worker from "../src/index";
+import worker from "./worker";
 import { clientKey } from "../src/limits";
 import { HUB_PENDING_SECONDS, MAX_THREAD_MESSAGES, THREAD_TTL_SECONDS } from "../src/relay";
 import { SOFTWARE } from "../src/version";

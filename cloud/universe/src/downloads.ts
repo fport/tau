@@ -26,8 +26,7 @@
  * binding every download is `503 {"error": "downloads_unavailable"}`, and a file the bucket
  * does not have (yet) is `404 {"error": "not_found"}`.
  *
- * The Worker has to run first for `/download/*` (`run_worker_first`), so the asset store never
- * answers these paths. Contract: docs/reference/tau-universe.md §2, "App downloads".
+ * No static file lives under `/download/`, so these paths always reach the Worker. Contract: docs/reference/tau-universe.md §2, "App downloads".
  */
 
 import { error, methodNotAllowed } from "./http";

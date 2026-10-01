@@ -7,11 +7,10 @@
    On top of theme.css and site.css. Black, grey lines, and fire only on what is alive or
    what you act on. */
 
-.page-universe {
-  overflow: hidden;
-}
-
-html:has(> body.page-universe) {
+/* The page is the viewport: neither the document nor the body scrolls. */
+.page-universe,
+html:has(.page-universe),
+html:has(.page-universe) body {
   overflow: hidden;
 }
 

@@ -414,11 +414,12 @@ SETUP_MESSAGES: dict[str, dict[str, str]] = {
     # -- the steps ---------------------------------------------------------------------------------
     "setup.step.app.download": {"en": "Download the app", "tr": "Uygulamayı indir"},
     "setup.note.app.download": {
-        "en": "The tau app is not released yet. The download page says when it is; until "
-        "then, the TauBar guide shows how to build the menu bar app.",
-        "tr": "tau uygulaması henüz yayımlanmadı. İndirme sayfası ne zaman yayımlanacağını "
-        "söyler; o zamana kadar TauBar rehberi menü çubuğu uygulamasının nasıl derleneceğini "
-        "gösterir.",
+        "en": "Download the tau app (tau.dmg) from https://tau.getporti.com/download and open "
+        "it: its wizard picks up this setup. It is not notarised yet, so the first open needs "
+        "right-click → Open; the download page shows how.",
+        "tr": "tau uygulamasını (tau.dmg) https://tau.getporti.com/download adresinden indir "
+        "ve aç; sihirbazı bu kurulumdan devam eder. Henüz notarize edilmediği için ilk açılışta "
+        "sağ tık → Aç gerekir; indirme sayfası nasıl yapılacağını gösterir.",
     },
     "setup.step.sub.first": {"en": "Your first sub-tau", "tr": "İlk alt-tau'n"},
     "setup.note.sub.first": {

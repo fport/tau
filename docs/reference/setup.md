@@ -90,16 +90,16 @@ The features are data: `packages/tau-core/src/tau_core/templates/features.toml`.
 | id | package | platforms | default | steps |
 |---|---|---|---|---|
 | `tui` | tau-tui (lockstep) | macOS, Linux | on | none |
-| `app` | none | macOS | off | a note pointing to the download page (the app ships with issue 170) |
+| `app` | none | macOS | off | a note pointing to the [download page](https://tau.getporti.com/download) |
 | `sub` | tau-sub | macOS, Linux | on | a note on creating the first sub-tau |
 | `telegram` | none (tau-core) | macOS, Linux | off | `tau telegram pair` (interactive) when that command exists; else the manual way |
 | `remote` | none (tau-core) | macOS, Linux | off | check steps: `tau remote tailscale`, `tau remote ssh` (shows the one `sudo` command), `tau remote phone`; set up when `tau remote status` exits 0 |
 | `guard` | tau-guard (lockstep) | macOS | off | `tau guard doctor` (advisory), `tau guard setup` (interactive, never over SSH), a note to restart the hub |
-| `net` | tau-net | macOS, Linux | off | `tau net init`, a note on the spine, `tau net spine init` and `deploy` (optional, need Node.js), `tau net universe join` and `claim` (optional) |
+| `net` | tau-net | macOS, Linux | off | `tau net init`, a note on the spine, `tau net spine init` and `deploy` (optional; the deploy takes a Cloudflare API token), `tau net universe join` and `claim` (optional) |
 | `autostart` | none | macOS, Linux | on on macOS | `tau hub install` (macOS); the systemd user unit commands (Linux) |
 | `cloud` | tau-cloud (requires `net`) | macOS, Linux | off | a note and the cloud mode guide |
 
-Nothing turns on the network, the guard, Telegram or remote access unless the owner chooses it. No step runs `sudo`, and tier 2 is unchanged.
+Nothing turns on the network, the guard, Telegram or remote access unless the owner chooses it. No step runs `sudo`, and tier 2 is unchanged. [Setup features](../guides/setup-features.md) walks through each feature for owners: what it needs, what it changes and how to remove it.
 
 ### Schema
 

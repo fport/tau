@@ -68,10 +68,11 @@ The universe's own host is the `UNIVERSE` variable when it is set, otherwise the
 | `GET /` | the landing page (static); redirects to `/tr/` once when the `lang` cookie says `tr`, or when there is no cookie and `Accept-Language` prefers Turkish |
 | `GET /how-it-works` | how tau works, for newcomers (static) |
 | `GET /universe` | the universe page (static; its script reads `/api/universe`) |
+| `GET /download` | the download page: the Mac app, the one-line installer and the setup features (static) |
 | `GET /@<handle>` | a person page (the template `person.html`), or the 404 page when no listed tau has the handle ([ADR 0013](../adr/0013-hosted-taus-handles-and-public-pages.md) §6) |
 | `GET /<slug>`, `GET /@<handle>/<name>` | a sub-tau page (the template `sub.html`), or the 404 page when there is no such sub-tau |
 | `GET /claim` | the claim page (the template `claim.html`); its script reads the signed claim from the URL's `#` and posts it to `/api/claim` |
-| `GET /tr/`, `/tr/how-it-works`, `/tr/universe`, `/tr/@<handle>`, `/tr/<slug>`, `/tr/@<handle>/<name>`, `/tr/claim` | the Turkish pages; `?lang=en\|tr` on any page stores the choice in the `lang` cookie and redirects to the clean URL |
+| `GET /tr/`, `/tr/how-it-works`, `/tr/universe`, `/tr/download`, `/tr/@<handle>`, `/tr/<slug>`, `/tr/@<handle>/<name>`, `/tr/claim` | the Turkish pages; `?lang=en\|tr` on any page stores the choice in the `lang` cookie and redirects to the clean URL |
 | `GET /api/universe` | `200` the public snapshot (below); `Cache-Control: public, max-age=60`; `Access-Control-Allow-Origin: *` |
 | `GET /api/taus/<address>` | `200` the tau's snapshot fields at the top level plus `links: [{"peer": address, "messages": int}]` (visible links only), or `404 {"error": "not_found"}` |
 | `GET /api/people/<handle>` | `200` the person page's data (below), or `404 {"error": "not_found"}`; `Cache-Control: public, max-age=30`; CORS as above |

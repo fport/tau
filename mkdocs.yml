@@ -67,6 +67,7 @@ plugins:
             Configure: Yapılandırma
             Talk to tau: tau ile konuş
             Guides: Rehberler
+            Setup features: Kurulum özellikleri
             Reach tau from your phone (Tailscale + Termius): Telefondan tau'ya ulaş (Tailscale + Termius)
             Private deployment (Cloudflare Tunnel + Access): Özel dağıtım (Cloudflare Tunnel + Access)
             Voice: Ses
@@ -153,6 +154,7 @@ nav:
       - Configure: getting-started/configure.md
       - Talk to tau: getting-started/talk.md
   - Guides:
+      - Setup features: guides/setup-features.md
       - Reach tau from your phone (Tailscale + Termius): guides/phone-tailscale-termius.md
       - Private deployment (Cloudflare Tunnel + Access): guides/private-deployment.md
       - Telegram: guides/telegram.md

@@ -599,7 +599,10 @@ def test_a_running_hub_takes_the_code_through_its_control_api(
     thread.start()
     try:
         deadline = time.monotonic() + 10
-        while (control.port == 0 or daemon.state is None) and time.monotonic() < deadline:
+        # The state is written before the services start; wait for Telegram's own route too.
+        while (
+            control.port == 0 or daemon.state is None or ("POST", RELOAD_PATH) not in control.routes
+        ) and time.monotonic() < deadline:
             time.sleep(0.02)
         assert ("POST", RELOAD_PATH) in control.routes
         assert not control.is_open("POST", RELOAD_PATH)  # signed requests only

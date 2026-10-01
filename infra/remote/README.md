@@ -10,7 +10,33 @@ Phone (Termius) → Tailscale → OpenSSH on the MacBook → tmux → Claude Cod
 | **tmux** | The session (and the Claude Code inside it) keeps running when the connection drops |
 | **com.tau.keepawake** | The Mac does not sleep while on AC power (`caffeinate -s`). Once the [tau app](../../apps/tau/README.md) is installed in `/Applications`, `setup.sh` removes this agent and the app does the job |
 
-## Setup
+## The guided way
+
+`tau setup` → **Remote access** (or `tau setup run remote` later) walks through all of it:
+
+1. It checks that Tailscale is installed and logged in, and says how to install it or log in.
+2. It checks sshd, the drop-in, mosh and tmux, and shows the one command below with what it changes. It never runs it: you run it in your own terminal, type `done`, and it checks again.
+3. It prints what to enter in Termius, with the live MagicDNS name and user.
+
+The one command, as your normal user (not with `sudo`; sudo asks for the password only for the steps that need root):
+
+```sh
+./infra/remote/setup-all.sh
+```
+
+On macOS it runs `setup.sh` and then `setup-sudo.sh`. On Linux it runs `setup-linux.sh`, which installs openssh-server, mosh and tmux from the distribution (apt-get, dnf or pacman), writes the same drop-in, adds the `~/.tmux.conf` block and `tau-attach`, and enables the SSH service. Over SSH without a key in `~/.ssh/authorized_keys` it stops, so you cannot lock yourself out.
+
+`tau remote status` runs the same checks as `doctor.sh` that matter for remote access (Tailscale, sshd, the drop-in, a live password probe, mosh, tmux, the keys), on macOS and Linux. `doctor.sh` stays the fuller macOS check (sleep, firewall).
+
+### Shipped with tau-core
+
+An installed tau has no checkout, so tau-core carries a copy of this directory without this README: `packages/tau-core/src/tau_core/remote/kit/`. When it needs the command, `tau remote ssh` writes the copy to `$TAU_DATA_DIR/remote/` (`~/.local/share/tau/remote/`) and shows `bash ~/.local/share/tau/remote/setup-all.sh`. A test keeps the copy identical to this directory. After a change here, copy it over:
+
+```sh
+rsync -a --delete --exclude README.md --exclude config.local.env infra/remote/ packages/tau-core/src/tau_core/remote/kit/
+```
+
+## Setup by hand (macOS)
 
 1. **tmux, mosh and user settings** (no sudo needed):
    ```sh
@@ -89,3 +115,12 @@ rm ~/Library/LaunchAgents/com.tau.keepawake.plist ~/.local/bin/tau-attach
 In addition:
 - Delete the `# >>> tau:remote >>>` blocks from `~/.zshenv` and `~/.tmux.conf`.
 - Turn off Remote Login: System Settings → General → Sharing.
+
+On Linux:
+
+```sh
+sudo rm /etc/ssh/sshd_config.d/010-tau.conf && sudo systemctl reload ssh   # sshd on Fedora and Arch
+rm ~/.local/bin/tau-attach
+```
+
+Then delete the `# >>> tau:remote >>>` block from `~/.tmux.conf`.

@@ -46,7 +46,9 @@ else
   warn "TAU_KEEPAWAKE=0: $agent removed"
 fi
 
-step "Next steps"
-info "1. In your own terminal (sudo will ask for the password): ./infra/remote/setup-sudo.sh"
-info "2. Generate an ED25519 key in Termius and add its public key: ./infra/remote/add-key.sh"
-info "3. Check: ./infra/remote/doctor.sh"
+if [[ "${TAU_REMOTE_ALL:-0}" != 1 ]]; then # setup-all.sh runs setup-sudo.sh next itself
+  step "Next steps"
+  info "1. In your own terminal (sudo will ask for the password): ./infra/remote/setup-sudo.sh"
+  info "2. Generate an ED25519 key in Termius and add its public key: ./infra/remote/add-key.sh"
+  info "3. Check: ./infra/remote/doctor.sh"
+fi

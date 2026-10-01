@@ -200,6 +200,24 @@ A cron job runs every hour. It deletes taus whose `last_seen` is older than 30 d
 
 Pages send `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`. The person, sub-tau and claim pages send them too; the paths forwarded to tau-host carry tau-host's own headers.
 
+### App downloads
+
+The tau Mac app's release files (roadmap 190) are served by the Worker from the private R2 bucket bound as `DOWNLOADS` (`tau-downloads`; `cloud/universe/src/downloads.ts`), so they do not depend on the repository's visibility. CI (`.github/workflows/app.yml`) uploads them for every release tag. The object key is the path after `/download/`.
+
+| Method and path | Response |
+|---|---|
+| `GET`/`HEAD /download/tau.dmg` | the latest release's disk image: `Content-Type: application/x-apple-diskimage`, `Content-Disposition: attachment; filename="tau.dmg"`, `Cache-Control: public, max-age=300` |
+| `GET`/`HEAD /download/tau.app.tar.gz` | the latest release's updater archive: `application/gzip`, the same cache |
+| `GET`/`HEAD /download/latest.json` | the Tauri updater's manifest of the latest release (`application/json`, the same cache): the app's updater endpoint. Its platform `url`s name the versioned archive |
+| `GET`/`HEAD /download/v<version>/tau.dmg`, `/download/v<version>/tau.app.tar.gz` | one release's files, the same types; `Cache-Control: public, max-age=31536000, immutable` |
+| `GET /download/` | `301` to `/download`, the download page |
+
+- **Names.** `<version>` is a Semantic Versioning 2.0.0 version without build metadata (`0.5.0`, `0.5.0-rc1`), at most 64 characters. These five names are the only ones: any other path under `/download/` is the 404 page, the path is matched as it arrives (still percent-encoded), and the bucket is never listed.
+- **Validators and ranges.** Answers carry `ETag` and `Last-Modified` from R2 and `Accept-Ranges: bytes`. A matching `If-None-Match` (or, without it, an `If-Modified-Since` not older than the file) is `304`. A single byte range in `Range` is `206` with `Content-Range`; several ranges or a malformed one get the whole file (`200`); a range that starts past the end is `416` with `Content-Range: bytes */<size>`. An `If-Range` naming another ETag or date gets the whole file. `HEAD` ignores `Range`.
+- **Errors.** Other methods are `405` with `Allow: GET, HEAD`. Without the binding every file is `503 {"error": "downloads_unavailable"}`; a file the bucket does not have is `404 {"error": "not_found"}`; both with `Cache-Control: no-store`.
+- **Order.** CI uploads a release's versioned files first, then `tau.app.tar.gz` and `tau.dmg`, and `latest.json` last, so the manifest never names an archive that is not there. A pre-release gets only its versioned files.
+- **Routing.** The Worker runs first for `/download/*` (`run_worker_first`), so the asset store never answers these paths; `/download` itself stays the page.
+
 ## 3. Hub behaviour (`tau-net`)
 
 `tau.toml` holds only the non-personal knobs:

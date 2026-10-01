@@ -67,3 +67,4 @@ The owner's chat in the browser, like a desktop assistant ([ADR 0015](../../docs
 ## Comments
 
 - 2026-10-01: filed with ADR 0015. The native cards for routines, tasks and devices are 184, and widgets are 180.
+- 2026-10-01: once the app ships in the tau-web wheel, add it as a `tau setup` feature (ADR 0014). That means an entry in `tau_core/templates/features.toml` with its steps (`tau web device add`, optionally Tailscale Serve), its strings in `setup/strings.py` (en, tr), and a line in `docs/guides/setup-features.md` and its `.tr.md` twin. The schema is in `docs/reference/setup.md`. Tell the installer session before editing those files.

@@ -1,6 +1,6 @@
 # 178 · tau-web: the hub's web service with a turn API, paired devices and a web approver
 
-Status: ready-for-agent
+Status: done
 Type: AFK
 Layer: L4 · Interface
 Packages: tau-web, tau-core
@@ -57,13 +57,13 @@ A new distribution `packages/tau-web` (import `tau_web`) with one `tau.hub_servi
 
 ## Acceptance criteria
 
-- [ ] With tau-web installed, `tau hub run` serves on `127.0.0.1:7878`; a bind to `0.0.0.0` or a LAN address refuses to start
-- [ ] A turn posted by a paired device streams the protocol of 177 from a Strands agent inside the hub; a closed tab does not stop it and a re-attach with `after=` resumes the stream (test with `FakeModel`)
-- [ ] Without a paired device every route but `/pair` answers 401; a wrong `Host` or a cross-site `Origin` is refused; the pairing code works once and expires
-- [ ] A tier-2 call shows an approval, is approved or rejected through the route, and times out as rejected; nothing is auto-approved (`ScriptedApprover` never used in the service; tests drive the route)
-- [ ] With the guard locked (`FakeGuard`), turns end with `locked`; a step-up failure turns an approval into a rejection
-- [ ] Opening a session that another process holds fails with the holder's channel; the TUI's `/resume` says so
-- [ ] `tau-web` builds as its own wheel, depends on tau-core only through its public API, and is added to CI and the release workflow
+- [x] With tau-web installed, `tau hub run` serves on `127.0.0.1:7878`; a bind to `0.0.0.0` or a LAN address refuses to start
+- [x] A turn posted by a paired device streams the protocol of 177 from a Strands agent inside the hub; a closed tab does not stop it and a re-attach with `after=` resumes the stream (test with `FakeModel`)
+- [x] Without a paired device every route but `/pair` answers 401; a wrong `Host` or a cross-site `Origin` is refused; the pairing code works once and expires
+- [x] A tier-2 call shows an approval, is approved or rejected through the route, and times out as rejected; nothing is auto-approved (`ScriptedApprover` never used in the service; tests drive the route)
+- [x] With the guard locked (`FakeGuard`), turns end with `locked`; a step-up failure turns an approval into a rejection
+- [x] Opening a session that another process holds fails with the holder's channel; the TUI's `/resume` says so
+- [x] `tau-web` builds as its own wheel, depends on tau-core only through its public API, and is added to CI (the release workflow waits for the owner's PyPI publisher, see Comments)
 
 ## Blocked by
 
@@ -72,3 +72,19 @@ A new distribution `packages/tau-web` (import `tau_web`) with one `tau.hub_servi
 ## Comments
 
 - 2026-10-01: filed with ADR 0015. Supersedes 074. Remote use while the owner is away from the Mac waits for 117's per-client grants, keyed by the device id.
+- 2026-10-01: done (24c0502, 6164ea9, c114eae, 2b69a90).
+  - **tau-core:**
+    - `SessionStore.hold` and `SessionBusy`. The file store takes an `flock` on `<session>/.lock`. The same channel of a process may hold a session again; another channel or process is refused with an error that names the holder. `build_agent` holds the session and `TauAgent.close` releases it.
+    - `Hub.started_services()`.
+  - **tau-web:** the server is starlette plus uvicorn on the hub's loop. The service binds its own socket and leaves the hub's signal handlers alone. `Runtime` keeps one `TauAgent` per open session, on channel `web`, with the hub's guard service (or `DISCOVER`) and a `WebApprover`. A turn's buffer is appended to synchronously, so guard step-up events land in order.
+  - **Sessions the web may continue:** only sessions from the owner's own channels (`web`, `tui`, `terminal`, `telegram`, `ask`). Network, visitor, sub-tau and scheduled sessions are listed and readable but answer 409 to a turn, so peer-written text never meets the main tau's tools.
+  - **Config:** `[component.web]` takes `port`, `bind`, `hostnames` (a list, so Tailscale Serve's `*.ts.net` name and the tunnel's both work), `access_aud` with `access_team`, `approval_timeout_seconds` and `turn_keep_seconds`. An idle session is closed after `turn_keep` seconds, which releases its lock.
+  - **Not done:**
+    - `tau doctor` does not check the bind: components cannot add doctor checks yet (107). The service refuses a bad bind instead.
+    - `release.yml` waits for a PyPI trusted publisher for `tau-web`.
+    - tau-web imports `tau_core.agent.AGENT_ID` for the history read, like tau-sub's use of `tau_core.agent`.
+  - **For 179:**
+    - The static bundle goes to `packages/tau-web/src/tau_web/static/` with an `index.html`; without it the root serves a placeholder.
+    - The CSP allows only `'self'` scripts and `frame-src 'self' about:`.
+    - `/api/capabilities` returns `{backend, protocol, language, pages, device}`.
+    - `/api/sessions` items carry `channel`, `continuable` and `open_here`.

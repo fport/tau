@@ -21,7 +21,7 @@ from tau_web.devices import DeviceRegistry
 from tau_web.settings import WebSettings
 from tau_web.turns import Runtime
 
-from .conftest import TOOLS, Web, factory
+from .conftest import TOOLS, GuardService, Web, factory
 
 
 def types(events: list[dict[str, Any]]) -> list[str]:
@@ -388,3 +388,21 @@ async def test_the_service_stops_cleanly_with_a_turn_waiting(web: Web, model: Fa
             break
     await asyncio.wait_for(web.service.stop(), timeout=10)
     assert web.service.runtime.sessions == {}  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("guard", [GuardService(state="unlocked", step_ups=[False])])
+async def test_a_failed_step_up_turns_the_approval_into_a_rejection(
+    web: Web, model: FakeModel
+) -> None:
+    model.replies = [[ToolCall("lamp_tool", {"on": True})], "Olmadı."]
+    await web.pair()
+    events: list[dict[str, Any]] = []
+    async for event in web.turn_lines("lambayı aç"):
+        events.append(event)
+        if event["type"] == "approval":
+            await web.decide(event["request"], "approved")
+    [result] = [event for event in events if event["type"] == "tool_result"]
+    assert (result["status"], result["approval"]) == ("rejected", "rejected")
+    steps = [event for event in events if event["type"] == "guard"]
+    assert [step["action"] for step in steps] == ["step_up", "step_up"]
+    assert steps[-1]["ok"] is False

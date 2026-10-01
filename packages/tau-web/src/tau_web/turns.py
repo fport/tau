@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+import threading
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -67,40 +68,45 @@ class TurnError(Exception):
 
 @dataclass
 class Turn:
-    """One turn's framed events, readable while it runs and for a while after."""
+    """One turn's framed events, readable while it runs and for a while after.
+
+    :meth:`add` and :meth:`finish` are synchronous and run on the hub's loop, so an event is in
+    the buffer the moment it happens, in order, whoever produced it (the agent's stream, the
+    approver, the guard); readers wake on the next loop iteration.
+    """
 
     id: str
     session_id: str
     events: list[dict[str, Any]] = field(default_factory=list)
     done: bool = False
     finished_at: float | None = None
-    _changed: asyncio.Condition = field(default_factory=asyncio.Condition)
+    _wake: asyncio.Event = field(default_factory=asyncio.Event)
 
-    async def add(self, body: dict[str, Any]) -> None:
-        async with self._changed:
-            self.events.append(frame(body, len(self.events)))
-            self._changed.notify_all()
+    def add(self, body: dict[str, Any]) -> None:
+        if self.done:
+            return
+        self.events.append(frame(body, len(self.events)))
+        self._wake.set()
 
-    async def finish(self, now: float) -> None:
-        async with self._changed:
-            self.done = True
-            self.finished_at = now
-            self._changed.notify_all()
+    def finish(self, now: float) -> None:
+        self.done = True
+        self.finished_at = now
+        self._wake.set()
 
     async def read(self, after: int = -1) -> AsyncIterator[dict[str, Any]]:
         """The events with ``seq > after``, then every new one until the turn is done."""
         position = max(after + 1, 0)
         while True:
-            async with self._changed:
-                while position >= len(self.events) and not self.done:
-                    await self._changed.wait()
+            if position < len(self.events):
                 pending = self.events[position:]
-                finished = self.done
-            for event in pending:
-                yield event
-            position += len(pending)
-            if finished and position >= len(self.events):
+                position += len(pending)
+                for event in pending:
+                    yield event
+                continue
+            if self.done:
                 return
+            self._wake.clear()  # nothing new since the check above: no await in between
+            await self._wake.wait()
 
 
 class WebApprover:
@@ -171,6 +177,7 @@ class Runtime:
         self.turns: dict[str, Turn] = {}
         self.pending: dict[str, Pending] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._loop_thread: int | None = None
 
     # -- sessions ------------------------------------------------------------------------------
 
@@ -233,7 +240,10 @@ class Runtime:
         if event.kind != "guard" or turn is None or turn.done or loop is None:
             return
         body = guard_body(event.data)
-        loop.call_soon_threadsafe(lambda: loop.create_task(turn.add(body)))
+        if threading.get_ident() == self._loop_thread:
+            turn.add(body)
+        else:
+            loop.call_soon_threadsafe(turn.add, body)
 
     # -- turns ---------------------------------------------------------------------------------
 
@@ -241,6 +251,7 @@ class Runtime:
         if not isinstance(text, str) or not text.strip():
             raise TurnError(400, "A turn needs some text.")
         self._loop = asyncio.get_running_loop()
+        self._loop_thread = threading.get_ident()
         opened = self._open(session_id, client_id)
         if opened.running:
             raise TurnError(409, "A turn is already running in this session.")
@@ -248,7 +259,7 @@ class Runtime:
         self.turns[turn.id] = turn
         opened.turn = turn
         opened.last_active = self._clock()
-        await turn.add(turn_started(turn.id, opened.session_id))
+        turn.add(turn_started(turn.id, opened.session_id))
         opened.task = asyncio.get_running_loop().create_task(
             self._run(opened, turn, text), name=f"tau-web-turn-{turn.id}"
         )
@@ -257,18 +268,18 @@ class Runtime:
     async def _run(self, opened: OpenSession, turn: Turn, text: str) -> None:
         try:
             async for event in opened.agent.stream(text):
-                await turn.add(turn_event_body(event))
+                turn.add(turn_event_body(event))
         except asyncio.CancelledError:
-            await turn.add(error_body("The web service stopped."))
-            await turn.add({"type": "end", "stop_reason": "cancelled"})
+            turn.add(error_body("The web service stopped."))
+            turn.add({"type": "end", "stop_reason": "cancelled"})
             raise
         except Exception as exc:
             logger.exception("web: turn %s failed", turn.id)
-            await turn.add(error_body(f"The turn failed: {type(exc).__name__}"))
-            await turn.add({"type": "end", "stop_reason": "error"})
+            turn.add(error_body(f"The turn failed: {type(exc).__name__}"))
+            turn.add({"type": "end", "stop_reason": "error"})
         finally:
             opened.last_active = self._clock()
-            await turn.finish(self._clock())
+            turn.finish(self._clock())
 
     def turn(self, turn_id: str) -> Turn:
         turn = self.turns.get(turn_id)
@@ -292,15 +303,15 @@ class Runtime:
         turn = opened.turn if opened is not None else None
         if turn is not None:
             expires = time.time() + timeout
-            await turn.add(approval_body(request, expires_at=round(expires, 3)))
+            turn.add(approval_body(request, expires_at=round(expires, 3)))
         decision = Decision.TIMEOUT
         try:
             decision = await future
             return decision
         finally:
             self.pending.pop(request.request_id, None)
-            if turn is not None and not turn.done:
-                await turn.add(approval_decided(request.request_id, decision))
+            if turn is not None:
+                turn.add(approval_decided(request.request_id, decision))
 
     def decide(self, request_id: str, decision: str) -> None:
         """A paired device's answer: ``approved`` or ``rejected``."""

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Termius startup command: attach to the tau tmux session, creating it if needed.
+# The session (and the Claude Code inside it) keeps running when the connection drops.
+exec tmux new-session -A -s "${TAU_TMUX_SESSION:-tau}" -c "${1:-$HOME}"

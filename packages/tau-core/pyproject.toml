@@ -44,6 +44,7 @@ telegram = "tau_core.channels.telegram_cli:telegram"
 components = "tau_core.builder:components"
 doctor = "tau_core.builder:doctor"
 init = "tau_core.builder:init"
+remote = "tau_core.remote.cli:remote"
 setup = "tau_core.setup.cli:setup"
 spend = "tau_core.spend:spend_command"
 
@@ -60,6 +61,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tau_core"]
+# The remote kit (a copy of infra/remote, kept equal by a test) is package data for
+# `tau remote ssh`. Listed as artifacts so no ignore rule can ever drop it.
+artifacts = ["src/tau_core/remote/kit/**"]
 
 [tool.hatch.build.targets.sdist]
 exclude = ["tests/fixtures"]
+artifacts = ["src/tau_core/remote/kit/**"]

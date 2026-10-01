@@ -202,6 +202,11 @@ SETUP_MESSAGES: dict[str, dict[str, str]] = {
     "setup.skip.configured": {"en": "already set up", "tr": "zaten kurulu"},
     "setup.skip.unavailable": {"en": "{reason}", "tr": "{reason}"},
     "setup.skip.interrupted": {"en": "interrupted", "tr": "kesildi"},
+    "setup.skip.action": {
+        "en": "needs you: {summary}. Run `tau setup run {feature}` at a terminal",
+        "tr": "senin bir şey yapman gerekiyor: {summary}. Bir terminalde `tau setup run "
+        "{feature}` çalıştır",
+    },
     "setup.fail.exit": {"en": "exit code {code}", "tr": "çıkış kodu {code}"},
     "setup.fail.start": {
         "en": "could not start: {error}",
@@ -231,6 +236,39 @@ SETUP_MESSAGES: dict[str, dict[str, str]] = {
         "en": "kept {name} in {path} (it already has a value)",
         "tr": "{path} içindeki {name} korundu (zaten bir değeri var)",
     },
+    # -- check steps (tau_core.setup.checks) -------------------------------------------------------
+    "setup.check.running": {"en": "▸ {label}: checking…", "tr": "▸ {label}: denetleniyor…"},
+    "setup.check.again": {
+        "en": "▸ {label}: checking again…",
+        "tr": "▸ {label}: yeniden denetleniyor…",
+    },
+    "setup.check.invalid": {
+        "en": "gave no check result (exit code {code})",
+        "tr": "denetim sonucu vermedi (çıkış kodu {code})",
+    },
+    "setup.check.changes": {"en": "What it changes:", "tr": "Neleri değiştirir:"},
+    "setup.check.script": {
+        "en": "Read it first if you like: {path}",
+        "tr": "İstersen önce oku: {path}",
+    },
+    "setup.check.open": {
+        "en": "Open {url} in your browser?",
+        "tr": "{url} tarayıcıda açılsın mı?",
+    },
+    "setup.check.open_failed": {
+        "en": "No browser could open it; open {url} yourself.",
+        "tr": "Tarayıcı açılamadı; {url} adresini kendin aç.",
+    },
+    "setup.check.wait": {
+        "en": "When you are done press Enter to check again, or type skip",
+        "tr": "Bitirince yeniden denetlemek için Enter'a bas ya da atla yaz",
+    },
+    "setup.check.wait_invalid": {
+        "en": "Press Enter (or type done) to check again, or type skip.",
+        "tr": "Yeniden denetlemek için Enter'a bas (ya da tamam yaz) veya atla yaz.",
+    },
+    "setup.check.done_words": {"en": "done,d,ok,y,yes", "tr": "tamam,bitti,t,done,ok,e,evet"},
+    "setup.check.skip_words": {"en": "skip,s,n,no", "tr": "atla,a,skip,h,hayır,hayir"},
     # -- the core steps ----------------------------------------------------------------------------
     "setup.core.init": {"en": "Model provider and key", "tr": "Model sağlayıcısı ve anahtar"},
     "setup.core.about": {"en": "About you", "tr": "Senin hakkında"},
@@ -398,6 +436,11 @@ SETUP_MESSAGES: dict[str, dict[str, str]] = {
         "@BotFather ile bir bot oluştur, sonra TELEGRAM_BOT_TOKEN ve TELEGRAM_ALLOWED_CHAT_IDS "
         "değerlerini Telegram rehberindeki gibi .env dosyasına yaz.",
     },
+    "setup.step.remote.tailscale": {
+        "en": "Tailscale on this machine",
+        "tr": "Bu makinede Tailscale",
+    },
+    "setup.step.remote.ssh": {"en": "SSH and mosh", "tr": "SSH ve mosh"},
     "setup.step.remote.guide": {"en": "Tailscale and SSH", "tr": "Tailscale ve SSH"},
     "setup.note.remote.guide": {
         "en": "Guided remote access comes with a later version. Its SSH part needs sudo, "
@@ -407,6 +450,7 @@ SETUP_MESSAGES: dict[str, dict[str, str]] = {
         "tau setup ise sudo'yu hiç çalıştırmaz: Tailscale'i kurmak ve tek sudo komutunu "
         "kendin çalıştırmak için rehberi izle.",
     },
+    "setup.step.remote.phone": {"en": "Your phone (Termius)", "tr": "Telefonun (Termius)"},
     "setup.step.guard.doctor": {
         "en": "Check the guard's prerequisites",
         "tr": "Korumanın ön koşullarını denetle",
@@ -478,6 +522,330 @@ SETUP_MESSAGES: dict[str, dict[str, str]] = {
         "account; the guide walks through it (tau cloud push when you are ready).",
         "tr": "tau-cloud yüklendi. Bulut modu tau'nu kendi Cloudflare hesabına taşır; rehber "
         "adım adım anlatır (hazır olduğunda tau cloud push).",
+    },
+    # -- remote access (tau remote, issue 173) -----------------------------------------------------
+    "setup.remote.unsupported": {
+        "en": "Remote access is set up on macOS and Linux only.",
+        "tr": "Uzaktan erişim yalnızca macOS ve Linux'ta kurulur.",
+    },
+    "setup.remote.present": {"en": "present", "tr": "var"},
+    "setup.remote.missing": {"en": "missing", "tr": "yok"},
+    "setup.remote.kit_failed": {
+        "en": "The remote access scripts could not be written ({error}). Check that the data "
+        "directory is writable, or use infra/remote from a checkout of the repository.",
+        "tr": "Uzaktan erişim betikleri yazılamadı ({error}). Veri dizininin yazılabilir "
+        "olduğunu denetle ya da deponun bir kopyasındaki infra/remote dizinini kullan.",
+    },
+    "setup.remote.ts.installed": {"en": "Tailscale installed", "tr": "Tailscale kurulu"},
+    "setup.remote.ts.missing": {"en": "not found", "tr": "bulunamadı"},
+    "setup.remote.ts.connected": {"en": "Logged in and connected", "tr": "Oturum açık ve bağlı"},
+    "setup.remote.ts.state.logged_out": {"en": "logged out", "tr": "oturum kapalı"},
+    "setup.remote.ts.state.stopped": {"en": "turned off", "tr": "kapalı"},
+    "setup.remote.ts.state.starting": {"en": "still starting", "tr": "hâlâ başlıyor"},
+    "setup.remote.ts.state.approval": {
+        "en": "waiting for approval in the admin console",
+        "tr": "yönetici konsolunda onay bekliyor",
+    },
+    "setup.remote.ts.state.unreachable": {
+        "en": "not running (the Tailscale service does not answer)",
+        "tr": "çalışmıyor (Tailscale servisi yanıt vermiyor)",
+    },
+    "setup.remote.ts.state.other": {
+        "en": "not connected ({state})",
+        "tr": "bağlı değil ({state})",
+    },
+    "setup.remote.ts.ok": {
+        "en": "Tailscale is connected as {host}",
+        "tr": "Tailscale {host} olarak bağlı",
+    },
+    "setup.remote.ts.summary.missing": {
+        "en": "Tailscale is not installed",
+        "tr": "Tailscale kurulu değil",
+    },
+    "setup.remote.ts.summary.down": {
+        "en": "Tailscale is installed but not connected",
+        "tr": "Tailscale kurulu ama bağlı değil",
+    },
+    "setup.remote.ts.install.darwin": {
+        "en": "Install Tailscale from the Mac App Store or from tailscale.com/download, open it, "
+        "allow its system extension under System Settings → Privacy & Security, and log in. "
+        "Install it on your phone too and log in with the same account.",
+        "tr": "Tailscale'i Mac App Store'dan ya da tailscale.com/download adresinden kur, aç, "
+        "Sistem Ayarları → Gizlilik ve Güvenlik altında sistem uzantısına izin ver ve oturum "
+        "aç. Telefonuna da kur ve aynı hesapla oturum aç.",
+    },
+    "setup.remote.ts.install.linux": {
+        "en": "Install Tailscale with its official script, then log in: run this in your own "
+        "terminal. It asks for your password (sudo), and tailscale up prints a link to open "
+        "in a browser. Install it on your phone too and log in with the same account.",
+        "tr": "Tailscale'i resmî betiğiyle kur, sonra oturum aç: bunu kendi terminalinde "
+        "çalıştır. Parolanı sorar (sudo), tailscale up da tarayıcıda açılacak bir bağlantı "
+        "yazdırır. Telefonuna da kur ve aynı hesapla oturum aç.",
+    },
+    "setup.remote.ts.login.darwin": {
+        "en": "Open Tailscale (its icon is in the menu bar), turn it on and log in, with the "
+        "same account as on your phone.",
+        "tr": "Tailscale'i aç (simgesi menü çubuğunda), etkinleştir ve telefonundakiyle aynı "
+        "hesapla oturum aç.",
+    },
+    "setup.remote.ts.login.linux": {
+        "en": "Log in: run this in your own terminal. It asks for your password (sudo) and "
+        "prints a link to open in a browser; use the same account as on your phone.",
+        "tr": "Oturum aç: bunu kendi terminalinde çalıştır. Parolanı sorar (sudo) ve "
+        "tarayıcıda açılacak bir bağlantı yazdırır; telefonundakiyle aynı hesabı kullan.",
+    },
+    "setup.remote.ts.start.linux": {
+        "en": "Start the Tailscale service and log in: run this in your own terminal. It asks "
+        "for your password (sudo).",
+        "tr": "Tailscale servisini başlat ve oturum aç: bunu kendi terminalinde çalıştır. "
+        "Parolanı sorar (sudo).",
+    },
+    "setup.remote.ts.approve": {
+        "en": "An admin of your tailnet has to approve this machine in the Tailscale admin "
+        "console.",
+        "tr": "Tailnet'inin bir yöneticisi bu makineyi Tailscale yönetici konsolunda onaylamalı.",
+    },
+    "setup.remote.ssh.sshd": {"en": "SSH server", "tr": "SSH sunucusu"},
+    "setup.remote.ssh.sshd.on": {
+        "en": "answers on port 22",
+        "tr": "22 numaralı portta yanıt veriyor",
+    },
+    "setup.remote.ssh.sshd.off.darwin": {
+        "en": "off (Remote Login)",
+        "tr": "kapalı (Uzaktan Giriş / Remote Login)",
+    },
+    "setup.remote.ssh.sshd.off.linux": {
+        "en": "not running on port 22",
+        "tr": "22 numaralı portta çalışmıyor",
+    },
+    "setup.remote.ssh.dropin": {"en": "Hardening {path}", "tr": "Sıkılaştırma {path}"},
+    "setup.remote.ssh.dropin.ok": {
+        "en": "keys only; only {user}, only from the tailnet and localhost",
+        "tr": "yalnızca anahtar; yalnızca {user}, yalnızca tailnet'ten ve localhost'tan",
+    },
+    "setup.remote.ssh.dropin.missing": {"en": "missing", "tr": "yok"},
+    "setup.remote.ssh.dropin.password": {
+        "en": "password login is not off",
+        "tr": "parolayla giriş kapalı değil",
+    },
+    "setup.remote.ssh.dropin.kbd": {
+        "en": "keyboard-interactive login is not off",
+        "tr": "keyboard-interactive giriş kapalı değil",
+    },
+    "setup.remote.ssh.dropin.allow_missing": {
+        "en": "no AllowUsers line",
+        "tr": "AllowUsers satırı yok",
+    },
+    "setup.remote.ssh.dropin.allow_open": {
+        "en": "AllowUsers also lets in {entries}; only {user} from the tailnet and localhost "
+        "belong there",
+        "tr": "AllowUsers {entries} için de izin veriyor; orada yalnızca tailnet'ten ve "
+        "localhost'tan {user} olmalı",
+    },
+    "setup.remote.ssh.template": {
+        "en": "Same as tau's template",
+        "tr": "tau'nun şablonuyla aynı",
+    },
+    "setup.remote.ssh.template.differs": {
+        "en": "differs; setup-all.sh writes it again",
+        "tr": "farklı; setup-all.sh yeniden yazar",
+    },
+    "setup.remote.ssh.include": {
+        "en": "sshd reads sshd_config.d",
+        "tr": "sshd, sshd_config.d dizinini okuyor",
+    },
+    "setup.remote.ssh.include.missing": {
+        "en": "{path} has no Include line for it, so the drop-in is ignored",
+        "tr": "{path} içinde onun için bir Include satırı yok, bu yüzden drop-in yok sayılıyor",
+    },
+    "setup.remote.ssh.probe": {"en": "Password login", "tr": "Parolayla giriş"},
+    "setup.remote.ssh.probe.off": {
+        "en": "refused, keys only",
+        "tr": "reddediliyor, yalnızca anahtar",
+    },
+    "setup.remote.ssh.probe.on": {
+        "en": "still offered by sshd",
+        "tr": "sshd hâlâ sunuyor",
+    },
+    "setup.remote.ssh.probe.unknown": {
+        "en": "could not be verified ({message})",
+        "tr": "doğrulanamadı ({message})",
+    },
+    "setup.remote.ssh.program.missing": {"en": "not installed", "tr": "kurulu değil"},
+    "setup.remote.ssh.brew.missing": {
+        "en": "not installed; the command below installs mosh and tmux with it (brew.sh)",
+        "tr": "kurulu değil; aşağıdaki komut mosh ve tmux'u onunla kurar (brew.sh)",
+    },
+    "setup.remote.ssh.zshenv": {
+        "en": "~/.zshenv block (mosh-server on PATH over SSH)",
+        "tr": "~/.zshenv bloğu (SSH'ta PATH üzerinde mosh-server)",
+    },
+    "setup.remote.ssh.tmux_conf": {
+        "en": "~/.tmux.conf block (tau's tmux settings)",
+        "tr": "~/.tmux.conf bloğu (tau'nun tmux ayarları)",
+    },
+    "setup.remote.ssh.ok": {
+        "en": "SSH takes keys only, only from the tailnet; mosh and tmux are there",
+        "tr": "SSH yalnızca anahtar ve yalnızca tailnet'ten kabul ediyor; mosh ve tmux hazır",
+    },
+    "setup.remote.ssh.problems": {
+        "en": "{count} problem(s) with SSH, mosh or tmux",
+        "tr": "SSH, mosh ya da tmux ile ilgili {count} sorun",
+    },
+    "setup.remote.ssh.action": {
+        "en": "Run this in your own terminal, as yourself and not with sudo: it asks for your "
+        "password (sudo) only for the steps that need root. tau never runs it.",
+        "tr": "Bunu kendi terminalinde, sudo olmadan kendi kullanıcınla çalıştır: parolanı "
+        "(sudo) yalnızca root gerektiren adımlar için sorar. tau onu hiçbir zaman çalıştırmaz.",
+    },
+    "setup.remote.ssh.action.brew": {
+        "en": "Install Homebrew first (brew.sh): the command installs mosh and tmux with it. "
+        "Then run this in your own terminal, as yourself and not with sudo: it asks for your "
+        "password (sudo) only for the steps that need root. tau never runs it.",
+        "tr": "Önce Homebrew'u kur (brew.sh): komut mosh ve tmux'u onunla kurar. Sonra bunu "
+        "kendi terminalinde, sudo olmadan kendi kullanıcınla çalıştır: parolanı (sudo) "
+        "yalnızca root gerektiren adımlar için sorar. tau onu hiçbir zaman çalıştırmaz.",
+    },
+    "setup.remote.change.darwin.brew": {
+        "en": "installs tmux and mosh with Homebrew",
+        "tr": "tmux ve mosh'u Homebrew ile kurar",
+    },
+    "setup.remote.change.darwin.dotfiles": {
+        "en": "adds a tau block to ~/.zshenv (Homebrew on PATH, so mosh-server starts over SSH) "
+        "and to ~/.tmux.conf, and links tau-attach into ~/.local/bin",
+        "tr": "~/.zshenv dosyasına (SSH üzerinden mosh-server başlasın diye PATH'e Homebrew) ve "
+        "~/.tmux.conf dosyasına bir tau bloğu ekler, tau-attach'ı ~/.local/bin içine bağlar",
+    },
+    "setup.remote.change.darwin.keepawake": {
+        "en": "loads the keep-awake agent com.tau.keepawake (caffeinate -s, on AC power only), "
+        "unless TauBar is installed",
+        "tr": "TauBar kurulu değilse uyanık tutma ajanı com.tau.keepawake'i yükler (caffeinate "
+        "-s, yalnızca fişe takılıyken)",
+    },
+    "setup.remote.change.darwin.tailscale": {
+        "en": "installs Tailscale.app with Homebrew if it is missing",
+        "tr": "Tailscale.app yoksa Homebrew ile kurar",
+    },
+    "setup.remote.change.darwin.dropin": {
+        "en": "with sudo: writes {path}: keys only (password and keyboard-interactive login "
+        "off), only your user from the tailnet and localhost (AllowUsers), no agent "
+        "forwarding; tests it with sshd -t and rolls it back if the test fails",
+        "tr": "sudo ile: {path} dosyasını yazar: yalnızca anahtar (parola ve "
+        "keyboard-interactive giriş kapalı), yalnızca tailnet'ten ve localhost'tan senin "
+        "kullanıcın (AllowUsers), agent yönlendirme yok; sshd -t ile dener, deneme başarısız "
+        "olursa geri alır",
+    },
+    "setup.remote.change.darwin.remote_login": {
+        "en": "with sudo: creates missing SSH host keys (ssh-keygen -A) and turns on Remote "
+        "Login, or tells you where to switch it on",
+        "tr": "sudo ile: eksik SSH host anahtarlarını oluşturur (ssh-keygen -A) ve Uzaktan "
+        "Girişi (Remote Login) açar ya da nereden açacağını söyler",
+    },
+    "setup.remote.change.linux.keys": {
+        "en": "over SSH without a key in ~/.ssh/authorized_keys it stops first, so you cannot "
+        "lock yourself out",
+        "tr": "SSH üzerindeysen ve ~/.ssh/authorized_keys içinde anahtar yoksa en başta durur, "
+        "böylece kendini dışarıda bırakamazsın",
+    },
+    "setup.remote.change.linux.dropin": {
+        "en": "with sudo: writes {path} first, so a newly installed SSH server starts hardened: "
+        "keys only, only your user from the tailnet and localhost (AllowUsers), no agent "
+        "forwarding",
+        "tr": "sudo ile: önce {path} dosyasını yazar, böylece yeni kurulan SSH sunucusu "
+        "sıkılaştırılmış başlar: yalnızca anahtar, yalnızca tailnet'ten ve localhost'tan senin "
+        "kullanıcın (AllowUsers), agent yönlendirme yok",
+    },
+    "setup.remote.change.linux.packages": {
+        "en": "with sudo: installs openssh-server, mosh and tmux (apt-get, dnf or pacman)",
+        "tr": "sudo ile: openssh-server, mosh ve tmux'u kurar (apt-get, dnf ya da pacman)",
+    },
+    "setup.remote.change.linux.check": {
+        "en": "with sudo: checks that sshd reads sshd_config.d, creates missing host keys and "
+        "tests the configuration with sshd -t; rolls the drop-in back if a check fails",
+        "tr": "sudo ile: sshd'nin sshd_config.d dizinini okuduğunu denetler, eksik host "
+        "anahtarlarını oluşturur ve yapılandırmayı sshd -t ile dener; bir denetim başarısız "
+        "olursa drop-in'i geri alır",
+    },
+    "setup.remote.change.linux.dotfiles": {
+        "en": "adds a tau block to ~/.tmux.conf and links tau-attach into ~/.local/bin",
+        "tr": "~/.tmux.conf dosyasına bir tau bloğu ekler, tau-attach'ı ~/.local/bin içine bağlar",
+    },
+    "setup.remote.change.linux.service": {
+        "en": "with sudo: enables the SSH service and reloads it",
+        "tr": "sudo ile: SSH servisini etkinleştirir ve yeniden yükler",
+    },
+    "setup.remote.phone.host": {"en": "Address", "tr": "Adres (Address)"},
+    "setup.remote.phone.host.none": {
+        "en": "none yet: Tailscale is not connected",
+        "tr": "henüz yok: Tailscale bağlı değil",
+    },
+    "setup.remote.phone.ip": {
+        "en": "Address without MagicDNS",
+        "tr": "MagicDNS olmadan adres",
+    },
+    "setup.remote.phone.user": {"en": "Username", "tr": "Kullanıcı adı (Username)"},
+    "setup.remote.phone.port": {"en": "Port", "tr": "Port"},
+    "setup.remote.phone.key": {"en": "Key", "tr": "Anahtar (Key)"},
+    "setup.remote.phone.key.ok": {
+        "en": "the ED25519 key you made in Termius; {count} key(s) on this machine",
+        "tr": "Termius'ta oluşturduğun ED25519 anahtarı; bu makinede {count} anahtar var",
+    },
+    "setup.remote.phone.key.none": {
+        "en": "no key on this machine yet",
+        "tr": "bu makinede henüz anahtar yok",
+    },
+    "setup.remote.phone.key.loose": {
+        "en": "~/.ssh/authorized_keys is writable by others, so sshd ignores it",
+        "tr": "~/.ssh/authorized_keys başkaları tarafından yazılabilir, bu yüzden sshd onu yok "
+        "sayıyor",
+    },
+    "setup.remote.phone.key.chmod": {
+        "en": "Make your keys private again (no sudo needed):",
+        "tr": "Anahtarlarını yeniden yalnızca sana ait yap (sudo gerekmez):",
+    },
+    "setup.remote.phone.key.action": {
+        "en": "In Termius: Keychain → + → Generate Key → type ED25519 → name it iphone, then "
+        "copy its public key. Run this here, as yourself (no sudo), and paste the key:",
+        "tr": "Termius'ta: Keychain → + → Generate Key → tür ED25519 → adı iphone, sonra açık "
+        "anahtarını kopyala. Bunu burada, kendi kullanıcınla (sudo olmadan) çalıştır ve "
+        "anahtarı yapıştır:",
+    },
+    "setup.remote.phone.on": {"en": "on", "tr": "açık"},
+    "setup.remote.phone.startup": {
+        "en": "Startup Snippet",
+        "tr": "Başlangıç komutu (Startup Snippet)",
+    },
+    "setup.remote.phone.startup.missing": {
+        "en": "tau-attach (not installed yet; setup-all.sh links it)",
+        "tr": "tau-attach (henüz kurulu değil; setup-all.sh bağlar)",
+    },
+    "setup.remote.phone.tailscale": {
+        "en": "Tailscale on the phone",
+        "tr": "Telefondaki Tailscale",
+    },
+    "setup.remote.phone.tailscale.same": {
+        "en": "on, logged in with the same account",
+        "tr": "açık, aynı hesapla oturum açılmış",
+    },
+    "setup.remote.phone.ok": {
+        "en": "In Termius, add a host with these values",
+        "tr": "Termius'ta bu değerlerle bir host ekle",
+    },
+    "setup.remote.phone.need_key": {
+        "en": "Add your phone's key to this machine",
+        "tr": "Telefonunun anahtarını bu makineye ekle",
+    },
+    "setup.remote.phone.need_tailscale": {
+        "en": "Connect Tailscale first: the phone reaches this machine through it",
+        "tr": "Önce Tailscale'i bağla: telefon bu makineye onun üzerinden ulaşır",
+    },
+    "setup.remote.status.ready": {
+        "en": "Remote access is ready: ssh {user}@{host}",
+        "tr": "Uzaktan erişim hazır: ssh {user}@{host}",
+    },
+    "setup.remote.status.problems": {
+        "en": "{count} problem(s). `tau setup run remote` walks you through them.",
+        "tr": "{count} sorun. `tau setup run remote` seni adım adım geçirir.",
     },
     # -- inputs ------------------------------------------------------------------------------------
     "setup.input.net_name": {

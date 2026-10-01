@@ -22,6 +22,9 @@ import runInitInvalid from "./fixtures/run-init-invalid.jsonl?raw";
 import runTelegram from "./fixtures/run-telegram.jsonl?raw";
 import runGuardMissing from "./fixtures/run-guard-missing.jsonl?raw";
 import runDoctor from "./fixtures/run-doctor.jsonl?raw";
+import runRemote from "./fixtures/run-remote.jsonl?raw";
+import runRemotePhone from "./fixtures/run-remote-phone.jsonl?raw";
+import runRemoteAction from "./fixtures/run-remote-action.jsonl?raw";
 
 function lines(text: string): JobEvent[] {
   return text
@@ -84,65 +87,94 @@ describe("tau setup run --json", () => {
   });
 
   it("shows an action the owner takes in Terminal and never treats it as runnable", () => {
-    // Issue 173: a `check` per checking step, and a `needs_ui` with an `action` and no `argv`.
+    // Issue 173 (docs/reference/setup.md, "Check steps"): a `check` per check step, then a
+    // `needs_ui` with `summary` and `action` and neither `command` nor `argv`.
+    const action = {
+      kind: "sudo",
+      text: "Run this in your own terminal, as yourself and not with sudo: it asks for your password (sudo) only for the steps that need root. tau never runs it.",
+      command: "bash ~/.local/share/tau/remote/setup-all.sh",
+      sudo: true,
+      url: null,
+      changes: ["installs tmux and mosh with Homebrew", "with sudo: writes /etc/ssh/sshd_config.d/010-tau.conf"],
+      script: "~/.local/share/tau/remote/setup-all.sh",
+    };
     const run = fold([
-      { event: "progress", feature: "remote", step: "ssh", status: "checking", label: "SSH and mosh" },
+      { event: "progress", feature: "remote", step: "tailscale", status: "checking", label: "Tailscale on this machine", command: ["remote", "tailscale"] },
+      { event: "check", feature: "remote", step: "tailscale", ok: true, summary: "Tailscale is connected as my-mac.tailXXXXXX.ts.net", checks: [{ id: "connected", label: "Connected", status: "ok", detail: "my-mac.tailXXXXXX.ts.net" }], action: null, values: { host: "my-mac.tailXXXXXX.ts.net", ip: "100.x.y.z" } },
+      { event: "progress", feature: "remote", step: "tailscale", status: "done", code: 0, label: "Tailscale on this machine" },
+      { event: "progress", feature: "remote", step: "ssh", status: "checking", label: "SSH and mosh", command: ["remote", "ssh"] },
       {
         event: "check",
         feature: "remote",
         step: "ssh",
         ok: false,
-        summary: "Remote Login is off",
+        summary: "6 problem(s) with SSH, mosh or tmux",
         checks: [
-          { status: "ok", name: "tailscale", detail: "logged in" },
-          { status: "fail", name: "sshd", detail: "Remote Login is off" },
+          { id: "sshd", label: "SSH server", status: "fail", detail: "off (Remote Login)" },
+          { id: "tmux", label: "tmux", status: "ok", detail: "/opt/homebrew/bin/tmux" },
+          { id: "tmux_conf", label: "~/.tmux.conf block (tau's tmux settings)", status: "warn", detail: "missing" },
         ],
-        action: null,
-        values: {},
+        action,
+        values: { user: "alice", script: "~/.local/share/tau/remote/setup-all.sh" },
       },
-      {
-        event: "needs_ui",
-        feature: "remote",
-        step: "ssh",
-        label: "SSH and mosh",
-        command: ["remote", "ssh"],
-        action: {
-          kind: "terminal",
-          text: "Turn on SSH for the tailnet only.",
-          command: "sudo infra/remote/setup.sh",
-          sudo: true,
-          url: "https://docs.tau.getporti.com/guides/phone-tailscale-termius/",
-          changes: ["/etc/ssh/sshd_config.d/tau.conf"],
-          script: "#!/bin/sh\n…",
-        },
-      },
-      { event: "done", feature: "remote", ok: true, configured: false, results: [{ step: "ssh", status: "needs_ui" }], pending: ["ssh", "phone"] },
+      { event: "needs_ui", feature: "remote", step: "ssh", label: "SSH and mosh", summary: "6 problem(s) with SSH, mosh or tmux", action },
+      { event: "done", feature: "remote", ok: true, configured: false, results: [{ step: "tailscale", status: "done", code: 0 }, { step: "ssh", status: "needs_ui" }], pending: ["ssh", "phone"] },
     ]);
-    expect(run.steps[0].check).toMatchObject({ ok: false, summary: "Remote Login is off" });
-    expect(run.steps[0].check?.checks).toHaveLength(2);
+    expect(run.steps.map((s) => [s.id, s.status])).toEqual([
+      ["tailscale", "done"],
+      ["ssh", "needs_ui"],
+    ]);
+    expect(run.steps[1].check).toMatchObject({ ok: false, summary: "6 problem(s) with SSH, mosh or tmux" });
+    expect(run.steps[1].check?.checks.map((c) => c.status)).toEqual(["fail", "ok", "warn"]);
+    expect(run.needsUi).toMatchObject({ step: "ssh", command: [], summary: "6 problem(s) with SSH, mosh or tmux" });
+    expect(run.needsUi?.argv).toBeUndefined();
     expect(needsUiKind(run.needsUi!)).toBe("action");
-    expect(actionCommand(run.needsUi!.action!)).toBe("sudo infra/remote/setup.sh");
-    expect(actionCommand({ command: ["tailscale", "up"] })).toBe("tailscale up");
-    expect(actionCommand({ text: "only words" })).toBeNull();
+    expect(actionCommand(run.needsUi!.action!)).toBe("bash ~/.local/share/tau/remote/setup-all.sh");
+    expect(actionCommand({ command: ["open", "-a", "Tailscale"] })).toBe("open -a Tailscale");
+    expect(actionCommand({ text: "only words", command: null })).toBeNull();
+    expect(run.done?.pending).toEqual(["ssh", "phone"]);
     // With an argv it is the app's own step again, whatever else it carries.
     expect(needsUiKind({ ...run.needsUi!, argv: ["python", "-m", "tau_core", "remote", "ssh"] })).toBe(
       "terminal",
     );
   });
 
-  it("keeps the phone step's values for the Termius card", () => {
-    const run = fold([
-      { event: "progress", feature: "remote", step: "phone", status: "checking", label: "Your phone" },
-      {
-        event: "check",
-        ok: true,
-        summary: "Ready for Termius",
-        checks: [{ status: "ok", name: "key" }],
-        action: null,
-        values: { host: "my-mac.tailXXXXXX.ts.net", ip: "100.x.y.z", user: "me", port: 22, mosh: true },
-      },
+  it("stops at the recorded SSH action, with the check itself first in pending", () => {
+    // Recorded in a scratch home where SSH was not set up for that user.
+    const run = fold(lines(runRemoteAction));
+    expect(run.steps.map((s) => [s.id, s.status])).toEqual([
+      ["tailscale", "done"],
+      ["ssh", "needs_ui"],
     ]);
-    expect(run.steps[0].check?.values).toMatchObject({ host: "my-mac.tailXXXXXX.ts.net", port: 22 });
+    expect(run.steps[1].check?.ok).toBe(false);
+    expect(run.steps[1].check?.checks.some((c) => c.status === "fail")).toBe(true);
+    expect(needsUiKind(run.needsUi!)).toBe("action");
+    expect(run.needsUi?.action).toMatchObject({ kind: "sudo", sudo: true, url: null });
+    expect(actionCommand(run.needsUi!.action!)).toMatch(/^bash .*setup-all\.sh$/);
+    expect(run.needsUi?.action?.changes?.length).toBeGreaterThan(2);
+    expect(run.done).toMatchObject({ configured: false, pending: ["ssh", "phone"] });
+  });
+
+  it("follows remote access's check steps on a Mac where they pass", () => {
+    const run = fold(lines(runRemote));
+    expect(run.steps.map((s) => [s.id, s.status])).toEqual([
+      ["tailscale", "done"],
+      ["ssh", "done"],
+      ["phone", "done"],
+    ]);
+    expect(run.steps.every((s) => s.check?.ok)).toBe(true);
+    expect(run.needsUi).toBeNull();
+    expect(run.done).toMatchObject({ ok: true, configured: true, pending: [] });
+    // The phone step's values, for the Termius card.
+    const phone = fold(lines(runRemotePhone));
+    expect(phone.steps[0].check?.values).toMatchObject({
+      host: "my-mac.tailXXXXXX.ts.net",
+      ip: "100.x.y.z",
+      port: 22,
+      mosh: true,
+      startup: "tau-attach",
+    });
+    expect(phone.steps[0].check?.checks.map((c) => c.id)).toContain("key");
   });
 
   it("logs plain output and stderr, and keeps the log short", () => {

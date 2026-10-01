@@ -190,7 +190,7 @@ const en = {
   "setup.action.sudo":
     "It asks for your Mac password there. The app never runs sudo or anything with administrator rights.",
   "setup.action.changes": "What it changes",
-  "setup.action.script": "The script",
+  "setup.action.script": "You can read the script first:",
   "setup.phone.title": "Your phone: Termius",
   "setup.phone.host": "Host",
   "setup.phone.ip": "IP address",
@@ -427,7 +427,7 @@ const tr: Record<Key, string> = {
   "setup.action.sudo":
     "Orada Mac parolanı ister. Uygulama asla sudo ya da yönetici yetkisiyle bir şey çalıştırmaz.",
   "setup.action.changes": "Neyi değiştirir",
-  "setup.action.script": "Betik",
+  "setup.action.script": "Betiği önce okuyabilirsin:",
   "setup.phone.title": "Telefonun: Termius",
   "setup.phone.host": "Sunucu",
   "setup.phone.ip": "IP adresi",

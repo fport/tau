@@ -74,6 +74,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "text": "The tau app is not released yet. The download page says when it is; until then, the TauBar guide shows how to build the menu bar app.",
           "url": "https://tau.getporti.com/download",
           "inputs": []
@@ -109,6 +110,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "text": "Create one when you like: tau sub new coach --describe \"a patient running coach\". Then /coach in tau tui, or tau sub chat coach.",
           "inputs": []
         }
@@ -143,6 +145,7 @@
           "interactive": true,
           "optional": false,
           "local_only": false,
+          "check": false,
           "command": [
             "telegram",
             "pair"
@@ -173,18 +176,50 @@
       "requires": [],
       "installed": true,
       "version": null,
-      "configured": false,
-      "state": "available",
+      "configured": true,
+      "state": "done",
       "docs": "https://docs.tau.getporti.com/guides/phone-tailscale-termius/",
       "steps": [
         {
-          "id": "guide",
-          "kind": "note",
-          "label": "Tailscale and SSH",
+          "id": "tailscale",
+          "kind": "command",
+          "label": "Tailscale on this machine",
           "interactive": false,
           "optional": false,
           "local_only": false,
-          "text": "Guided remote access comes with a later version. Its SSH part needs sudo, which tau setup never runs: follow the guide to install Tailscale and run the one sudo command yourself.",
+          "check": true,
+          "command": [
+            "remote",
+            "tailscale"
+          ],
+          "inputs": []
+        },
+        {
+          "id": "ssh",
+          "kind": "command",
+          "label": "SSH and mosh",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "check": true,
+          "command": [
+            "remote",
+            "ssh"
+          ],
+          "inputs": []
+        },
+        {
+          "id": "phone",
+          "kind": "command",
+          "label": "Your phone (Termius)",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "check": true,
+          "command": [
+            "remote",
+            "phone"
+          ],
           "inputs": []
         }
       ]
@@ -222,6 +257,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "command": [
             "guard",
             "doctor"
@@ -235,6 +271,7 @@
           "interactive": true,
           "optional": false,
           "local_only": true,
+          "check": false,
           "command": [
             "guard",
             "setup"
@@ -248,6 +285,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "text": "The guard starts with the next hub, locked: restart the hub (TauBar: untick and tick Run the hub; or tau hub stop, then tau hub run), then unlock once in tau tui.",
           "inputs": []
         }
@@ -282,6 +320,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "init"
@@ -303,6 +342,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "text": "Your tau's address is a spine, a small Worker in your own Cloudflare account (the free plan is enough). Deploying it needs no Node: tau opens Cloudflare's token page with the right permissions filled in, you create the token and paste it, and tau does the rest through the Cloudflare API. You can skip the next two steps and deploy later.",
           "inputs": []
         },
@@ -313,6 +353,7 @@
           "interactive": false,
           "optional": true,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "spine",
@@ -342,6 +383,7 @@
           "interactive": true,
           "optional": true,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "spine",
@@ -364,6 +406,7 @@
           "interactive": false,
           "optional": true,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "universe",
@@ -393,6 +436,7 @@
           "interactive": false,
           "optional": true,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "universe",
@@ -431,6 +475,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "command": [
             "hub",
             "install"
@@ -470,6 +515,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "text": "tau-cloud is installed. Cloud mode moves your tau into your own Cloudflare account; the guide walks through it (tau cloud push when you are ready).",
           "inputs": []
         }

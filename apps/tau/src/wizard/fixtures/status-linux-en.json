@@ -63,7 +63,7 @@
       "requires": [],
       "installed": true,
       "version": null,
-      "configured": true,
+      "configured": false,
       "state": "unavailable",
       "docs": "https://docs.tau.getporti.com/guides/taubar/",
       "steps": []
@@ -97,6 +97,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "text": "Create one when you like: tau sub new coach --describe \"a patient running coach\". Then /coach in tau tui, or tau sub chat coach.",
           "inputs": []
         }
@@ -131,6 +132,7 @@
           "interactive": true,
           "optional": false,
           "local_only": false,
+          "check": false,
           "command": [
             "telegram",
             "pair"
@@ -161,18 +163,50 @@
       "requires": [],
       "installed": true,
       "version": null,
-      "configured": false,
-      "state": "available",
+      "configured": true,
+      "state": "done",
       "docs": "https://docs.tau.getporti.com/guides/phone-tailscale-termius/",
       "steps": [
         {
-          "id": "guide",
-          "kind": "note",
-          "label": "Tailscale and SSH",
+          "id": "tailscale",
+          "kind": "command",
+          "label": "Tailscale on this machine",
           "interactive": false,
           "optional": false,
           "local_only": false,
-          "text": "Guided remote access comes with a later version. Its SSH part needs sudo, which tau setup never runs: follow the guide to install Tailscale and run the one sudo command yourself.",
+          "check": true,
+          "command": [
+            "remote",
+            "tailscale"
+          ],
+          "inputs": []
+        },
+        {
+          "id": "ssh",
+          "kind": "command",
+          "label": "SSH and mosh",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "check": true,
+          "command": [
+            "remote",
+            "ssh"
+          ],
+          "inputs": []
+        },
+        {
+          "id": "phone",
+          "kind": "command",
+          "label": "Your phone (Termius)",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "check": true,
+          "command": [
+            "remote",
+            "phone"
+          ],
           "inputs": []
         }
       ]
@@ -233,6 +267,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "init"
@@ -254,6 +289,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "text": "Your tau's address is a spine, a small Worker in your own Cloudflare account (the free plan is enough). Deploying it needs no Node: tau opens Cloudflare's token page with the right permissions filled in, you create the token and paste it, and tau does the rest through the Cloudflare API. You can skip the next two steps and deploy later.",
           "inputs": []
         },
@@ -264,6 +300,7 @@
           "interactive": false,
           "optional": true,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "spine",
@@ -293,6 +330,7 @@
           "interactive": true,
           "optional": true,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "spine",
@@ -315,6 +353,7 @@
           "interactive": false,
           "optional": true,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "universe",
@@ -344,6 +383,7 @@
           "interactive": false,
           "optional": true,
           "local_only": false,
+          "check": false,
           "command": [
             "net",
             "universe",
@@ -382,6 +422,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "text": "On Linux the hub runs as a systemd user unit, no sudo needed: mkdir -p ~/.config/systemd/user && tau hub systemd-unit > ~/.config/systemd/user/tau-hub.service && systemctl --user enable --now tau-hub",
           "inputs": []
         }
@@ -418,6 +459,7 @@
           "interactive": false,
           "optional": false,
           "local_only": false,
+          "check": false,
           "text": "tau-cloud is installed. Cloud mode moves your tau into your own Cloudflare account; the guide walks through it (tau cloud push when you are ready).",
           "inputs": []
         }

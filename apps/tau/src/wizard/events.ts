@@ -22,24 +22,26 @@ export type StepStatus =
   | "info"
   | "needs_ui";
 
-/** One item of a `check` event's checklist. */
+/** One line of a `check` event's checklist (`{id, label, status, detail}`). */
 export interface CheckItem {
   status: "ok" | "fail" | "warn" | "info";
+  id?: string;
   name?: string;
   label?: string;
   detail?: string;
   [key: string]: unknown;
 }
 
-/** What the owner does by hand (issue 173): the app shows it and never runs it. */
+/** What only the owner can do (issue 173): `kind` is install, login, sudo, key or other. The
+ * app shows it and never runs it. `script` is the path of the file behind `command`. */
 export interface HandAction {
   kind?: string;
   text?: string;
-  command?: string | string[];
+  command?: string | string[] | null;
   sudo?: boolean;
-  url?: string;
+  url?: string | null;
   changes?: string[];
-  script?: string;
+  script?: string | null;
 }
 
 export interface CheckEvent {
@@ -67,12 +69,13 @@ export interface NeedsUi {
   feature: string;
   step: string;
   label: string;
-  /** The words after `tau`. */
+  /** The words after `tau` (empty for an action). */
   command: string[];
   /** Present when the app runs the step itself. */
   argv?: string[];
-  /** Present when the owner runs it by hand (no `argv`): never executed by the app. */
+  /** Present, with `summary`, when the owner acts by hand (no `argv`): never executed. */
   action?: HandAction;
+  summary?: string;
 }
 
 export interface LogLine {
@@ -208,6 +211,7 @@ export function reduceRun(state: RunState, event: JobEvent): RunState {
         command: strings(event.command) ?? [],
         argv: strings(event.argv),
         action,
+        summary: str(event.summary),
       };
       return upsertStep({ ...state, needsUi }, needsUi.step, {
         label: needsUi.label || undefined,

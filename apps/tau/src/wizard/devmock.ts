@@ -14,6 +14,7 @@ import runAbout from "./fixtures/run-about.jsonl?raw";
 import runTelegram from "./fixtures/run-telegram.jsonl?raw";
 import runDoctor from "./fixtures/run-doctor.jsonl?raw";
 import installNet from "./fixtures/install-net.jsonl?raw";
+import runRemote from "./fixtures/run-remote.jsonl?raw";
 
 type Internals = { runCallback: (id: number, data: unknown) => void };
 type ChannelLike = { id: number };
@@ -100,25 +101,28 @@ const guardRun: JobEvent[] = [
   { event: "done", feature: "guard", ok: true, configured: false, results: [{ step: "doctor", status: "done", reason: "advisory", code: 1 }, { step: "setup", status: "needs_ui" }], pending: ["restart"] },
 ];
 
+// The remote run of docs/reference/setup.md ("Check steps"): SSH not set up yet.
+const sshAction = {
+  kind: "sudo",
+  text: "Run this in your own terminal, as yourself and not with sudo: it asks for your password (sudo) only for the steps that need root. tau never runs it.",
+  command: "bash ~/.local/share/tau/remote/setup-all.sh",
+  sudo: true,
+  url: null,
+  changes: ["installs tmux and mosh with Homebrew", "with sudo: writes /etc/ssh/sshd_config.d/010-tau.conf: keys only, only you, only from the tailnet and localhost"],
+  script: "~/.local/share/tau/remote/setup-all.sh",
+};
+const [tailscaleChecked, , tailscaleDone] = lines(runRemote);
 const remoteRun: JobEvent[] = [
-  { event: "progress", feature: "remote", step: "tailscale", status: "checking", label: "Tailscale" },
-  { event: "check", feature: "remote", step: "tailscale", ok: true, summary: "Tailscale is up", checks: [{ status: "ok", name: "app", detail: "installed" }, { status: "ok", name: "login", detail: "logged in" }], action: null, values: {} },
-  { event: "progress", feature: "remote", step: "tailscale", status: "done", label: "Tailscale" },
-  { event: "progress", feature: "remote", step: "ssh", status: "checking", label: "SSH and mosh" },
-  { event: "check", feature: "remote", step: "ssh", ok: false, summary: "Remote Login is off", checks: [{ status: "fail", name: "sshd", detail: "Remote Login is off" }, { status: "warn", name: "mosh", detail: "not installed" }], action: null, values: {} },
-  { event: "needs_ui", feature: "remote", step: "ssh", label: "SSH and mosh", command: ["remote", "ssh"], action: { kind: "terminal", text: "Turn on SSH for your tailnet only, and install mosh.", command: "sudo infra/remote/setup.sh", sudo: true, url: "https://docs.tau.getporti.com/guides/phone-tailscale-termius/", changes: ["/etc/ssh/sshd_config.d/tau.conf", "Remote Login on"] } },
-  { event: "done", feature: "remote", ok: true, configured: false, results: [{ step: "tailscale", status: "done" }, { step: "ssh", status: "needs_ui" }], pending: ["ssh", "phone"] },
+  lines(runRemote)[0],
+  tailscaleChecked,
+  tailscaleDone,
+  { event: "progress", feature: "remote", step: "ssh", status: "checking", label: "SSH and mosh", command: ["remote", "ssh"] },
+  { event: "check", feature: "remote", step: "ssh", ok: false, summary: "2 problem(s) with SSH, mosh or tmux", checks: [{ id: "sshd", label: "SSH server", status: "fail", detail: "off (Remote Login)" }, { id: "tmux", label: "tmux", status: "ok", detail: "/opt/homebrew/bin/tmux" }, { id: "mosh", label: "mosh", status: "fail", detail: "not found" }], action: sshAction, values: {} },
+  { event: "needs_ui", feature: "remote", step: "ssh", label: "SSH and mosh", summary: "2 problem(s) with SSH, mosh or tmux", action: sshAction },
+  { event: "done", feature: "remote", ok: true, configured: false, results: [{ step: "tailscale", status: "done", code: 0 }, { step: "ssh", status: "needs_ui" }], pending: ["ssh", "phone"] },
 ];
-
-const phoneRun: JobEvent[] = [
-  { event: "progress", feature: "remote", step: "ssh", status: "checking", label: "SSH and mosh" },
-  { event: "check", feature: "remote", step: "ssh", ok: true, summary: "SSH answers on the tailnet", checks: [{ status: "ok", name: "sshd", detail: "on" }], action: null, values: {} },
-  { event: "progress", feature: "remote", step: "ssh", status: "done", label: "SSH and mosh" },
-  { event: "progress", feature: "remote", step: "phone", status: "checking", label: "Your phone" },
-  { event: "check", feature: "remote", step: "phone", ok: true, summary: "Add this host in Termius", checks: [], action: null, values: { host: "my-mac.tailXXXXXX.ts.net", ip: "100.x.y.z", user: "me", port: 22, mosh: true, startup: "tmux new -A -s tau", keys: "SHA256:..." } },
-  { event: "progress", feature: "remote", step: "phone", status: "info", label: "Your phone" },
-  { event: "done", feature: "remote", ok: true, configured: true, results: [{ step: "ssh", status: "done" }, { step: "phone", status: "info" }], pending: [] },
-];
+// "Done, check again": the recorded run of a Mac where every check passes.
+const phoneRun: JobEvent[] = lines(runRemote).slice(3);
 
 async function run(args: Record<string, unknown>) {
   const channel = args.events as ChannelLike;

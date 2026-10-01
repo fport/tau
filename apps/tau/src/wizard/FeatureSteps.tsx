@@ -331,65 +331,63 @@ function StepList({ t, steps }: { t: T; steps: StepView[] }) {
               <LinkButton url={step.url}>{t("common.open")}</LinkButton>
             </div>
           )}
-          {step.check && <CheckView t={t} check={step.check} />}
+          {step.check && <CheckView t={t} check={step.check} phone={step.id === "phone"} />}
         </li>
       ))}
     </ul>
   );
 }
 
-/** A `check` event (issue 173): its checklist, and the values of the phone step as a card. */
-export function CheckView({ t, check }: { t: T; check: CheckEvent }) {
-  const values = Object.entries(check.values ?? {}).filter(
-    ([, v]) => v !== null && v !== undefined && v !== "",
-  );
+/** A `check` event (issue 173): its checklist, and for the phone step its values as a
+ * Termius card. Other steps' values are for the engine, not for showing. */
+export function CheckView({ t, check, phone }: { t: T; check: CheckEvent; phone: boolean }) {
   return (
     <div className="check-block">
       {check.summary && <p className={`small ${check.ok ? "status ok" : ""}`}>{check.summary}</p>}
       {check.checks.length > 0 && (
         <ul className="checks">
-          {check.checks.map((c, i) => (
+          {check.checks
+            // The phone's values are on the card below, once.
+            .filter((c) => !(phone && (PHONE_KEYS as readonly string[]).includes(c.id ?? "")))
+            .map((c, i) => (
             <li key={i} className={c.status}>
               <span className="check-mark">{checkMark(c.status)}</span>
               <span>
-                {(c.label ?? c.name) && <strong>{String(c.label ?? c.name)} </strong>}
+                {(c.label ?? c.name ?? c.id) && <strong>{String(c.label ?? c.name ?? c.id)} </strong>}
                 {c.detail && String(c.detail)}
               </span>
             </li>
           ))}
         </ul>
       )}
-      {values.length > 0 && <ValuesCard t={t} values={values} />}
+      {phone && <PhoneCard t={t} values={check.values ?? {}} />}
     </div>
   );
 }
 
-const PHONE_KEYS = ["host", "ip", "user", "port", "mosh", "startup", "keys"] as const;
+/** What Termius needs, in its order. */
+export const PHONE_KEYS = ["host", "ip", "user", "port", "mosh", "startup", "keys"] as const;
 
-function show(value: unknown): string {
+export function showValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "✓" : "–";
-  if (Array.isArray(value)) return value.map(show).join(", ");
+  if (Array.isArray(value)) return value.map(showValue).join(", ");
   if (value && typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
 
-/** The phone step's values (host, IP, user, port, mosh, startup, keys) as a Termius card;
- * anything else as a plain list. */
-function ValuesCard({ t, values }: { t: T; values: [string, unknown][] }) {
-  const phone = values.some(([k]) => (PHONE_KEYS as readonly string[]).includes(k));
+/** The phone step's values (host, IP, user, port, mosh, startup, keys) as a Termius card. */
+function PhoneCard({ t, values }: { t: T; values: Record<string, unknown> }) {
+  const rows = PHONE_KEYS.filter((k) => values[k] !== null && values[k] !== undefined && values[k] !== "");
+  if (!rows.length) return null;
   return (
-    <div className={phone ? "values phone" : "values"}>
-      {phone && <h3>{t("setup.phone.title")}</h3>}
+    <div className="values phone">
+      <h3>{t("setup.phone.title")}</h3>
       <dl className="facts">
-        {values.map(([key, value]) => (
+        {rows.map((key) => (
           <div key={key} className="fact">
-            <dt>
-              {(PHONE_KEYS as readonly string[]).includes(key)
-                ? t(`setup.phone.${key as (typeof PHONE_KEYS)[number]}`)
-                : key}
-            </dt>
+            <dt>{t(`setup.phone.${key}`)}</dt>
             <dd>
-              <code>{show(value)}</code>
+              <code>{showValue(values[key])}</code>
             </dd>
           </div>
         ))}
@@ -439,10 +437,12 @@ function ActionCard({
   return (
     <div className="needs-ui action">
       <h3>{needsUi.label}</h3>
+      {needsUi.summary && <p className="small muted">{needsUi.summary}</p>}
       {action.text && <p className="note-text">{action.text}</p>}
       {command && (
         <>
-          <p className="small">{t("setup.action.run")}</p>
+          {/* tau's own text says where to run it; without one, the wizard does. */}
+          {!action.text && <p className="small">{t("setup.action.run")}</p>}
           <CommandLine t={t} command={command} />
         </>
       )}
@@ -458,10 +458,9 @@ function ActionCard({
         </>
       )}
       {action.script && (
-        <details>
-          <summary>{t("setup.action.script")}</summary>
-          <pre className="code">{action.script}</pre>
-        </details>
+        <p className="small">
+          {t("setup.action.script")} <code>{action.script}</code>
+        </p>
       )}
       <div className="buttons">
         {action.url && <LinkButton url={action.url}>{t("common.open")}</LinkButton>}

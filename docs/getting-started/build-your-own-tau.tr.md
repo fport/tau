@@ -63,6 +63,9 @@ Bu **yerel mod**: beyin evde çalışır. Açık kalabilecek bir makinen yoksa [
 
 `tau-core` ajanı ve `tau` komutunu, `tau-tui` tam ekran arayüzü, `tau-net` de ağı (kimlik, kişiler, spine kit'i, evren istemcisi) barındırır.
 
+!!! tip "Kısa yol"
+    [Mac uygulaması](https://tau.getporti.com/tr/download) ya da tek satırlık kurucu (`curl -fsSL https://tau.getporti.com/install.sh | sh`) tau'yu kurar ve `tau setup`'ı başlatır; o da bu sayfanın çoğunu senin yerine yapar: anahtar, Telegram, oturum açılınca hub, ağ ve evren ([Kurulum özellikleri](../guides/setup-features.md)). Bu sayfa her parçanın ne olduğunu görmen için aynı işi adım adım yapar.
+
 === "PyPI'dan"
 
     ```sh
@@ -240,31 +243,30 @@ Hub'ı bir terminal olmadan ayakta tutmak ve bir çökmeden sonra geri gelmesini
 
 ## 7. Telegram
 
-<!-- verified: help/code (no real bot was used; tau doctor's "not configured" line is from the run above) -->
+<!-- verified: help/code (no real bot was used; the pairing transcript follows the Telegram guide) -->
 
-Hub Telegram'ı kendisi, dışa doğru yoklar (poll). Telefonunla makinen arasında ne webhook, ne herkese açık URL, ne de sunucu vardır ve ajana yalnızca izin listendeki chat id'ler ulaşır. Kısa yolu:
+Hub Telegram'ı kendisi, dışa doğru yoklar (poll). Telefonunla makinen arasında ne webhook, ne herkese açık URL, ne de sunucu vardır ve ajana yalnızca eşleştirdiğin sohbet ulaşır. Kısa yolu:
 
 1. Telegram'da [@BotFather](https://t.me/botfather)'a yaz, `/newbot` gönder, bir ad ve `bot` ile biten bir kullanıcı adı seç. `123456789:AA…` gibi bir token'la (botun gizli erişim anahtarı) yanıt verir.
-2. Yeni botunu aç, **Start**'a bas ve ona herhangi bir mesaj gönder. Sonra chat id'ni, yani `"chat": {"id":` ifadesinden sonraki sayıyı bul:
+2. Sohbetini botla eşleştir:
 
     ```sh
-    curl -s "https://api.telegram.org/bot<token>/getUpdates" | python3 -m json.tool
+    tau telegram pair
     ```
 
-3. İkisini de `~/.tau/.env` dosyasına ekle:
+    Token'ı gizli isteme yapıştır. tau onu Telegram'a doğrulatır, `~/.tau/.env` dosyasına yazar ve tek kullanımlık bir kod gösterir:
 
-    ```sh
-    TELEGRAM_BOT_TOKEN=123456789:AA...
-    TELEGRAM_ALLOWED_CHAT_IDS=123456789
+    ```text
+    Telegram botu @your_bot olarak tanıyor.
+    TELEGRAM_BOT_TOKEN, ~/.tau/.env dosyasına yazıldı (izin 0600)
+    Telegram'da t.me/your_bot adresini aç ve şunu gönder: /start K7QM-X2PA
+    Ya da tek dokunuşla: https://t.me/your_bot?start=K7QM-X2PA
+    Kod bir kez ve 10 dakika geçerli (14:32 saatine kadar). Bekleniyor; Ctrl-C iptal eder.
     ```
 
-4. Kontrol et, sonra hub'ı yeniden başlat ([6. bölüm](#6-keep-it-running)), çünkü `.env` dosyasını yalnızca başlarken okur:
+3. Telefonunda bağlantıya dokun ve **Start**'a bas. Komut `… ile eşleşildi.` satırıyla biter: sohbetin artık tau'nun Telegram'da yanıt verdiği tek sohbettir (`.env` içinde `TELEGRAM_ALLOWED_CHAT_IDS`) ve aranacak bir chat id olmadı. Çalışan bir hub eşleşmeyi hemen alır; yoksa hub'ı başlat ([6. bölüm](#6-keep-it-running)).
 
-    ```sh
-    tau doctor        # ok   telegram: configured (1 allowed chat); polls while the hub runs
-    ```
-
-Botuna yaz; hub yanıt verir ve `tau doctor` artık `polling as @your_bot` der. Tier-2 eylemler (her zaman onay isteyen izin seviyesi) **Approve** / **Reject** butonları olarak gelir. Ayrıntılar, komut menüsü ve güvenlik notları [Telegram rehberinde](../guides/telegram.md).
+**Telegram**'ı işaretlediğinde `tau setup` aynı eşleştirmeyi çalıştırır, Mac uygulamasının kurulum sihirbazı da öyle. Botuna yaz; hub yanıt verir ve `tau doctor` artık `polling as @your_bot` der. Tier-2 eylemler (her zaman onay isteyen izin seviyesi) **Approve** / **Reject** butonları olarak gelir. Ayrıntılar, elle chat id yolu (bulut modu için), komut menüsü ve güvenlik notları [Telegram rehberinde](../guides/telegram.md).
 
 ## 8. tau'nun adresi
 

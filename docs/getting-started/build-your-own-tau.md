@@ -61,6 +61,9 @@ This is **local mode**: the brain runs at home. If you have no machine that can 
 
 `tau-core` holds the agent and the `tau` command, `tau-tui` the full-screen interface and `tau-net` the network (identity, contacts, the spine kit, the universe client).
 
+!!! tip "The short way"
+    The [Mac app](https://tau.getporti.com/download) or the one-line installer (`curl -fsSL https://tau.getporti.com/install.sh | sh`) installs tau and starts `tau setup`, which runs most of this page for you: the key, Telegram, the hub at login, the network and the universe ([Setup features](../guides/setup-features.md)). This page does it step by step, so you see what each part is.
+
 === "From PyPI"
 
     ```sh
@@ -238,31 +241,30 @@ To keep the hub up without a terminal, and to have it come back after a crash:
 
 ## 7. Telegram
 
-<!-- verified: help/code (no real bot was used; tau doctor's "not configured" line is from the run above) -->
+<!-- verified: help/code (no real bot was used; the pairing transcript follows the Telegram guide) -->
 
-The hub polls Telegram itself, outbound. No webhook, no public URL and no server sit between your phone and your machine, and only chat ids on your allowlist ever reach the agent. The short version:
+The hub polls Telegram itself, outbound. No webhook, no public URL and no server sit between your phone and your machine, and only the chat you pair ever reaches the agent. The short version:
 
 1. In Telegram, message [@BotFather](https://t.me/botfather), send `/newbot`, pick a name and a username ending in `bot`. It answers with a token such as `123456789:AA…`.
-2. Open your new bot, press **Start** and send it any message. Then find your chat id, the number after `"chat": {"id":`:
+2. Pair your chat with the bot:
 
     ```sh
-    curl -s "https://api.telegram.org/bot<token>/getUpdates" | python3 -m json.tool
+    tau telegram pair
     ```
 
-3. Add both to `~/.tau/.env`:
+    Paste the token at the hidden prompt. tau checks it with Telegram, writes it to `~/.tau/.env` and shows a one-time code:
 
-    ```sh
-    TELEGRAM_BOT_TOKEN=123456789:AA...
-    TELEGRAM_ALLOWED_CHAT_IDS=123456789
+    ```text
+    Telegram knows the bot as @your_bot.
+    wrote TELEGRAM_BOT_TOKEN to ~/.tau/.env (mode 0600)
+    Open t.me/your_bot in Telegram and send: /start K7QM-X2PA
+    Or in one tap: https://t.me/your_bot?start=K7QM-X2PA
+    The code works once, for 10 minutes (until 14:32). Waiting for it; Ctrl-C cancels.
     ```
 
-4. Check, then restart the hub ([section 6](#6-keep-it-running)), since it reads `.env` only when it starts:
+3. Tap the link on your phone and press **Start**. The command ends with `Paired with …`: your chat is now the only one tau answers on Telegram (`TELEGRAM_ALLOWED_CHAT_IDS` in `.env`), and there was no chat id to look up. A running hub takes the pairing at once; otherwise start it ([section 6](#6-keep-it-running)).
 
-    ```sh
-    tau doctor        # ok   telegram: configured (1 allowed chat); polls while the hub runs
-    ```
-
-Write to your bot; the hub answers, and `tau doctor` now says `polling as @your_bot`. Tier-2 actions arrive as **Approve** / **Reject** buttons. The [Telegram guide](../guides/telegram.md) has the details, the command menu and the security notes.
+`tau setup` runs the same pairing when you tick **Telegram**, and so does the Mac app's setup wizard. Write to your bot; the hub answers, and `tau doctor` now says `polling as @your_bot`. Tier-2 actions arrive as **Approve** / **Reject** buttons. The [Telegram guide](../guides/telegram.md) has the details, the manual chat-id way (for cloud mode), the command menu and the security notes.
 
 ## 8. Your tau's address
 

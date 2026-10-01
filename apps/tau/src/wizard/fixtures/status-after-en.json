@@ -1,0 +1,479 @@
+{
+  "protocol": 1,
+  "version": "0.4.0",
+  "platform": "darwin",
+  "platform_label": "macOS",
+  "language": "en",
+  "ssh": false,
+  "install": {
+    "mode": "uv-tool",
+    "can_install": true
+  },
+  "home": "/Users/example/.tau",
+  "config": true,
+  "about": true,
+  "core_steps": [
+    "init",
+    "about",
+    "doctor"
+  ],
+  "features": [
+    {
+      "id": "tui",
+      "label": "Terminal UI",
+      "description": "tau tui: the full-screen interface with streamed replies and approvals",
+      "package": "tau-tui",
+      "lockstep": true,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": true,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": true,
+      "version": "0.4.0",
+      "configured": true,
+      "state": "done",
+      "docs": "https://docs.tau.getporti.com/getting-started/talk/",
+      "steps": []
+    },
+    {
+      "id": "app",
+      "label": "The tau app",
+      "description": "the Mac app: menu bar, chat windows, the hub's supervisor",
+      "package": null,
+      "lockstep": false,
+      "platforms": [
+        "darwin"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [
+        {
+          "id": "notifications",
+          "label": "notifications"
+        }
+      ],
+      "requires": [],
+      "installed": true,
+      "version": null,
+      "configured": true,
+      "state": "done",
+      "docs": "https://docs.tau.getporti.com/guides/taubar/",
+      "steps": [
+        {
+          "id": "download",
+          "kind": "note",
+          "label": "Download the app",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "The tau app is not released yet. The download page says when it is; until then, the TauBar guide shows how to build the menu bar app.",
+          "url": "https://tau.getporti.com/download",
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "sub",
+      "label": "Sub-taus",
+      "description": "named specialists of your tau (/coach, /landing, ...)",
+      "package": "tau-sub",
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": true,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": false,
+      "version": null,
+      "configured": false,
+      "state": "missing",
+      "docs": "https://docs.tau.getporti.com/guides/public-sub-taus/",
+      "steps": [
+        {
+          "id": "first",
+          "kind": "note",
+          "label": "Your first sub-tau",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "Create one when you like: tau sub new coach --describe \"a patient running coach\". Then /coach in tau tui, or tau sub chat coach.",
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "telegram",
+      "label": "Telegram",
+      "description": "talk to tau from your phone through your own bot",
+      "package": null,
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": true,
+      "version": null,
+      "configured": false,
+      "state": "available",
+      "docs": "https://docs.tau.getporti.com/guides/telegram/",
+      "steps": [
+        {
+          "id": "pair",
+          "kind": "command",
+          "label": "Pair your bot",
+          "interactive": true,
+          "optional": false,
+          "local_only": false,
+          "command": [
+            "telegram",
+            "pair"
+          ],
+          "when_command": [
+            "telegram",
+            "pair"
+          ],
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "remote",
+      "label": "Remote access",
+      "description": "reach this machine from your phone over Tailscale and SSH",
+      "package": null,
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": true,
+      "version": null,
+      "configured": false,
+      "state": "available",
+      "docs": "https://docs.tau.getporti.com/guides/phone-tailscale-termius/",
+      "steps": [
+        {
+          "id": "guide",
+          "kind": "note",
+          "label": "Tailscale and SSH",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "Guided remote access comes with a later version. Its SSH part needs sudo, which tau setup never runs: follow the guide to install Tailscale and run the one sudo command yourself.",
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "guard",
+      "label": "Owner guard",
+      "description": "tau answers only while you are at the Mac (face check, Touch ID)",
+      "package": "tau-guard",
+      "lockstep": true,
+      "platforms": [
+        "darwin"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [
+        {
+          "id": "camera",
+          "label": "camera"
+        }
+      ],
+      "requires": [],
+      "installed": false,
+      "version": null,
+      "configured": false,
+      "state": "missing",
+      "docs": "https://docs.tau.getporti.com/guides/guard/",
+      "steps": [
+        {
+          "id": "doctor",
+          "kind": "command",
+          "label": "Check the guard's prerequisites",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "command": [
+            "guard",
+            "doctor"
+          ],
+          "inputs": []
+        },
+        {
+          "id": "setup",
+          "kind": "command",
+          "label": "Enroll your face and switch the guard on",
+          "interactive": true,
+          "optional": false,
+          "local_only": true,
+          "command": [
+            "guard",
+            "setup"
+          ],
+          "inputs": []
+        },
+        {
+          "id": "restart",
+          "kind": "note",
+          "label": "Restart the hub",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "The guard starts with the next hub, locked: restart the hub (TauBar: untick and tick Run the hub; or tau hub stop, then tau hub run), then unlock once in tau tui.",
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "net",
+      "label": "The tau network",
+      "description": "an address for your tau, contacts with other taus, the universe",
+      "package": "tau-net",
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": true,
+      "version": "0.1.0",
+      "configured": true,
+      "state": "done",
+      "docs": "https://docs.tau.getporti.com/guides/tau-network/",
+      "steps": [
+        {
+          "id": "init",
+          "kind": "command",
+          "label": "Create your tau's network identity",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "command": [
+            "net",
+            "init"
+          ],
+          "inputs": [
+            {
+              "name": "name",
+              "label": "Display name on your card (e.g. Alice's tau)",
+              "secret": false,
+              "required": false,
+              "default": ""
+            }
+          ]
+        },
+        {
+          "id": "spine",
+          "kind": "note",
+          "label": "Your spine",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "Your tau's address is a spine, a small Worker in your own Cloudflare account (the free plan is enough). Deploying it needs no Node: tau opens Cloudflare's token page with the right permissions filled in, you create the token and paste it, and tau does the rest through the Cloudflare API. You can skip the next two steps and deploy later.",
+          "inputs": []
+        },
+        {
+          "id": "spine-init",
+          "kind": "command",
+          "label": "Write the spine project",
+          "interactive": false,
+          "optional": true,
+          "local_only": false,
+          "command": [
+            "net",
+            "spine",
+            "init"
+          ],
+          "inputs": [
+            {
+              "name": "spine_dir",
+              "label": "Directory for the spine project",
+              "secret": false,
+              "required": true,
+              "default": "~/tau-spine"
+            },
+            {
+              "name": "address",
+              "label": "Your tau's address, a domain on your Cloudflare account (Enter: workers.dev)",
+              "secret": false,
+              "required": false,
+              "default": ""
+            }
+          ]
+        },
+        {
+          "id": "spine-deploy",
+          "kind": "command",
+          "label": "Deploy the spine to Cloudflare",
+          "interactive": true,
+          "optional": true,
+          "local_only": false,
+          "command": [
+            "net",
+            "spine",
+            "deploy"
+          ],
+          "inputs": [
+            {
+              "name": "spine_dir",
+              "label": "Directory for the spine project",
+              "secret": false,
+              "required": true,
+              "default": "~/tau-spine"
+            }
+          ]
+        },
+        {
+          "id": "universe",
+          "kind": "command",
+          "label": "List your tau in the universe",
+          "interactive": false,
+          "optional": true,
+          "local_only": false,
+          "command": [
+            "net",
+            "universe",
+            "join"
+          ],
+          "inputs": [
+            {
+              "name": "owner",
+              "label": "Your name in the universe",
+              "secret": false,
+              "required": false,
+              "default": ""
+            },
+            {
+              "name": "about",
+              "label": "One line about your tau",
+              "secret": false,
+              "required": false,
+              "default": ""
+            }
+          ]
+        },
+        {
+          "id": "claim",
+          "kind": "command",
+          "label": "Claim a handle (a GitHub sign-in link)",
+          "interactive": false,
+          "optional": true,
+          "local_only": false,
+          "command": [
+            "net",
+            "universe",
+            "claim"
+          ],
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "autostart",
+      "label": "Start at login",
+      "description": "run the hub as a service that starts when you log in",
+      "package": null,
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": true,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": true,
+      "version": null,
+      "configured": false,
+      "state": "available",
+      "docs": "https://docs.tau.getporti.com/guides/hub-service/",
+      "steps": [
+        {
+          "id": "launchd",
+          "kind": "command",
+          "label": "Install the launchd agent",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "command": [
+            "hub",
+            "install"
+          ],
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "cloud",
+      "label": "Cloud mode",
+      "description": "run tau in your own Cloudflare account (installs tau-cloud, then the guide)",
+      "package": "tau-cloud",
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": true,
+      "permissions": [],
+      "requires": [
+        "net"
+      ],
+      "installed": false,
+      "version": null,
+      "configured": false,
+      "state": "missing",
+      "docs": "https://docs.tau.getporti.com/guides/cloud-mode/",
+      "steps": [
+        {
+          "id": "guide",
+          "kind": "note",
+          "label": "The cloud mode guide",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "tau-cloud is installed. Cloud mode moves your tau into your own Cloudflare account; the guide walks through it (tau cloud push when you are ready).",
+          "inputs": []
+        }
+      ]
+    }
+  ]
+}

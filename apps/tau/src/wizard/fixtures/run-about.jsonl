@@ -1,0 +1,2 @@
+{"event": "progress", "feature": "setup", "step": "about", "status": "done", "detail": "wrote /Users/example/.tau/persona/user.md", "label": "About you"}
+{"event": "done", "feature": "setup", "step": "about", "ok": true, "results": [{"step": "about", "status": "done", "detail": "wrote /Users/example/.tau/persona/user.md"}], "pending": []}

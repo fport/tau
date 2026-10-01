@@ -129,6 +129,8 @@ export const api = {
   lockGuard: () => invoke<Snapshot>("lock_guard"),
   openCameraSettings: () => invoke<void>("open_camera_settings"),
   openSettings: () => invoke<void>("open_settings"),
+  /** "Set up tau…": the setup wizard. */
+  openWizard: () => invoke<void>("open_wizard"),
   /** A new chat window running `tau tui`. */
   newChat: () => invoke<void>("new_chat"),
   /** "Check for Updates…": Rust answers with a dialog. */

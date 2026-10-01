@@ -1,0 +1,7 @@
+{"event": "progress", "phase": "plan", "features": ["net"], "added": ["tau-net"], "packages": ["tau-tui", "tau-net"]}
+{"event": "progress", "phase": "install", "argv": ["/Users/example/.local/bin/uv", "tool", "install", "--force", "tau-core==0.4.0", "--with", "tau-tui==0.4.0", "--with", "tau-net"]}
+{"event": "log", "line": "Resolved 76 packages in 199ms"}
+{"event": "log", "line": "Prepared 1 package in 3ms"}
+{"event": "log", "line": "Installed 76 packages in 133ms"}
+{"event": "log", "line": " + annotated-types==0.8.0"}
+{"event": "done", "ok": true, "installed": ["tau-net"], "changed": true}

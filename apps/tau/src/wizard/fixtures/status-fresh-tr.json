@@ -1,0 +1,479 @@
+{
+  "protocol": 1,
+  "version": "0.4.0",
+  "platform": "darwin",
+  "platform_label": "macOS",
+  "language": "tr",
+  "ssh": false,
+  "install": {
+    "mode": "uv-tool",
+    "can_install": true
+  },
+  "home": "/Users/example/.tau",
+  "config": false,
+  "about": false,
+  "core_steps": [
+    "init",
+    "about",
+    "doctor"
+  ],
+  "features": [
+    {
+      "id": "tui",
+      "label": "Terminal arayüzü",
+      "description": "tau tui: akan yanıtlar ve onaylarla tam ekran arayüz",
+      "package": "tau-tui",
+      "lockstep": true,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": true,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": true,
+      "version": "0.4.0",
+      "configured": true,
+      "state": "done",
+      "docs": "https://docs.tau.getporti.com/tr/getting-started/talk/",
+      "steps": []
+    },
+    {
+      "id": "app",
+      "label": "tau uygulaması",
+      "description": "Mac uygulaması: menü çubuğu, sohbet pencereleri, hub'ın gözetmeni",
+      "package": null,
+      "lockstep": false,
+      "platforms": [
+        "darwin"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [
+        {
+          "id": "notifications",
+          "label": "bildirimler"
+        }
+      ],
+      "requires": [],
+      "installed": true,
+      "version": null,
+      "configured": true,
+      "state": "done",
+      "docs": "https://docs.tau.getporti.com/tr/guides/taubar/",
+      "steps": [
+        {
+          "id": "download",
+          "kind": "note",
+          "label": "Uygulamayı indir",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "tau uygulaması henüz yayımlanmadı. İndirme sayfası ne zaman yayımlanacağını söyler; o zamana kadar TauBar rehberi menü çubuğu uygulamasının nasıl derleneceğini gösterir.",
+          "url": "https://tau.getporti.com/download",
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "sub",
+      "label": "Alt-tau'lar",
+      "description": "tau'nun adlı uzmanları (/coach, /landing, ...)",
+      "package": "tau-sub",
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": true,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": false,
+      "version": null,
+      "configured": false,
+      "state": "missing",
+      "docs": "https://docs.tau.getporti.com/tr/guides/public-sub-taus/",
+      "steps": [
+        {
+          "id": "first",
+          "kind": "note",
+          "label": "İlk alt-tau'n",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "İstediğinde bir tane oluştur: tau sub new coach --describe \"sabırlı bir koşu koçu\". Sonra tau tui içinde /coach ya da tau sub chat coach.",
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "telegram",
+      "label": "Telegram",
+      "description": "kendi botun üzerinden telefondan tau ile konuş",
+      "package": null,
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": true,
+      "version": null,
+      "configured": false,
+      "state": "available",
+      "docs": "https://docs.tau.getporti.com/tr/guides/telegram/",
+      "steps": [
+        {
+          "id": "pair",
+          "kind": "command",
+          "label": "Botunu eşleştir",
+          "interactive": true,
+          "optional": false,
+          "local_only": false,
+          "command": [
+            "telegram",
+            "pair"
+          ],
+          "when_command": [
+            "telegram",
+            "pair"
+          ],
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "remote",
+      "label": "Uzaktan erişim",
+      "description": "bu makineye telefondan Tailscale ve SSH ile ulaş",
+      "package": null,
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": true,
+      "version": null,
+      "configured": false,
+      "state": "available",
+      "docs": "https://docs.tau.getporti.com/tr/guides/phone-tailscale-termius/",
+      "steps": [
+        {
+          "id": "guide",
+          "kind": "note",
+          "label": "Tailscale ve SSH",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "Rehberli uzaktan erişim sonraki bir sürümle geliyor. SSH kısmı sudo ister, tau setup ise sudo'yu hiç çalıştırmaz: Tailscale'i kurmak ve tek sudo komutunu kendin çalıştırmak için rehberi izle.",
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "guard",
+      "label": "Sahip koruması",
+      "description": "tau yalnızca sen Mac'in başındayken yanıt verir (yüz denetimi, Touch ID)",
+      "package": "tau-guard",
+      "lockstep": true,
+      "platforms": [
+        "darwin"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [
+        {
+          "id": "camera",
+          "label": "kamera"
+        }
+      ],
+      "requires": [],
+      "installed": false,
+      "version": null,
+      "configured": false,
+      "state": "missing",
+      "docs": "https://docs.tau.getporti.com/tr/guides/guard/",
+      "steps": [
+        {
+          "id": "doctor",
+          "kind": "command",
+          "label": "Korumanın ön koşullarını denetle",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "command": [
+            "guard",
+            "doctor"
+          ],
+          "inputs": []
+        },
+        {
+          "id": "setup",
+          "kind": "command",
+          "label": "Yüzünü kaydet ve korumayı aç",
+          "interactive": true,
+          "optional": false,
+          "local_only": true,
+          "command": [
+            "guard",
+            "setup"
+          ],
+          "inputs": []
+        },
+        {
+          "id": "restart",
+          "kind": "note",
+          "label": "Hub'ı yeniden başlat",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "Koruma bir sonraki hub ile kilitli olarak başlar: hub'ı yeniden başlat (TauBar: Run the hub kutusunu kaldırıp yeniden işaretle; ya da tau hub stop, sonra tau hub run), sonra tau tui içinde bir kez kilidi aç.",
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "net",
+      "label": "tau ağı",
+      "description": "tau'na bir adres, başka tau'larla kişiler, evren",
+      "package": "tau-net",
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": false,
+      "version": null,
+      "configured": false,
+      "state": "missing",
+      "docs": "https://docs.tau.getporti.com/tr/guides/tau-network/",
+      "steps": [
+        {
+          "id": "init",
+          "kind": "command",
+          "label": "tau'nun ağ kimliğini oluştur",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "command": [
+            "net",
+            "init"
+          ],
+          "inputs": [
+            {
+              "name": "name",
+              "label": "Kartındaki görünen ad (ör. Alice'in tau'su)",
+              "secret": false,
+              "required": false,
+              "default": ""
+            }
+          ]
+        },
+        {
+          "id": "spine",
+          "kind": "note",
+          "label": "Spine'ın",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "tau'nun adresi bir spine'dır: kendi Cloudflare hesabında küçük bir Worker (ücretsiz plan yeter). Kurmak için Node gerekmez: tau, Cloudflare'in token sayfasını doğru izinler doldurulmuş olarak açar, sen token'ı oluşturup yapıştırırsın, gerisini tau Cloudflare API ile yapar. Sonraki iki adımı atlayıp daha sonra kurabilirsin.",
+          "inputs": []
+        },
+        {
+          "id": "spine-init",
+          "kind": "command",
+          "label": "Spine projesini yaz",
+          "interactive": false,
+          "optional": true,
+          "local_only": false,
+          "command": [
+            "net",
+            "spine",
+            "init"
+          ],
+          "inputs": [
+            {
+              "name": "spine_dir",
+              "label": "Spine projesinin dizini",
+              "secret": false,
+              "required": true,
+              "default": "~/tau-spine"
+            },
+            {
+              "name": "address",
+              "label": "tau'nun adresi, Cloudflare hesabındaki bir alan adı (Enter: workers.dev)",
+              "secret": false,
+              "required": false,
+              "default": ""
+            }
+          ]
+        },
+        {
+          "id": "spine-deploy",
+          "kind": "command",
+          "label": "Spine'ı Cloudflare'e kur",
+          "interactive": true,
+          "optional": true,
+          "local_only": false,
+          "command": [
+            "net",
+            "spine",
+            "deploy"
+          ],
+          "inputs": [
+            {
+              "name": "spine_dir",
+              "label": "Spine projesinin dizini",
+              "secret": false,
+              "required": true,
+              "default": "~/tau-spine"
+            }
+          ]
+        },
+        {
+          "id": "universe",
+          "kind": "command",
+          "label": "tau'nu evrende listele",
+          "interactive": false,
+          "optional": true,
+          "local_only": false,
+          "command": [
+            "net",
+            "universe",
+            "join"
+          ],
+          "inputs": [
+            {
+              "name": "owner",
+              "label": "Evrendeki adın",
+              "secret": false,
+              "required": false,
+              "default": ""
+            },
+            {
+              "name": "about",
+              "label": "tau'n hakkında bir satır",
+              "secret": false,
+              "required": false,
+              "default": ""
+            }
+          ]
+        },
+        {
+          "id": "claim",
+          "kind": "command",
+          "label": "Bir kullanıcı adı al (GitHub ile giriş bağlantısı)",
+          "interactive": false,
+          "optional": true,
+          "local_only": false,
+          "command": [
+            "net",
+            "universe",
+            "claim"
+          ],
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "autostart",
+      "label": "Oturum açılınca başlat",
+      "description": "hub'ı oturum açtığında başlayan bir servis olarak çalıştır",
+      "package": null,
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": true,
+      "advanced": false,
+      "permissions": [],
+      "requires": [],
+      "installed": true,
+      "version": null,
+      "configured": false,
+      "state": "available",
+      "docs": "https://docs.tau.getporti.com/tr/guides/hub-service/",
+      "steps": [
+        {
+          "id": "launchd",
+          "kind": "command",
+          "label": "launchd ajanını kur",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "command": [
+            "hub",
+            "install"
+          ],
+          "inputs": []
+        }
+      ]
+    },
+    {
+      "id": "cloud",
+      "label": "Bulut modu",
+      "description": "tau'yu kendi Cloudflare hesabında çalıştır (tau-cloud'u yükler, sonra rehber)",
+      "package": "tau-cloud",
+      "lockstep": false,
+      "platforms": [
+        "darwin",
+        "linux"
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "default": false,
+      "advanced": true,
+      "permissions": [],
+      "requires": [
+        "net"
+      ],
+      "installed": false,
+      "version": null,
+      "configured": false,
+      "state": "missing",
+      "docs": "https://docs.tau.getporti.com/tr/guides/cloud-mode/",
+      "steps": [
+        {
+          "id": "guide",
+          "kind": "note",
+          "label": "Bulut modu rehberi",
+          "interactive": false,
+          "optional": false,
+          "local_only": false,
+          "text": "tau-cloud yüklendi. Bulut modu tau'nu kendi Cloudflare hesabına taşır; rehber adım adım anlatır (hazır olduğunda tau cloud push).",
+          "inputs": []
+        }
+      ]
+    }
+  ]
+}

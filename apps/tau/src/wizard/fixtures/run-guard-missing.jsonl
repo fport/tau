@@ -1,0 +1,1 @@
+{"event": "error", "code": "not_installed", "feature": "guard", "message": "tau-guard is not installed; run `tau setup install --features guard` first."}

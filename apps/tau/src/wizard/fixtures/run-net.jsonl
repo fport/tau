@@ -1,0 +1,23 @@
+{"event": "progress", "feature": "net", "step": "init", "status": "running", "label": "Create your tau's network identity", "command": ["net", "init", "--name", "Test tau"]}
+{"event": "log", "feature": "net", "step": "init", "line": "Created the network identity at /Users/example/.tau/data/net/identity.json."}
+{"event": "log", "feature": "net", "step": "init", "line": "Card name set to Test tau in the network profile (file (/Users/example/.tau/data/net))."}
+{"event": "log", "feature": "net", "step": "init", "line": "sign_key  …"}
+{"event": "log", "feature": "net", "step": "init", "line": "box_key   …"}
+{"event": "log", "feature": "net", "step": "init", "line": "Created /Users/example/.tau/persona/net.md: your public note for other taus, empty until you fill it in."}
+{"event": "log", "feature": "net", "step": "init", "line": ""}
+{"event": "log", "feature": "net", "step": "init", "line": "Next steps:"}
+{"event": "log", "feature": "net", "step": "init", "line": "- Give your tau an address: `tau net spine init DIR` and `tau net spine deploy DIR` (they write TAU_SPINE_URL and TAU_SPINE_TOKEN into .env)."}
+{"event": "log", "feature": "net", "step": "init", "line": "- Write what other taus may know about you in persona/net.md."}
+{"event": "log", "feature": "net", "step": "init", "line": "- Run `tau net publish`, or start the hub: it publishes the card itself."}
+{"event": "progress", "feature": "net", "step": "init", "status": "done", "code": 0, "label": "Create your tau's network identity"}
+{"event": "progress", "feature": "net", "step": "spine", "status": "info", "label": "Your spine", "text": "Your tau's address is a spine, a small Worker in your own Cloudflare account (the free plan is enough). Deploying it needs no Node: tau opens Cloudflare's token page with the right permissions filled in, you create the token and paste it, and tau does the rest through the Cloudflare API. You can skip the next two steps and deploy later."}
+{"event": "progress", "feature": "net", "step": "spine-init", "status": "running", "label": "Write the spine project", "command": ["net", "spine", "init", "/Users/example/tau-spine"]}
+{"event": "log", "feature": "net", "step": "spine-init", "line": "Wrote the spine project (kit 0.2.0+719ea6c82176) to /Users/example/tau-spine."}
+{"event": "log", "feature": "net", "step": "spine-init", "line": "Address: tau-spine.<your-subdomain>.workers.dev, known after the first deploy."}
+{"event": "log", "feature": "net", "step": "spine-init", "line": ""}
+{"event": "log", "feature": "net", "step": "spine-init", "line": "Next steps:"}
+{"event": "log", "feature": "net", "step": "spine-init", "line": "1. Deploy it: `tau net spine deploy /Users/example/tau-spine`. It asks for a Cloudflare API token and shows the link that creates one; no Node.js needed."}
+{"event": "log", "feature": "net", "step": "spine-init", "line": "   Or with Wrangler (Node.js 22 or newer): `bunx wrangler login` (`npx wrangler login` without bun), then `tau net spine deploy /Users/example/tau-spine --wrangler`."}
+{"event": "progress", "feature": "net", "step": "spine-init", "status": "done", "code": 0, "label": "Write the spine project"}
+{"event": "needs_ui", "feature": "net", "step": "spine-deploy", "label": "Deploy the spine to Cloudflare", "command": ["net", "spine", "deploy", "/Users/example/tau-spine"], "argv": ["/Users/example/.local/share/uv/tools/tau-core/bin/python", "-m", "tau_core", "net", "spine", "deploy", "/Users/example/tau-spine"]}
+{"event": "done", "feature": "net", "ok": true, "configured": true, "results": [{"step": "init", "status": "done", "code": 0}, {"step": "spine", "status": "info"}, {"step": "spine-init", "status": "done", "code": 0}, {"step": "spine-deploy", "status": "needs_ui"}], "pending": []}

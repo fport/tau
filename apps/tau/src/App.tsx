@@ -89,6 +89,19 @@ export default function App() {
 
       {error && <p className="banner error">✗ {error}</p>}
 
+      <section>
+        <div className="row">
+          <h2>Setup</h2>
+          <button type="button" onClick={() => api.openWizard()}>
+            Set up tau…
+          </button>
+        </div>
+        <p className="muted small">
+          The setup wizard finds or installs tau, sets the model key, and turns features on or
+          off: Telegram, the owner guard, remote access, the tau network.
+        </p>
+      </section>
+
       <HubSection snapshot={snapshot} onSnapshot={setSnapshot} />
 
       <section>

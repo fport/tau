@@ -71,6 +71,14 @@ export default function FirstRun({
         tau remembers the folder for its chat windows. Set <code>TAU_HOME</code> before opening
         the app to use another one.
       </p>
+
+      <p className="note">
+        No tau yet, or installed with <code>uv tool install</code>?{" "}
+        <button type="button" disabled={busy} onClick={() => api.openWizard()}>
+          Set up tau…
+        </button>{" "}
+        finds or installs it and sets these windows up.
+      </p>
     </main>
   );
 }

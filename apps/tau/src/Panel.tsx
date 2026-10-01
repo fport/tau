@@ -288,6 +288,9 @@ function Body({
           <span className="label">Settings…</span>
           <kbd>⌘,</kbd>
         </button>
+        <button type="button" className="item" onClick={() => api.openWizard()}>
+          Set up tau…
+        </button>
         <button type="button" className="item" onClick={away(api.checkUpdates)}>
           Check for Updates…
         </button>

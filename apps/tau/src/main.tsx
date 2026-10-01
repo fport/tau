@@ -2,9 +2,10 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { isTauri } from "@tauri-apps/api/core";
 
-// One page, three kinds of window: the panel under the menu bar icon (`index.html#panel`), the
-// chat windows (`index.html#chat`, one `tau tui` each) and the settings window. Each view module
-// brings its own stylesheet, so a window loads only its own (xterm.js only in chat windows).
+// One page, four kinds of window: the panel under the menu bar icon (`index.html#panel`), the
+// chat windows (`index.html#chat`, one `tau tui` each), the setup wizard (`index.html#wizard`)
+// and the settings window. Each view module brings its own stylesheet, so a window loads only
+// its own (xterm.js only in chat windows and in the wizard's terminal).
 
 async function startChat() {
   const [{ default: Chat }, { shouldBlockContextMenu }] = await Promise.all([
@@ -28,8 +29,17 @@ async function view(panel: boolean) {
   return (await import("./App")).default;
 }
 
+async function startWizard() {
+  if (import.meta.env.DEV && !isTauri()) await import("./wizard/devmock");
+  const { default: Wizard } = await import("./wizard/Wizard");
+  // No React.StrictMode: its double-run of effects in development would start a step's job
+  // twice (the second is refused while the first runs).
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(<Wizard />);
+}
+
 async function start() {
   if (window.location.hash === "#chat") return startChat();
+  if (window.location.hash === "#wizard") return startWizard();
   if (import.meta.env.DEV && !isTauri()) await import("./devmock");
   const panel = window.location.hash === "#panel";
   // The panel sits on macOS's popover material; in a browser it draws its own background.

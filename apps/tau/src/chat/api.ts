@@ -37,4 +37,6 @@ export const api = {
   ptyWrite: (bytes: Uint8Array) => invoke<void>("pty_write", bytes),
   ptyResize: (cols: number, rows: number) => invoke<void>("pty_resize", { cols, rows }),
   openLink: (url: string) => invoke<void>("open_link", { url }),
+  /** "Set up tau…": the setup wizard, which finds or installs tau. */
+  openWizard: () => invoke<void>("open_wizard"),
 };

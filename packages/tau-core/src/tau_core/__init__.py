@@ -20,6 +20,7 @@ Public API (other tau packages import only these names and ``tau_core.testing``)
     CompactionError, CompactionCancelled, summarize, seed_messages, compaction_title,
     record_compaction, SessionContextMismatch
     ModelInfo, describe_model, status_lines, status_report, role_lines, stored_role
+    DeviceState, DeviceSource, device_to_json
     Guard, GuardState, GuardStatus, GuardVerdict, GuardProgress, GuardTurn, Admission,
     GuardLocked, LockedGuard, HubGuard, resolve_guard, VERDICT_REASONS, ADMISSION_REASONS,
     LOCK_TRIGGERS, PROGRESS_STEPS, ALLOWED_WHILE_LOCKED
@@ -73,6 +74,8 @@ from tau_core.compaction import (
     summarize,
 )
 from tau_core.config import Config, ConfigError, ConfigNotFound, UiConfig
+from tau_core.devices import DeviceSource, DeviceState
+from tau_core.devices import to_json as device_to_json
 from tau_core.events import AgentEvent, EventBus
 from tau_core.guard import (
     ADMISSION_REASONS,
@@ -137,6 +140,8 @@ __all__ = [
     "ConfigNotFound",
     "ContextSource",
     "Decision",
+    "DeviceSource",
+    "DeviceState",
     "EventBus",
     "Exemption",
     "Guard",
@@ -182,6 +187,7 @@ __all__ = [
     "compaction_title",
     "configure_logging",
     "describe_model",
+    "device_to_json",
     "discover_tools",
     "effect_of",
     "open_session_store",

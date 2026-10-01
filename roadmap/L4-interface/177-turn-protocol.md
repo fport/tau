@@ -1,6 +1,6 @@
 # 177 · The turn protocol: JSON turn events and session history shared by the hub and tau-host
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L4 · Interface
 Packages: tau-core, cloud/shared, docs

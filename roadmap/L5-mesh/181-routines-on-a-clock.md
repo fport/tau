@@ -1,6 +1,6 @@
 # 181 · Routines on a clock: the `tau-routines` hub service, one approval at registration
 
-Status: ready-for-agent
+Status: in-progress
 Type: AFK
 Layer: L5 · Mesh
 Packages: tau-routines, tau-core

@@ -38,7 +38,7 @@
   "plugins": {
     "updater": {
       "pubkey": "",
-      "endpoints": ["https://github.com/fport/tau/releases/latest/download/latest.json"],
+      "endpoints": ["https://tau.getporti.com/download/latest.json"],
       "requireSignedVersion": true
     }
   }

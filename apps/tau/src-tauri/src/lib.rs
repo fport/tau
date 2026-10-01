@@ -11,7 +11,7 @@
 //! - **The setup wizard** (`wizard/`, roadmap 171): on the first start and from "Set up tau…",
 //!   it finds or installs tau and drives `tau setup`'s JSON protocol, asking macOS for the
 //!   permissions of the chosen features only (`permissions.rs`).
-//! - **Updates** (`update.rs`) from the GitHub release, signed for the Tauri updater.
+//! - **Updates** (`update.rs`) from the public downloads, signed for the Tauri updater.
 //!
 //! The app starts without a Dock icon; it has one, and the menu bar (`app_menu.rs`), while a
 //! chat window is open. Every webview denies every permission request (`webview.rs`), and each

@@ -1,15 +1,17 @@
 //! Updates through the Tauri updater (`tauri-plugin-updater`).
 //!
 //! CI builds every release (`.github/workflows/app.yml`): `tau.app.tar.gz`, signed with the
-//! updater key (minisign, bound to the version), and `latest.json`, attached to the GitHub
-//! release. The app asks for `latest.json` at the endpoint in `tauri.conf.json`, checks the
-//! archive's signature against the public key there, replaces itself and opens again. Every
-//! build is signed with the same code-signing identity, so macOS keeps the camera grant.
+//! updater key (minisign, bound to the version), and `latest.json`, uploaded to the public
+//! downloads at `https://tau.getporti.com/download/` (an R2 bucket the universe serves) and
+//! attached to the GitHub release. The app asks for `latest.json` at the endpoint in
+//! `tauri.conf.json`, checks the archive's signature against the public key there, replaces
+//! itself and opens again. Every build is signed with the same code-signing identity, so macOS
+//! keeps the camera grant.
 //!
 //! "Check for Updates…" works in any build that has the public key. Release builds (CI sets
 //! `TAU_APP_RELEASE=1` at compile time) also look once a minute after the start and then once a
-//! day, unless the owner switched that off in the settings window; a check sends GitHub the
-//! usual request headers and nothing else.
+//! day, unless the owner switched that off in the settings window; a check sends
+//! tau.getporti.com the usual request headers and nothing else.
 
 use crate::AppCore;
 use std::sync::Mutex;
@@ -83,7 +85,8 @@ pub fn check(app: &AppHandle, asked: bool) {
                 app,
                 MessageDialogKind::Info,
                 "This build of tau cannot update itself: it has no updater key. Release builds \
-                 from GitHub have one; a build from the checkout is updated by building it again.",
+                 from tau.getporti.com/download have one; a build from the checkout is updated \
+                 by building it again.",
             );
         }
         return;
@@ -236,19 +239,17 @@ mod tests {
         assert!(updates.start());
     }
 
-    /// The committed config points the updater at the GitHub release and binds signatures to
-    /// the version; the public key is added by `scripts/make-signing-identity.sh`.
+    /// The committed config points the updater at the public downloads (roadmap 190) and binds
+    /// signatures to the version; the public key is added by `scripts/make-signing-identity.sh`.
     #[test]
-    fn the_updater_reads_latest_json_from_the_release() {
+    fn the_updater_reads_latest_json_from_the_public_downloads() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
         let config: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         let updater = &config["plugins"]["updater"];
         assert_eq!(
             updater["endpoints"],
-            serde_json::json!([
-                "https://github.com/fport/tau/releases/latest/download/latest.json"
-            ])
+            serde_json::json!(["https://tau.getporti.com/download/latest.json"])
         );
         assert_eq!(updater["requireSignedVersion"], true);
         assert!(updater["pubkey"].is_string());

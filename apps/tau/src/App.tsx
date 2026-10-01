@@ -444,8 +444,8 @@ function UpdatesSection({
       </label>
       <p className="muted small">
         {updates.release_build
-          ? "tau asks GitHub for its latest release a minute after it starts and then once a day, and offers a newer one; nothing is installed without your click."
-          : "This build does not look by itself: release builds from GitHub do. Check for Updates… still asks."}
+          ? "tau asks tau.getporti.com for its latest release a minute after it starts and then once a day, and offers a newer one; nothing is installed without your click."
+          : "This build does not look by itself: release builds from tau.getporti.com do. Check for Updates… still asks."}
       </p>
     </section>
   );

@@ -368,6 +368,8 @@ class TauAgent:
     client_id: str = field(default_factory=lambda: secrets.token_hex(8))
     """This client's id for the guard: random per process, an audit label, never a claim."""
     _unsubscribe_store: Callable[[], None] | None = field(default=None, repr=False)
+    _release_session: Callable[[], None] | None = field(default=None, repr=False)
+    """Releases the store's hold on the session (:meth:`SessionStore.hold`); :meth:`close`."""
     _pending_repair: str | None = field(default=None, repr=False)
     """The notice the next turn prepends as an assistant message when the history ends
     dangling; ``None`` falls back to ``notice.previous_turn_unfinished``. Kept until the SDK
@@ -385,10 +387,14 @@ class TauAgent:
         return self.agent.messages
 
     def close(self) -> None:
-        """Stop recording this agent's events into its store (call before replacing it)."""
+        """Stop recording this agent's events into its store and release the session, so
+        another channel or process may open it (call before replacing the agent)."""
         if self._unsubscribe_store is not None:
             self._unsubscribe_store()
             self._unsubscribe_store = None
+        if self._release_session is not None:
+            self._release_session()
+            self._release_session = None
 
     def cancel(self) -> None:
         """Stop the turn in flight at the SDK's next safe point (thread-safe, idempotent).
@@ -865,68 +871,76 @@ def build_agent(
         guard=guard,
         client_id=client_id,
     )
-    session_manager = (
-        RepositorySessionManager(session_id=session_id, session_repository=session_store)
-        if session_store is not None
-        else None
-    )
-    # Physical tools never run concurrently: two approved tier-2 calls in one model turn
-    # would otherwise execute at the same time in different threads.
-    sequential = any(tier_of(tool) is Tier.PHYSICAL for tool in catalog.tools())
-    tier_hook = TierHook(gate)
-    seed = copy.deepcopy(list(seed_messages)) if seed_messages is not None else None
-    conversation_manager = conversation_manager_for(config.agent)
-    if session_store is not None:
-        _check_context_state(session_store, session_id, conversation_manager)
+    # One place at a time (issue 178): SessionBusy when another process or channel has it.
+    release_session = session_store.hold(session_id, channel) if session_store else None
     try:
-        agent = Agent(
-            model=model,
-            messages=seed or None,
-            tools=catalog.tools(),
-            system_prompt=system_prompt,
-            hooks=[PersonaHook(persona, context_factory), *hooks, tier_hook],
-            plugins=list(plugins) or None,
-            conversation_manager=conversation_manager,
-            session_manager=session_manager,
-            tool_executor=SequentialToolExecutor() if sequential else None,
-            trace_attributes={
-                "tau.session_id": session_id,
-                "tau.channel": channel,
-                "tau.profile": config.profile,
-            },
-            callback_handler=None,
-            agent_id=AGENT_ID,
-            name="tau",
+        session_manager = (
+            RepositorySessionManager(session_id=session_id, session_repository=session_store)
+            if session_store is not None
+            else None
         )
-    except ValueError as exc:
-        # The SDK's own refusal, in case a stored state slipped past the check above.
-        if "conversation manager state" in str(exc).lower():
-            raise SessionContextMismatch(session_id, None) from exc
+        # Physical tools never run concurrently: two approved tier-2 calls in one model turn
+        # would otherwise execute at the same time in different threads.
+        sequential = any(tier_of(tool) is Tier.PHYSICAL for tool in catalog.tools())
+        tier_hook = TierHook(gate)
+        seed = copy.deepcopy(list(seed_messages)) if seed_messages is not None else None
+        conversation_manager = conversation_manager_for(config.agent)
+        if session_store is not None:
+            _check_context_state(session_store, session_id, conversation_manager)
+        try:
+            agent = Agent(
+                model=model,
+                messages=seed or None,
+                tools=catalog.tools(),
+                system_prompt=system_prompt,
+                hooks=[PersonaHook(persona, context_factory), *hooks, tier_hook],
+                plugins=list(plugins) or None,
+                conversation_manager=conversation_manager,
+                session_manager=session_manager,
+                tool_executor=SequentialToolExecutor() if sequential else None,
+                trace_attributes={
+                    "tau.session_id": session_id,
+                    "tau.channel": channel,
+                    "tau.profile": config.profile,
+                },
+                callback_handler=None,
+                agent_id=AGENT_ID,
+                name="tau",
+            )
+        except ValueError as exc:
+            # The SDK's own refusal, in case a stored state slipped past the check above.
+            if "conversation manager state" in str(exc).lower():
+                raise SessionContextMismatch(session_id, None) from exc
+            raise
+        behind = hooks_behind_gate(agent, tier_hook)
+        if behind:
+            raise ConfigError(
+                "these hooks would run after the tier gate on BeforeToolCallEvent and could "
+                f"rewrite or un-cancel an approved call: {', '.join(behind)}. Register them below "
+                f"HookOrder.SDK_LAST ({HookOrder.SDK_LAST})."
+            )
+
+        unsubscribe = None
+        if session_store is not None:
+            session_store.write_meta(session_id, channel=channel, profile=config.profile, role=role)
+            unsubscribe = events.subscribe(session_store.event_sink(session_id))
+
+        return TauAgent(
+            agent=agent,
+            config=config,
+            events=events,
+            session_id=session_id,
+            catalog=catalog,
+            store=session_store,
+            gate=gate,
+            role=role,
+            channel=channel,
+            guard=guard,
+            client_id=client_id,
+            _unsubscribe_store=unsubscribe,
+            _release_session=release_session,
+        )
+    except BaseException:
+        if release_session is not None:
+            release_session()
         raise
-    behind = hooks_behind_gate(agent, tier_hook)
-    if behind:
-        raise ConfigError(
-            "these hooks would run after the tier gate on BeforeToolCallEvent and could rewrite "
-            f"or un-cancel an approved call: {', '.join(behind)}. Register them below "
-            f"HookOrder.SDK_LAST ({HookOrder.SDK_LAST})."
-        )
-
-    unsubscribe = None
-    if session_store is not None:
-        session_store.write_meta(session_id, channel=channel, profile=config.profile, role=role)
-        unsubscribe = events.subscribe(session_store.event_sink(session_id))
-
-    return TauAgent(
-        agent=agent,
-        config=config,
-        events=events,
-        session_id=session_id,
-        catalog=catalog,
-        store=session_store,
-        gate=gate,
-        role=role,
-        channel=channel,
-        guard=guard,
-        client_id=client_id,
-        _unsubscribe_store=unsubscribe,
-    )

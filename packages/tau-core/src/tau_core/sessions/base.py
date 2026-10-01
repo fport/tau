@@ -16,8 +16,30 @@ from datetime import UTC, datetime
 from typing import Any
 
 from strands.session import SessionRepository
+from strands.types.exceptions import SessionException
 
 from tau_core.events import AgentEvent
+
+Release = Callable[[], None]
+"""What :meth:`SessionStore.hold` returns: call it once the session is closed."""
+
+
+class SessionBusy(SessionException):
+    """The session is open somewhere else: in another process, or on another channel of this
+    one. ``holder`` is what the holder recorded (``channel``, ``pid``, ``since``), possibly
+    empty; the message names its channel so the user knows where to close it."""
+
+    def __init__(self, session_id: str, holder: dict[str, Any] | None = None) -> None:
+        self.session_id = session_id
+        self.holder = dict(holder or {})
+        where = self.holder.get("channel") or "another tau process"
+        pid = self.holder.get("pid")
+        detail = f"{where} (pid {pid})" if pid else str(where)
+        super().__init__(f"Session {session_id} is open in {detail}; close it there first.")
+
+
+def _no_release() -> None:
+    return None
 
 
 @dataclass(frozen=True)
@@ -50,6 +72,19 @@ class SessionStore(SessionRepository, ABC):
 
     @abstractmethod
     def read_meta(self, session_id: str) -> dict[str, Any]: ...
+
+    def hold(self, session_id: str, channel: str) -> Release:
+        """Mark ``session_id`` as open by this process on ``channel`` until the returned
+        function is called; raise :class:`SessionBusy` when it is open elsewhere.
+
+        A session is open in at most one place at a time (issue 178): two processes, or two
+        channels of one process, writing the same history would interleave their turns. The
+        same channel of the same process may hold a session several times (``/model``
+        rebuilds the agent on it); each hold needs its own release. The default holds nothing:
+        a store whose sessions live in one process (memory) or behind a server (spine) has
+        nothing to lock.
+        """
+        return _no_release
 
     def event_sink(self, session_id: str) -> Callable[[AgentEvent], None]:
         """A subscriber for ``EventBus.subscribe`` that records this session's events.

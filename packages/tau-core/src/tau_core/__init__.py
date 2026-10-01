@@ -7,7 +7,7 @@ Public API (other tau packages import only these names and ``tau_core.testing``)
     ToolProgress, ToolFinished, Throttled, Notice, TurnEnd, STOP_REASONS, to_turn_event,
     tool_inputs_of
     SessionStore, MemorySessionStore, open_session_store, SESSION_BACKENDS,
-    register_session_backend
+    register_session_backend, SessionBusy
     PROVIDERS, register_provider
     ContextSource, PersonaLoader
     HubService
@@ -105,6 +105,7 @@ from tau_core.registry import register_provider, register_session_backend
 from tau_core.sessions import (
     SESSION_BACKENDS,
     MemorySessionStore,
+    SessionBusy,
     SessionStore,
     open_session_store,
 )
@@ -162,6 +163,7 @@ __all__ = [
     "PersonaLoader",
     "ProviderNotSupported",
     "ReasoningDelta",
+    "SessionBusy",
     "SessionContextMismatch",
     "SessionStore",
     "SlashCommand",

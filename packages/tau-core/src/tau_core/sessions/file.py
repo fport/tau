@@ -6,6 +6,7 @@ Layout::
         session.json                          Strands Session; updated_at is refreshed on writes
         meta.json                             tau metadata: channel, profile, title, ...
         events.jsonl                          agent events, one JSON object per line, append-only
+        .lock                                 who holds the session open (``flock``), see hold()
         agents/<agent_id>/agent.json          Strands SessionAgent
         agents/<agent_id>/messages/000000.json   Strands SessionMessage (zero-padded message id)
 
@@ -21,12 +22,14 @@ overwrite an existing one, and retention is "keep everything" (ADR 0003).
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
 import re
 import tempfile
 import threading
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -36,7 +39,13 @@ from strands.types.session import Session, SessionAgent, SessionMessage, Session
 
 from tau_core.config import ConfigError
 from tau_core.events import AgentEvent
-from tau_core.sessions.base import SessionStore, SessionSummary, utc_now_iso
+from tau_core.sessions.base import (
+    Release,
+    SessionBusy,
+    SessionStore,
+    SessionSummary,
+    utc_now_iso,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +55,7 @@ EVENTS_FILE = "events.jsonl"
 AGENTS_DIR = "agents"
 AGENT_FILE = "agent.json"
 MESSAGES_DIR = "messages"
+LOCK_FILE = ".lock"
 
 _DIR_MODE = 0o700
 _FILE_MODE = 0o600
@@ -53,6 +63,28 @@ _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _ID_PATTERN = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _MESSAGE_FILE = re.compile(r"\A(\d+)\.json\Z")
 _OLDEST = datetime.min.replace(tzinfo=UTC)
+
+
+@dataclass
+class _Hold:
+    fd: int
+    channel: str
+    count: int
+
+
+_HOLDS: dict[str, _Hold] = {}
+"""This process's open sessions, by lock path: ``flock`` locks belong to an open file, so a
+second ``open`` of the same lock file in this process would conflict with the first."""
+_HOLDS_LOCK = threading.Lock()
+
+
+def _read_holder(fd: int) -> dict[str, Any]:
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+        data = json.loads(os.read(fd, 4096).decode("utf-8") or "{}")
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 class InvalidSessionId(ConfigError, ValueError):
@@ -394,6 +426,71 @@ class FileSessionStore(SessionStore):
             current.update(meta)
             self._write_json(path, current)
             self._touch(session_id)
+
+    def hold(self, session_id: str, channel: str) -> Release:
+        """An exclusive ``flock`` on ``<session>/.lock`` while the session is open (see
+        :meth:`SessionStore.hold`). The OS drops it when the process dies, so a crash never
+        leaves a session locked; the file keeps the holder's channel and pid for the message
+        another opener gets, and is emptied on release."""
+        directory = self._session_dir(session_id)
+        with self._lock:
+            self._make_dirs(directory)
+        path = directory / LOCK_FILE
+        if path.is_symlink():
+            raise SessionException(f"Refusing to use symlink at {path}")
+        key = str(path)
+        with _HOLDS_LOCK:
+            held = _HOLDS.get(key)
+            if held is not None:
+                if held.channel != channel:
+                    raise SessionBusy(session_id, {"channel": held.channel, "pid": os.getpid()})
+                held.count += 1
+                return self._releaser(key)
+            fd = os.open(path, os.O_RDWR | os.O_CREAT | _NOFOLLOW, _FILE_MODE)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                holder = _read_holder(fd)
+                os.close(fd)
+                raise SessionBusy(session_id, holder) from None
+            except BaseException:
+                os.close(fd)
+                raise
+            record = {"channel": channel, "pid": os.getpid(), "since": utc_now_iso()}
+            try:
+                os.ftruncate(fd, 0)
+                os.pwrite(fd, json.dumps(record).encode("utf-8"), 0)
+            except OSError:
+                logger.warning("could not record the holder of session %s", session_id)
+            _HOLDS[key] = _Hold(fd=fd, channel=channel, count=1)
+        return self._releaser(key)
+
+    @staticmethod
+    def _releaser(key: str) -> Release:
+        released = False
+
+        def release() -> None:
+            nonlocal released
+            with _HOLDS_LOCK:
+                if released:
+                    return
+                released = True
+                held = _HOLDS.get(key)
+                if held is None:
+                    return
+                held.count -= 1
+                if held.count > 0:
+                    return
+                del _HOLDS[key]
+                try:
+                    os.ftruncate(held.fd, 0)
+                    fcntl.flock(held.fd, fcntl.LOCK_UN)
+                except OSError:
+                    pass
+                finally:
+                    os.close(held.fd)
+
+        return release
 
     def read_meta(self, session_id: str) -> dict[str, Any]:
         with self._lock:

@@ -14,7 +14,7 @@ from collections.abc import Callable
 
 from tau_core import registry
 from tau_core.config import Config, ConfigError
-from tau_core.sessions.base import SessionStore, SessionSummary, new_session_id
+from tau_core.sessions.base import SessionBusy, SessionStore, SessionSummary, new_session_id
 from tau_core.sessions.file import FileSessionStore, InvalidSessionId
 from tau_core.sessions.memory import MemorySessionStore
 
@@ -24,6 +24,7 @@ __all__ = [
     "FileSessionStore",
     "InvalidSessionId",
     "MemorySessionStore",
+    "SessionBusy",
     "SessionStore",
     "SessionSummary",
     "new_session_id",

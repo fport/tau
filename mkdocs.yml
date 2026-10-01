@@ -91,6 +91,7 @@ plugins:
             Sessions and compaction: Oturumlar ve sıkıştırma
             tau network protocol and spine API: tau ağı protokolü ve spine API'si
             tau universe protocol and the spine kit: tau evreni protokolü ve spine kiti
+            Turn protocol: Turn protokolü
             Architecture: Mimari
             Decisions: Kararlar
             Threat model: Tehdit modeli
@@ -181,6 +182,7 @@ nav:
       - Sessions and compaction: reference/sessions.md
       - tau network protocol and spine API: reference/tau-network.md
       - tau universe protocol and the spine kit: reference/tau-universe.md
+      - Turn protocol: reference/turn-protocol.md
   - Architecture:
       - Decisions: ARCHITECTURE.md
       - Threat model: architecture/threat-model.md

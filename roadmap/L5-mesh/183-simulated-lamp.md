@@ -36,7 +36,6 @@ class DeviceSource(Protocol):
 ## Acceptance criteria
 
 - [ ] With tau-sim installed, "turn on the desk lamp" asks for approval and then switches the simulated lamp; `lamp_list` shows it on
-- [ ] A routine from 181 turns the lamp on at its time without asking (test with a fake clock)
 - [ ] The hub's `sim` service implements `DeviceSource`; a state change reaches subscribers
 - [ ] Every answer and card marks the lamp as simulated
 - [ ] `tau-sim` builds as its own wheel and can be disabled through `[components]`
@@ -47,4 +46,5 @@ None - can start immediately.
 
 ## Comments
 
+- 2026-10-01: the end-to-end check "a routine turns the lamp on at its time" lives in 184, which has both 181 and this issue as blockers. This issue stays independent of 181.
 - 2026-10-01: filed with ADR 0015. The owner has no smart lamp yet (2026-10-01). A real one arrives as an MCP node with the same tool names, and 069 decides its tiers.

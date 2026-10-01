@@ -26,6 +26,7 @@ jobs:
       - run: uv build --package tau-net
       - run: uv build --package tau-cloud
       - run: uv build --package tau-guard
+      - run: uv build --package tau-sim
 
   app:
     # apps/tau, the Mac app (roadmap 170): vitest, the type-checked page build, and the Rust tests

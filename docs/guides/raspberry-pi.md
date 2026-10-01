@@ -31,7 +31,7 @@ curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
 
-Harden sshd the way the [phone guide](phone-tailscale-termius.md) does (keys only, `AllowUsers` restricted to the tailnet) and add your Termius key.
+Harden sshd the way the [phone guide](phone-tailscale-termius.md) does (keys only, `AllowUsers` restricted to the tailnet) and add your Termius key. Once tau is installed (the next step), `tau setup run remote` checks all of it and shows the one command that does it, `setup-all.sh`, which runs `setup-linux.sh` on the Pi.
 
 ### 2. Install tau
 

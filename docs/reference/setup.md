@@ -53,11 +53,14 @@ tau setup --upgrade                         # the newest releases, pins dropped
 
 Every step asks first (`Y/n`, or `y/N` for an optional one) and can be skipped. A step that fails is reported and the others go on. The exit code is 1 when a step failed, else 0.
 
+A **check step** (remote access, [below](#check-steps)) asks nothing first, because it changes nothing: it runs quietly and shows its result. When something is left that only the owner can do, it shows that action (a page to open, or a command to run in their own terminal, with what it changes), offers to open the page (`y/N`) and waits: **Enter** checks again, `skip` goes on without it. The command it shows is never run by tau.
+
 `--yes` asks nothing:
 
 - the language is the configured one, else English;
 - on a first run without `--features` it takes the default features;
 - it runs every step that is neither optional nor interactive;
+- a check step runs once: when it needs the owner it is skipped with what it needs (`needs you: …`);
 - `tau init --yes` falls back to the scripted `fake` provider when no key is present.
 
 `tau setup run FEATURE` runs one feature's steps the same way, even when that feature is set up already. `tau setup status` prints the checklist with the feature ids.
@@ -90,7 +93,7 @@ The features are data: `packages/tau-core/src/tau_core/templates/features.toml`.
 | `app` | none | macOS | off | a note pointing to the download page (the app ships with issue 170) |
 | `sub` | tau-sub | macOS, Linux | on | a note on creating the first sub-tau |
 | `telegram` | none (tau-core) | macOS, Linux | off | `tau telegram pair` (interactive) when that command exists; else the manual way |
-| `remote` | none | macOS, Linux | off | a note and the guide (issue 173 makes these guided steps) |
+| `remote` | none (tau-core) | macOS, Linux | off | check steps: `tau remote tailscale`, `tau remote ssh` (shows the one `sudo` command), `tau remote phone`; set up when `tau remote status` exits 0 |
 | `guard` | tau-guard (lockstep) | macOS | off | `tau guard doctor` (advisory), `tau guard setup` (interactive, never over SSH), a note to restart the hub |
 | `net` | tau-net | macOS, Linux | off | `tau net init`, a note on the spine, `tau net spine init` and `deploy` (optional, need Node.js), `tau net universe join` and `claim` (optional) |
 | `autostart` | none | macOS, Linux | on on macOS | `tau hub install` (macOS); the systemd user unit commands (Linux) |
@@ -131,7 +134,8 @@ Top level:
 
 - `files`: every path exists;
 - `any_files`: at least one path exists;
-- `env`: every variable is set in the environment or `<home>/.env`.
+- `env`: every variable is set in the environment or `<home>/.env`;
+- `command`: `tau <command>` exits 0. It is asked last, because it starts a subprocess, and only on the feature's platforms. Remote access is set up when `tau remote status` passes.
 
 In a path, `{home}` is the configuration root, `{data}` the data dir (`TAU_DATA_DIR`) and a leading `~` the user's home. For example, the guard is set up when `{data}/guard/enrolled` exists, and the network when `{data}/net/identity.json` does.
 
@@ -144,6 +148,7 @@ In a path, `{home}` is the configuration root, `{data}` the data dir (`TAU_DATA_
 | `label` | message key | Shown before the step. |
 | `command` | list | The arguments after `tau`, e.g. `["guard", "setup"]`. Only words and `--flags`, and never `sudo`. |
 | `interactive` | bool | Needs the owner at a terminal. The wizard gives it the terminal, `--yes` skips it, and JSON mode reports it as `needs_ui`. |
+| `check` | bool | The command is a [check](#check-steps): `tau <command> --json` prints one check object. Not with `interactive`, `advisory` or inputs. |
 | `optional` | bool | Asked with the default "no". `--yes` skips it, and JSON mode runs it only when asked for. |
 | `advisory` | bool | A nonzero exit is reported, not counted as a failure. `tau guard doctor` fails before setup, as expected. |
 | `local_only` | bool | Refused over SSH (`SSH_CONNECTION` or `SSH_TTY` set). |
@@ -232,7 +237,7 @@ One JSON object (indented), exit code 0.
     - `missing`: the package is not installed;
     - `available`: nothing to install and nothing says it is set up;
     - `unavailable`: not on this platform, with `unavailable_reason`.
-- `steps` lists only this platform's steps. A step can also carry `text` and `url` (notes), `needs` (programs) and `when_command`.
+- `steps` lists only this platform's steps. Every step has `check` (a [check step](#check-steps)). A step can also carry `text` and `url` (notes), `needs` (programs) and `when_command`.
 - Each input is `{name, label, secret, required, default}`.
 
 ### Event lines
@@ -241,9 +246,10 @@ One JSON object (indented), exit code 0.
 
 | `event` | Fields | Meaning |
 |---|---|---|
-| `progress` | `phase` (install), or `feature`, `step`, `status`, `label` and optional `reason`, `detail`, `code`, `command`, `text`, `url` (run) | A phase or a step's state: `running`, `checking` (a key check), `done`, `failed`, `skipped` or `info` (a note). |
+| `progress` | `phase` (install), or `feature`, `step`, `status`, `label` and optional `reason`, `detail`, `code`, `command`, `text`, `url` (run) | A phase or a step's state: `running`, `checking` (a key check or a check step), `done`, `failed`, `skipped` or `info` (a note). |
+| `check` | `feature`, `step`, `ok`, `summary`, `checks`, `action`, `values` | The result of a [check step](#check-steps). |
 | `log` | `line`; in `run` also `feature` and `step` | One line of a subprocess's output (stdout and stderr merged), or a notice such as a key written to `.env`. |
-| `needs_ui` | `feature`, `step`, `label`, `command` (the arguments after `tau`), `argv` (the full argv) | A step that needs its own UI. It was not run; the run stops here. |
+| `needs_ui` | `feature`, `step`, `label`, then either `command` (the arguments after `tau`) and `argv` (the full argv), or `summary` and `action` | A step that needs its own UI, or a check that waits for the owner. With `argv` the step was not run and the app runs it; with `action` there is nothing to run, only something to show. The run stops here. |
 | `done` | `ok` and the command's fields | The last line of a run that got to the end. |
 | `error` | `code`, `message` (localized) and sometimes `feature` or `exit` | The last line of a run that could not start or could not finish. |
 
@@ -292,7 +298,8 @@ A feature's steps run one after the other, each command step as `tau <command>` 
 
 - a step this machine cannot run is `skipped` with a `reason` and a localized `detail`: `platform`, `ssh`, `missing_command`, `needs` or `no_input`;
 - a note is `info` with its `text` and `url`;
-- an interactive step ends the run with `needs_ui`. The app runs `argv` itself, in a terminal view or through its own UI. For the guard that is enrolment in the app, which holds the camera permission. The app then calls `run` again with the steps in `pending`.
+- an interactive step ends the run with `needs_ui`. The app runs `argv` itself, in a terminal view or through its own UI. For the guard that is enrolment in the app, which holds the camera permission. The app then calls `run` again with the steps in `pending`;
+- a check step is `checking`, then a `check` event, then `done`, or `failed` (reason `check`) when it fails with nothing the owner can do. When it fails with an action, `needs_ui` carries that action and the run stops with the check itself first in `pending`, so running `pending` again checks again ([below](#check-steps)).
 
 ```text
 $ echo '{}' | tau setup run guard --json
@@ -322,9 +329,70 @@ The core steps:
 - **`about`** (inputs `name`, `address`, `languages`) writes `persona/user.md`. Without a name it is `skipped` (`no_input`), and a `user.md` with facts of its own is kept (`configured`).
 - **`doctor`** runs `tau doctor --json`. Its `done` carries the doctor's `checks` and `ok` is whether none failed.
 
+### Check steps
+
+A step with `check = true` names a command that reports a state instead of changing one. `tau <command> --json` prints one JSON object and exits 0 when the check passes, else 1:
+
+```json
+{
+  "check": 1,
+  "ok": false,
+  "summary": "6 problem(s) with SSH, mosh or tmux",
+  "checks": [
+    {"id": "sshd", "label": "SSH server", "status": "fail", "detail": "off (Remote Login)"},
+    {"id": "tmux", "label": "tmux", "status": "ok", "detail": "/opt/homebrew/bin/tmux"},
+    {"id": "tmux_conf", "label": "~/.tmux.conf block (tau's tmux settings)", "status": "warn", "detail": "missing"}
+  ],
+  "action": {
+    "kind": "sudo",
+    "text": "Run this in your own terminal, as yourself and not with sudo: it asks for your password (sudo) only for the steps that need root. tau never runs it.",
+    "command": "bash ~/.local/share/tau/remote/setup-all.sh",
+    "sudo": true,
+    "url": null,
+    "changes": ["installs tmux and mosh with Homebrew", "…", "with sudo: writes /etc/ssh/sshd_config.d/010-tau.conf: keys only …"],
+    "script": "~/.local/share/tau/remote/setup-all.sh"
+  },
+  "values": {"user": "alice", "script": "~/.local/share/tau/remote/setup-all.sh"}
+}
+```
+
+- `checks` are the lines to show, each `ok`, `fail`, `warn` or `info`. The check passes when no line is `fail`.
+- `action` (or `null`) is what only the owner can do. `kind` is `install` (an app or program), `login`, `sudo` (a command that asks for the password), `key` (the phone's key) or `other`. `command` is to **show, with a copy button, never to run**: neither tau nor the app runs it. `sudo` says it asks for the password. `url` is an `https` page the owner may open, `changes` what the command changes, one line each, and `script` the file behind the command, to read first.
+- `values` are what the check found, for the app to show its own way. For the phone step: `host` (the MagicDNS name, else the 100.x address), `ip`, `user`, `port`, `mosh`, `startup` and `keys`. They are printed, never written to a file.
+- Every text is in the UI language. Paths are absolute in the real output; this page shortens them to `~`.
+
+In JSON mode the engine runs the check and passes its object on as a `check` event (without `"check": 1`). The remote access run on a Mac whose SSH part is not set up yet:
+
+```text
+$ echo '{}' | tau setup run remote --json
+{"event": "progress", "feature": "remote", "step": "tailscale", "status": "checking", "label": "Tailscale on this machine", "command": ["remote", "tailscale"]}
+{"event": "check", "feature": "remote", "step": "tailscale", "ok": true, "summary": "Tailscale is connected as my-mac.tailXXXXXX.ts.net", "checks": […], "action": null, "values": {"cli": "/Applications/Tailscale.app/Contents/MacOS/Tailscale", "state": "Running", "host": "my-mac.tailXXXXXX.ts.net", "ip": "100.x.y.z", "magicdns": true}}
+{"event": "progress", "feature": "remote", "step": "tailscale", "status": "done", "code": 0, "label": "Tailscale on this machine"}
+{"event": "progress", "feature": "remote", "step": "ssh", "status": "checking", "label": "SSH and mosh", "command": ["remote", "ssh"]}
+{"event": "check", "feature": "remote", "step": "ssh", "ok": false, "summary": "6 problem(s) with SSH, mosh or tmux", "checks": […], "action": {"kind": "sudo", "command": "bash ~/.local/share/tau/remote/setup-all.sh", "sudo": true, …}, "values": {…}}
+{"event": "needs_ui", "feature": "remote", "step": "ssh", "label": "SSH and mosh", "summary": "6 problem(s) with SSH, mosh or tmux", "action": {"kind": "sudo", "text": "Run this in your own terminal, …", "command": "bash ~/.local/share/tau/remote/setup-all.sh", "sudo": true, "url": null, "changes": […], "script": "~/.local/share/tau/remote/setup-all.sh"}}
+{"event": "done", "feature": "remote", "ok": true, "configured": false, "results": [{"step": "tailscale", "status": "done", "code": 0}, {"step": "ssh", "status": "needs_ui"}], "pending": ["ssh", "phone"]}
+```
+
+The app shows the action: the text, the command with a copy button and a note that it asks for the password in Terminal, the changes, the script, and a button for `url`. When the owner says they are done, it calls `run` with `{"steps": ["ssh", "phone"]}`, which checks again; when they skip, it calls `run` with the steps after it.
+
+#### Remote access
+
+`tau remote` (tau-core) holds the three checks ([CLI](cli.md#tau-remote)):
+
+| Step | Passes when | Otherwise the action |
+|---|---|---|
+| `tailscale` | The CLI is found (on `PATH`, or `/Applications/Tailscale.app/Contents/MacOS/Tailscale`) and `tailscale status --json` says `BackendState` `Running`, with a MagicDNS name or a 100.x address. | Missing: macOS, `install` with the page `https://tailscale.com/download/mac` (the Mac App Store or the download); Linux, `install` with the official install script and `sudo tailscale up` (`sudo`). Logged out or off: `login`, `open -a Tailscale` (macOS) or `sudo tailscale up` (Linux). The service down on Linux: `sudo systemctl enable --now tailscaled && sudo tailscale up`. Waiting for approval: the admin console. |
+| `ssh` | Port 22 answers; `/etc/ssh/sshd_config.d/010-tau.conf` has `PasswordAuthentication no`, `KbdInteractiveAuthentication no` and only `AllowUsers <you>@<tailnet or localhost>` entries; `/etc/ssh/sshd_config` includes `sshd_config.d` (when readable); a password login on localhost is refused (`ssh -o BatchMode=yes …`, only with port 22 and the drop-in there); `mosh`, `mosh-server` and `tmux` are found; on macOS the `~/.zshenv` block is there. A drop-in that differs from tau's template only warns. | `sudo`: `bash <kit>/setup-all.sh` with what it changes on this platform. Without Homebrew on a Mac that lacks mosh or tmux, the text says to install it first and `url` is `https://brew.sh`. |
+| `phone` | Tailscale is connected and `~/.ssh/authorized_keys` holds a key, writable by nobody else. | No address: the Tailscale action. No key: `key`, `bash <kit>/add-key.sh` (no sudo). A key file others can write: `chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`. |
+
+`<kit>` is `infra/remote` in a repository checkout. An installed tau has none, so tau-core ships a copy of it as package data (`tau_core/remote/kit/`, kept equal to `infra/remote` by a test) and `tau remote ssh` and `phone` write it to `$TAU_DATA_DIR/remote/` (mode `0700`, changed files replaced, `config.local.env` kept) before they show a command. The copy comes with the release the owner installed and works offline; a download would need a pinned commit and a hash per release for the same bytes. `tau remote status`, which `tau setup status` runs for the `configured` rule, writes nothing.
+
+`setup-all.sh` refuses to run as root. On macOS it runs `setup.sh` (Homebrew: tmux and mosh; the `~/.zshenv` and `~/.tmux.conf` blocks; `tau-attach`; the keep-awake agent) and then `setup-sudo.sh` (Tailscale.app when missing; with sudo the drop-in, tested with `sshd -t` and rolled back on failure, host keys, Remote Login). On Linux it runs `setup-linux.sh`: over SSH without a key it stops first; then with sudo the drop-in, openssh-server, mosh and tmux (apt-get, dnf or pacman), the `Include` check, host keys and `sshd -t`; the `~/.tmux.conf` block and `tau-attach`; with sudo the SSH service enabled and reloaded.
+
 ## Later issues plug in here
 
 - **172, Telegram pairing:** `tau telegram pair` makes the `telegram` step run. A token taken by the engine would be a `secret` input with `env = "TELEGRAM_BOT_TOKEN"`.
-- **173, remote access:** replaces the `remote` note with steps that check Tailscale and show the one `sudo` command without running it.
+- **173, remote access (done):** the `remote` feature is three [check steps](#check-steps) of `tau remote`; its `sudo` command is shown in a `needs_ui` action, never run.
 - **174, spine deploy through the Cloudflare API:** gives `spine-deploy` a secret input with `env = "CLOUDFLARE_API_TOKEN"` and drops `needs = ["node"]`.
-- **171, the app's wizard:** reads `status`, installs with `install`, runs each feature with `run`, handles `needs_ui` itself and asks macOS for the listed `permissions` of the chosen features only.
+- **171, the app's wizard:** reads `status`, installs with `install`, runs each feature with `run`, handles `needs_ui` itself (running `argv`, or showing an `action` and running `pending` again) and asks macOS for the listed `permissions` of the chosen features only.

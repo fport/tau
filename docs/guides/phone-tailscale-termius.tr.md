@@ -1,4 +1,4 @@
-<!-- tr twin of guides/phone-tailscale-termius.md, translated 2026-09-30 -->
+<!-- tr twin of guides/phone-tailscale-termius.md, translated 2026-10-01 -->
 
 # Telefondan tau'ya ulaş (Tailscale + Termius)
 
@@ -16,13 +16,47 @@ Phone (Termius) ──▶ Tailscale ──▶ OpenSSH on the hub ──▶ mosh 
 | **tmux** | Bağlantı koptuğunda oturum ve içinde çalışan her şey çalışmaya devam eder. |
 | **keep-awake agent'ı** | Mac fişe takılıyken uyumaz (`caffeinate -s`). [TauBar](taubar.md) kurulduktan sonra `setup.sh` onu kaldırır ve işi TauBar yapar. |
 
-Betikler deponun [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/remote) dizininde. Bir MacBook hub için yazıldılar; aşağıdaki Linux notları bir Raspberry Pi'yi kapsar.
+Betikler deponun [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/remote) dizininde; macOS ve Linux için (Raspberry Pi hub dahil). `tau setup` seni bunlardan adım adım geçirir; ondan sonraki bölümler aynısını elle yapar.
+
+## Rehberli yol: `tau setup` → Uzaktan erişim
+
+```sh
+tau setup              # kontrol listesinde "Uzaktan erişim"i işaretle
+tau setup run remote   # ya da daha sonra istediğin zaman yalnızca bu özelliği
+```
+
+Üç denetimden geçer. Her biri ya kendiliğinden geçer ya da yalnızca senin yapabileceğin şeyi söyleyip bekler:
+
+1. **Tailscale.** Tailscale CLI'yi bulur (`PATH` üzerinde ya da macOS'ta Tailscale.app'in içinde) ve `tailscale status --json` çıktısını okur: Tailscale'de oturum açık ve bağlıysa adım geçer, hub'ın MagicDNS adını ve 100.x adresini gösterir. Değilse Tailscale'in nasıl kurulacağını söyler ve istersen sayfayı açar (macOS: Mac App Store ya da tailscale.com/download), resmî kurulum betiğini senin çalıştırman için gösterir (Linux: `sudo` gerektirir) ya da nasıl oturum açılacağını söyler.
+2. **SSH ve mosh.** `infra/remote/doctor.sh`'in denetlediklerini denetler: sshd 22 numaralı portta yanıt veriyor mu; tau'nun drop-in dosyası `/etc/ssh/sshd_config.d/010-tau.conf` parola ve keyboard-interactive girişi kapatıyor ve `AllowUsers`'ı tailnet'ten ve localhost'tan gelen sana sınırlıyor mu; localhost'ta parolayla giriş reddediliyor mu; mosh ve tmux kurulu mu (macOS'ta ayrıca `~/.zshenv` bloğu). Değilse **tek bir komut** ve neleri değiştirdiğini gösterir, sonra bekler:
+
+    ```text
+    → Bunu kendi terminalinde, sudo olmadan kendi kullanıcınla çalıştır: parolanı (sudo)
+      yalnızca root gerektiren adımlar için sorar. tau onu hiçbir zaman çalıştırmaz.
+
+          bash ~/.local/share/tau/remote/setup-all.sh
+
+    Bitirince yeniden denetlemek için Enter'a bas ya da atla yaz:
+    ```
+
+    tau `sudo`'yu hiçbir zaman çalıştırmaz. Komutu başka bir terminal penceresinde çalıştır, geri gel ve Enter'a bas: yeniden denetler.
+3. **Telefonun.** Termius'a girilecekleri canlı durumdan yazdırır: adres (`my-mac.tailXXXXXX.ts.net`), kullanıcı adın, port 22, Mosh açık ve `tau-attach` başlangıç komutu. `~/.ssh/authorized_keys` içinde bir anahtar olana kadar, Termius'un oluşturduğu anahtarı nasıl ekleyeceğini söyler (bölüm 2).
+
+`tau remote status` bütün denetimleri istediğin zaman yeniden çalıştırır ve uzaktan erişim hazır olunca 0 ile çıkar. `tau remote tailscale`, `tau remote ssh` ve `tau remote phone` birer adımı çalıştırır. Değerler yalnızca yazdırılır, hiçbir dosyaya yazılmaz.
+
+**Komut nereden geliyor.** Bir checkout'ta `infra/remote/setup-all.sh`'tir. Kurulu bir tau'nun checkout'u yoktur; bu yüzden tau-core `infra/remote`'un bir kopyasını taşır ve komutu göstermeden önce onu `~/.local/share/tau/remote/` altına (`TAU_DATA_DIR` içinde) yazar. İstersen önce orada oku. Yanındaki `config.local.env` makineye özgü ayarları tutar ve hiçbir zaman üzerine yazılmaz.
 
 ## 1. Hub'ı kur
 
 === "macOS"
 
-    Deponun bir checkout'undan. İlk betik sudo gerektirmez; ikincisi parolanı sorar, o yüzden onu kendi terminalinde çalıştır:
+    Tek komut iki kısmı da yapar; kendi terminalinde, normal kullanıcınla (sudo, root gereken yerde parolanı sorar):
+
+    ```sh
+    ./infra/remote/setup-all.sh      # setup.sh, then setup-sudo.sh
+    ```
+
+    Ya da iki kısmı tek tek. İlki sudo gerektirmez; ikincisi parolanı sorar:
 
     ```sh
     ./infra/remote/setup.sh          # tmux, mosh, ~/.tmux.conf, ~/.zshenv, tau-attach, keep-awake agent
@@ -31,7 +65,7 @@ Betikler deponun [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/
 
     Sonra giriş yap: Tailscale.app'i aç, **Privacy & Security** altında sistem uzantısına izin ver ve oturum aç.
 
-    sudo betiğinin `/etc/ssh/sshd_config.d/010-tau.conf` dosyasına yazdıkları:
+    sudo kısmının `/etc/ssh/sshd_config.d/010-tau.conf` dosyasına yazdıkları:
 
     - parola ve keyboard-interactive (PAM) girişleri kapalı; yalnızca anahtarlar;
     - `AllowUsers`, senin kullanıcınla ve yalnızca tailnet'ten (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) ve localhost'tan gelen bağlantılarla sınırlı;
@@ -41,15 +75,22 @@ Betikler deponun [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/
 
 === "Linux (Raspberry Pi)"
 
-    Betikler macOS'a özgü (`launchctl`, Remote Login). Aynısını elle yap:
+    Önce Tailscale, resmî betiğiyle; sonra oturum aç:
 
     ```sh
     curl -fsSL https://tailscale.com/install.sh | sh
     sudo tailscale up
-    sudo apt install -y openssh-server mosh tmux
     ```
 
-    sshd'yi macOS'takinin aynısı olan bir drop-in dosyasıyla sıkılaştır, ardından yeniden başlat:
+    Sonra tek komut, normal kullanıcınla (sudo parolanı sorar):
+
+    ```sh
+    ./infra/remote/setup-all.sh      # runs setup-linux.sh
+    ```
+
+    `setup-linux.sh`, macOS'takiyle aynı drop-in dosyasını openssh-server, mosh ve tmux'u (apt-get, dnf ya da pacman ile) kurmadan **önce** yazar; böylece yeni bir SSH sunucusu sıkılaştırılmış başlar. `/etc/ssh/sshd_config`'in `sshd_config.d`'yi içerdiğini denetler, yapılandırmayı `sshd -t` ile dener ve başarısız olursa geri alır, `~/.tmux.conf` bloğunu ve `tau-attach`'ı ekler, SSH servisini etkinleştirip yeniden yükler. SSH üzerindeysen ve `~/.ssh/authorized_keys` içinde anahtar yoksa hiçbir şeyi değiştirmeden durur; böylece kendini dışarıda bırakamazsın.
+
+    Elle yapmak istersen drop-in şu:
 
     ```sh
     sudo tee /etc/ssh/sshd_config.d/010-tau.conf >/dev/null <<'EOF'
@@ -70,19 +111,19 @@ Betikler deponun [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/
 1. Telefona **Tailscale**'i kur ve hub'la **aynı hesapla** giriş yap.
 2. **Termius**'u kur.
 3. Bir anahtar oluştur: Termius → **Keychain** → **+** → **Generate Key** → tür olarak **ED25519** → adını `iphone` koy. Anahtarı aç ve açık anahtarı kopyala.
-4. Açık anahtarı hub'a ekle. macOS'ta Universal Clipboard ile:
+4. Açık anahtarı hub'a ekle (sudo gerekmez). macOS'ta Universal Clipboard ile yapıştır:
 
     ```sh
-    ./infra/remote/add-key.sh
+    ./infra/remote/add-key.sh        # an installed tau: bash ~/.local/share/tau/remote/add-key.sh
     ```
 
-    Başka her yerde, onu hub'daki `~/.ssh/authorized_keys` dosyasının sonuna ekle (dosyaya `chmod 600`, dizine `chmod 700`).
+    Ya da onu hub'daki `~/.ssh/authorized_keys` dosyasının sonuna kendin ekle (dosyaya `chmod 600`, dizine `chmod 700`).
 
-5. Termius'ta host'u oluştur:
+5. Termius'ta host'u oluştur. `tau remote phone` bu değerleri canlı durumdan yazdırır:
 
     | Alan | Değer |
     |---|---|
-    | Address | hub'ın MagicDNS adı, örneğin `my-mac.tailXXXXXX.ts.net` (`infra/remote/doctor.sh` yazdırır) |
+    | Address | hub'ın MagicDNS adı, örneğin `my-mac.tailXXXXXX.ts.net` |
     | Username | hub'daki kullanıcı adın |
     | Key | `iphone` |
     | **Mosh** | açık |
@@ -93,10 +134,11 @@ Betikler deponun [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/
 ## 3. Zinciri kontrol et
 
 ```sh
-./infra/remote/doctor.sh
+tau remote status                # macOS and Linux
+./infra/remote/doctor.sh         # macOS: also sleep and the firewall
 ```
 
-Hub'ın MagicDNS adını ve tailnet IP'sini yazdırır; Tailscale'i, sshd yapılandırmasını, mosh'u, tmux'u ve keep-awake agent'ını kontrol eder, dışarıya açık olan her şeyi işaretler. Termius'tan bağlan: hiçbir şey yazmadan tmux'a düşmelisin.
+`tau remote status` Tailscale'i, drop-in dosyasıyla sshd'yi, bir parolalı giriş denemesini, mosh'u, tmux'u ve telefonun anahtarını denetler, adresi yazdırır ve her şey yerindeyse 0 ile çıkar. `doctor.sh` macOS'ta aynılarını, ayrıca keep-awake agent'ını ve güvenlik duvarını denetler, MagicDNS adını ve tailnet IP'sini yazdırır. Termius'tan bağlan: hiçbir şey yazmadan tmux'a düşmelisin.
 
 !!! warning "Kişisel değerler depoya girmez"
     Hostname'ler, tailnet adları, IP'ler ve anahtar parmak izleri kişiseldir. `.env.example` onları `TAU_MAC_MAGICDNS=my-mac.tailXXXXXX.ts.net`, `TAU_MAC_TAILNET_IP=100.x.y.z`, `TAU_MAC_SSH_HOST_KEY_FP=SHA256:...` gibi listeler. Gerçek değerleri gitignore'daki `.env` dosyana koy; doctor onları zaten canlı olarak yazdırır.
@@ -165,7 +207,7 @@ Başka hiçbir şey onay veremez. Burada güvenilen kanal tmux oturumudur: hub'd
 
 **`mosh-server not found`.** `./infra/remote/setup.sh` betiğini yeniden çalıştır. Etkileşimsiz SSH oturumları yalnızca `~/.zshenv` dosyasını okur; betik `PATH` girdisini de oraya koyar.
 
-**Hub'a ulaşamıyorum.** Sırayla kontrol et: telefonda Tailscale açık mı, hub uykuda mı, `doctor.sh` ne diyor. Bir MacBook kapağı kapalıyken uyur; fişe tak ve kapağı açık bırak, harici bir ekranla kapalı kapak (clamshell) modunu kullan ya da TauBar'ın "Keep awake with the lid closed" modunu seç (bir kerelik bir sudoers kuralı gerektirir, bkz. [TauBar](taubar.md#set-up-the-lid-closed-mode)).
+**Hub'a ulaşamıyorum.** Sırayla kontrol et: telefonda Tailscale açık mı, hub uykuda mı, `tau remote status` (ya da `doctor.sh`) ne diyor. Bir MacBook kapağı kapalıyken uyur; fişe tak ve kapağı açık bırak, harici bir ekranla kapalı kapak (clamshell) modunu kullan ya da TauBar'ın "Keep awake with the lid closed" modunu seç (bir kerelik bir sudoers kuralı gerektirir, bkz. [TauBar](taubar.md#set-up-the-lid-closed-mode)).
 
 **TUI siyah beyaz.** mosh üzerinden Termius 24 bit renk kaçış dizilerini düşürür; 256 renk ise geçer. Bu yüzden `infra/remote/tmux/tau.tmux.conf`, `xterm-256color` istemcileri için truecolor'ı (`RGB`) zorlamaz; böylece tmux, TUI'nin renklerini telefon için 256 renklik paletle eşler. Kendi `~/.tmux.conf` dosyanda böyle bir ezme ayarladıysan onu kaldır, `Ctrl-b r` ile yeniden yükle ve Termius'ta yeniden bağlan (tmux bir istemcinin renklerine o bağlandığında karar verir). tmux dışında `TEXTUAL_COLOR_SYSTEM=256 uv run tau tui` tek bir çalıştırma için aynısını yapar.
 

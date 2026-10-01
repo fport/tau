@@ -7,8 +7,9 @@ It is built on [Strands Agents](https://strandsagents.com/) and is published on 
 
 ```sh
 pip install tau-core        # or, inside the tau repo: uv sync --all-packages --group dev
-tau --help                  # chat, hub, components, doctor, init, setup, spend, telegram, version, plus plugin commands (tui, net, ...)
+tau --help                  # chat, hub, components, doctor, init, remote, setup, spend, telegram, version, plus plugin commands (tui, net, ...)
 tau setup                   # pick features, install their packages, set them up (docs/reference/setup.md)
+tau remote status           # remote access from the phone: Tailscale, SSH, mosh, Termius
 tau init                    # create ~/.tau/tau.toml and the persona files from the templates
 tau doctor                  # check config, credentials, budgets, sessions, persona, .env, the hub
 tau spend                   # what every model role spent in its budget period
@@ -931,6 +932,13 @@ the missing packages and a re-execution in the new environment, then `tau init`,
 each feature's steps (tau subcommands run as subprocesses; tau-core never imports tau-guard,
 tau-net or tau-sub) and `tau doctor`. `tau setup status|install|run --json` is the line
 protocol the Mac app drives; `docs/reference/setup.md` in the repository specifies it.
+
+Remote access (`tau_core.remote`, issue 173) is a feature of check steps: `tau remote tailscale`,
+`ssh` and `phone` report a state and what only the owner can do, and `tau remote status` says
+whether it is set up. The one command that needs `sudo`, `setup-all.sh`, is shown and never run.
+It comes from `infra/remote` in a checkout; tau-core ships a copy of that directory as package
+data (`tau_core/remote/kit/`, a test keeps it identical) and writes it to `$TAU_DATA_DIR/remote`
+when an installed tau needs to show the command.
 
 `tau init` rewrites the `provider` and `model_id` of `brain` and `fast` to the provider it picks,
 with the ids of `templates/models.toml` (`anthropic` renders the template as shipped). The

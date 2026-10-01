@@ -1,4 +1,4 @@
-<!-- tr twin of guides/raspberry-pi.md, translated 2026-09-30 -->
+<!-- tr twin of guides/raspberry-pi.md, translated 2026-10-01 -->
 
 # Hub'ı Raspberry Pi'ye taşı
 
@@ -33,7 +33,7 @@ curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
 
-sshd'yi [telefon rehberindeki](phone-tailscale-termius.md) gibi sıkılaştır (yalnızca anahtarlar, `AllowUsers` tailnet'le sınırlı) ve Termius anahtarını ekle.
+sshd'yi [telefon rehberindeki](phone-tailscale-termius.md) gibi sıkılaştır (yalnızca anahtarlar, `AllowUsers` tailnet'le sınırlı) ve Termius anahtarını ekle. tau kurulduktan sonra (sonraki adım) `tau setup run remote` bunların hepsini denetler ve bunu yapan tek komutu, Pi'de `setup-linux.sh`'i çalıştıran `setup-all.sh`'i gösterir.
 
 ### 2. tau'yu kur
 

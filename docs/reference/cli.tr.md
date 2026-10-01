@@ -1,8 +1,8 @@
-<!-- tr twin of reference/cli.md, translated 2026-09-30 -->
+<!-- tr twin of reference/cli.md, translated 2026-10-01 -->
 
 # CLI
 
-Her `tau` alt komutu bir bileşendir: `tau-core`; `chat`, `components`, `doctor`, `hub`, `init`, `setup`, `spend`, `telegram` ve `version` komutlarıyla gelir; `tau-tui` `tui` komutunu, `tau-guard` `guard` komutunu ([Sahip koruması](../guides/guard.md)), `tau-net` `net` komutunu, `tau-cloud` `cloud` komutunu (bkz. [tau ağına katıl](../guides/tau-network.md)), `tau-sub` da `sub` komutunu ekler. Kurulu herhangi bir dağıtım, `tau.commands` entry point grubu (Python paketlerinin eklenti kayıt noktası) üzerinden başka komutlar da ekleyebilir. Bu sayfa her birinin `--help` çıktısını aynen verir.
+Her `tau` alt komutu bir bileşendir: `tau-core`; `chat`, `components`, `doctor`, `hub`, `init`, `remote`, `setup`, `spend`, `telegram` ve `version` komutlarıyla gelir; `tau-tui` `tui` komutunu, `tau-guard` `guard` komutunu ([Sahip koruması](../guides/guard.md)), `tau-net` `net` komutunu, `tau-cloud` `cloud` komutunu (bkz. [tau ağına katıl](../guides/tau-network.md)), `tau-sub` da `sub` komutunu ekler. Kurulu herhangi bir dağıtım, `tau.commands` entry point grubu (Python paketlerinin eklenti kayıt noktası) üzerinden başka komutlar da ekleyebilir. Bu sayfa her birinin `--help` çıktısını aynen verir.
 
 Bir depo checkout'unun (deponun yerel kopyası) içindeysen her komutun başına `uv run` ekle.
 
@@ -35,6 +35,7 @@ Commands:
   hub         Run and manage tau as a long-lived service in the hub role.
   init        Create tau.toml and the persona files.
   net         Talk to other taus (identity, contacts, messages).
+  remote      Check remote access: Tailscale, SSH, mosh, the phone.
   setup       Pick, install and set up tau's features.
   spend       Show the spend per model role.
   sub         Specialists of your tau (/coach, /landing, ...).
@@ -509,6 +510,145 @@ Hub: çalışıyor; @deniz_tau_bot olarak yokluyor
 
 `--json`, `{"token", "bot", "bot_error", "token_refused", "paired", "allowed_chats", "pairing": {"expires_at"} | null, "hub": {"running", "telegram"}}` yazdırır; `hub.telegram`, hub'ın `/status` çıktısındaki `telegram` anahtarıdır. Her iki durumda da çıkış kodu 0'dır.
 
+## `tau remote`
+
+```text
+Usage: tau remote [OPTIONS] COMMAND [ARGS]...
+
+  Remote access: reach this machine from your phone over Tailscale, SSH, mosh
+  and tmux. These commands check it and say what to do; the one command that
+  needs sudo is shown for you to run, never run by tau. `tau setup` → Remote
+  access walks through them.
+
+Options:
+  -h, --help  Show this help and exit.
+
+Commands:
+  phone      What to enter in Termius on the phone.
+  ssh        Check SSH and mosh; show the one command to fix them.
+  status     Check everything; exit 0 when remote access is ready.
+  tailscale  Check Tailscale.
+```
+
+Kurulum [Telefondan tau'ya ulaş](../guides/phone-tailscale-termius.md) sayfasında. `tailscale`, `ssh` ve `phone`, `tau setup` → Uzaktan erişim'in denetim adımlarıdır. `--json` ile her biri tek bir denetim nesnesi yazdırır ([denetim adımları](setup.md#check-steps)). Buradaki hiçbir şey `sudo` ya da bir betik çalıştırmaz; canlı değerler (host adı, adres, kullanıcı) yalnızca yazdırılır, hiçbir dosyaya yazılmaz.
+
+### `tau remote status`
+
+```text
+Usage: tau remote status [OPTIONS]
+
+  Every remote access check: Tailscale, sshd with tau's drop-in, a password
+  login probe, mosh, tmux and the phone's key. Exit 0 when remote access is
+  ready, else 1. It changes nothing.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one check object (docs/reference/setup.md).
+```
+
+```text
+Bu makinede Tailscale
+  ✓ Tailscale kurulu: /Applications/Tailscale.app/Contents/MacOS/Tailscale
+  ✓ Oturum açık ve bağlı: my-mac.tailXXXXXX.ts.net · 100.x.y.z
+
+SSH ve mosh
+  ✓ SSH sunucusu: 22 numaralı portta yanıt veriyor
+  ✓ Sıkılaştırma /etc/ssh/sshd_config.d/010-tau.conf: yalnızca anahtar; yalnızca alice, yalnızca tailnet'ten ve localhost'tan
+  ✓ sshd, sshd_config.d dizinini okuyor
+  ✓ Parolayla giriş: reddediliyor, yalnızca anahtar
+  ✓ mosh: /opt/homebrew/bin/mosh
+  ✓ mosh-server: /opt/homebrew/bin/mosh-server
+  ✓ tmux: /opt/homebrew/bin/tmux
+  ✓ ~/.zshenv bloğu (SSH'ta PATH üzerinde mosh-server): var
+  ✓ ~/.tmux.conf bloğu (tau'nun tmux ayarları): var
+
+Telefonun (Termius)
+  · Adres (Address): my-mac.tailXXXXXX.ts.net
+  · MagicDNS olmadan adres: 100.x.y.z
+  · Kullanıcı adı (Username): alice
+  · Port: 22
+  ✓ Anahtar (Key): Termius'ta oluşturduğun ED25519 anahtarı; bu makinede 1 anahtar var
+  · Mosh: açık
+  · Başlangıç komutu (Startup Snippet): tau-attach
+  · Telefondaki Tailscale: açık, aynı hesapla oturum açılmış
+
+✓ Uzaktan erişim hazır: ssh alice@my-mac.tailXXXXXX.ts.net
+```
+
+`✓` geçer, `✗` başarısız olur, `!` yalnızca uyarır (tau'nun şablonundan farklı ama güvenli bir drop-in, karar veremeyen bir deneme) ve `·` bilgidir. Parola denemesi, `infra/remote/doctor.sh`'teki gibi `ssh -o BatchMode=yes -o PubkeyAuthentication=no … <sen>@127.0.0.1 true` komutudur; yalnızca 22 numaralı port yanıt verdiğinde ve drop-in yerindeyken çalışır. `tau setup status`, uzaktan erişimin kurulu olup olmadığını öğrenmek için bu komutu çalıştırır; bu yüzden hiçbir eylem göstermez ve hiçbir şey yazmaz. `--json`, üç denetimin satırlarını `ssh.dropin` gibi kimliklerle, `values` değerlerini de adım adım verir.
+
+### `tau remote tailscale`
+
+```text
+Usage: tau remote tailscale [OPTIONS]
+
+  Check that Tailscale is installed and logged in, with this machine's
+  MagicDNS name and 100.x address; otherwise say how to install it or log in.
+  Exit 0 when it is connected, else 1.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one check object (docs/reference/setup.md).
+```
+
+CLI, `PATH` üzerindeki `tailscale`'dir; yoksa macOS'ta `/Applications/Tailscale.app` içindeki. macOS'ta kurulu değilse Mac App Store'u ya da `https://tailscale.com/download/mac` adresini gösterir; Linux'ta `curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up` komutunu senin çalıştırman için gösterir.
+
+### `tau remote ssh`
+
+```text
+Usage: tau remote ssh [OPTIONS]
+
+  Check sshd, tau's drop-in (keys only, only you from the tailnet and
+  localhost), password login, mosh and tmux. Otherwise show the one command to
+  run in your own terminal (it asks for your password with sudo) and what it
+  changes; tau never runs it. Without a checkout it first writes the scripts
+  to $TAU_DATA_DIR/remote. Exit 0 when everything holds, else 1.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one check object (docs/reference/setup.md).
+```
+
+```text
+SSH ve mosh
+  ✗ SSH sunucusu: kapalı (Uzaktan Giriş / Remote Login)
+  ✗ Sıkılaştırma /etc/ssh/sshd_config.d/010-tau.conf: yok
+  ✓ mosh: /opt/homebrew/bin/mosh
+  …
+
+  → Bunu kendi terminalinde, sudo olmadan kendi kullanıcınla çalıştır: parolanı (sudo) yalnızca root gerektiren adımlar için sorar. tau onu hiçbir zaman çalıştırmaz.
+
+      bash ~/.local/share/tau/remote/setup-all.sh
+
+    Neleri değiştirir:
+      • tmux ve mosh'u Homebrew ile kurar
+      • …
+      • sudo ile: /etc/ssh/sshd_config.d/010-tau.conf dosyasını yazar: yalnızca anahtar (parola ve keyboard-interactive giriş kapalı), yalnızca tailnet'ten ve localhost'tan senin kullanıcın (AllowUsers), agent yönlendirme yok; sshd -t ile dener, deneme başarısız olursa geri alır
+      • sudo ile: eksik SSH host anahtarlarını oluşturur (ssh-keygen -A) ve Uzaktan Girişi (Remote Login) açar ya da nereden açacağını söyler
+    İstersen önce oku: ~/.local/share/tau/remote/setup-all.sh
+
+✗ SSH, mosh ya da tmux ile ilgili 2 sorun
+```
+
+Bir checkout'ta komut `bash <checkout>/infra/remote/setup-all.sh` olur. Kurulu bir tau, taşıdığı `infra/remote` kopyasını önce `$TAU_DATA_DIR/remote/` altına yazar; oradaki `config.local.env`'e dokunmaz.
+
+### `tau remote phone`
+
+```text
+Usage: tau remote phone [OPTIONS]
+
+  Print what to enter in Termius: this machine's MagicDNS name, your user,
+  port 22, mosh and the tau-attach startup snippet, from the live Tailscale
+  state (printed only, never written). Exit 0 when Tailscale is connected and
+  a key is in ~/.ssh/authorized_keys, else 1 with how to add one.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one check object (docs/reference/setup.md).
+```
+
+Anahtar yoksa Termius'un oluşturduğu açık anahtar için `bash <kit>/add-key.sh` komutunu (sudo olmadan) gösterir.
+
 ## `tau net`
 
 ```text
@@ -610,7 +750,7 @@ Kurulu her `tau-*` dağıtımı için bir satır. Hiçbir sağlayıcı SDK'sın�
 | Kod | Anlamı |
 |---|---|
 | 0 | başarı; `tau doctor` için hiç `fail` yok |
-| 1 | `tau doctor` ya da `tau guard doctor` başarısız bir kontrol buldu; `tau hub run` çalışan bir hub buldu; bir hub komutu işini yapamadı; bir `tau guard` kontrolü, kaydı ya da silmesi başarılı olmadı; `tau telegram pair` bir sohbet eşleştiremedi |
+| 1 | `tau doctor` ya da `tau guard doctor` başarısız bir kontrol buldu; `tau hub run` çalışan bir hub buldu; bir hub komutu işini yapamadı; bir `tau guard` kontrolü, kaydı ya da silmesi başarılı olmadı; `tau telegram pair` bir sohbet eşleştiremedi; bir `tau remote` denetimi geçmedi |
 | 2 | `tau chat` / `tau tui`: hiçbir şey açılmadan önce eksik kimlik bilgileri, geçersiz yapılandırma ya da bilinmeyen oturum; macOS dışındaki bir platformda ya da SSH üzerinden `tau guard` yüz komutları; yüklenebilir bir yapılandırma olmadan `tau telegram`; ayrıca Click'in kendi kullanım hataları |
 | 130 | `tau chat`, bir onay istemi hâlâ stdin'i beklerken Ctrl-C ile bırakıldı; `tau telegram pair` Ctrl-C ile iptal edildi |
 

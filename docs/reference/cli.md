@@ -1,6 +1,6 @@
 # CLI
 
-Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init`, `setup`, `spend`, `telegram` and `version`; `tau-tui` adds `tui`, `tau-guard` adds `guard` ([Owner guard](../guides/guard.md)), `tau-net` adds `net`, `tau-cloud` adds `cloud` (see [Join the tau network](../guides/tau-network.md)) and `tau-sub` adds `sub`; any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
+Every `tau` subcommand is a component: `tau-core` ships `chat`, `components`, `doctor`, `hub`, `init`, `remote`, `setup`, `spend`, `telegram` and `version`; `tau-tui` adds `tui`, `tau-guard` adds `guard` ([Owner guard](../guides/guard.md)), `tau-net` adds `net`, `tau-cloud` adds `cloud` (see [Join the tau network](../guides/tau-network.md)) and `tau-sub` adds `sub`; any installed distribution can add more through the `tau.commands` entry point group. This page mirrors `--help` for each of them.
 
 Inside a repository checkout, prefix each command with `uv run`.
 
@@ -33,6 +33,7 @@ Commands:
   hub         Run and manage tau as a long-lived service in the hub role.
   init        Create tau.toml and the persona files.
   net         Talk to other taus (identity, contacts, messages).
+  remote      Check remote access: Tailscale, SSH, mosh, the phone.
   setup       Pick, install and set up tau's features.
   spend       Show the spend per model role.
   sub         Specialists of your tau (/coach, /landing, ...).
@@ -507,6 +508,145 @@ Hub: running; polling as @deniz_tau_bot
 
 `--json` prints `{"token", "bot", "bot_error", "token_refused", "paired", "allowed_chats", "pairing": {"expires_at"} | null, "hub": {"running", "telegram"}}`, where `hub.telegram` is the `telegram` key of the hub's `/status`. Exit 0 either way.
 
+## `tau remote`
+
+```text
+Usage: tau remote [OPTIONS] COMMAND [ARGS]...
+
+  Remote access: reach this machine from your phone over Tailscale, SSH, mosh
+  and tmux. These commands check it and say what to do; the one command that
+  needs sudo is shown for you to run, never run by tau. `tau setup` → Remote
+  access walks through them.
+
+Options:
+  -h, --help  Show this help and exit.
+
+Commands:
+  phone      What to enter in Termius on the phone.
+  ssh        Check SSH and mosh; show the one command to fix them.
+  status     Check everything; exit 0 when remote access is ready.
+  tailscale  Check Tailscale.
+```
+
+The setup is in [Reach tau from your phone](../guides/phone-tailscale-termius.md). `tailscale`, `ssh` and `phone` are the check steps of `tau setup` → Remote access. With `--json` each prints one check object ([check steps](setup.md#check-steps)). Nothing here runs `sudo` or a script, and the live values (host name, address, user) are printed, never written to a file.
+
+### `tau remote status`
+
+```text
+Usage: tau remote status [OPTIONS]
+
+  Every remote access check: Tailscale, sshd with tau's drop-in, a password
+  login probe, mosh, tmux and the phone's key. Exit 0 when remote access is
+  ready, else 1. It changes nothing.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one check object (docs/reference/setup.md).
+```
+
+```text
+Tailscale on this machine
+  ✓ Tailscale installed: /Applications/Tailscale.app/Contents/MacOS/Tailscale
+  ✓ Logged in and connected: my-mac.tailXXXXXX.ts.net · 100.x.y.z
+
+SSH and mosh
+  ✓ SSH server: answers on port 22
+  ✓ Hardening /etc/ssh/sshd_config.d/010-tau.conf: keys only; only alice, only from the tailnet and localhost
+  ✓ sshd reads sshd_config.d
+  ✓ Password login: refused, keys only
+  ✓ mosh: /opt/homebrew/bin/mosh
+  ✓ mosh-server: /opt/homebrew/bin/mosh-server
+  ✓ tmux: /opt/homebrew/bin/tmux
+  ✓ ~/.zshenv block (mosh-server on PATH over SSH): present
+  ✓ ~/.tmux.conf block (tau's tmux settings): present
+
+Your phone (Termius)
+  · Address: my-mac.tailXXXXXX.ts.net
+  · Address without MagicDNS: 100.x.y.z
+  · Username: alice
+  · Port: 22
+  ✓ Key: the ED25519 key you made in Termius; 1 key(s) on this machine
+  · Mosh: on
+  · Startup Snippet: tau-attach
+  · Tailscale on the phone: on, logged in with the same account
+
+✓ Remote access is ready: ssh alice@my-mac.tailXXXXXX.ts.net
+```
+
+`✓` passes, `✗` fails, `!` only warns (a drop-in that differs from tau's template but is safe, a probe that could not tell) and `·` is information. The password probe is `ssh -o BatchMode=yes -o PubkeyAuthentication=no … <you>@127.0.0.1 true`, as in `infra/remote/doctor.sh`, and runs only when port 22 answers and the drop-in is there. `tau setup status` runs this command to know whether remote access is set up, so it shows no actions and writes nothing; `--json` gives the lines of all three checks with ids such as `ssh.dropin`, and their `values` by step.
+
+### `tau remote tailscale`
+
+```text
+Usage: tau remote tailscale [OPTIONS]
+
+  Check that Tailscale is installed and logged in, with this machine's
+  MagicDNS name and 100.x address; otherwise say how to install it or log in.
+  Exit 0 when it is connected, else 1.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one check object (docs/reference/setup.md).
+```
+
+The CLI is `tailscale` on `PATH`, else the one inside `/Applications/Tailscale.app` on macOS. Missing on macOS, it points to the Mac App Store or `https://tailscale.com/download/mac`; on Linux it shows `curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up` for you to run.
+
+### `tau remote ssh`
+
+```text
+Usage: tau remote ssh [OPTIONS]
+
+  Check sshd, tau's drop-in (keys only, only you from the tailnet and
+  localhost), password login, mosh and tmux. Otherwise show the one command to
+  run in your own terminal (it asks for your password with sudo) and what it
+  changes; tau never runs it. Without a checkout it first writes the scripts
+  to $TAU_DATA_DIR/remote. Exit 0 when everything holds, else 1.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one check object (docs/reference/setup.md).
+```
+
+```text
+SSH and mosh
+  ✗ SSH server: off (Remote Login)
+  ✗ Hardening /etc/ssh/sshd_config.d/010-tau.conf: missing
+  ✓ mosh: /opt/homebrew/bin/mosh
+  …
+
+  → Run this in your own terminal, as yourself and not with sudo: it asks for your password (sudo) only for the steps that need root. tau never runs it.
+
+      bash ~/.local/share/tau/remote/setup-all.sh
+
+    What it changes:
+      • installs tmux and mosh with Homebrew
+      • …
+      • with sudo: writes /etc/ssh/sshd_config.d/010-tau.conf: keys only (password and keyboard-interactive login off), only your user from the tailnet and localhost (AllowUsers), no agent forwarding; tests it with sshd -t and rolls it back if the test fails
+      • with sudo: creates missing SSH host keys (ssh-keygen -A) and turns on Remote Login, or tells you where to switch it on
+    Read it first if you like: ~/.local/share/tau/remote/setup-all.sh
+
+✗ 2 problem(s) with SSH, mosh or tmux
+```
+
+In a checkout the command is `bash <checkout>/infra/remote/setup-all.sh`. An installed tau writes the copy of `infra/remote` it ships to `$TAU_DATA_DIR/remote/` first, keeping a `config.local.env` there.
+
+### `tau remote phone`
+
+```text
+Usage: tau remote phone [OPTIONS]
+
+  Print what to enter in Termius: this machine's MagicDNS name, your user,
+  port 22, mosh and the tau-attach startup snippet, from the live Tailscale
+  state (printed only, never written). Exit 0 when Tailscale is connected and
+  a key is in ~/.ssh/authorized_keys, else 1 with how to add one.
+
+Options:
+  -h, --help  Show this help and exit.
+  --json      Print one check object (docs/reference/setup.md).
+```
+
+Without a key it shows `bash <kit>/add-key.sh` (no sudo) for the public key Termius generates.
+
 ## `tau net`
 
 ```text
@@ -608,7 +748,7 @@ One line per installed `tau-*` distribution. It never imports a provider SDK, so
 | Code | Meaning |
 |---|---|
 | 0 | success; for `tau doctor`, no `fail` |
-| 1 | `tau doctor` or `tau guard doctor` found a failing check; `tau hub run` found a running hub; a hub command could not do its job; a `tau guard` check, enrollment or forget did not succeed; `tau telegram pair` did not pair a chat |
+| 1 | `tau doctor` or `tau guard doctor` found a failing check; `tau hub run` found a running hub; a hub command could not do its job; a `tau guard` check, enrollment or forget did not succeed; `tau telegram pair` did not pair a chat; a `tau remote` check did not pass |
 | 2 | `tau chat` / `tau tui`: missing credentials, invalid config or unknown session, before anything opened; `tau guard` face commands on a platform other than macOS or over SSH; `tau telegram` without a loadable config; also Click's own usage errors |
 | 130 | `tau chat` left on Ctrl-C while an approval prompt was still blocking on stdin; `tau telegram pair` cancelled with Ctrl-C |
 

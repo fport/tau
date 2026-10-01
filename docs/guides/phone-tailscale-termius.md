@@ -14,13 +14,47 @@ Phone (Termius) ──▶ Tailscale ──▶ OpenSSH on the hub ──▶ mosh 
 | **tmux** | The session, and whatever runs in it, keeps running when the connection drops. |
 | **keep-awake agent** | The Mac does not sleep while on AC power (`caffeinate -s`). Once [TauBar](taubar.md) is installed, `setup.sh` removes it and TauBar does the job. |
 
-The scripts live in [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/remote) of the repository. They were written for a MacBook hub; the Linux notes below cover a Raspberry Pi.
+The scripts live in [`infra/remote/`](https://github.com/fport/tau/tree/main/infra/remote) of the repository, for macOS and Linux (a Raspberry Pi hub included). `tau setup` walks you through them; the sections after it do the same by hand.
+
+## The guided way: `tau setup` → Remote access
+
+```sh
+tau setup              # tick "Remote access" in the checklist
+tau setup run remote   # or this feature alone, any time later
+```
+
+It goes through three checks. Each one passes on its own, or says what only you can do and waits:
+
+1. **Tailscale.** It finds the Tailscale CLI (on `PATH`, or inside Tailscale.app on macOS) and reads `tailscale status --json`: the step passes when Tailscale is logged in and connected, and shows the hub's MagicDNS name and 100.x address. Otherwise it says how to install Tailscale and opens the page on request (macOS: the Mac App Store or tailscale.com/download), shows the official install script for you to run (Linux: it needs `sudo`), or says how to log in.
+2. **SSH and mosh.** It checks what `infra/remote/doctor.sh` checks: sshd answers on port 22; tau's drop-in `/etc/ssh/sshd_config.d/010-tau.conf` turns password and keyboard-interactive login off and restricts `AllowUsers` to you from the tailnet and localhost; a password login on localhost is refused; mosh and tmux are installed (on macOS also the `~/.zshenv` block). Otherwise it shows **one command** with what it changes, and waits:
+
+    ```text
+    → Run this in your own terminal, as yourself and not with sudo: it asks for your password
+      (sudo) only for the steps that need root. tau never runs it.
+
+          bash ~/.local/share/tau/remote/setup-all.sh
+
+    When you are done press Enter to check again, or type skip:
+    ```
+
+    tau never runs `sudo`. Run the command in another terminal window, come back and press Enter: it checks again.
+3. **Your phone.** It prints what to enter in Termius from the live state: the address (`my-mac.tailXXXXXX.ts.net`), your user name, port 22, Mosh on, and the `tau-attach` startup snippet. Until `~/.ssh/authorized_keys` holds a key, it says how to add the one Termius generates (section 2).
+
+`tau remote status` runs every check again at any time and exits 0 once remote access is ready. `tau remote tailscale`, `tau remote ssh` and `tau remote phone` run one step each. The values are printed only, never written to a file.
+
+**Where the command comes from.** In a checkout it is `infra/remote/setup-all.sh`. An installed tau has no checkout, so tau-core carries a copy of `infra/remote` and writes it to `~/.local/share/tau/remote/` (under `TAU_DATA_DIR`) before it shows the command. Read it there first if you like. A `config.local.env` next to it holds machine-specific overrides and is never overwritten.
 
 ## 1. Set up the hub
 
 === "macOS"
 
-    From a checkout of the repository. The first script needs no sudo; the second asks for your password, so run it in your own terminal:
+    One command does both parts, as your normal user in your own terminal (sudo asks for your password where it needs root):
+
+    ```sh
+    ./infra/remote/setup-all.sh      # setup.sh, then setup-sudo.sh
+    ```
+
+    Or the two parts one by one. The first needs no sudo; the second asks for your password:
 
     ```sh
     ./infra/remote/setup.sh          # tmux, mosh, ~/.tmux.conf, ~/.zshenv, tau-attach, keep-awake agent
@@ -29,7 +63,7 @@ The scripts live in [`infra/remote/`](https://github.com/fport/tau/tree/main/inf
 
     Then sign in: open Tailscale.app, allow the system extension under **Privacy & Security**, and sign in.
 
-    What the sudo script writes into `/etc/ssh/sshd_config.d/010-tau.conf`:
+    What the sudo part writes into `/etc/ssh/sshd_config.d/010-tau.conf`:
 
     - password and keyboard-interactive (PAM) logins off; keys only;
     - `AllowUsers` restricted to your user from the tailnet (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and localhost;
@@ -39,15 +73,22 @@ The scripts live in [`infra/remote/`](https://github.com/fport/tau/tree/main/inf
 
 === "Linux (Raspberry Pi)"
 
-    The scripts are macOS-specific (`launchctl`, Remote Login). Do the same by hand:
+    Tailscale first, with its official script, then log in:
 
     ```sh
     curl -fsSL https://tailscale.com/install.sh | sh
     sudo tailscale up
-    sudo apt install -y openssh-server mosh tmux
     ```
 
-    Harden sshd with a drop-in that mirrors the macOS one, then restart it:
+    Then one command, as your normal user (sudo asks for your password):
+
+    ```sh
+    ./infra/remote/setup-all.sh      # runs setup-linux.sh
+    ```
+
+    `setup-linux.sh` writes the same drop-in as on macOS **before** it installs openssh-server, mosh and tmux (apt-get, dnf or pacman), so a new SSH server starts hardened. It checks that `/etc/ssh/sshd_config` includes `sshd_config.d`, tests the configuration with `sshd -t` and rolls back on failure, adds the `~/.tmux.conf` block and `tau-attach`, and enables and reloads the SSH service. Over SSH without a key in `~/.ssh/authorized_keys` it stops before it changes anything, so you cannot lock yourself out.
+
+    By hand, the drop-in is:
 
     ```sh
     sudo tee /etc/ssh/sshd_config.d/010-tau.conf >/dev/null <<'EOF'
@@ -68,19 +109,19 @@ The scripts live in [`infra/remote/`](https://github.com/fport/tau/tree/main/inf
 1. Install **Tailscale** on the phone and sign in with the **same account** as the hub.
 2. Install **Termius**.
 3. Create a key: Termius → **Keychain** → **+** → **Generate Key** → type **ED25519** → name it `iphone`. Open the key and copy the public key.
-4. Add the public key to the hub. On macOS with Universal Clipboard:
+4. Add the public key to the hub (no sudo). On macOS, paste it with Universal Clipboard:
 
     ```sh
-    ./infra/remote/add-key.sh
+    ./infra/remote/add-key.sh        # an installed tau: bash ~/.local/share/tau/remote/add-key.sh
     ```
 
-    Anywhere else, append it to `~/.ssh/authorized_keys` on the hub (`chmod 600` on the file, `chmod 700` on the directory).
+    Or append it to `~/.ssh/authorized_keys` on the hub yourself (`chmod 600` on the file, `chmod 700` on the directory).
 
-5. Create the host in Termius:
+5. Create the host in Termius. `tau remote phone` prints these values from the live state:
 
     | Field | Value |
     |---|---|
-    | Address | the hub's MagicDNS name, e.g. `my-mac.tailXXXXXX.ts.net` (`infra/remote/doctor.sh` prints it) |
+    | Address | the hub's MagicDNS name, e.g. `my-mac.tailXXXXXX.ts.net` |
     | Username | your user name on the hub |
     | Key | `iphone` |
     | **Mosh** | on |
@@ -91,10 +132,11 @@ The scripts live in [`infra/remote/`](https://github.com/fport/tau/tree/main/inf
 ## 3. Check the chain
 
 ```sh
-./infra/remote/doctor.sh
+tau remote status                # macOS and Linux
+./infra/remote/doctor.sh         # macOS: also sleep and the firewall
 ```
 
-It prints the MagicDNS name and the tailnet IP of the hub, checks Tailscale, sshd's configuration, mosh, tmux and the keep-awake agent, and flags anything exposed. Connect from Termius: you should land in tmux without typing anything.
+`tau remote status` checks Tailscale, sshd with its drop-in, a password login attempt, mosh, tmux and the phone's key, prints the address and exits 0 when everything holds. `doctor.sh` checks the same on macOS plus the keep-awake agent and the firewall, and prints the MagicDNS name and the tailnet IP. Connect from Termius: you should land in tmux without typing anything.
 
 !!! warning "Personal values stay out of the repository"
     Hostnames, tailnet names, IPs and key fingerprints are personal. The `.env.example` lists them as `TAU_MAC_MAGICDNS=my-mac.tailXXXXXX.ts.net`, `TAU_MAC_TAILNET_IP=100.x.y.z`, `TAU_MAC_SSH_HOST_KEY_FP=SHA256:...` and so on. Put the real values in your gitignored `.env`; the doctor prints them live anyway.
@@ -163,7 +205,7 @@ Nothing else can approve. The tmux session is the trusted channel here: it runs 
 
 **`mosh-server not found`.** Run `./infra/remote/setup.sh` again. Non-interactive SSH sessions read only `~/.zshenv`, which is where the script puts the `PATH` entry.
 
-**I cannot reach the hub.** Check in order: is Tailscale on on the phone, is the hub asleep, what does `doctor.sh` say. A MacBook sleeps with the lid closed; plug it in and leave the lid open, use clamshell mode with an external display, or pick TauBar's "Keep awake with the lid closed" mode (it needs a one-time sudoers rule, see [TauBar](taubar.md#set-up-the-lid-closed-mode)).
+**I cannot reach the hub.** Check in order: is Tailscale on on the phone, is the hub asleep, what does `tau remote status` (or `doctor.sh`) say. A MacBook sleeps with the lid closed; plug it in and leave the lid open, use clamshell mode with an external display, or pick TauBar's "Keep awake with the lid closed" mode (it needs a one-time sudoers rule, see [TauBar](taubar.md#set-up-the-lid-closed-mode)).
 
 **The TUI is black and white.** Termius over mosh drops 24-bit colour escapes; 256 colours come through. `infra/remote/tmux/tau.tmux.conf` therefore does not force truecolor (`RGB`) for `xterm-256color` clients, so tmux maps the TUI's colours to the 256-colour palette for the phone. If you set such an override in your own `~/.tmux.conf`, remove it, reload with `Ctrl-b r` and reconnect in Termius (tmux decides a client's colours when it attaches). Outside tmux, `TEXTUAL_COLOR_SYSTEM=256 uv run tau tui` does the same for one run.
 

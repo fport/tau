@@ -19,6 +19,7 @@ const TWINS: readonly (readonly [string, string])[] = [
   ["/", "/tr/"],
   ["/how-it-works", "/tr/how-it-works"],
   ["/universe", "/tr/universe"],
+  ["/download", "/tr/download"],
 ];
 
 const ALL_PAGES = TWINS.flat();
@@ -26,6 +27,9 @@ const SITE = "https://tau.getporti.com";
 const DOCS = "https://docs.tau.getporti.com/";
 const TURKISH_DOCS = `${DOCS}tr/`;
 const TURKISH = "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7";
+/** The Mac app's disk image, attached to every GitHub release (issue 170). */
+const DMG = "https://github.com/fport/tau/releases/latest/download/tau.dmg";
+const INSTALL = "curl -fsSL https://tau.getporti.com/install.sh | sh";
 
 function expectSecurityHeaders(res: Response): void {
   expect(res.headers.get("content-security-policy")).toBe(EXPECTED_CSP);
@@ -62,6 +66,48 @@ describe("pages", () => {
     expect(page).toContain('<canvas class="hero-cosmos" id="cosmos" aria-hidden="true"></canvas>');
     expect(page).toContain('<script type="module" src="/static/landing.js"></script>');
     expect(page).not.toContain("/static/universe.js");
+  });
+
+  it("offers the Mac app and the one-line installer as the local way, in both languages", async () => {
+    for (const [path, download, copy] of [
+      ["/", "/download", "Copy"],
+      ["/tr/", "/tr/download", "Kopyala"],
+    ] as const) {
+      const page = await html(path);
+      const local = /<li class="way way-local">[\s\S]*?<\/li>/.exec(page)?.[0] ?? "";
+      expect(local, path).toContain(`<a class="button" href="${download}">`);
+      expect(page, path).toContain(`<code id="install-command">${INSTALL}</code>`);
+      expect(page, path).toContain(
+        `<button class="copy" type="button" data-copy="install-command" aria-describedby="install-command">${copy}</button>`,
+      );
+    }
+  });
+
+  it("serves the download page with the app, its first open, the wizard and the terminal way", async () => {
+    const res = await universe("/download");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
+    expectSecurityHeaders(res);
+    const english = await res.text();
+    const turkish = await html("/tr/download");
+    for (const page of [english, turkish]) {
+      expect(page).toContain('<script type="module" src="/static/download.js"></script>');
+      expect(page).toContain(`href="${DMG}"`);
+      expect(page).toContain("macOS 13");
+      for (const id of ["first-open", "first-launch", "terminal", "manual", "features"]) {
+        expect(page, id).toMatch(new RegExp(`<section class="chapter" id="${id}"`));
+      }
+      expect(page).toContain(INSTALL);
+      expect(page).toContain("curl -fsSL https://tau.getporti.com/install.sh | less");
+      expect(page).toContain("TAU_INSTALL_NO_SETUP=1");
+      expect(page).toContain("uv tool install tau-core --with tau-tui --with tau-net --with tau-sub");
+      // The wizard's eight steps.
+      expect([...page.matchAll(/<li class="chamfer">/g)]).toHaveLength(8);
+    }
+    expect(english).toContain("Open Anyway");
+    expect(english).toContain(`${DOCS}guides/setup-features/`);
+    expect(turkish).toContain("Yine de Aç");
+    expect(turkish).toContain(`${TURKISH_DOCS}guides/setup-features/`);
   });
 
   it("serves the universe page at /universe with the security headers", async () => {
@@ -223,6 +269,8 @@ describe("pages in two languages", () => {
     for (const [en, tr] of TWINS) {
       for (const href of hrefs(await html(tr))) {
         const where = `${tr}: ${href}`;
+        // The disk image is the one link outside the site and the docs (the download page).
+        if (href === DMG) continue;
         if (href.startsWith("https://")) {
           expect(href.startsWith(TURKISH_DOCS) || href.startsWith(`${SITE}/`), where).toBe(true);
         } else if (href.startsWith("/") && !asset.test(href)) {
@@ -332,7 +380,7 @@ describe("the language choice", () => {
   });
 
   it("never redirects the other pages", async () => {
-    for (const path of ["/how-it-works", "/universe"]) {
+    for (const path of ["/how-it-works", "/universe", "/download"]) {
       const res = await at(path, { "accept-language": TURKISH, cookie: "lang=tr" });
       expect(res.status, path).toBe(200);
       await res.body?.cancel();

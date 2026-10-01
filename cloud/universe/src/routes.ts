@@ -20,6 +20,7 @@ export const RESERVED_NAMES: ReadonlySet<string> = new Set([
   "index",
   "universe",
   "how-it-works",
+  "download",
   "tr",
   "claim",
   "person",

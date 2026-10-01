@@ -1,6 +1,6 @@
-// tau universe: the public site (landing page, /how-it-works, /universe, and the same pages in
-// Turkish under /tr/), the opt-in directory of taus, and the relay between visitors and web
-// sub-taus.
+// tau universe: the public site (landing page, /how-it-works, /universe, /download, and the
+// same pages in Turkish under /tr/), the opt-in directory of taus, and the relay between
+// visitors and web sub-taus.
 //
 // Contract: docs/reference/tau-universe.md. Decisions: docs/adr/0010, docs/adr/0013.
 //
@@ -40,10 +40,12 @@
       "/",
       "/how-it-works",
       "/universe",
+      "/download",
       "/tr",
       "/tr/",
       "/tr/how-it-works",
       "/tr/universe",
+      "/tr/download",
       "/@*",
       "/tr/@*",
       "/claim",

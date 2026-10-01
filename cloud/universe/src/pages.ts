@@ -49,9 +49,11 @@ export const PAGES: Readonly<Record<string, Language>> = {
   "/": "en",
   "/how-it-works": "en",
   "/universe": "en",
+  "/download": "en",
   "/tr/": "tr",
   "/tr/how-it-works": "tr",
   "/tr/universe": "tr",
+  "/tr/download": "tr",
 };
 
 export function isPage(path: string): boolean {

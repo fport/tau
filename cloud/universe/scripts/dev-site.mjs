@@ -10,6 +10,7 @@
 //   bun run build && node scripts/dev-site.mjs
 //   http://127.0.0.1:8795/?fixture=1              the landing page, the universe as its hero
 //   http://127.0.0.1:8795/universe?fixture=1
+//   http://127.0.0.1:8795/download                the download page (static)
 //   http://127.0.0.1:8795/@alice?fixture=1        a person page
 //   http://127.0.0.1:8795/coach?fixture=1         a sub-tau page with its visitor chat
 //   http://127.0.0.1:8795/@alice/landing?fixture=1  a sub-tau without a chat
@@ -49,7 +50,7 @@ const TYPES = {
 
 const HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i;
 const NAME = /^[a-z][a-z0-9-]{1,30}$/;
-const PAGES = new Set(["/", "/how-it-works", "/universe", "/claim"]);
+const PAGES = new Set(["/", "/how-it-works", "/universe", "/download", "/claim"]);
 
 /** The file behind a page path, as the Worker picks it; null for none. */
 function pageFile(path) {

@@ -17,6 +17,7 @@
  * - Under `prefers-reduced-motion` there is no opening and nothing moves: the universe is
  *   drawn once, and again on resize.
  * - Nothing is drawn while the hero is off screen.
+ * - The local way's install command under the hero's text has a copy button (client/copy.ts).
  *
  * Everything the directory returns is drawn as canvas text or set with textContent, never
  * parsed as HTML. The page's own strings come from client/messages.ts.
@@ -40,6 +41,7 @@ import {
   stars,
   tauPath,
 } from "./cosmos";
+import { copyButtons } from "./copy";
 import { byId, characterElement, html } from "./dom";
 import { fold } from "./fold";
 import { MESSAGES, pageLanguage } from "./messages";
@@ -516,3 +518,4 @@ function start(): void {
 starfield();
 start();
 fold();
+copyButtons(page.copy);

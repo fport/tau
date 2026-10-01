@@ -611,6 +611,19 @@ a.crumb:hover {
   margin-right: 0.35rem;
 }
 
+/* The local way's other door, under the three ways: the one-line installer and its copy
+   button (client/copy.ts), on one line where it fits. */
+.way-terminal {
+  display: grid;
+  justify-items: start;
+  gap: 0.55rem;
+  margin-top: 1.6rem;
+}
+
+.way-terminal-tag {
+  color: var(--faint);
+}
+
 .hero-more {
   margin-top: 1.5rem;
   color: var(--muted);
@@ -3013,6 +3026,233 @@ a.sub-chip:hover {
 
 .chapter-closing .actions-start {
   margin-top: 1.75rem;
+}
+
+/* ---- download --------------------------------------------------------------------- */
+
+/* The download page (/download): the two ways in side by side under the title, then
+   chapters in the layout of how it works: the first open, the first launch, the terminal
+   way, by hand and the features. Fire only on the download button. */
+
+.page-download .intro .kicker {
+  margin-bottom: 1.25rem;
+}
+
+.get {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 1.25rem;
+  margin-top: clamp(2.25rem, 5vw, 3.25rem);
+}
+
+.get-way {
+  --cut: 14px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 1.15rem;
+  padding: clamp(1.25rem, 3vw, 1.9rem);
+  background-color: var(--glass);
+}
+
+.get-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 4rem;
+}
+
+.get-icon {
+  flex: none;
+  width: 4rem;
+  height: 4rem;
+}
+
+.get-name {
+  font-size: clamp(1.35rem, 1.1rem + 0.8vw, 1.7rem);
+}
+
+.get-meta {
+  margin-top: 0.45rem;
+}
+
+.get-way .button {
+  justify-self: start;
+}
+
+/* The installer on one line where the panel allows it. */
+.get-way .command code {
+  font-size: 0.84rem;
+}
+
+.get-note {
+  color: var(--muted);
+  font-size: 0.94rem;
+  text-wrap: pretty;
+}
+
+/* The side panels: why macOS asks, what the install script does. */
+.why h3,
+.fig-title {
+  margin-bottom: 0.8rem;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.why p {
+  color: var(--muted);
+  font-size: 0.95rem;
+  text-wrap: pretty;
+}
+
+.why p + p {
+  margin-top: 0.75rem;
+}
+
+.fig-note {
+  margin-top: 1.15rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+/* The numbered steps, smaller, inside a panel. */
+.steps-small {
+  gap: 1.1rem;
+}
+
+.steps-small li {
+  padding-left: 2.6rem;
+  font-size: 0.95rem;
+}
+
+.steps-small li::before {
+  top: -0.05rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  font-size: 0.78rem;
+}
+
+.steps-small li:not(:last-child)::after {
+  top: 1.75rem;
+  bottom: -1rem;
+  left: calc(0.8rem - 0.5px);
+}
+
+.prose-wide {
+  max-width: 50rem;
+  margin-top: clamp(2rem, 4vw, 2.75rem);
+}
+
+/* The wizard's eight steps: panels over the sky, numbered like the chapters. */
+.wizard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: clamp(2.25rem, 5vw, 3.25rem);
+  padding: 0;
+  list-style: none;
+  counter-reset: wizard;
+}
+
+.wizard li {
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+  padding: 1.1rem 1.2rem 1.3rem;
+  background-color: var(--glass);
+  color: var(--muted);
+  font-size: 0.95rem;
+  counter-increment: wizard;
+  text-wrap: pretty;
+}
+
+.wizard li::before {
+  content: counter(wizard, decimal-leading-zero) " //";
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+}
+
+.wizard h3 {
+  color: var(--text);
+  font-size: 1.12rem;
+}
+
+.wizard code {
+  white-space: normal;
+}
+
+/* The features the wizard offers, one thin line above each. */
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.75rem clamp(1.5rem, 3vw, 2.5rem);
+  margin: clamp(2.25rem, 5vw, 3.25rem) 0 clamp(2rem, 4vw, 2.75rem);
+  padding: 0;
+  list-style: none;
+}
+
+.features li {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line-2);
+  color: var(--muted);
+  font-size: 0.95rem;
+  text-wrap: pretty;
+}
+
+.features h3 {
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.feature-where {
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 64rem) {
+  .wizard,
+  .features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 50rem) {
+  .get {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 36rem) {
+  .wizard,
+  .features {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .get-way .button {
+    justify-self: stretch;
+  }
+
+  /* On a phone the installer keeps the whole width and wraps at its spaces, not inside the
+     address; the copy button goes under it. The landing's command does the same. */
+  .page-download .command,
+  .way-terminal .command {
+    flex-wrap: wrap;
+    padding: 0.6rem 0.5rem 0.5rem 1rem;
+    row-gap: 0.4rem;
+  }
+
+  .page-download .command code,
+  .way-terminal .command code {
+    flex: 1 1 100%;
+  }
+
+  .page-download .command .copy,
+  .way-terminal .command .copy {
+    margin-left: auto;
+  }
 }
 
 /* ---- 404 -------------------------------------------------------------------------- */

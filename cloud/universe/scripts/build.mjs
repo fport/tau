@@ -11,6 +11,7 @@
 //   sub.js         the sub-tau page and its visitor chat (/<slug>, /@handle/<name>)
 //   claim.js       the claim page (/claim#…)
 //   how.js         how it works: the star field and the storyline's current station
+//   download.js    the download page (/download): the star field and the commands' copy buttons
 //   sky.js         the star field alone, for the pages with no other script
 //   chunks/        code the pages share (the character generator, the strings), and the
 //                  development fixtures, which only localhost ever loads (client/api.ts)
@@ -33,7 +34,7 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, "fonts"), { recursive: true });
 
 await build({
-  entryPoints: ["landing", "universe", "person", "sub", "claim", "how", "sky"].map((name) => ({
+  entryPoints: ["landing", "universe", "person", "sub", "claim", "how", "download", "sky"].map((name) => ({
     in: join(root, "client", `${name}.ts`),
     out: name,
   })),
